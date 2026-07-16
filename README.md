@@ -1,6 +1,6 @@
 # YouTube Video Automation Pipeline
 
-> **Automated end-to-end pipeline:** YouTube transcript → Khaleeji Arabic translation → TTS voice generation → Audacity audio polish → AI image generation (Gemini/Google Flow) → Final video compilation (FFmpeg/MoviePy).
+> **Automated end-to-end pipeline:** Copy YouTube Video 100% Authenticity. YouTube transcript → Khaleeji Arabic translation (Any Language) → Refinement and Enhancement Script → TTS voice generation → Audacity audio polish → AI image generation (Gemini/Google Flow) → Final video compilation (FFmpeg/MoviePy).
 
 **Stack:** Python 3.10+ (Windows), Playwright CDP, Gemini Web UI, AI Studio Speech, FFmpeg, MoviePy 2.x, Audacity (named pipes + PyAutoGUI).
 
