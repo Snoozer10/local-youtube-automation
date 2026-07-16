@@ -1,3 +1,4 @@
+venv/
 # Secrets & Credentials
 .env
 .env.*
