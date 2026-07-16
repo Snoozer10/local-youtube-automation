@@ -6,6 +6,20 @@
 
 ---
 
+**Turn any YouTube video into a polished Any Language episode — fully automated.**
+
+No API keys. No cloud bills. Just point at a URL and watch: transcript → dialect translation → studio-grade TTS → Audacity mastering → AI storyboards (Gemini *or* Google Flow) → Ken Burns cinematic compile → upload-ready MP4.
+
+**Why it’s different:**
+- **Browser automation, not APIs** — uses your logged-in Gemini/AI Studio sessions, sidestepping quotas, keys, and rate limits
+- **Dual-path everything** — fragile-but-fast *or* slow-but-bulletproof at every stage (images, audio, video)
+- **Checkpoint/resume everywhere** — kill it, reboot, it picks up exactly where it left off
+- **Windows-native, zero compromises** — hardware-accelerated FFmpeg (QSV/NVENC/CPU fallback), named-pipe Audacity, Playwright CDP
+
+**Perfect for:** Any Language content channels, faceless automation pipelines, anyone who wants “set it and forget it” video production that *actually works* on retry.
+
+---
+
 ## Table of Contents
 
 - [Quick Start](#quick-start)
