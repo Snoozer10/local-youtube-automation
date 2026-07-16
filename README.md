@@ -176,6 +176,81 @@ youtube_runs/<Video Title>/
 
 ## Architecture Overview
 
+```mermaid
+graph TD
+    A[run_agency.py] --> B[automate_all.py]
+    B --> C[refine_script.py]
+    C --> D[generate_voice.py]
+    D --> E[stitch_chapters.py]
+    E --> F[automate_audacity.py]
+    F --> G[transcribe_audio.py]
+    G --> H[correct_transcript_spelling.py]
+    H --> I1[script_image_generator.py]
+    H --> I2[flow_image_generator.py]
+    I1 --> J[fix_timestamps.py]
+    I2 --> J
+    J --> K[inject_timestamps.py]
+    K --> L[json_compile_animation_prompt.py]
+    L --> M[generate_thumbnail.py]
+    M --> N1[compile_video.py]
+    M --> N2[compile_video_with_moviepy.py]
+
+    subgraph "Shared Utilities"
+        U1[utils.py]
+        U2[gemini_utils.py]
+    end
+
+    subgraph "External Systems"
+        S1[Playwright CDP]
+        S2[Gemini Web UI]
+        S3[AI Studio Speech]
+        S4[FFmpeg]
+        S5[Audacity]
+        S6[Telegram Bot API]
+    end
+
+    A -.-> U1
+    A -.-> U2
+    B -.-> U1
+    B -.-> U2
+    C -.-> U1
+    C -.-> U2
+    D -.-> U1
+    D -.-> U2
+    E -.-> U1
+    F -.-> U1
+    G -.-> U1
+    H -.-> U1
+    I1 -.-> U1
+    I1 -.-> U2
+    I2 -.-> U1
+    I2 -.-> U2
+    J -.-> U1
+    K -.-> U1
+    L -.-> U1
+    M -.-> U1
+    N1 -.-> U1
+    N2 -.-> U1
+
+    S1 -.-> B
+    S1 -.-> C
+    S1 -.-> D
+    S1 -.-> I1
+    S1 -.-> I2
+    S1 -.-> M
+    S2 -.-> B
+    S2 -.-> C
+    S2 -.-> I1
+    S2 -.-> I2
+    S2 -.-> M
+    S3 -.-> D
+    S4 -.-> N1
+    S5 -.-> F
+    S5 -.-> G
+    S6 -.-> A
+    S6 -.-> D
+```
+
 ### All AI is Browser Automation
 
 - Playwright CDP → manually-signed-in Chrome/Opera on port 9222

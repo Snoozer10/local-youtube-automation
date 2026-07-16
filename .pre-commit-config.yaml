@@ -1,19 +1,39 @@
-cat > .pre-commit-config.yaml << 'EOF'
 repos:
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.2
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.0
     hooks:
-      - id: gitleaks
-        args: ["--no-banner", "--verbose"]
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.5.1
+    hooks:
+      - id: mypy
+        additional_dependencies: [types-requests, types-urllib3]
+        args: [--strict, --ignore-missing-imports]
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v4.5.0
     hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: debug-logger
       - id: detect-private-key
       - id: detect-aws-credentials
-        args: ["--allow-missing-credentials"]
-      - id: end-of-file-fixer
-      - id: trailing-whitespace
-      - id: check-yaml
-      - id: check-json
-      - id: check-toml
-EOF
+      - id: forbid-new-submodules
+
+  - repo: local
+    hooks:
+      - id: pytest-unit
+        name: pytest (unit tests only)
+        entry: pytest
+        args: ["tests/unit", "-v", "--tb=short"]
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true

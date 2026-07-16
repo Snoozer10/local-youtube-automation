@@ -13,6 +13,8 @@ Thank you for your interest in contributing! This guide will help you get starte
 - [Pull Request Process](#pull-request-process)
 - [Reporting Bugs](#reporting-bugs)
 - [Requesting Features](#requesting-features)
+- [Architecture Decisions](#architecture-decisions)
+- [Getting Help](#getting-help)
 
 ## Code of Conduct
 
@@ -332,6 +334,7 @@ See [ADR template](docs/adr/template.md) if it exists.
 ## Recognition
 
 Contributors are recognized in:
+
 - `AUTHORS.md` (or GitHub contributors graph)
 - Release notes for significant contributions
 

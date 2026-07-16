@@ -1,0 +1,4 @@
+Model: gemini-2.5-pro-preview-tts
+Temperature: 0.9
+Voice: Achird
+Whisper Model: small

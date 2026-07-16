@@ -1,0 +1,158 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "youtube-automation-pipeline"
+version = "4.0.0"
+description = "Automated end-to-end YouTube video automation pipeline: transcript -> Khaleeji Arabic translation -> TTS -> Audacity -> AI images -> Video compilation"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "youtube-transcript-api>=1.0.0",
+    "playwright>=1.40.0",
+    "python-docx>=1.1.0",
+    "python-dotenv>=1.0.0",
+    "faster-whisper>=1.0.0",
+    "openai-whisper>=20231117",
+    "torch>=2.0.0",
+    "t64>=4.66.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+    "pip-audit>=2.6.0",
+    "pre-commit>=3.5.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+include = "\\.pyi?$"
+extend-exclude = '''
+/(
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | youtube_runs
+)/
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "B008",  # do not perform function calls in argument defaults
+]
+extend-exclude = [
+    "youtube_runs",
+    "venv",
+    ".git",
+    "__pycache__",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+exclude = [
+    "youtube_runs",
+    "venv",
+    ".git",
+    "__pycache__",
+    "tests",
+    "legacy_and_utilities",
+    "Implementation plans",
+    "Security Division Analysis",
+    ".opencode",
+    ".gemini",
+    ".specify",
+    ".superpowers",
+    "graphify-out",
+    ".agents",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --strict-markers --tb=short"
+markers = [
+    "integration: marks tests as integration tests (require browsers, FFmpeg, Audacity)",
+    "unit: marks tests as unit tests (no external dependencies)",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    "venv/*",
+    "youtube_runs/*",
+    "legacy_and_utilities/*",
+    "Implementation plans/*",
+    ".opencode/*",
+    ".gemini/*",
+    ".specify/*",
+    ".superpowers/*",
+    "graphify-out/*",
+    ".agents/*",
+    "*.pyc",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+precision = 2
+show_missing = true
+skip_covered = false

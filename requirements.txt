@@ -1,0 +1,17 @@
+# Core Dependencies
+youtube-transcript-api>=1.2.0
+playwright>=1.40.0
+python-docx>=1.1.0
+python-dotenv>=1.0.0
+faster-whisper>=1.0.0
+openai-whisper>=20231117
+torch>=2.0.0
+requests>=2.31.0
+
+# Video Processing
+# FFmpeg must be installed separately (system dependency)
+# MoviePy 2.x for compile_video_with_moviepy.py
+moviepy>=2.0.0
+
+# Utilities
+tqdm>=4.664>=4.66.0

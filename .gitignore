@@ -1,20 +1,30 @@
+# Python Virtual Environment
 venv/
-# Secrets & Credentials
 .env
-.env.*
+.env.local
 *.env
-voice_option_notes.txt
+!/.env.example
+
+# Secrets & Credentials (CRITICAL - Never commit these)
+# Contains Telegram bot tokens, browser profile paths, API keys
+gemini_model.txt
 video_config.local.txt
+*.secret
+*.key
+*.pem
+
+# Checkpoint & State Files (Runtime Artifacts)
 compile_checkpoint.json
 *_checkpoint.json
 pipeline.json
 refine_checkpoint.json
 audacity_checkpoint.json
 voice_checkpoint.json
+planning_checkpoint.json
 *.log
 error.log
 
-# Browser Profiles (contain auth cookies/sessions)
+# Browser Profiles (Contain Auth Cookies/Sessions)
 C:\ChromeDebugProfile
 C:\OperaDebugProfile
 %LOCALAPPDATA%\Google\Chrome\User Data\Default
@@ -41,7 +51,7 @@ htmlcov/
 Thumbs.db
 Desktop.ini
 
-# Folders
+# Tool-Specific Directories
 .agents/
 .gemini/
 .opencode/
@@ -50,3 +60,27 @@ Desktop.ini
 graphify-out/
 Implementation plans/
 legacy_and_utilities/
+Security Division Analysis/
+
+# Distribution / Packaging
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Coverage Reports
+.coverage.*
+coverage.xml
+
+# Type Checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Local Config Overrides (if any)
+*.local.txt
+*.local.json
+local_settings.py
