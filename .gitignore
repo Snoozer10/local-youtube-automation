@@ -1,0 +1,57 @@
+# Secrets & Credentials
+.env
+.env.*
+*.env
+voice_option_notes.txt
+video_config.local.txt
+compile_checkpoint.json
+*_checkpoint.json
+pipeline.json
+refine_checkpoint.json
+audacity_checkpoint.json
+voice_checkpoint.json
+*.log
+error.log
+
+# Browser Profiles (contain auth cookies/sessions)
+C:\ChromeDebugProfile
+C:\OperaDebugProfile
+%LOCALAPPDATA%\Google\Chrome\User Data\Default
+%LOCALAPPDATA%\Opera Software\Opera Stable
+
+# Runtime Artifacts
+youtube_runs/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Folders
+.agents/
+.gemini/
+.github/
+.opencode/
+.specify/
+.superpowers/
+docs/
+graphify-out/
+Implementation plans/
+legacy_and_utilities/
+Security Division Analysis/
+spec-kit/
+specs/
+tests
