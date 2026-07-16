@@ -44,15 +44,9 @@ Desktop.ini
 # Folders
 .agents/
 .gemini/
-.github/
 .opencode/
 .specify/
 .superpowers/
-docs/
 graphify-out/
 Implementation plans/
 legacy_and_utilities/
-Security Division Analysis/
-spec-kit/
-specs/
-tests
