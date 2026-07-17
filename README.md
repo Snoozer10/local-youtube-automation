@@ -191,7 +191,7 @@ youtube_runs/<Video Title>/
 ## Architecture Overview
 
 ```mermaid
-graph TD
+flowchart TD
     A[run_agency.py] --> B[automate_all.py]
     B --> C[refine_script.py]
     C --> D[generate_voice.py]
@@ -209,12 +209,12 @@ graph TD
     M --> N1[compile_video.py]
     M --> N2[compile_video_with_moviepy.py]
 
-    subgraph "Shared Utilities"
+    subgraph Utils[Shared Utilities]
         U1[utils.py]
         U2[gemini_utils.py]
     end
 
-    subgraph "External Systems"
+    subgraph Ext[External Systems]
         S1[Playwright CDP]
         S2[Gemini Web UI]
         S3[AI Studio Speech]
@@ -223,46 +223,42 @@ graph TD
         S6[Telegram Bot API]
     end
 
-    A -.-> U1
-    A -.-> U2
-    B -.-> U1
-    B -.-> U2
-    C -.-> U1
-    C -.-> U2
-    D -.-> U1
-    D -.-> U2
-    E -.-> U1
-    F -.-> U1
-    G -.-> U1
-    H -.-> U1
-    I1 -.-> U1
-    I1 -.-> U2
-    I2 -.-> U1
-    I2 -.-> U2
-    J -.-> U1
-    K -.-> U1
-    L -.-> U1
-    M -.-> U1
-    N1 -.-> U1
-    N2 -.-> U1
+    A -.-> Utils
+    B -.-> Utils
+    C -.-> Utils
+    D -.-> Utils
+    E -.-> Utils
+    F -.-> Utils
+    G -.-> Utils
+    H -.-> Utils
+    I1 -.-> Utils
+    I2 -.-> Utils
+    J -.-> Utils
+    K -.-> Utils
+    L -.-> Utils
+    M -.-> Utils
+    N1 -.-> Utils
+    N2 -.-> Utils
 
-    S1 -.-> B
-    S1 -.-> C
-    S1 -.-> D
-    S1 -.-> I1
-    S1 -.-> I2
-    S1 -.-> M
-    S2 -.-> B
-    S2 -.-> C
-    S2 -.-> I1
-    S2 -.-> I2
-    S2 -.-> M
-    S3 -.-> D
-    S4 -.-> N1
-    S5 -.-> F
-    S5 -.-> G
-    S6 -.-> A
-    S6 -.-> D
+    B -.-> S1
+    C -.-> S1
+    D -.-> S1
+    I1 -.-> S1
+    I2 -.-> S1
+    M -.-> S1
+
+    B -.-> S2
+    C -.-> S2
+    I1 -.-> S2
+    I2 -.-> S2
+    M -.-> S2
+
+    D -.-> S3
+    N1 -.-> S4
+    F -.-> S5
+    G -.-> S5
+    A -.-> S6
+    D -.-> S6
 ```
 
 ### All AI is Browser Automation
