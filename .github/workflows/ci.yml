@@ -29,7 +29,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
-          playwright install --with-deps
+          python -m playwright install --with-deps
 
       - name: Run unit tests
         run: python -m pytest tests/unit -v --tb=short
