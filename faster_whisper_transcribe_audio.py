@@ -2,11 +2,12 @@ import os
 import sys
 import time
 import torch
-import wave  # Used to extract precise audio segment durations
-import glob  # For finding folders
+import wave
+import glob
+import re
 from faster_whisper import WhisperModel
 
-# Prepend the WinGet Links directory to the PATH to ensure ffmpeg is accessible
+# Ensure WinGet binaries (ffmpeg) are accessible
 winget_links_path = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links")
 if os.path.exists(winget_links_path):
     os.environ["PATH"] = winget_links_path + os.pathsep + os.environ["PATH"]
@@ -22,7 +23,6 @@ def get_latest_run_folder(runs_path="youtube_runs"):
     if not folders:
         return None
     
-    # Sort folders by modification time to get the newest run
     latest_folder = max(folders, key=os.path.getmtime)
     return latest_folder
 
@@ -46,7 +46,7 @@ def format_srt_timestamp(seconds):
 def read_whisper_preset():
     """Read Whisper model size preference from voice_option_notes.txt."""
     preset_path = "voice_option_notes.txt"
-    model_size = "small"  # Default fallback
+    model_size = "small"
     if os.path.exists(preset_path):
         try:
             with open(preset_path, "r", encoding="utf-8") as f:
@@ -61,21 +61,15 @@ def read_whisper_preset():
             pass
     return model_size
 
+
 def read_initial_prompt(latest_run):
-    """
-    Looks for a script file to use as the Whisper initial prompt.
-    Prioritizes refined_script.txt, falls back to final_output.txt.
-    Looks in the root run directory and recursively in subfolders.
-    """
-    # 1. Define paths inside the root run directory
+    """Looks for script to prime Whisper (refined_script.txt or final_output.txt)."""
     locations_refined = [os.path.join(latest_run, "refined_script.txt")]
     locations_final = [os.path.join(latest_run, "final_output.txt")]
     
-    # 2. Add recursive subfolder paths using glob
     locations_refined.extend(glob.glob(os.path.join(latest_run, "**", "refined_script.txt"), recursive=True))
     locations_final.extend(glob.glob(os.path.join(latest_run, "**", "final_output.txt"), recursive=True))
 
-    # Try loading refined_script.txt first
     for path in locations_refined:
         if os.path.exists(path) and os.path.isfile(path):
             try:
@@ -87,14 +81,13 @@ def read_initial_prompt(latest_run):
             except Exception:
                 pass
                 
-    # Fallback to final_output.txt
     for path in locations_final:
         if os.path.exists(path) and os.path.isfile(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     text = f.read().strip()
                     if text:
-                        print(f"[SYSTEM] Refined script not found. Priming Whisper with final output script at '{path}'.")
+                        print(f"[SYSTEM] Priming Whisper with Cairo Cut Arabic script at '{path}'.")
                         return text
             except Exception:
                 pass
@@ -102,8 +95,108 @@ def read_initial_prompt(latest_run):
     print("[SYSTEM] No custom script found. Falling back to default Egyptian Arabic prompt.")
     return None
 
+
+def align_and_pace_script(custom_prompt, all_words):
+    """
+    ANIMATION CADENCE ENGINE:
+    Splits audio into visually rhythmic units targetting 1.8s - 4.2s per keyframe.
+    Detects punctuation, speech pauses (>0.45s), and transition words.
+    """
+    def clean_tok(w):
+        return re.sub(r'[^\w\s]', '', w).strip().lower()
+
+    script_words = custom_prompt.split()
+    aligned_words = []
+    w_idx = 0
+    n_whisper = len(all_words)
+
+    for word_raw in script_words:
+        tok = clean_tok(word_raw)
+        matched_item = None
+
+        if tok and w_idx < n_whisper:
+            for search_i in range(w_idx, min(w_idx + 20, n_whisper)):
+                whisper_tok = clean_tok(all_words[search_i].get("word", ""))
+                if tok == whisper_tok or (len(tok) > 2 and tok in whisper_tok) or (len(whisper_tok) > 2 and whisper_tok in tok):
+                    matched_item = all_words[search_i]
+                    w_idx = search_i + 1
+                    break
+
+        if matched_item:
+            aligned_words.append({
+                "text": word_raw,
+                "start": matched_item["start"],
+                "end": matched_item["end"]
+            })
+        else:
+            fallback_start = aligned_words[-1]["end"] if aligned_words else 0.0
+            aligned_words.append({
+                "text": word_raw,
+                "start": fallback_start,
+                "end": fallback_start + 0.3
+            })
+
+    ARABIC_TRANSITION_WORDS = {"علشان", "عشان", "بس", "لكن", "يعني", "ثم", "لما", "بعدين", "فبالتالي", "معنى", "زي", "يعني", "أو", "أوكي", "تمام", "طيب", ","}
+    PUNCTUATION_REGEX = re.compile(r'[،,.؟?!\n]+')
+
+    chunks = []
+    curr_words = []
+    chunk_start = None
+
+    MIN_DURATION = 1.8
+    TARGET_DURATION = 3.2
+    MAX_DURATION = 4.2
+
+    for i, w_info in enumerate(aligned_words):
+        w_text = w_info["text"]
+        w_start = w_info["start"]
+        w_end = w_info["end"]
+
+        if chunk_start is None:
+            chunk_start = w_start
+
+        curr_words.append(w_text)
+        curr_duration = w_end - chunk_start
+
+        has_punctuation = bool(PUNCTUATION_REGEX.search(w_text))
+        is_last_word = (i == len(aligned_words) - 1)
+        
+        next_gap = 0.0
+        if i < len(aligned_words) - 1:
+            next_gap = aligned_words[i + 1]["start"] - w_end
+
+        clean_w = clean_tok(w_text)
+        is_transition = clean_w in ARABIC_TRANSITION_WORDS
+
+        should_split = False
+
+        if is_last_word:
+            should_split = True
+        elif curr_duration >= MAX_DURATION:
+            should_split = True
+        elif curr_duration >= MIN_DURATION:
+            if has_punctuation:
+                should_split = True
+            elif next_gap >= 0.45:
+                should_split = True
+            elif is_transition and curr_duration >= TARGET_DURATION:
+                should_split = True
+
+        if should_split:
+            chunk_text = " ".join(curr_words).strip()
+            if chunk_text:
+                chunks.append({
+                    "start": chunk_start,
+                    "end": max(w_end, chunk_start + 0.5),
+                    "text": chunk_text
+                })
+            curr_words = []
+            chunk_start = None
+
+    return chunks
+
+
 def main():
-    # Reconfigure stdout to use UTF-8 and prevent buffering issues
     try:
         sys.stdout.reconfigure(encoding='utf-8', line_buffering=True, errors='replace')
     except Exception:
@@ -116,7 +209,6 @@ def main():
     print("Starting Faster-Whisper Arabic Audio Transcription")
     print("=============================================")
 
-    # 1. Locate the latest run folder
     latest_run = get_latest_run_folder()
     if not latest_run:
         print("Error: No active run folders found in 'youtube_runs/'.")
@@ -124,18 +216,18 @@ def main():
         
     print(f"Target Video Folder: {latest_run}")
 
-    # 2. Locate the Stitched Master Audio File
+    # Priority Path Resolution: Polished Audacity audio -> Raw audio fallback
     target_audio = os.path.join(latest_run, "audacity_voice", "full_episode_voice.wav")
-    if not os.path.exists(target_audio):
-        print("[WARNING] Audacity polished audio not found. Falling back to raw stitched audio.")
+    if os.path.exists(target_audio):
+        print(f"[AUDIO] Target: Audacity Polished Voice Track ('{target_audio}')")
+    else:
         target_audio = os.path.join(latest_run, "full_episode_voice.wav")
-        if not os.path.exists(target_audio):
+        if os.path.exists(target_audio):
+            print(f"[AUDIO] Audacity track missing. Fallback to Raw Voice Track ('{target_audio}')")
+        else:
             print(f"Error: Master audio file not found at '{target_audio}'.")
             sys.exit(1)
 
-    print(f"Targeting master audio track: {target_audio}")
-
-    # 3. Load faster-whisper Model with Failover Safeguards
     model_size = read_whisper_preset()
     model = None
 
@@ -159,12 +251,10 @@ def main():
     print("\nTranscribing absolute timestamps...")
     start_time = time.time()
 
-    # Define the default fallback prompt
     default_prompt = (
         "يا عم، بتهلوس؟ الجاس لايتنج ده بجد، والمريونيط بيتحرك، والرموت كونترول تاه. سدقني، بلاش تلعي بالنار، الميكروباص واقف في اللنبة."
     )
 
-    # Check for a refined_script or final_output file first
     custom_prompt = read_initial_prompt(latest_run)
     egyptian_arabic_prompt = custom_prompt if custom_prompt else default_prompt
 
@@ -173,22 +263,19 @@ def main():
     
     print("\n--- Generating Timestamped Script ---")
 
-    # 4. Transcribe the master audio track
     try:
         segments_gen, info = model.transcribe(
             target_audio,
             language="ar",
             initial_prompt=egyptian_arabic_prompt,
             word_timestamps=True,
-            beam_size=5,          # Upgraded to 5 for higher transcription accuracy
-            vad_filter=True,      # Enabled Silero VAD to filter out empty noise and static
+            beam_size=5,
+            vad_filter=True,
             vad_parameters=dict(min_speech_duration_ms=250)
         )
         
-        # Pull generator results into memory
         segments = list(segments_gen)
         
-        # Flatten word-level timing details across all segments
         all_words = []
         for segment in segments:
             if segment.words:
@@ -200,7 +287,6 @@ def main():
                     })
                 
         if not all_words:
-            # Fallback if no word-level timestamps were resolved
             text_content = " ".join([seg.text for seg in segments]).strip() or "..."
             absolute_start = 0.0
             
@@ -217,61 +303,25 @@ def main():
                 text_content,
                 ""
             ])
-        else:
-            # ==========================================
-            # DUAL-TRACK CHUNKING ENGINE
-            # ==========================================
-            
-            # TRACK 1: IMAGE TIMELINE (10-18 words per image)
-            img_words = []
-            img_start = None
-            for i, word_obj in enumerate(all_words):
-                w_text = word_obj.get("word", "").strip()
-                w_start = word_obj.get("start", 0.0)
-                w_end = word_obj.get("end", w_start + 0.5)
-                if not w_text: continue
-                if img_start is None: img_start = w_start
-                img_words.append(w_text)
-                
-                is_last = (i == len(all_words) - 1)
-                has_comma = '،' in w_text or ',' in w_text
-                has_ending_punct = any(p in w_text for p in ['.', '!', '؟', '?'])
-                next_gap = (all_words[i+1].get("start", w_end) - w_end) if not is_last else 0.0
-                
-                # Split instantly on any comma, ending punctuation, large pause, or word limits
-                if is_last or has_comma or has_ending_punct or next_gap > 1.2 or len(img_words) >= 18:
-                    output_text_lines.append(f"{format_timestamp(img_start)} {' '.join(img_words)}")
-                    img_words = []
-                    img_start = None
-
-            # TRACK 2: SRT CAPTION TIMELINE (1-4 words max for fast reading)
-            srt_words = []
-            srt_start = None
+        elif custom_prompt:
+            paced_chunks = align_and_pace_script(custom_prompt, all_words)
             srt_index = 1
-            for i, word_obj in enumerate(all_words):
-                w_text = word_obj.get("word", "").strip()
-                w_start = word_obj.get("start", 0.0)
-                w_end = word_obj.get("end", w_start + 0.5)
-                if not w_text: continue
-                if srt_start is None: srt_start = w_start
-                srt_words.append(w_text)
-                
-                is_last = (i == len(all_words) - 1)
-                has_comma = '،' in w_text or ',' in w_text
-                has_ending_punct = any(p in w_text for p in ['.', '!', '؟', '?'])
-                next_gap = (all_words[i+1].get("start", w_end) - w_end) if not is_last else 0.0
-                
-                # Force subtitle chunk split at every comma, sentence ending, max length, or gap
-                if is_last or has_comma or has_ending_punct or len(srt_words) >= 4 or next_gap > 0.3:
-                    chunk_text = " ".join(srt_words).strip()
-                    output_srt_lines.extend([
-                        str(srt_index),
-                        f"{format_srt_timestamp(srt_start)} --> {format_srt_timestamp(w_end)}",
-                        chunk_text, ""
-                    ])
-                    srt_index += 1
-                    srt_words = []
-                    srt_start = None
+
+            for chunk in paced_chunks:
+                c_start = chunk["start"]
+                c_end = chunk["end"]
+                clause = chunk["text"]
+
+                output_text_lines.append(f"{format_timestamp(c_start)} {clause}")
+                output_srt_lines.extend([
+                    str(srt_index),
+                    f"{format_srt_timestamp(c_start)} --> {format_srt_timestamp(c_end)}",
+                    clause,
+                    ""
+                ])
+                srt_index += 1
+        else:
+            output_text_lines.append(f"{format_timestamp(0.0)} {' '.join([w['word'] for w in all_words])}")
 
     except Exception as e:
         print(f"Error transcribing master audio: {e}")
@@ -280,34 +330,28 @@ def main():
     elapsed_time = time.time() - start_time
     print(f"\nTranscription completed in {elapsed_time:.2f} seconds.")
 
-    # 5. Save the plain timestamped text transcript (IMAGE TIMELINE)
+    # Save outputs
     image_timeline_path = os.path.join(latest_run, "timestamped_transcript.txt")
     with open(image_timeline_path, "w", encoding="utf-8") as f:
         f.write("\n".join(output_text_lines))
     print("=============================================")
     print(f"Image Timeline saved: '{image_timeline_path}'")
 
-    # 6. Save the standard `.srt` subtitle file
     srt_file_path = os.path.join(latest_run, "timestamped_transcript.srt")
     try:
         with open(srt_file_path, "w", encoding="utf-8-sig") as f:
             f.write("\n".join(output_srt_lines))
         print(f"Subtitle SRT saved: '{srt_file_path}'")
-        print("=============================================")
     except Exception as e:
         print(f"Error saving subtitle file: {e}")
 
-    # 7. Save the IMAGE TIMELINE for the video compiler
     image_timestamps_path = os.path.join(latest_run, "image_timestamps.txt")
     with open(image_timestamps_path, "w", encoding="utf-8") as f:
         f.write("\n".join(output_text_lines))
-    print(f"Image Timestamps saved: '{image_timestamps_path}'")
 
-    # 8. Save the SUBTITLE CHUNKS for the video compiler
     subtitle_chunks_path = os.path.join(latest_run, "subtitle_chunks.srt")
     with open(subtitle_chunks_path, "w", encoding="utf-8-sig") as f:
         f.write("\n".join(output_srt_lines))
-    print(f"Subtitle Chunks saved: '{subtitle_chunks_path}'")
     print("=============================================")
 
 

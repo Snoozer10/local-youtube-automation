@@ -3,6 +3,8 @@ import re
 import sys
 import glob
 
+# For script image generator to inject timestamps into pre-planned prompts based on SRT files.
+
 def get_latest_run_folder(runs_path="youtube_runs"):
     """Locates the newest subdirectory inside the youtube_runs directory."""
     if not os.path.exists(runs_path):

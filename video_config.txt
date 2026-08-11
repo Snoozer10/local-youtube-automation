@@ -1,12 +1,11 @@
 # ============================================================
-# VIDEO COMPILATION CONFIG — Phase 2
-# All tunables externalized. Edit in-place, no code changes.
+# VIDEO COMPILATION CONFIG — CPU Performance Mode (i7-5600U)
 # ============================================================
 
 # --- Feature Toggles ---
 ENABLE_ANIMATIONS=true
 ENABLE_SUBTITLES=false
-ENABLE_HARDWARE_ENCODER=true
+ENABLE_HARDWARE_ENCODER=false
 ENABLE_SINGLE_PASS=true
 ENABLE_CHECKPOINT_RESUME=true
 ENABLE_LOUDNORM_TWOPASS=true
@@ -15,28 +14,23 @@ ENABLE_VBV=true
 # --- Output Spec ---
 OUTPUT_WIDTH=1920
 OUTPUT_HEIGHT=1080
-OUTPUT_FPS=24
+OUTPUT_FPS=30
 OUTPUT_PIX_FMT=yuv420p
 OUTPUT_PROFILE=high
 OUTPUT_LEVEL=4.1
 
-# --- Encoding Quality (CPU fallback) ---
-CPU_CRF=18
-CPU_PRESET=fast
-CPU_TUNE=film
+# --- CPU Encoding Optimization ---
+ENCODER_FORCE=libx264
+CPU_CRF=23
+CPU_PRESET=ultrafast
+CPU_TUNE=fastdecode
 
-# --- Hardware Encoder Preferences (probe order) ---
-# Probed in order: qsv, nvenc, cpu. First available wins.
-# Override by setting ENCODER_FORCE=h264_qsv|h264_nvenc|libx264
-ENCODER_FORCE=
-
-# QSV (Intel QuickSync) - requires Intel HD 5500+ on Windows
+# --- Hardware Encoder Preferences (Unused) ---
 QSV_PRESET=fast
 QSV_GLOBAL_QUALITY=22
 QSV_LOOKAHEAD=0
-QSV_LOOKAHEAD_DEPTH=40
+QSV_LOOKAHEAD_DEPTH=20
 
-# NVENC (NVIDIA) - requires Kepler+ (840M = Maxwell = supported)
 NVENC_PRESET=p4
 NVENC_CQ=22
 NVENC_RC=vbr
@@ -44,12 +38,12 @@ NVENC_MULTIPASS=fullres
 NVENC_SPATIAL_AQ=1
 NVENC_TEMPORAL_AQ=1
 
-# --- Ken Burns / Camera Motion ---
+# --- Ken Burns / CPU-Friendly Camera Motion ---
 KEN_BURNS_ZOOM_MIN=1.0
 KEN_BURNS_ZOOM_MAX=1.10
 KEN_BURNS_EASING=smoothstep
-KEN_BURNS_UPSCALE_FACTOR=2.0
-KEN_BURNS_INTERP_ALGO=lanczos
+KEN_BURNS_UPSCALE_FACTOR=1.2
+KEN_BURNS_INTERP_ALGO=bicubic
 KEN_BURNS_PAN_SPEED=0.08
 KEN_BURNS_ZOOM_SPEED=0.10
 
@@ -73,12 +67,12 @@ LOUDNORM_OFFSET=0
 LOUDNORM_LINEAR=true
 LOUDNORM_PRINT_FORMAT=json
 
-# --- VBV (Video Buffering Verifier) for Streaming Compliance ---
-VBV_MAXRATE=10000k
-VBV_BUFSIZE=20000k
+# --- VBV (Video Buffering Verifier) ---
+VBV_MAXRATE=8000k
+VBV_BUFSIZE=16000k
 
-# --- FFmpeg Execution ---
-FFMPEG_THREADS=0
+# --- FFmpeg Execution (4 Threads for 2-Core i7) ---
+FFMPEG_THREADS=4
 FFMPEG_CLIP_TIMEOUT=300
 FFMPEG_FINAL_TIMEOUT=5400
 FFMPEG_LOGLEVEL=warning
@@ -87,7 +81,7 @@ FFMPEG_LOGLEVEL=warning
 CHECKPOINT_FILE=compile_checkpoint.json
 CHECKPOINT_SAVE_INTERVAL=5
 
-# --- Subtitle Styling (used when ENABLE_SUBTITLES=true) ---
+# --- Subtitle Styling ---
 SUB_FONT_NAME=Tahoma
 SUB_FONT_SIZE=22
 SUB_PRIMARY_COLOR=&H00FFFFFF
@@ -103,3 +97,9 @@ SUB_BOLD=1
 DEBUG_SAVE_INTERMEDIATES=false
 DEBUG_DRY_RUN=false
 DEBUG_FILTER_GRAPH_DUMP=false
+
+# --- External Sound Effects ---
+SFX_DIR=C:\Users\Snoozer\Downloads\YouTube Stuff\Edits\shorts\Sound effects
+
+EXPORT_SFX_STEM=false
+BURN_SFX_INTO_VIDEO=false

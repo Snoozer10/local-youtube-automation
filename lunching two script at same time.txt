@@ -1,0 +1,68 @@
+Lunching two script .py at same time use different portal by using this commands in the cmd
+**Terminal 1 (Chrome on Port 9222):**
+```bash
+python refine_script.py --port 9222 --folder youtube_runs/Video_1
+```
+
+**Terminal 2 (Opera on Port 9223):**
+```bash
+python refine_script.py --port 9223 --folder youtube_runs/Video_2
+```
+
+
+
+
+
+**Yes, absolutely!** You can run two instances of `refine_script.py` at the same time, **BUT** you must follow **2 strict rules** to prevent them from crashing or corrupting your files:
+
+---
+
+### Rule 1: They MUST use different Debug Ports 🔌
+Currently, `refine_script.py` connects to Chrome on port **`9222`**. Two browsers cannot share the same port at the same time.
+
+* **Script 1 (Chrome):** Uses Debug Port **`9222`**
+* **Script 2 (Opera):** Must use Debug Port **`9223`** (or `9224`)
+
+> **Note:** Opera is built on Chromium, so it supports remote debugging just like Chrome! You launch Opera from terminal/command line with:
+> `opera --remote-debugging-port=9223`
+
+---
+
+### Rule 2: They MUST refine DIFFERENT Video Folders 📂
+If both scripts try to refine the **same folder** at the same time, they will overwrite each other's `refine_checkpoint.json` and ruin the output!
+
+* **Script 1:** Processes `youtube_runs/Video_Folder_A/`
+* **Script 2:** Processes `youtube_runs/Video_Folder_B/`
+
+---
+
+### How to set this up easily:
+
+#### Option A: Pass the Folder & Port as Command-Line Arguments
+Instead of hardcoding port `9222` and auto-selecting the latest folder, you can update `refine_script.py` so you can launch them in two separate terminal tabs like this:
+
+**Terminal 1 (Chrome on Port 9222):**
+```bash
+python refine_script.py --port 9222 --folder youtube_runs/Video_1
+```
+
+**Terminal 2 (Opera on Port 9223):**
+```bash
+python refine_script.py --port 9223 --folder youtube_runs/Video_2
+```
+
+---
+
+### Summary Checklist to run 2 scripts simultaneously:
+1. ✅ **Launch Chrome** on port `9222`
+2. ✅ **Launch Opera** on port `9223`
+3. ✅ Make sure Script 1 and Script 2 are assigned to **two different video folders**.
+
+
+
+
+
+
+
+
+"C:\Users\%USERNAME%\AppData\Local\Programs\Opera\launcher.exe" --remote-debugging-port=9223

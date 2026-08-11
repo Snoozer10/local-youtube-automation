@@ -310,8 +310,9 @@ def send_handover_alignment(page, visual_style, visuals_plan, carryover_anchor="
     print("\n[ALIGNMENT] Aligning style system configuration...")
     
     payload = (
-        "We are generating a series of consecutive images for an animation sequence. "
-        "You must maintain strict consistency across all frames. "
+        "We are generating a series of consecutive images for a continuous animation sequence. "
+        "STRICT CONTINUITY RULE: Character design, face details, hoodie fit, background environment, "
+        "and camera position MUST remain 100% visually stable across all consecutive prompts unless explicitly marked NEW SCENE.\n\n"
         f"Design Rules:\n{visual_style}\n\n"
         f"Storyboard Blueprint:\n{visuals_plan}\n"
         f"{carryover_anchor}\n"
@@ -508,9 +509,9 @@ Do not generate any images yet. Simply respond with: "SYSTEM READY. Awaiting scr
         chunk_text = "\n".join(chunk_text_list)
         
         # Comprehensive visual framing guidelines focusing on keyframing & timestamp prepending
-        prompt_template = """# SYSTEM PROMPT: MASTER HYBRID PROMPT GENERATOR
+        prompt_template = """# SYSTEM PROMPT: MASTER 2D ANIMATED STORYBOARD GENERATOR
 
-You are an elite Visual Keyframe Director. Your job is to translate a raw Arabic script chunk into highly descriptive, dynamic, and cinematic English text-to-image prompts. Your singular goal is to maximize viewer retention through camera precision, stop-motion consistency, casting variety, and strict B-Roll integration.
+You are an elite 2D Animation Visual Director. Your job is to translate a raw script chunk into descriptive, context-aware English text-to-image prompts in a signature 2D vector comic/explainer style.
 
 ## INPUT DATA
 SCRIPT CHUNK:
@@ -518,38 +519,26 @@ SCRIPT CHUNK:
 
 ---
 
-## CRITICAL EXECUTION RULES
+## EXECUTION DIRECTIVES
 
-### 1. TIMESTAMP ANCHORING (MANDATORY)
-* Extract the exact timestamp (e.g., `[11:05]`) from the script chunk.
-* You MUST output it in the `Calculated Timestamp:` field AND prepend it to the beginning of the `Visual Prompt:` field.
+1. TIMESTAMP ANCHORING
+* Extract the exact timestamp (e.g., `[01:15]`) from the script.
+* Prepend the timestamp to the `Calculated Timestamp:` field AND to the beginning of the `Visual Prompt:` field.
 
-### 2. STOP-MOTION TRIGGER (<= 2 SECONDS)
-* If the timestamps of 3 or more consecutive sentences are 2 seconds or less apart, you must designate them as a "STOP-MOTION SET".
-* In a STOP-MOTION SET, you must write the exact same Camera Body, Lens, f-stop, Lighting, and Background coordinates for all frames in that set. Modify ONLY the micro-actions, facial details, or object position from frame to frame to simulate incremental stop-motion animation.
+2. LEVEL & CHAPTER HEADERS
+* If the script segment marks a new level, phase, stage, or rank, include a level tag like `#1`, `#2`, or `#3` in the top corner of the scene design.
 
-### 3. CASTING & INTERACTION RULES
-* Do not keep the character alone in every frame.
-* Differentiate between SINGLE (character alone), DUO/MULTI (main character interacting with a secondary character in blue/maroon hoodies), GROUP (active stick-figure crowd), or ABSENT (pure typography, diagram, or B-roll).
+3. STOP-MOTION & CONTINUITY
+* If a frame continues the action from the previous sentence:
+  - Copy the camera angle, environment, and character outfit from the previous frame.
+  - Describe only the incremental action change (e.g., "DELTA MOTION: Character turns head toward red blinking light while maintaining cockpit background").
 
-### 4. ARABIC TEXT & TYPOGRAPHY SCENES
-* When a sentence marks a punchline, new chapter, or transition, write a "TYPOGRAPHY_SCENE" prompt. Place a clean, bold, glowing Arabic phrase (enclosed in exact quotes, e.g., "الخطر") on a moody, desaturated background with NO characters present.
-* When demonstrating a concept in a scene, write a prompt showing clear Arabic text integrated into the environment (e.g., text on a billboard, screen, or chalkboard).
+4. CONTEXT ADAPTATION
+* Automatically adapt the character's clothing and the environment details to the topic of the script (e.g., pilot gear in a cockpit for aviation; suit in a boardroom for business; hoodie in a room for personal stories).
 
-### 5. VIDEO-EDITOR FRAMES & POVs
-* Comparative Panels: Design split-screen prompts (e.g., "Split panel: Left side is active showing [Scene A], Right side is a blacked-out panel with soft blurred borders").
-* Text Blur Overlays: For major questions, use a blurred version of the previous room as the background with sharp, prominent foreground typography.
-* POV Shifts: Write first-person camera perspectives looking at objects or other characters.
-
-### 6. MOOD PRESETS
-Select a mood based on the context of the sentence:
-* Playful/Optimistic: Pastel backgrounds, soft diffused lighting.
-* Serious/Tension: Slate-blue backgrounds, high-contrast, top-down spotlights.
-* Sad/Melancholy: Cold grey/blue desaturated tones, long cast shadows.
-
-### 7. HYBRID PROMPT STRUCTURE
-The "Visual Prompt" must be formatted as a highly descriptive hybrid sequence. Follow this exact structural layout:
-`[Timestamp] [CAMERA TAG] Shot on [CAMERA BODY] with a [LENS] at f/[APERTURE], ISO [ISO]. Mood: [CONEXTUAL MOOD PRESET]. Lighting: [LIGHTING Setup]. Subject: [Casting Type (SINGLE/DUO/GROUP/ABSENT) with biometric and micro-action details]. Layout: [Standard, Split-Screen, POV, or Blurred Text Overlay]. Environment: [Background coordinates and atmosphere]. Accent: [Exactly one vibrant, glowing accent element]. SUPPRESSION: [NO TEXT, NO LETTERS, NO GIBBERISH (unless authorized Arabic text is specified in quotes)]. Style Anchor: 2D digital webcomic, pristine solid uniform black vector outlines, flat base colors with dramatic cinematic lighting, cool-toned desaturated slate palette with exactly one vibrant pop of accent color, hyper-sharp focus, dynamic composition, 16:9 cinematic aspect ratio.`
+5. HYBRID PROMPT STRUCTURE
+Format the "Visual Prompt" strictly as follows:
+`[Timestamp] [LEVEL TAG if applicable] 2D vector webcomic style, [Camera Angle & Framing]. Subject: [2D character description with white circle head, expressive vector facial features, topic-appropriate clothing, micro-action]. Layout: [Standard / Split-Screen / Close-up / HUD Overlay]. Environment: [Detailed topic-specific vector background]. Lighting/Mood: [Contextual lighting and color palette]. SUPPRESSION: [no unwanted text, no letters, no watermarks, no gibberish]. Style Anchor: 2D vector animation style, clean solid black line art, smooth flat colors, featureless white-head comic characters with expressive facial vector strokes, detailed thematic vector background, dramatic high-contrast cinematic lighting, 16:9 aspect ratio.`
 
 ---
 
@@ -557,9 +546,9 @@ The "Visual Prompt" must be formatted as a highly descriptive hybrid sequence. F
 You must output exactly in this format. No conversational filler.
 
 Index: [Sentence Index]
-Sentence: [Original Arabic Sentence]
+Sentence: [Original Sentence]
 Calculated Timestamp: [Timestamp]
-Visual Prompt: [Timestamp] [CAMERA TAG] Shot on [CAMERA BODY] with a [LENS] at f/[APERTURE], ISO [ISO]. Mood: [CONEXTUAL MOOD PRESET]. Lighting: [LIGHTING Setup]. Subject: [Casting Type with biometric and micro-action details]. Layout: [Standard, Split-Screen, POV, or Blurred Text Overlay]. Environment: [Background coordinates]. Accent: [One vibrant, glowing accent element]. SUPPRESSION: [NO TEXT, NO LETTERS, NO GIBBERISH (unless authorized Arabic text is specified in quotes)]. Style Anchor: 2D digital webcomic, pristine solid uniform black vector outlines, flat base colors with dramatic cinematic lighting, cool-toned desaturated slate palette with exactly one vibrant pop of accent color, hyper-sharp focus, dynamic composition, 16:9 cinematic aspect ratio.
+Visual Prompt: [Timestamp] 2D vector webcomic style, [Camera Angle]. Subject: [2D character description, white circle head, expressive facial features, clothing, action]. Layout: [Layout type]. Environment: [Vector background environment]. Lighting/Mood: [Lighting and mood]. SUPPRESSION: [no unwanted text, no letters, no watermarks, no gibberish]. Style Anchor: 2D vector animation style, clean solid black line art, smooth flat colors, featureless white-head comic characters with expressive facial vector strokes, detailed thematic vector background, dramatic high-contrast cinematic lighting, 16:9 aspect ratio.
 """
         
         prompt = prompt_template.format(chunk_text=chunk_text)
@@ -794,24 +783,25 @@ def main():
 
                     # Track actual generated sessions to prevent redundant reloads
                     executed_generations_count = 0
+                    prev_prompt_text = ""
+                    prev_idx = None
 
                     for current_run, (idx, prompt_text) in enumerate(storyboard_prompts, 1):
                         # 1. Pre-calculate targets to check if file already exists
                         if 0 <= (idx - 1) < len(timestamps):
-                            # timestamps[idx - 1] looks like "[00:28]"
                             timestamp_raw = timestamps[idx - 1]
                             timestamp_clean = timestamp_raw.replace("[", "").replace("]", "").replace(":", "_")
                             image_name = f"{timestamp_clean}.png"
                         else:
-                            # Safe fallback if index is out of bounds
                             image_name = f"sentence_{idx}.png"
 
                         save_path = os.path.join(image_dir, image_name)
 
-                        # --- STATELESS CHECKPOINT CHECK ---
-                        # Skip generation entirely if the valid output file is already on disk
+                        # Skip generation if valid output file exists on disk, but store prompt for continuity
                         if os.path.exists(save_path) and os.path.getsize(save_path) > 100:
                             print(f"[SKIP] Frame {current_run} of {total_frames} ({image_name}) already exists. Skipping.")
+                            prev_prompt_text = prompt_text
+                            prev_idx = idx
                             continue
 
                         # Run window optimization reset block based on config limit
@@ -827,18 +817,32 @@ def main():
                                 except Exception:
                                     pass
                             time.sleep(5)
-                            # Re-verify and set the model after reload
                             select_gemini_model(gemini_page, target_model)
-                            # Re-align style directives inside the clean tab session
-                            send_handover_alignment(gemini_page, visual_style, visuals_plan)
+                            
+                            # Carry forward the last frame anchor into the newly reloaded session
+                            carryover_anchor = ""
+                            if prev_prompt_text and prev_idx is not None:
+                                carryover_anchor = f"\nCURRENT VISUAL BASELINE (Frame Index {prev_idx}):\n{prev_prompt_text}\n"
+                            send_handover_alignment(gemini_page, visual_style, visuals_plan, carryover_anchor=carryover_anchor)
 
                         print(f"\nProcessing Frame {current_run} of {total_frames} (Target Index: {idx})")
                         
-                        full_command = (
-                            f"Refer to the Style Guidelines. "
-                            f"Execute image generation for target index {idx} based on this instruction:\n\n"
-                            f"{prompt_text}"
-                        )
+                        # CONTINUITY CHAINING ENGINE
+                        if prev_prompt_text and prev_idx is not None:
+                            full_command = (
+                                f"Refer to Style Guidelines.\n"
+                                f"CONTINUITY INSTRUCTION: Frame Index {idx} is a direct continuation of Frame Index {prev_idx}.\n\n"
+                                f"[PREVIOUS FRAME INDEX {prev_idx} BASELINE]:\n{prev_prompt_text}\n\n"
+                                f"[TARGET FRAME INDEX {idx} DELTA ACTION]:\n{prompt_text}\n\n"
+                                f"STRICT DIRECTIVE: Maintain 100% visual consistency with Frame {prev_idx} for character face, "
+                                f"hoodie fit, art style, background coordinates, and camera angle. Execute only the micro-action delta specified."
+                            )
+                        else:
+                            full_command = (
+                                f"Refer to the Style Guidelines. "
+                                f"Execute image generation for target index {idx} based on this instruction:\n\n"
+                                f"{prompt_text}"
+                            )
 
                         success = False
                         for attempt in range(1, 4):
@@ -928,10 +932,12 @@ def main():
 
                                 if download_attempt_success:
                                     success = True
-                                    break # Break out of the 3-attempt loop safely
+                                    prev_prompt_text = prompt_text
+                                    prev_idx = idx
+                                    break # Break out of attempt loop
                                         
-                            # If we get here, this attempt failed — reload and retry
-                            print(f"Warning: Frame {idx} attempt {attempt} failed or timed out. Reloading Gemini tab and retrying...")
+                                # If we get here, this attempt failed — reload and retry
+                                print(f"Warning: Frame {idx} attempt {attempt} failed or timed out. Reloading Gemini tab and retrying...")
                             try:
                                 gemini_page.reload(wait_until="domcontentloaded")
                             except Exception as e:

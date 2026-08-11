@@ -1,6 +1,8 @@
-NoiseGate: attack="250" freq-hold="0" hold="200" level-reduction="-20" release="250" stereo-link="0" threshold="-38"
-TruncateSilence: Action="Truncate Detected Silence" Compress="50" Independent="0" Minimum="1.5" Threshold="-40" Truncate="0.4"
-BassAndTreble: Bass="-2" LinkSlSliders="0" Treble="4"
-Compressor: AttackTime="0.1" NoiseFloor="-45" Normalize="1" Ratio="3" ReleaseTime="1" Threshold="-18" UsePeak="0"
-Normalize: ApplyGain="1" PeakLevel="-1.0" RemoveDcOffset="1" StereoIndependent="0"
+SelectAll:
+BassAndTreble:Bass="2" Gain="0" Link_Sliders="0" Treble="-2"
+FilterCurve:f0="100.45038" f1="104.01756" f2="2990.7583" f3="3070.0653" FilterLength="8191" InterpolateLin="0" InterpolationMethod="B-spline" v0="7.4785099" v1="-0.25787735" v2="-0.25787735" v3="-6.2750702"
+Amplify:AllowClipping="0" Ratio="1.2022644"
+Compressor:attackMs="0.1" compressionRatio="1" kneeWidthDb="0" lookaheadMs="1" makeupGainDb="0" releaseMs="1" showActual="1" showInput="0" showOutput="1" showTarget="0" thresholdDb="-30"
+Normalize:ApplyVolume="1" PeakLevel="-1" RemoveDcOffset="1" StereoIndependent="0"
+TruncateSilence:Action="Truncate Detected Silence" Compress="50" Independent="0" Minimum="0.001" Threshold="-30" Truncate="0.08" TruncateEnd="1" TruncateMiddle="1" TruncateStart="1"
 ExportWav:

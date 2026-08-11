@@ -148,7 +148,7 @@ mypy .
 ### Naming Conventions
 
 | Element | Convention | Example |
-|---------|------------|---------|
+| -------- | ---------- | --------- |
 | Files/modules | snake_case | `generate_voice.py` |
 | Classes | PascalCase | `VideoCompiler` |
 | Functions/variables | snake_case | `rotate_profile_index` |

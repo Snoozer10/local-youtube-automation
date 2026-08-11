@@ -25,48 +25,129 @@ sys.stdout.reconfigure(encoding='utf-8')
 THUMBNAIL_COUNT = 5
 TOP_N = 2
 
-THUMBNAIL_SETUP_PROMPT = """### CORE DIRECTIVE: YOUTUBE THUMBNAIL CONCEPT EXTRACTOR ###
-You are a YouTube thumbnail strategist. Analyze the video script and extract 5 thumbnail concepts that maximize click-through rate.
+THUMBNAIL_SETUP_PROMPT = """### CORE DIRECTIVE: YOUTUBE THUMBNAIL STRATEGIST (2D WEBCOMIC STYLE) — CTR MAXIMIZATION ENGINE ###
+You are an elite YouTube thumbnail strategist specializing in high-CTR 2D animated webcomic channels. You create thumbnail concepts that complement specific video titles to maximize CTR.
 
-For each concept, provide:
-- EMOTION: The core emotion (fear, wonder, anger, curiosity, excitement, shock, nostalgia)
-- SCENE: A single visual moment that captures the video's hook — one frozen frame, not a sequence
-- TEXT_OVERLAY: Short Arabic text (3-5 words) for the thumbnail — bold, provocative, curiosity-driven
-- STYLE: One of: cinematic, dramatic, mysterious, confrontational, emotional
+═══════════════════════════════════════════════════════════════
+GOLDEN RULES FOR HIGH CTR (TITLE + THUMBNAIL SYNERGY)
+═══════════════════════════════════════════════════════════════
+1. SYNERGY > REPETITION: Thumbnail text (1-3 words MAX) must NEVER repeat words from the title. 
+   - Title = Driving Question / Premise.
+   - Thumbnail Visual = Dramatic Reaction / Mysterious Catalyst / Missing Puzzle Piece.
+   - Thumbnail Text = Emotional Trigger ("صدمة!", "السر", "احذر", "قبل/بعد").
+2. 1-SECOND MOBILE SCAN: 1 dominant focal point (2D webcomic character with white circular head), 40%+ dark negative space, ultra-high contrast.
+3. CURIOSITY GAP ARCHETYPE: Each concept must deploy 1 specific curiosity gap (Moment, Story, Result, Transformation, or Novelty).
+4. ARABIC TYPOGRAPHY: 1-3 Arabic words MAX, ultra-simple vocabulary (7-year-old reading level), high-contrast stroke.
 
-RULES:
-1. Each concept must target a DIFFERENT emotion — no duplicates
-2. The scene must be visually describable in one sentence — a photographer could stage it
-3. The text overlay must create a curiosity gap — make them NEED to click
-4. Avoid cliche stock photo language — no "person thinking at desk"
-5. Think: what makes someone stop scrolling?
+═══════════════════════════════════════════════════════════════
+TASK: GENERATE 1 THUMBNAIL CONCEPT FOR EACH PROVIDED TITLE
+═══════════════════════════════════════════════════════════════
+For each title provided, design a tailored 2D webcomic thumbnail concept that perfectly complements that title's specific angle without repeating its text.
 
-Return a JSON array of 5 objects with keys: emotion, scene, text_overlay, style.
-Return ONLY the JSON array, no commentary."""
+FOR EACH TITLE, PROVIDE:
+- title_index: Integer (1, 2, 3...) matching the title number
+- title_text: Cleaned title text
+- curiosity_archetype: One of [moment, story, result, transformation, novelty]
+- scene: ONE visually specific 2D webcomic frame featuring the main character (simple 2D character with white circular head, charcoal hoodie) interacting with dynamic props/environment.
+- text_overlay: 1-2 Arabic words (MAX 3) that ADD curiosity without repeating the title.
+- visual_recipe:
+  * lighting: (e.g., "glowing neon cyan rim light, dark shadow background")
+  * color_palette: (e.g., "slate background with glowing golden accents")
+  * composition: (e.g., "character on left 1/3, glowing object center, clean right negative space")
 
-CRITIQUE_PROMPT_TEMPLATE = """You generated {count} thumbnail prompts for a YouTube video about "{topic}".
+OUTPUT FORMAT: JSON ARRAY ONLY — NO MARKDOWN, NO COMMENTARY
+[
+  {
+    "title_index": 1,
+    "title_text": "...",
+    "curiosity_archetype": "moment",
+    "scene": "...",
+    "text_overlay": "...",
+    "visual_recipe": {
+      "lighting": "...",
+      "color_palette": "...",
+      "composition": "..."
+    }
+  }
+]"""
 
-Here are the {count} prompts:
-{prompts_json}
+CRITIQUE_PROMPT_TEMPLATE = """Now evaluate the thumbnail concepts you just generated above against their paired titles.
 
-Rate each on these criteria (1-10 scale):
-- CLICK_APPEAL: Would you stop scrolling for this?
-- EMOTIONAL_IMPACT: Does it trigger a visceral reaction?
-- VISUAL_CLARITY: Is the composition immediately readable at small size?
+RATE EACH Title + Thumbnail Pair on a 1-10 scale (be harsh — average ~5):
+- TITLE_THUMBNAIL_SYNERGY: Does thumbnail complement title without repeating words?
+- CURIOSITY_GAP_STRENGTH: Does the pair create an irresistible "itch to click"?
+- 1_SECOND_MOBILE_CLARITY: Is composition readable instantly on a phone screen?
+- EMOTIONAL_IMPACT: Visceral reaction pose/scene?
 
-You MUST pick EXACTLY the top {top_n} winners (no more, no less). For each winner, suggest ONE specific improvement.
+YOU MUST PICK EXACTLY THE TOP {top_n} BEST TITLE + THUMBNAIL COMBINATIONS.
 
-CRITICAL INDEXING RULE: You must use 0-based indexing (0, 1, 2, 3, 4) exactly matching the positions of the prompts above. For example:
-- Prompt 1 is index 0.
-- Prompt 2 is index 1.
-- Prompt 5 is index 4.
+CRITICAL INDEXING RULE:
+- Refer to concepts by their "title_index" from the generated JSON array above.
 
-Return a JSON object with:
-- "scores": array of {{"index": N, "click_appeal": N, "emotional_impact": N, "visual_clarity": N, "total": N}}
-- "winners": array of EXACTLY {top_n} winning 0-based indices (e.g. [1, 4])
-- "improvements": object mapping the 0-based index to its improvement suggestion (e.g. {{"1": "suggestion for Prompt 2", "4": "suggestion for Prompt 5"}})
+For each winning pair, suggest ONE specific visual tweak to maximize CTR.
 
-Return ONLY the JSON, no commentary."""
+Return ONLY this JSON object:
+{{
+  "scores": [
+    {{"title_index": 1, "total_score": 35}},
+    {{"title_index": 2, "total_score": 28}}
+  ],
+  "winners": [1, 3],  // array of {top_n} title_index numbers
+  "improvements": {{
+    "1": "Specific visual tweak for title_index 1",
+    "3": "Specific visual tweak for title_index 3"
+  }}
+}}"""
+
+# ============================================================
+# USAGE IN YOUR GENERATE_THUMBNAIL.PY:
+# ============================================================
+# 1. Keep THUMBNAIL_COUNT = 5, TOP_N = 2 at top
+# 2. Replace THUMBNAIL_SETUP_PROMPT with the enhanced version above
+# 3. Replace CRITIQUE_PROMPT_TEMPLATE with the enhanced version above
+# 4. When calling the LLM, inject these variables into the prompt:
+#    - {topic}: video title/main topic from script
+#    - {niche}: detected niche (you add this detection step)
+#    - {audience}: e.g., "Saudi youth 18-30", "MENA tech enthusiasts"
+#    - {count}: THUMBNAIL_COUNT
+#    - {top_n}: TOP_N
+#    - {prompts_json}: JSON string of the 5 generated concepts
+#
+# NICHE DETECTION HELPER (add before calling setup prompt):
+# def detect_niche_and_auditor(script: str) -> tuple[str, str]:
+#     # Simple keyword-based or LLM-based classification
+#     # Returns (niche, audience_profile)
+#     # Example niches: "arabic_tech_reviews", "mena_gaming", "islamic_finance",
+#     #                 "saudi_lifestyle", "egyptian_comedy", "arabic_storytelling",
+#     #                 "arabic_education", "mena_crypto", "saudi_travel"
+#     pass
+#
+# Then format the setup prompt with niche/audience context before sending to LLM.
+
+def clean_title(title_text):
+    """Removes parenthetical text like (تحليل عصبي) and extra spaces."""
+    cleaned = re.sub(r'\(.*?\)', '', title_text)
+    return cleaned.strip()
+
+
+def read_titles(folder):
+    """Reads titles.txt, extracts numbered titles, and cleans parenthetical tags."""
+    titles_path = os.path.join(folder, "titles.txt")
+    if not os.path.exists(titles_path):
+        return []
+    
+    with open(titles_path, "r", encoding="utf-8") as f:
+        content = f.read()
+        
+    # Match lines starting with "1.", "2.", "1-", etc.
+    raw_matches = re.findall(r'^(\d+)[\.\-]\s*(.+)$', content, re.MULTILINE)
+    cleaned_titles = []
+    for idx, text in raw_matches:
+        cleaned_text = clean_title(text)
+        if cleaned_text:
+            cleaned_titles.append({"index": int(idx), "text": cleaned_text})
+            
+    return cleaned_titles
 
 
 def get_latest_run_folder(runs_path="youtube_runs"):
@@ -216,58 +297,71 @@ def extract_json_from_response(text):
 
 
 def build_webcomic_thumbnail_prompt(concept, index):
-    """Build a natural-language image prompt based on the visual_style.txt guidelines."""
+    """Build a natural-language image prompt based on concept and webcomic art guidelines."""
     emotion = concept.get("emotion", "intense")
     scene = concept.get("scene", "dramatic scene")
     text_overlay = concept.get("text_overlay", "")
+    visual_recipe = concept.get("visual_recipe", {})
     
+    lighting = visual_recipe.get("lighting", "cinematic accent lighting")
+    palette = visual_recipe.get("color_palette", "dark desaturated slate with vivid glowing accents")
+    composition = visual_recipe.get("composition", "dynamic focal point with clean negative space")
+
     character_casting = (
-        "Main Character details: A simple 2D character. Head is a uniform white circle with no nose or ears. "
+        "Main Character specs: A simple 2D webcomic character. Head is a uniform white circle with no nose or ears. "
         "Mouth is a single expressive black vector stroke. Exactly 3 to 5 thin black hair strands curving from the top of the scalp. "
         "Wears an unbranded charcoal-grey hoodie (with a visible hood resting on the shoulders) and dark sweatpants. "
         "Arms and legs are simple, uniform black line art."
     )
     
     style_anchor = (
-        "Style Anchor: 2D digital webcomic, pristine solid uniform black vector outlines, "
-        "flat base colors with dramatic cinematic lighting, cool-toned desaturated slate palette "
-        "with exactly one vibrant pop of accent color, hyper-sharp focus, dynamic composition, 16:9 cinematic aspect ratio."
+        "Visual Art Style: 2D digital webcomic, pristine solid uniform black vector outlines, "
+        "flat base colors with dramatic cinematic lighting effects, hyper-sharp focus, dynamic composition, 16:9 cinematic aspect ratio."
     )
     
-    # Compile the prompt into a clean natural-language paragraph
     prompt = (
         f"Generate a cinematic YouTube thumbnail image based on the following specifications:\n\n"
-        f"Scene Composition: {scene}\n"
+        f"Scene & Action: {scene}\n"
         f"Character Aesthetics: {character_casting}\n"
-        f"Emotion and facial expression: {emotion}\n"
-        f"Visual Art Style: {style_anchor}\n"
+        f"Emotion & Posing: Expressing {emotion}\n"
+        f"Lighting & Atmosphere: {lighting}\n"
+        f"Color Palette: {palette}\n"
+        f"Composition Strategy: {composition}\n"
+        f"Art Style: {style_anchor}\n"
     )
     
     if text_overlay:
         prompt += (
-            f"Typography Rule: You must place the exact bold, sharp Arabic text \"{text_overlay}\" "
-            f"in the center or bottom third of the frame. Keep the background clean and empty around the text to prevent rendering errors.\n"
+            f"Typography Rule: Render the exact bold Arabic text \"{text_overlay}\" in large, clean Arabic typography "
+            f"integrated into an uncluttered high-contrast area of the image.\n"
         )
         
-    prompt += "NEGATIVE: [no extra text, no random letters, no watermarks, no gibberish, no AI signatures, no hyper-saturation, no soft focus filters]"
+    prompt += "NEGATIVE PROMPT: [no extra text, no random letters, no photorealism, no watermarks, no gibberish, no soft focus blur]"
     return prompt
 
 
-def generate_images_via_gemini(page, prompts, output_dir):
+def generate_images_via_gemini(page, items, output_dir):
     """Send each prompt to Gemini and download generated images using robust UI hover/download."""
     os.makedirs(output_dir, exist_ok=True)
     generated = []
 
-    for i, prompt_text in enumerate(prompts):
-        print(f"\n[IMAGE] Generating variant {i + 1}/{len(prompts)}...")
+    for i, item in enumerate(items):
+        if isinstance(item, dict):
+            prompt_text = item["prompt"]
+            filename = item["filename"]
+        else:
+            prompt_text = item
+            filename = f"variant_{i + 1}.png"
+
+        print(f"\n[IMAGE] Generating {filename} ({i + 1}/{len(items)})...")
 
         response = send_image_prompt_and_wait(page, prompt_text, timeout=300)
 
         if not response:
-            print(f"[WARNING] No response for variant {i + 1}. Skipping.")
+            print(f"[WARNING] No response for {filename}. Skipping.")
             continue
 
-        filepath = os.path.join(output_dir, f"variant_{i + 1}.png")
+        filepath = os.path.join(output_dir, filename)
         try:
             last_response = page.locator("model-response").last
             img_locator = last_response.locator("img").first
@@ -380,18 +474,30 @@ def main():
         context.grant_permissions(["clipboard-read", "clipboard-write"])
         page = context.new_page()
 
-        # Phase 1: Concept extraction
-        print("\n[PHASE 1] Extracting thumbnail concepts...")
+        # Phase 1 & 3: Single Chat Session for Strategy & Critique
+        print("\n[PHASE 1 & 3] Extracting and Critiquing Title-Matched Concepts in single chat...")
         start_clean_gemini_chat(page)
         time.sleep(2)
         select_gemini_model(page, model_name)
         time.sleep(2)
 
-        concept_prompt = f"{THUMBNAIL_SETUP_PROMPT}\n\nSCRIPT EXCERPT:\n{script_excerpt}"
-        concept_response = send_and_wait(page, concept_prompt, timeout=180)
+        titles = read_titles(folder)
+        if titles:
+            titles_formatted = "\n".join([f"{t['index']}. {t['text']}" for t in titles])
+        else:
+            titles_formatted = f"1. {video_title.replace('_', ' ').replace('-', ' ')}"
 
+        concept_prompt = (
+            f"{THUMBNAIL_SETUP_PROMPT}\n\n"
+            f"TITLES FROM titles.txt:\n{titles_formatted}\n\n"
+            f"SCRIPT EXCERPT:\n{script_excerpt}"
+        )
+        
+        # Step 1: Send setup prompt
+        concept_response = send_and_wait(page, concept_prompt, timeout=180)
         concepts = extract_json_from_response(concept_response)
-        if not concepts or not isinstance(concepts, list) or len(concepts) < 3:
+
+        if not concepts or not isinstance(concepts, list):
             print("[ERROR] Failed to extract valid thumbnail concepts. Retrying...")
             start_clean_gemini_chat(page)
             time.sleep(2)
@@ -400,65 +506,54 @@ def main():
             concepts = extract_json_from_response(concept_response)
 
         if not concepts:
-            print("[FATAL] Could not extract thumbnail concepts after retry.")
+            print("[FATAL] Could not extract concepts.")
             page.close()
             sys.exit(1)
 
-        concepts = concepts[:THUMBNAIL_COUNT]
-        print(f"[OK] Extracted {len(concepts)} concepts.")
+        print(f"[OK] Generated {len(concepts)} title-matched concepts.")
 
-        # Phase 2: Build Webcomic Style prompts
-        print("\n[PHASE 2] Building Webcomic Style prompts...")
-        webcomic_prompts = [build_webcomic_thumbnail_prompt(c, i) for i, c in enumerate(concepts)]
-
+        # Save generated prompts/concepts JSON for reference
         with open(prompts_path, "w", encoding="utf-8") as f:
-            json.dump(webcomic_prompts, f, ensure_ascii=False, indent=2)
-        print(f"[OK] Prompts saved to {prompts_path}")
+            json.dump(concepts, f, ensure_ascii=False, indent=2)
 
-        # Phase 3: Self-critique
-        print("\n[PHASE 3] Running self-critique loop...")
-        start_clean_gemini_chat(page)
-        time.sleep(2)
-        select_gemini_model(page, model_name)
-        time.sleep(2)
-
-        topic = video_title.replace("_", " ").replace("-", " ")
-        critique_msg = CRITIQUE_PROMPT_TEMPLATE.format(
-            count=len(webcomic_prompts),
-            topic=topic,
-            prompts_json=json.dumps(webcomic_prompts, ensure_ascii=False, indent=2),
-            top_n=TOP_N
-        )
+        # Step 2: Send Critique Prompt directly in the SAME chat session!
+        critique_msg = CRITIQUE_PROMPT_TEMPLATE.format(top_n=TOP_N)
         critique_response = send_and_wait(page, critique_msg, timeout=180)
-
         critique = extract_json_from_response(critique_response)
+
         if critique:
             with open(critique_path, "w", encoding="utf-8") as f:
                 json.dump(critique, f, ensure_ascii=False, indent=2)
             print(f"[OK] Critique saved to {critique_path}")
         else:
-            print("[WARNING] Critique failed. Using first 2 prompts as defaults.")
-            critique = {"winners": [0, 1], "improvements": {}}
+            print("[WARNING] Critique failed. Defaulting to first 2 title indices.")
+            critique = {"winners": [c.get("title_index", i + 1) for i, c in enumerate(concepts[:TOP_N])], "improvements": {}}
 
-        # Phase 4: Generate images for winners
-        print("\n[PHASE 4] Generating thumbnail images...")
-        winners = critique.get("winners", list(range(TOP_N)))[:TOP_N]
+        winners = critique.get("winners", [1, 2])[:TOP_N]
         improvements = critique.get("improvements", {})
 
-        winning_prompts = []
-        for w_idx in winners:
-            if w_idx < len(webcomic_prompts):
-                prompt_str = webcomic_prompts[w_idx]
-                if str(w_idx) in improvements:
-                    prompt_str += f"\nRefinement Suggestion: {improvements[str(w_idx)]}"
-                winning_prompts.append(prompt_str)
+        # Phase 2 & 4: Build prompts and Generate Images (saved as title_X_thumbnail.png)
+        winning_items = []
+        for concept in concepts:
+            t_idx = concept.get("title_index", 1)
+            if t_idx in winners:
+                prompt_str = build_webcomic_thumbnail_prompt(concept, t_idx)
+                if str(t_idx) in improvements:
+                    prompt_str += f"\nVisual Refinement: {improvements[str(t_idx)]}"
+                
+                winning_items.append({
+                    "title_index": t_idx,
+                    "filename": f"title_{t_idx}_thumbnail.png",
+                    "prompt": prompt_str
+                })
 
+        print("\n[PHASE 4] Opening clean session for image generation...")
         start_clean_gemini_chat(page)
         time.sleep(2)
         select_gemini_model(page, model_name)
         time.sleep(2)
 
-        generated = generate_images_via_gemini(page, winning_prompts, output_dir)
+        generated = generate_images_via_gemini(page, winning_items, output_dir)
 
         page.close()
 

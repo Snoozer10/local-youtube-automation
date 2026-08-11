@@ -189,54 +189,75 @@ def start_clean_gemini_chat(page):
 def select_gemini_model(page, model_name):
     """Selects a specific Gemini model from the dropdown."""
     print(f"[SYSTEM] Attempting to select Gemini model: {model_name}")
-    trigger_selectors = [
-        "button[aria-haspopup='menu']:has-text('Flash')",
-        "button[aria-haspopup='menu']:has-text('Pro')",
-        "button:has-text('Flash')",
-        "button:has-text('Pro')",
-        "button:has-text('Gemini')",
-        "button[aria-label*='model' i]",
-        "button[aria-label*='Model' i]",
+    
+    # 1. Locate the model selector pill button near the prompt input box
+    model_btn = None
+    btn_candidates = [
+        page.locator("button:has-text('Flash'), button:has-text('Pro'), button:has-text('Lite')").first,
+        page.locator("button[aria-label*='model' i], button[aria-label*='mode' i]").first,
+        page.locator("rich-textarea ~ * button").first
     ]
-
-    btn = None
-    for sel in trigger_selectors:
+    
+    for loc in btn_candidates:
         try:
-            elements = page.locator(sel)
-            for i in range(elements.count()):
-                if elements.nth(i).is_visible():
-                    btn = elements.nth(i)
-                    break
-            if btn:
+            if loc.is_visible() and loc.is_enabled():
+                model_btn = loc
                 break
         except Exception:
             continue
 
-    if not btn:
+    if not model_btn:
         print("[WARNING] Could not find Gemini model dropdown trigger button in UI.")
         return False
 
     try:
-        current_text = btn.inner_text().strip() if btn.inner_text() else ""
-        if model_name.lower() in current_text.lower():
+        current_text = model_btn.inner_text().strip().lower() if model_btn.inner_text() else ""
+        target_clean = model_name.strip().lower()
+
+        # Check if target model (e.g. "pro") is already active
+        if target_clean in current_text:
             print(f"[SYSTEM] Model '{model_name}' is already active.")
             return True
 
-        btn.click()
+        print(f"[SYSTEM] Switching Gemini model to '{model_name}'...")
+        model_btn.click(force=True)
         time.sleep(1.5)
 
-        opt = page.locator("[role='menuitem'], [role='option'], li").filter(has_text=re.compile(model_name, re.IGNORECASE)).first
-        if not opt.is_visible():
-            opt = page.locator(f'text="{model_name}"').filter(visible=True).last
+        # 2. Regex search for target model inside dropdown (matches "3.1 Pro", "Pro", etc.)
+        pattern = re.compile(rf"(\b{re.escape(target_clean)}\b|\d+\.\d+\s*{re.escape(target_clean)})", re.IGNORECASE)
+        option_clicked = False
 
-        if opt.is_visible():
-            opt.click()
-            print(f"[SYSTEM] Successfully switched model to {model_name}")
-            time.sleep(1.5)
-            return True
-        else:
+        try:
+            opts = page.get_by_text(pattern).all()
+            for opt in opts:
+                if opt.is_visible():
+                    opt.click(force=True)
+                    option_clicked = True
+                    print(f"[SYSTEM] Successfully switched model to '{model_name}'")
+                    break
+        except Exception:
+            pass
+
+        if not option_clicked:
+            try:
+                opts = page.locator("div, button, [role='option'], [role='menuitem'], span").filter(has_text=pattern).all()
+                for opt in reversed(opts):
+                    if opt.is_visible():
+                        opt.click(force=True)
+                        option_clicked = True
+                        print(f"[SYSTEM] Successfully switched model to '{model_name}'")
+                        break
+            except Exception:
+                pass
+
+        if not option_clicked:
             print(f"[WARNING] Model option '{model_name}' not found in dropdown menu.")
-            return False
+            page.keyboard.press("Escape")
+
+        time.sleep(1.5)
+        return option_clicked
+
     except Exception as e:
         print(f"[ERROR] Exception while selecting model: {e}")
+        page.keyboard.press("Escape")
         return False
