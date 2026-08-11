@@ -13,62 +13,137 @@ if os.path.exists(winget_links_path):
     os.environ["PATH"] = winget_links_path + os.pathsep + os.environ["PATH"]
 
 
+def load_transcribe_config(config_path="transcribe_config.txt") -> dict:
+    """
+    Parse transcribe_config.txt into typed dict.
+    Supports: bool (true/false), int, float, str.
+    Comments (# ...) and blank lines are ignored.
+    """
+    DEFAULTS = {
+        "WHISPER_MODEL_SIZE": "small",
+        "WHISPER_LANGUAGE": "ar",
+        "WHISPER_BEAM_SIZE": 5,
+        "WHISPER_VAD_FILTER": True,
+        "WHISPER_MIN_SPEECH_DURATION_MS": 250,
+        "INITIAL_PROMPT_MAX_WORDS": 120,
+        "DEFAULT_INITIAL_PROMPT": "يا عم، بتهلوس؟ الجاس لايتنج ده بجد، والمريونيط بيتحرك، والرموت كونترول تاه. سدقني، بلاش تلعب بالنار.",
+        "PACING_MAX_WORDS": 4,
+        "PACING_MIN_DURATION": 1.8,
+        "PACING_TARGET_DURATION": 3.2,
+        "PACING_MAX_DURATION": 4.2,
+        "PACING_MIN_GAP_SPLIT": 0.45,
+        "RUNS_DIR": "youtube_runs",
+        "POLISHED_AUDIO_SUBDIR": "audacity_voice",
+        "AUDIO_FILENAME": "full_episode_voice.wav",
+        "REFINED_SCRIPT_FILENAME": "refined_script.txt",
+        "FINAL_OUTPUT_FILENAME": "final_output.txt",
+        "EXPORT_SRT": True,
+        "EXPORT_TIMELINE_TXT": True,
+    }
+
+    if not os.path.exists(config_path):
+        return DEFAULTS.copy()
+
+    config = DEFAULTS.copy()
+    with open(config_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            if '=' in line:
+                key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip()
+                if '#' in value:
+                    value = value.split('#', 1)[0].strip()
+
+                if key in DEFAULTS:
+                    default_val = DEFAULTS[key]
+                    if isinstance(default_val, bool):
+                        config[key] = value.lower() in ('true', '1', 'yes', 'on')
+                    elif isinstance(default_val, int):
+                        config[key] = int(float(value))
+                    elif isinstance(default_val, float):
+                        config[key] = float(value)
+                    else:
+                        config[key] = value
+    return config
+
+
 def get_latest_run_folder(runs_path="youtube_runs"):
-    if not os.path.exists(runs_path):
+    """Synchronized folder resolution matching compile_video.py."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    rel_to_script = os.path.join(script_dir, runs_path)
+    
+    resolved_path = runs_path
+    if os.path.exists(rel_to_script):
+        resolved_path = rel_to_script
+    elif not os.path.exists(resolved_path):
         print(f"Error: Directory '{runs_path}' does not exist.")
         return None
-    
-    folders = glob.glob(os.path.join(runs_path, "*"))
-    folders = [f for f in folders if os.path.isdir(f)]
-    if not folders:
-        return None
-    
-    latest_folder = max(folders, key=os.path.getmtime)
-    return latest_folder
+
+    subdirs = [os.path.join(resolved_path, name) for name in os.listdir(resolved_path) if os.path.isdir(os.path.join(resolved_path, name))]
+    return max(subdirs, key=os.path.getmtime) if subdirs else None
 
 
 def format_timestamp(seconds):
-    """Converts raw float seconds into the [MM:SS] string format."""
-    minutes = int(seconds // 60)
+    """Converts raw float seconds into [HH:MM:SS] or [MM:SS] string format compatible with compile_video.py regex."""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
+    if hours > 0:
+        return f"[{hours:02d}:{minutes:02d}:{secs:02d}]"
     return f"[{minutes:02d}:{secs:02d}]"
 
 
 def format_srt_timestamp(seconds):
-    """Converts raw float seconds into the standard SRT format (HH:MM:SS,mmm)."""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    milliseconds = int((seconds % 1) * 1000)
-    return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
+    """Converts seconds to standard SRT format (HH:MM:SS,mmm) using integer millisecond precision math."""
+    total_ms = int(round(seconds * 1000))
+    hours = total_ms // 3600000
+    total_ms %= 3600000
+    minutes = total_ms // 60000
+    total_ms %= 60000
+    secs = total_ms // 1000
+    millis = total_ms % 1000
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 
-def read_whisper_preset():
-    """Read Whisper model size preference from voice_option_notes.txt."""
+def read_whisper_preset_fallback(default_model="small"):
+    """Reads Whisper model preset from voice_option_notes.txt if available."""
     preset_path = "voice_option_notes.txt"
-    model_size = "small"
+    model_size = default_model
     if os.path.exists(preset_path):
         try:
             with open(preset_path, "r", encoding="utf-8") as f:
                 for line in f:
                     if ":" in line:
                         key, val = line.split(":", 1)
-                        key = key.strip().lower()
-                        if "whisper" in key:
+                        if "whisper" in key.strip().lower():
                             model_size = val.strip()
-            print(f"Loaded Whisper model preset: '{model_size}'")
         except Exception:
             pass
     return model_size
 
 
-def read_initial_prompt(latest_run):
+def slice_initial_prompt(text, max_words=120):
+    """Slices initial prompt to prevent 224-token context buffer overflow in Whisper."""
+    if not text:
+        return None
+    words = text.strip().split()
+    if len(words) > max_words:
+        sliced = " ".join(words[:max_words])
+        print(f"[SYSTEM] Trimmed initial prompt from {len(words)} words to {max_words} words to fit Whisper's 224-token buffer.")
+        return sliced
+    return text
+
+
+def read_initial_prompt(latest_run, config):
     """Looks for script to prime Whisper (refined_script.txt or final_output.txt)."""
-    locations_refined = [os.path.join(latest_run, "refined_script.txt")]
-    locations_final = [os.path.join(latest_run, "final_output.txt")]
+    locations_refined = [os.path.join(latest_run, config["REFINED_SCRIPT_FILENAME"])]
+    locations_final = [os.path.join(latest_run, config["FINAL_OUTPUT_FILENAME"])]
     
-    locations_refined.extend(glob.glob(os.path.join(latest_run, "**", "refined_script.txt"), recursive=True))
-    locations_final.extend(glob.glob(os.path.join(latest_run, "**", "final_output.txt"), recursive=True))
+    locations_refined.extend(glob.glob(os.path.join(latest_run, "**", config["REFINED_SCRIPT_FILENAME"]), recursive=True))
+    locations_final.extend(glob.glob(os.path.join(latest_run, "**", config["FINAL_OUTPUT_FILENAME"]), recursive=True))
 
     for path in locations_refined:
         if os.path.exists(path) and os.path.isfile(path):
@@ -76,7 +151,7 @@ def read_initial_prompt(latest_run):
                 with open(path, "r", encoding="utf-8") as f:
                     text = f.read().strip()
                     if text:
-                        print(f"[SYSTEM] Found refined script at '{path}'. Priming Whisper with it.")
+                        print(f"[SYSTEM] Found refined script at '{path}'. Priming Whisper.")
                         return text
             except Exception:
                 pass
@@ -87,7 +162,7 @@ def read_initial_prompt(latest_run):
                 with open(path, "r", encoding="utf-8") as f:
                     text = f.read().strip()
                     if text:
-                        print(f"[SYSTEM] Priming Whisper with Cairo Cut Arabic script at '{path}'.")
+                        print(f"[SYSTEM] Priming Whisper with script at '{path}'.")
                         return text
             except Exception:
                 pass
@@ -96,11 +171,11 @@ def read_initial_prompt(latest_run):
     return None
 
 
-def align_and_pace_script(custom_prompt, all_words):
+def align_and_pace_script(custom_prompt, all_words, config):
     """
     ANIMATION CADENCE ENGINE:
-    Splits audio into visually rhythmic units targetting 1.8s - 4.2s per keyframe.
-    Detects punctuation, speech pauses (>0.45s), and transition words.
+    Splits audio into visually rhythmic units using transcribe_config.txt constraints.
+    Guarantees strict time monotonicity (prevents backwards/overlapping timestamps).
     """
     def clean_tok(w):
         return re.sub(r'[^\w\s]', '', w).strip().lower()
@@ -109,6 +184,8 @@ def align_and_pace_script(custom_prompt, all_words):
     aligned_words = []
     w_idx = 0
     n_whisper = len(all_words)
+
+    last_valid_end = 0.0
 
     for word_raw in script_words:
         tok = clean_tok(word_raw)
@@ -123,29 +200,36 @@ def align_and_pace_script(custom_prompt, all_words):
                     break
 
         if matched_item:
+            start_t = max(matched_item["start"], last_valid_end)
+            end_t = max(matched_item["end"], start_t + 0.1)
             aligned_words.append({
                 "text": word_raw,
-                "start": matched_item["start"],
-                "end": matched_item["end"]
+                "start": start_t,
+                "end": end_t
             })
+            last_valid_end = end_t
         else:
-            fallback_start = aligned_words[-1]["end"] if aligned_words else 0.0
+            fallback_start = last_valid_end
+            fallback_end = fallback_start + 0.25
             aligned_words.append({
                 "text": word_raw,
                 "start": fallback_start,
-                "end": fallback_start + 0.3
+                "end": fallback_end
             })
+            last_valid_end = fallback_end
 
-    ARABIC_TRANSITION_WORDS = {"علشان", "عشان", "بس", "لكن", "يعني", "ثم", "لما", "بعدين", "فبالتالي", "معنى", "زي", "يعني", "أو", "أوكي", "تمام", "طيب", ","}
+    ARABIC_TRANSITION_WORDS = {"علشان", "عشان", "بس", "لكن", "يعني", "ثم", "لما", "بعدين", "فبالتالي", "معنى", "زي", "أو", "أوكي", "تمام", "طيب"}
     PUNCTUATION_REGEX = re.compile(r'[،,.؟?!\n]+')
 
     chunks = []
     curr_words = []
     chunk_start = None
 
-    MIN_DURATION = 1.8
-    TARGET_DURATION = 3.2
-    MAX_DURATION = 4.2
+    MIN_DURATION = config["PACING_MIN_DURATION"]
+    TARGET_DURATION = config["PACING_TARGET_DURATION"]
+    MAX_DURATION = config["PACING_MAX_DURATION"]
+    MAX_WORDS = config["PACING_MAX_WORDS"]
+    MIN_GAP_SPLIT = config["PACING_MIN_GAP_SPLIT"]
 
     for i, w_info in enumerate(aligned_words):
         w_text = w_info["text"]
@@ -157,13 +241,14 @@ def align_and_pace_script(custom_prompt, all_words):
 
         curr_words.append(w_text)
         curr_duration = w_end - chunk_start
+        word_count = len(curr_words)
 
         has_punctuation = bool(PUNCTUATION_REGEX.search(w_text))
         is_last_word = (i == len(aligned_words) - 1)
         
         next_gap = 0.0
         if i < len(aligned_words) - 1:
-            next_gap = aligned_words[i + 1]["start"] - w_end
+            next_gap = max(0.0, aligned_words[i + 1]["start"] - w_end)
 
         clean_w = clean_tok(w_text)
         is_transition = clean_w in ARABIC_TRANSITION_WORDS
@@ -172,12 +257,14 @@ def align_and_pace_script(custom_prompt, all_words):
 
         if is_last_word:
             should_split = True
+        elif word_count >= MAX_WORDS:
+            should_split = True
         elif curr_duration >= MAX_DURATION:
             should_split = True
         elif curr_duration >= MIN_DURATION:
             if has_punctuation:
                 should_split = True
-            elif next_gap >= 0.45:
+            elif next_gap >= MIN_GAP_SPLIT:
                 should_split = True
             elif is_transition and curr_duration >= TARGET_DURATION:
                 should_split = True
@@ -196,87 +283,90 @@ def align_and_pace_script(custom_prompt, all_words):
     return chunks
 
 
+def load_whisper_model(config):
+    """Safely loads Whisper model with multi-level GPU and CPU fallbacks."""
+    model_size = config["WHISPER_MODEL_SIZE"]
+    model_size = read_whisper_preset_fallback(default_model=model_size)
+
+    if torch.cuda.is_available():
+        for compute_type in ["int8_float16", "float16", "int8", "float32"]:
+            try:
+                print(f"Attempting Whisper model ('{model_size}') on GPU ({compute_type})...")
+                model = WhisperModel(model_size, device="cuda", compute_type=compute_type)
+                print(f"Model loaded successfully on GPU ({compute_type}).")
+                return model
+            except Exception as e:
+                print(f"  [WARN] GPU load failed for {compute_type}: {e}")
+
+    try:
+        print(f"Initializing Whisper model ('{model_size}') on CPU (int8)...")
+        model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        print("Model loaded successfully on CPU.")
+        return model
+    except Exception as e:
+        print(f"Error loading Whisper model on CPU: {e}")
+        sys.exit(1)
+
+
 def main():
     try:
         sys.stdout.reconfigure(encoding='utf-8', line_buffering=True, errors='replace')
     except Exception:
-        try:
-            sys.stdout.reconfigure(line_buffering=True, errors='replace')
-        except Exception:
-            pass
+        pass
 
     print("=============================================")
     print("Starting Faster-Whisper Arabic Audio Transcription")
     print("=============================================")
 
-    latest_run = get_latest_run_folder()
+    config = load_transcribe_config("transcribe_config.txt")
+    print(f"Loaded config: MAX_WORDS={config['PACING_MAX_WORDS']}, TARGET_DURATION={config['PACING_TARGET_DURATION']}s")
+
+    latest_run = get_latest_run_folder(config["RUNS_DIR"])
     if not latest_run:
-        print("Error: No active run folders found in 'youtube_runs/'.")
+        print(f"Error: No active run folders found in '{config['RUNS_DIR']}'.")
         sys.exit(1)
         
     print(f"Target Video Folder: {latest_run}")
 
-    # Priority Path Resolution: Polished Audacity audio -> Raw audio fallback
-    target_audio = os.path.join(latest_run, "audacity_voice", "full_episode_voice.wav")
+    target_audio = os.path.join(latest_run, config["POLISHED_AUDIO_SUBDIR"], config["AUDIO_FILENAME"])
     if os.path.exists(target_audio):
         print(f"[AUDIO] Target: Audacity Polished Voice Track ('{target_audio}')")
     else:
-        target_audio = os.path.join(latest_run, "full_episode_voice.wav")
+        target_audio = os.path.join(latest_run, config["AUDIO_FILENAME"])
         if os.path.exists(target_audio):
-            print(f"[AUDIO] Audacity track missing. Fallback to Raw Voice Track ('{target_audio}')")
+            print(f"[AUDIO] Fallback: Raw Voice Track ('{target_audio}')")
         else:
             print(f"Error: Master audio file not found at '{target_audio}'.")
             sys.exit(1)
 
-    model_size = read_whisper_preset()
-    model = None
-
-    if torch.cuda.is_available():
-        try:
-            print(f"Initializing local faster-whisper model ('{model_size}') on GPU...")
-            model = WhisperModel(model_size, device="cuda", compute_type="int8_float16")
-            print("Model loaded successfully on GPU (CUDA).")
-        except Exception as e:
-            print(f"[WARNING] Failed to load on GPU ({e}). Falling back to CPU...")
-            
-    if not model:
-        try:
-            print(f"Initializing local faster-whisper model ('{model_size}') on CPU...")
-            model = WhisperModel(model_size, device="cpu", compute_type="int8")
-            print("Model loaded successfully on CPU.")
-        except Exception as e:
-            print(f"Error loading Whisper model on CPU: {e}")
-            sys.exit(1)
+    model = load_whisper_model(config)
 
     print("\nTranscribing absolute timestamps...")
     start_time = time.time()
 
-    default_prompt = (
-        "يا عم، بتهلوس؟ الجاس لايتنج ده بجد، والمريونيط بيتحرك، والرموت كونترول تاه. سدقني، بلاش تلعي بالنار، الميكروباص واقف في اللنبة."
-    )
-
-    custom_prompt = read_initial_prompt(latest_run)
-    egyptian_arabic_prompt = custom_prompt if custom_prompt else default_prompt
+    raw_custom_prompt = read_initial_prompt(latest_run, config)
+    
+    # Safe initial prompt slicing (Prevents 224-token buffer overflow)
+    initial_prompt_sliced = slice_initial_prompt(raw_custom_prompt, config["INITIAL_PROMPT_MAX_WORDS"]) if raw_custom_prompt else config["DEFAULT_INITIAL_PROMPT"]
 
     output_text_lines = []
     output_srt_lines = []
-    
-    print("\n--- Generating Timestamped Script ---")
+    srt_index = 1
 
     try:
         segments_gen, info = model.transcribe(
             target_audio,
-            language="ar",
-            initial_prompt=egyptian_arabic_prompt,
+            language=config["WHISPER_LANGUAGE"],
+            initial_prompt=initial_prompt_sliced,
             word_timestamps=True,
-            beam_size=5,
-            vad_filter=True,
-            vad_parameters=dict(min_speech_duration_ms=250)
+            beam_size=config["WHISPER_BEAM_SIZE"],
+            vad_filter=config["WHISPER_VAD_FILTER"],
+            vad_parameters=dict(min_speech_duration_ms=config["WHISPER_MIN_SPEECH_DURATION_MS"])
         )
         
         segments = list(segments_gen)
-        
         all_words = []
+        
         for segment in segments:
             if segment.words:
                 for word in segment.words:
@@ -286,27 +376,9 @@ def main():
                         "end": word.end
                     })
                 
-        if not all_words:
-            text_content = " ".join([seg.text for seg in segments]).strip() or "..."
-            absolute_start = 0.0
-            
-            try:
-                with wave.open(target_audio, 'rb') as f:
-                    absolute_end = f.getnframes() / float(f.getframerate())
-            except Exception:
-                absolute_end = 2.0
-            
-            output_text_lines.append(f"{format_timestamp(absolute_start)} {text_content}")
-            output_srt_lines.extend([
-                "1",
-                f"{format_srt_timestamp(absolute_start)} --> {format_srt_timestamp(absolute_end)}",
-                text_content,
-                ""
-            ])
-        elif custom_prompt:
-            paced_chunks = align_and_pace_script(custom_prompt, all_words)
-            srt_index = 1
-
+        if raw_custom_prompt and all_words:
+            # Align full script text with speech timings
+            paced_chunks = align_and_pace_script(raw_custom_prompt, all_words, config)
             for chunk in paced_chunks:
                 c_start = chunk["start"]
                 c_end = chunk["end"]
@@ -320,8 +392,23 @@ def main():
                     ""
                 ])
                 srt_index += 1
+        elif segments:
+            # Automatic segment chunking fallback if custom_prompt is None
+            for segment in segments:
+                s_start = segment.start
+                s_end = segment.end
+                s_text = segment.text.strip()
+                if s_text:
+                    output_text_lines.append(f"{format_timestamp(s_start)} {s_text}")
+                    output_srt_lines.extend([
+                        str(srt_index),
+                        f"{format_srt_timestamp(s_start)} --> {format_srt_timestamp(s_end)}",
+                        s_text,
+                        ""
+                    ])
+                    srt_index += 1
         else:
-            output_text_lines.append(f"{format_timestamp(0.0)} {' '.join([w['word'] for w in all_words])}")
+            print("[WARN] No speech detected in audio.")
 
     except Exception as e:
         print(f"Error transcribing master audio: {e}")
@@ -330,28 +417,22 @@ def main():
     elapsed_time = time.time() - start_time
     print(f"\nTranscription completed in {elapsed_time:.2f} seconds.")
 
-    # Save outputs
-    image_timeline_path = os.path.join(latest_run, "timestamped_transcript.txt")
-    with open(image_timeline_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(output_text_lines))
-    print("=============================================")
-    print(f"Image Timeline saved: '{image_timeline_path}'")
+    # Save output timeline files
+    if config["EXPORT_TIMELINE_TXT"]:
+        for filename in ["timestamped_transcript.txt", "image_timestamps.txt"]:
+            path = os.path.join(latest_run, filename)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("\n".join(output_text_lines))
+            print(f"Timeline saved: '{path}'")
 
-    srt_file_path = os.path.join(latest_run, "timestamped_transcript.srt")
-    try:
-        with open(srt_file_path, "w", encoding="utf-8-sig") as f:
-            f.write("\n".join(output_srt_lines))
-        print(f"Subtitle SRT saved: '{srt_file_path}'")
-    except Exception as e:
-        print(f"Error saving subtitle file: {e}")
+    # Save SRT files
+    if config["EXPORT_SRT"]:
+        for filename in ["timestamped_transcript.srt", "subtitle_chunks.srt"]:
+            path = os.path.join(latest_run, filename)
+            with open(path, "w", encoding="utf-8-sig") as f:
+                f.write("\n".join(output_srt_lines))
+            print(f"Subtitle SRT saved: '{path}'")
 
-    image_timestamps_path = os.path.join(latest_run, "image_timestamps.txt")
-    with open(image_timestamps_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(output_text_lines))
-
-    subtitle_chunks_path = os.path.join(latest_run, "subtitle_chunks.srt")
-    with open(subtitle_chunks_path, "w", encoding="utf-8-sig") as f:
-        f.write("\n".join(output_srt_lines))
     print("=============================================")
 
 

@@ -72,9 +72,9 @@ def set_clipboard_text(text):
 def read_voice_options():
     preset_path = "voice_option_notes.txt"
     options = {
-        "model": "gemini-2.5-pro-preview-tts",
-        "temperature": "1.1",
-        "voice": "Achird"
+        "model": get_config_value("TTS_MODEL", "gemini-2.5-pro-preview-tts"),
+        "temperature": get_config_value("TTS_TEMPERATURE", "1.1"),
+        "voice": get_config_value("TTS_VOICE_NAME", "Achird")
     }
     if os.path.exists(preset_path):
         try:
@@ -1107,8 +1107,8 @@ def main():
                             time.sleep(3)
                             reapply_speech_settings(tab1_speech, voice_config)
 
-                        # Proactive session refresh every 40 audio renders
-                        if chapters_since_reload >= 40:
+                        reload_limit = int(get_config_value("TTS_PROACTIVE_RELOAD_INTERVAL", "40"))
+                        if chapters_since_reload >= reload_limit:
                             print(f"\n[MAINTENANCE] Proactively refreshing Speech Playground session...")
                             tab1_speech.bring_to_front()
                             try:
@@ -1190,8 +1190,9 @@ def main():
                             main.attempt_count = getattr(main, 'attempt_count', 0) + 1
                             continue
 
+                        synth_timeout_ms = int(get_config_value("TTS_SYNTHESIS_TIMEOUT", "300")) * 1000
                         try:
-                            tab1_speech.wait_for_selector("button:has-text('Run')", timeout=300000)
+                            tab1_speech.wait_for_selector("button:has-text('Run')", timeout=synth_timeout_ms)
                             print("Audio synthesis complete!")
                         except Exception as e:
                             print(f"Warning: Timeout or error waiting for synthesis: {e}")
@@ -1266,19 +1267,18 @@ def main():
                             print(f"Applying exponential backoff of {backoff_delay:.2f}s before retry...")
                             time.sleep(backoff_delay)
 
-                    if failover_triggered:
-                        break
-
                 if failover_triggered:
-                    break
-
-                # Exit outer loop when all chapters are successfully synthesized
-                all_done = all(c.get("status") == "COMPLETED" for c in manifest.get("chapters", []))
-                if all_done:
-                    print("\n=============================================")
-                    print("ALL VOICE CHAPTERS SUCCESSFULLY GENERATED & SAVED!")
-                    print("=============================================")
-                    break
+                    # Do not break out of the outer while True loop here.
+                    # Exiting this block allows the code below to catch failover_triggered and continue.
+                    pass
+                else:
+                    # Exit outer loop when all chapters are successfully synthesized
+                    all_done = all(c.get("status") == "COMPLETED" for c in manifest.get("chapters", []))
+                    if all_done:
+                        print("\n=============================================")
+                        print("ALL VOICE CHAPTERS SUCCESSFULLY GENERATED & SAVED!")
+                        print("=============================================")
+                        break
 
         except Exception as e:
             print(f"[RECOVERY] Playwright context closed or browser crashed: {e}")

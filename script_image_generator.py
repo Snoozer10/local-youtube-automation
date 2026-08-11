@@ -405,7 +405,12 @@ def run_storyboard_planning_phase(page, script_path, prompts_file, sentences, ti
     total_sentences = len(sentences)
     print(f"Storyboard planning for {total_sentences} sentences...")
 
-    chunk_size = 5
+    chunk_size = int(get_config_value("SCRIPT_IMAGE_CHUNK_SIZE", "5"))
+    planning_timeout = int(get_config_value("SCRIPT_IMAGE_PLANNING_TIMEOUT", "240"))
+    alignment_timeout = int(get_config_value("SCRIPT_IMAGE_ALIGNMENT_TIMEOUT", "60"))
+    wait_for_gemini_response(page, initial_count, timeout_seconds=alignment_timeout)
+    reset_interval = int(get_config_value("SCRIPT_IMAGE_PLANNING_RESET_INTERVAL", "8"))
+
     chunks = [sentences[i:i + chunk_size] for i in range(0, len(sentences), chunk_size)]
     
     # Checkpoint Configuration
@@ -486,8 +491,8 @@ Do not generate any images yet. Simply respond with: "SYSTEM READY. Awaiting scr
             
         print(f"\nPlanning Chunk {chunk_idx} of {len(chunks)}...")
         
-        # Reset standard UI and carry over the last 2 frames every 8 chunks (40 sentences)
-        if chunk_idx > 1 and (chunk_idx - 1) % 8 == 0:
+        # Reset standard UI and carry over the last 2 frames based on reset_interval
+        if chunk_idx > 1 and (chunk_idx - 1) % reset_interval == 0:
             continuity_anchor = ""
             if len(all_parsed_prompts) >= 2:
                 last_two = all_parsed_prompts[-2:]
@@ -566,7 +571,7 @@ Visual Prompt: [Timestamp] 2D vector webcomic style, [Camera Angle]. Subject: [2
         else:
             textbox.press("Control+Enter")
             
-        resp = wait_for_gemini_response(page, initial_count, timeout_seconds=240)
+        resp = wait_for_gemini_response(page, initial_count, timeout_seconds=planning_timeout)
         if not resp:
             print("Error: Storyboard response failed to return.")
             sys.exit(1)
@@ -588,7 +593,7 @@ Visual Prompt: [Timestamp] 2D vector webcomic style, [Camera Angle]. Subject: [2
             else:
                 textbox.press("Control+Enter")
                 
-            resp = wait_for_gemini_response(page, initial_count, timeout_seconds=240)
+            resp = wait_for_gemini_response(page, initial_count, timeout_seconds=planning_timeout)
             if not resp:
                 print("Error: Storyboard response failed to return on retry.")
                 sys.exit(1)
@@ -769,19 +774,19 @@ def main():
                         print(f"Warning: Invalid limit '{raw_limit}' in config. Defaulting to 20.")
                         reset_loop_limit = 20
 
-                    # Open a fresh chat session for rendering to clear memory of previous topic runs
+                    render_timeout = int(get_config_value("SCRIPT_IMAGE_RENDER_TIMEOUT", "90"))
+                    frame_retries = int(get_config_value("SCRIPT_IMAGE_FRAME_RETRIES", "3"))
+                    element_wait_ms = int(get_config_value("SCRIPT_IMAGE_ELEMENT_WAIT_TIMEOUT", "15")) * 1000
+                    download_wait_ms = int(get_config_value("SCRIPT_IMAGE_DOWNLOAD_TIMEOUT", "30")) * 1000
+
                     print("\nClicking New Chat to start clean rendering tab...")
                     new_chat_btn = gemini_page.locator("a[aria-label='New chat']").first
                     new_chat_btn.click()
                     time.sleep(3)
 
-                    # Set/Verify the target model
                     select_gemini_model(gemini_page, target_model)
-
-                    # Initialize style alignment configuration
                     send_handover_alignment(gemini_page, visual_style, visuals_plan)
 
-                    # Track actual generated sessions to prevent redundant reloads
                     executed_generations_count = 0
                     prev_prompt_text = ""
                     prev_idx = None
@@ -845,8 +850,8 @@ def main():
                             )
 
                         success = False
-                        for attempt in range(1, 4):
-                            print(f"Attempt {attempt} for Frame {idx}...")
+                        for attempt in range(1, frame_retries + 1):
+                            print(f"Attempt {attempt}/{frame_retries} for Frame {idx}...")
                             gemini_page.bring_to_front()
                             initial_count = gemini_page.locator("model-response").count()
 
@@ -870,7 +875,7 @@ def main():
                             time.sleep(2)
                             
                             # Wait for response text to settle
-                            if wait_for_gemini_response(gemini_page, initial_count, timeout_seconds=90) is not None:
+                            if wait_for_gemini_response(gemini_page, initial_count, timeout_seconds=render_timeout) is not None:
                                 # Locate and download image using UI Hover Automation
                                 download_attempt_success = False
                                 last_response = gemini_page.locator("model-response").last
@@ -880,7 +885,7 @@ def main():
                                 
                                 try:
                                     # Wait for image to actually be attached and visible
-                                    img_locator.wait_for(state="visible", timeout=15000)
+                                    img_locator.wait_for(state="visible", timeout=element_wait_ms)
                                     
                                     # Force scroll into view to ensure the hover action is not blocked
                                     img_locator.scroll_into_view_if_needed()
@@ -907,7 +912,7 @@ def main():
                                         
                                         if dl_btn.is_visible():
                                             # 4. The Native expect_download Handler
-                                            with gemini_page.expect_download(timeout=30000) as download_info:
+                                            with gemini_page.expect_download(timeout=download_wait_ms) as download_info:
                                                 # Force the click just in case the UI overlay shifts
                                                 dl_btn.click(force=True)
                                                 

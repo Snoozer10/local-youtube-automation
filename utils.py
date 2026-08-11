@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import json
 import subprocess
 import urllib.request
 from dotenv import load_dotenv
@@ -14,7 +15,6 @@ def get_config_value(target_key, default_val=""):
     """Reads a KEY=VALUE pair from environment variables (.env)."""
     val = os.getenv(target_key)
     if val is not None:
-        print(f"[DEBUG PARSER] Match found in .env! key='{target_key}' -> value='{val.strip()}'")
         return val.strip()
     return default_val
 
@@ -42,6 +42,8 @@ def update_config_value(target_key, new_val):
                     continue
             f.write(line)
         if not key_found:
+            if lines and not lines[-1].endswith("\n"):
+                f.write("\n")
             f.write(f"{target_key}={new_val}\n")
     print(f"[SYSTEM] Successfully updated config variable: {target_key} -> {new_val}")
 
@@ -54,7 +56,7 @@ def kill_cdp_chrome(port=9222):
             for line in lines:
                 if 'LISTENING' in line:
                     pid = line.strip().split()[-1]
-                    subprocess.run(f"taskkill /F /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(f"taskkill /F /T /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     print(f"Killed CDP Chrome process (PID: {pid}) on port {port}.")
                     time.sleep(2)  # CRITICAL: Wait for the OS to free the TCP socket
         except Exception:
@@ -92,16 +94,21 @@ def get_opera_path():
     ]
     return next((p for p in paths if os.path.exists(p)), None)
 
-def launch_browser_with_profile(browser_type, profile_index, port=9222):
-    """Dynamically launches Chrome or Opera based on configuration."""
+def launch_browser_with_profile(browser_type, profile_index, port=None):
+    if port is None:
+        port = int(get_config_value("CDP_PORT", "9222"))
+        
     print(f"[SYSTEM DIAGNOSTIC] Launching with browser_type='{browser_type}' (Account index: {profile_index})")
     profile_dir = map_profile_index(profile_index)
     is_opera = "opera" in browser_type.lower()
     
-    # Dynamic assignments based on browser selection
+    # Dynamic assignments based on browser selection and .env overrides
     browser_name = "Opera" if is_opera else "Chrome"
     exe_path = get_opera_path() if is_opera else get_chrome_path()
-    user_data_dir = r"C:\OperaDebugProfile" if is_opera else r"C:\ChromeDebugProfile"
+    
+    default_dir = r"C:\OperaDebugProfile" if is_opera else r"C:\ChromeDebugProfile"
+    env_dir_key = "OPERA_USER_DATA_DIR" if is_opera else "CHROME_USER_DATA_DIR"
+    user_data_dir = get_config_value(env_dir_key, default_dir)
 
     if not exe_path:
         print(f"[FATAL ERROR] {browser_name} executable not found. Please check installation paths.")
@@ -112,14 +119,17 @@ def launch_browser_with_profile(browser_type, profile_index, port=9222):
     # Clear the port prior to launching
     kill_cdp_chrome(port)
     
-    cmd = (
-        f'"{exe_path}" --remote-debugging-port={port} '
-        f'--user-data-dir="{user_data_dir}" '
-        f'--profile-directory="{profile_dir}" '
-        f'--disable-session-crashed-bubble --disable-infobars '
-        f'--restore-last-session=false --disable-renderer-backgrounding'
-    )
-    subprocess.Popen(cmd, shell=True)
+    cmd = [
+        exe_path,
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={user_data_dir}",
+        f"--profile-directory={profile_dir}",
+        "--disable-session-crashed-bubble",
+        "--disable-infobars",
+        "--restore-last-session=false",
+        "--disable-renderer-backgrounding"
+    ]
+    subprocess.Popen(cmd)
     
     # Blocking loop to ensure debugger socket is open
     url = f"http://localhost:{port}/json/version"
@@ -160,7 +170,6 @@ def send_telegram_notification(message):
         
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     
-    import json
     data = json.dumps({"chat_id": chat_id, "text": message}).encode("utf-8")
     
     try:

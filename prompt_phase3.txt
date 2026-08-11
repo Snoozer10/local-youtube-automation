@@ -209,7 +209,9 @@ Your guide **MUST** include specific bullet points addressing:
 * The retention blueprint integration (pacing, hooks, power dynamics, transitions).
 Your output for this section must begin **exactly** with the following Arabic phrase on its own
 line:
-Do not proceed to Part 3 until you have understand & generated this guide successfully.
+**:'Cut Cairo تم الاستيعاب. إليك دستور أسلوب 'الـ**
+Do not proceed to Part 3 until you have generated this guide successfully.
+
 ---
 ### **PART 3: THE FINAL PERFORMANCE - FLAWLESS EXECUTION**
 You have completed your immersion and proven your mastery. You are now **The Cairo Cut

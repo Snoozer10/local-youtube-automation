@@ -93,44 +93,24 @@ def delete_checkpoint(folder):
         os.remove(path)
 
 def clean_refined_paragraph(text):
-    """Clean Gemini response to ensure zero metadata, strip thinking tags, and single-paragraph formatting."""
+    """Clean Gemini response to ensure zero metadata or slang ledgers."""
     if not text:
         return ""
 
-    # 1. CRUCIAL FIX: Remove the <thinking>...</thinking> block and all its contents
-    # flags=re.DOTALL allows the regex to match across multiple lines
+    # Strip XML tags & ledgers
     text = re.sub(r'<thinking>.*?</thinking>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<slang_ledger>.*?</slang_ledger>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<.*?>', '', text)
 
-    # 2. TTS SAFETY: Remove markdown bold/italics (TTS engines hate reading asterisks)
+    # Strip leaked English metadata blocks
+    text = re.sub(r'(?:BLACKLIST|BRAINSTORM|UPDATE LEDGER|DRAFT & VERIFY).*?(?:Tashkeel added[^\.\n]*[\.\s]*|verified[\.\s]*|words[\.\s]*)', '', text, flags=re.DOTALL | re.IGNORECASE)
+
+    # Strip markdown and clean whitespace
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-    text = re.sub(r'\*(.*?)\*', r'\1', text)
-
-    lines = text.splitlines()
-    filtered_lines = []
-    for line in lines:
-        line_str = line.strip()
-        if not line_str:
-            continue
-        # 3. Strips headers (🎬), metadata (مستوى الحماس), and (جاهز للمقطع...) transition prompts
-        if (
-            line_str.startswith("🎬")
-            or line_str.startswith("مستوى الحماس")
-            or line_str.startswith("الهدف النفسي")
-            or (line_str.startswith("(") and line_str.endswith(")"))
-        ):
-            continue
-        filtered_lines.append(line_str)
-
-    # 4. Flattens multi-line output into a single continuous paragraph
-    cleaned = " ".join(filtered_lines)
-
-    # 5. Removes English words in parentheses e.g. "(The Hook)", "(John Wheeler)"
+    cleaned_lines = [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("BLACKLIST:")]
+    cleaned = " ".join(cleaned_lines)
     cleaned = re.sub(r"\([A-Za-z0-9\s\-_,\.\'&]+\)", "", cleaned)
-
-    # 6. Cleans up any double spaces left behind
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-
-    return cleaned
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 def save_refined_script(folder, refined_paragraphs):
     text_path = os.path.join(folder, "refined_script.txt")
@@ -242,11 +222,14 @@ def setup_refinement_session(page, model_name):
 
 def refine_paragraph(page, paragraph_text, index, total):
     """Turn 2: Send a single paragraph for refinement."""
+    persona = get_config_value("REFINE_PERSONA", "Cairo Hype-Man")
+    max_slang = get_config_value("REFINE_MAX_SLANG_PER_SENTENCE", "2")
+    
     message = (
         f"Refine paragraph {index} of {total}.\n"
         "SYSTEM OVERRIDE REMINDER:\n"
-        '1. Maintain "Cairo Hype-Man" persona.\n'
-        "2. MAX 2 slang words per sentence.\n"
+        f'1. Maintain "{persona}" persona.\n'
+        f"2. MAX {max_slang} slang words per sentence.\n"
         "3. SFW metaphors ONLY (Simping/Aura/Dominance).\n"
         "4. Check your previous <slang_ledger> and do not repeat words.\n\n"
         f"REFINE THIS PARAGRAPH:\n{paragraph_text}"
@@ -268,9 +251,10 @@ def refine_paragraph(page, paragraph_text, index, total):
     else:
         page.keyboard.press("Enter")
 
+    refine_timeout = int(get_config_value("REFINE_PARAGRAPH_TIMEOUT", "300"))
     initial_count = page.locator(RESPONSE_SELECTOR).count()
     response = wait_for_gemini_response(
-        page, initial_count, timeout_seconds=300
+        page, initial_count, timeout_seconds=refine_timeout
     )
 
     if is_safety_blocked(response):

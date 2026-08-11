@@ -52,6 +52,10 @@ def find_send_button(page):
             for i in range(count - 1, -1, -1):
                 el = loc.nth(i)
                 if el.is_visible() and el.is_enabled():
+                    # Ignore active Stop/Cancel buttons
+                    label = (el.get_attribute("aria-label") or "") + (el.evaluate("e => e.innerText") or "")
+                    if any(w in label.lower() for w in ["stop", "cancel", "interrupt", "وقف"]):
+                        continue
                     return el
         except Exception:
             continue
@@ -108,7 +112,11 @@ def wait_for_gemini_response(page, initial_count, timeout_seconds=180):
 
             current_count = page.locator(RESPONSE_SELECTOR).count()
             if current_count > initial_count:
-                current_text = page.locator(RESPONSE_SELECTOR).nth(current_count - 1).inner_text().strip()
+                last_el = page.locator(RESPONSE_SELECTOR).nth(current_count - 1)
+                try:
+                    current_text = last_el.evaluate("el => el.innerText").strip()
+                except Exception:
+                    current_text = ""
                 current_length = len(current_text)
 
                 if current_length > 0 and current_length == last_length:
@@ -139,7 +147,12 @@ def start_clean_gemini_chat(page):
         page.goto("https://gemini.google.com/app", wait_until="domcontentloaded", timeout=45000)
     except Exception as e:
         print(f"Navigation warning (continuing): {e}")
-    time.sleep(3)
+    time.sleep(2)
+
+    # If navigation already opened a clean session, skip extra clicks
+    if page.locator(RESPONSE_SELECTOR).count() == 0:
+        print("Clean chat session initialized successfully.")
+        return
 
     print("Requesting a clean chat session...")
     new_chat_selectors = [
@@ -214,8 +227,12 @@ def select_gemini_model(page, model_name):
         current_text = model_btn.inner_text().strip().lower() if model_btn.inner_text() else ""
         target_clean = model_name.strip().lower()
 
-        # Check if target model (e.g. "pro") is already active
-        if target_clean in current_text:
+        # Check if target model is active using exact word boundaries
+        is_active = bool(re.search(rf"\b{re.escape(target_clean)}\b", current_text))
+        if target_clean == "flash" and "lite" in current_text:
+            is_active = False
+
+        if is_active:
             print(f"[SYSTEM] Model '{model_name}' is already active.")
             return True
 

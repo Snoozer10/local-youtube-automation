@@ -8,7 +8,10 @@ import glob
 import json
 
 def get_latest_run_folder(runs_path="youtube_runs"):
-    if not os.path.exists(runs_path):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    rel_to_script = os.path.join(script_dir, runs_path)
+    resolved_path = rel_to_script if os.path.exists(rel_to_script) else runs_path
+    if not os.path.exists(resolved_path):
         return None
     subdirs = [os.path.join(runs_path, d) for d in os.listdir(runs_path) if os.path.isdir(os.path.join(runs_path, d))]
     if not subdirs:
@@ -26,6 +29,8 @@ def send_audacity_command(write_pipe, read_pipe, command):
     response = ""
     while True:
         line = read_pipe.readline()
+        if not line: # Audacity crashed or closed pipe
+            break
         response += line
         if line.strip() == "":
             break
@@ -132,6 +137,30 @@ def delete_checkpoint(folder):
         except:
             pass
 
+def ensure_audacity_script_pipe_enabled():
+    """Forces mod-script-pipe=1 in Audacity configuration file."""
+    appdata = os.getenv('APPDATA')
+    if not appdata:
+        return
+    cfg_path = os.path.join(appdata, 'audacity', 'audacity.cfg')
+    try:
+        content = ""
+        if os.path.exists(cfg_path):
+            with open(cfg_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+
+        if "mod-script-pipe=1" not in content:
+            print("[SYSTEM] Auto-enabling 'mod-script-pipe' in Audacity configuration...")
+            if "[Modules]" in content:
+                content = content.replace("[Modules]", "[Modules]\nmod-script-pipe=1")
+            else:
+                content += "\n[Modules]\nmod-script-pipe=1\n"
+
+            os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+            with open(cfg_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+    except Exception as e:
+        print(f"[WARNING] Could not update audacity.cfg: {e}")
 
 def clear_audacity_temp_data():
     """Wipes Audacity's temporary SessionData and AutoSave folders to prevent recovery popups."""
@@ -178,6 +207,7 @@ def main():
 
     # Wipe leftover crash files
     clear_audacity_temp_data()
+    ensure_audacity_script_pipe_enabled()  # <--- CALL IT HERE
 
     # Find and sync preset file
     preset_file_path = find_preset_file()
@@ -287,7 +317,8 @@ def main():
                 time.sleep(0.5)
 
         if not write_pipe or not read_pipe:
-            print("  Error: Could not connect to Audacity Named Pipes. Retrying...")
+            print("  [ERROR] Could not connect to Audacity Named Pipes!")
+            print("  Please open Audacity manually -> Edit -> Preferences -> Modules -> Set 'mod-script-pipe' to 'Enabled', then restart Audacity.")
             continue
 
         print("  Waiting for Audacity GUI to initialize...")
@@ -329,7 +360,15 @@ def main():
             time.sleep(0.5)
         
         print("  Polished file successfully exported!")
-        
+
+# --- OUTPUT SYNC SAFEGUARD ---
+        if name == "full_episode_voice.wav" and os.path.exists(polished_audio_path):
+            try:
+                shutil.copy(polished_audio_path, master_track_path)
+                print(f"  [SYNC] Synchronized polished voice track to root: '{master_track_path}'")
+            except Exception as e:
+                print(f"  [WARNING] Sync copy failed: {e}")
+                
         try:
             write_pipe.close()
             read_pipe.close()

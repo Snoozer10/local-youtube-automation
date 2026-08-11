@@ -1,0 +1,39 @@
+# ============================================================
+# FASTER-WHISPER TRANSCRIBE CONFIGURATION
+# ============================================================
+
+# --- Whisper Model Execution ---
+# Options for size: tiny, base, small, medium, large-v3
+WHISPER_MODEL_SIZE=small
+WHISPER_LANGUAGE=ar
+WHISPER_BEAM_SIZE=5
+WHISPER_VAD_FILTER=true
+WHISPER_MIN_SPEECH_DURATION_MS=250
+
+# --- Prompt / Priming Control ---
+# Slices script to max words to fit Whisper's strict 224-token prompt buffer
+INITIAL_PROMPT_MAX_WORDS=120
+DEFAULT_INITIAL_PROMPT=السلام عليكم، أهلاً بيكم. في الفيديو ده هنتكلم بالعامية المصرية، عشان نفهم الموضوع صح. زي الموبايل، التريند، الميكروباص، والسيستم. يا عم ركز معايا، وبلاش كلام كتير.
+
+# --- Animation Cadence & Pacing (Timeline Chunking) ---
+# Hard limit on words per timestamp chunk (forces line splits if exceeded)
+PACING_MAX_WORDS=4
+
+# Target timing range per keyframe image (in seconds)
+PACING_MIN_DURATION=1.8
+PACING_TARGET_DURATION=3.2
+PACING_MAX_DURATION=4.2
+
+# Silence pause in audio that triggers a timestamp split (in seconds)
+PACING_MIN_GAP_SPLIT=0.45
+
+# --- Paths & File Preferences ---
+RUNS_DIR=youtube_runs
+POLISHED_AUDIO_SUBDIR=audacity_voice
+AUDIO_FILENAME=full_episode_voice.wav
+REFINED_SCRIPT_FILENAME=refined_script.txt
+FINAL_OUTPUT_FILENAME=final_output.txt
+
+# --- Export Controls ---
+EXPORT_SRT=true
+EXPORT_TIMELINE_TXT=true
