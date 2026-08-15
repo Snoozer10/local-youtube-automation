@@ -16,13 +16,11 @@ INITIAL_PROMPT_MAX_WORDS=120
 DEFAULT_INITIAL_PROMPT=السلام عليكم، أهلاً بيكم. في الفيديو ده هنتكلم بالعامية المصرية، عشان نفهم الموضوع صح. زي الموبايل، التريند، الميكروباص، والسيستم. يا عم ركز معايا، وبلاش كلام كتير.
 
 # --- Animation Cadence & Pacing (Timeline Chunking) ---
-# Hard limit on words per timestamp chunk (forces line splits if exceeded)
-PACING_MAX_WORDS=4
+# Maximum words allowed in a single timestamp chunk before sub-splitting
+MAX_WORDS_PER_CHUNK=6
 
-# Target timing range per keyframe image (in seconds)
-PACING_MIN_DURATION=1.8
-PACING_TARGET_DURATION=3.2
-PACING_MAX_DURATION=4.2
+# Target size when sub-splitting chunks exceeding MAX_WORDS_PER_CHUNK (e.g. 3-3 words)
+SUB_SPLIT_TARGET_WORDS=3
 
 # Silence pause in audio that triggers a timestamp split (in seconds)
 PACING_MIN_GAP_SPLIT=0.45

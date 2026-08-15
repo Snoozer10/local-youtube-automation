@@ -1,0 +1,45 @@
+{
+  "al_daheeh_master_pipeline_config": {
+    "version": "4.0.0",
+    "target_channel": "Al-Daheeh (الدحيح)",
+    "dialect_profile": {
+      "fusha_academic_ratio": 0.3,
+      "cairo_amiya_ratio": 0.7,
+      "tashkeel_lexicon": {
+        "keda": "كِدَه",
+        "biyool": "بِيُقول",
+        "hoba": "هُوبَّا",
+        "di": "دِي",
+        "dah": "دَه",
+        "qest": "قِسط",
+        "meallem": "مِعَلّم",
+        "baseeha": "بِيصِيهَا",
+        "dashmel": "بِيِدَشْمِل",
+        "khazooq": "خَازُوق",
+        "sahla": "سَحْلَة"
+      }
+    },
+    "pacing_metrics": {
+      "hook_sketch_duration_sec": 90,
+      "target_overall_wpm": 165,
+      "rapid_montage_wpm": 195,
+      "philosophical_outro_wpm": 90,
+      "skeptic_interruption_frequency_words": 250
+    },
+    "tts_acoustic_tags": {
+      "expert_drop": "[tone: expert_drop]",
+      "street_logic": "[tone: street_logic]",
+      "skeptic_shout": "[tone: skeptic_shout]",
+      "bureaucratic_mockery": "[tone: bureaucratic_mockery]",
+      "existential_whisper": "[tone: existential_whisper]",
+      "dramatic_pause": "[pause: tension]",
+      "comedic_pause": "[pause: comedic_halt]"
+    },
+    "visual_diffusion_engine": {
+      "model": "Google Flow / Imagen 3",
+      "style_anchor": "2D editorial cartoon satire mixed with 18th-century oil painting cutout parody, crisp outlines, high contrast, 16:9",
+      "aspect_ratio": "16:9",
+      "default_layout": "AHWA_STUDIO"
+    }
+  }
+}

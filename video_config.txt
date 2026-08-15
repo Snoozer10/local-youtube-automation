@@ -14,16 +14,21 @@ ENABLE_VBV=true
 # --- Output Spec ---
 OUTPUT_WIDTH=2560
 OUTPUT_HEIGHT=1440
+# Never change the framerate dynamically between chunks
 OUTPUT_FPS=30
 OUTPUT_PIX_FMT=yuv420p
 OUTPUT_PROFILE=high
-OUTPUT_LEVEL=4.1
+OUTPUT_LEVEL=5.1
 
-# --- CPU Encoding Optimization ---
-ENCODER_FORCE=libx264
-CPU_CRF=20
+# --- CPU / Hardware Encoding Optimization ---
+# Auto-detects Intel HD 5500 QuickSync (h264_qsv) or falls back to libx264
+ENCODER_FORCE=
+CPU_CRF=22
 CPU_PRESET=faster
 CPU_TUNE=film
+
+# Chunk size 25 prevents memory spikes on 2-Core i7-5600U
+CHUNK_SIZE=25
 
 # --- Hardware Encoder Preferences (Unused) ---
 QSV_PRESET=fast

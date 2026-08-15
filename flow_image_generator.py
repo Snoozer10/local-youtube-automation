@@ -43,8 +43,11 @@ def enforce_arabic_in_prompt(prompt_text):
         sanitized = re.sub(pattern, repl, sanitized)
 
     # Check if prompt explicitly requests no text overlay ("NONE") or if actual Arabic text is present
-    has_explicit_none = '"text_overlay_arabic": "NONE"' in sanitized or '"text_overlay_arabic": "none"' in sanitized.lower()
-    has_arabic_script = bool(re.search(r'[\u0600-\u06FF]', sanitized))
+    has_explicit_none = (
+        '"text_overlay_arabic": "NONE"' in sanitized
+        or '"text_overlay_arabic": "none"' in sanitized.lower()
+    )
+    has_arabic_script = bool(re.search(r"[\u0600-\u06FF]", sanitized))
 
     if has_arabic_script and not has_explicit_none:
         directive = (
@@ -58,7 +61,7 @@ def enforce_arabic_in_prompt(prompt_text):
             "\n\n[STRICT NO ON-SCREEN TEXT RULE]: Do NOT render any visible text, letters, numbers, labels, captions, or typography anywhere on screen. Keep the image pure visual art with zero text."
             "\nNegative prompt: text, typography, letters, numbers, labels, words, signs, watermark, captions."
         )
-    
+
     return sanitized + directive
 
 def clear_attached_prompt_chips(page):
@@ -240,7 +243,13 @@ def parse_json_prompts(file_path):
                         idx_val = int(idx_m.group(1))
                         ts_val = ts_m.group(1) if ts_m else ""
                         # FIX #2: Append full 6-element tuple for fallback regex
-                        prompts.append((idx_val, ts_val, obj_str, "STANDALONE", 1, 1))
+                        mock_item = {
+                            "index": idx_val,
+                            "timestamp": ts_val,
+                            "sequence_type": "STANDALONE",
+                            "visual_prompt": obj_str
+                        }
+                        prompts.append((idx_val, ts_val, obj_str, "STANDALONE", 1, 1, mock_item))
                         continue
                 except Exception:
                     pass
@@ -766,73 +775,33 @@ def main():
                             
                             # 1. SEND THE FULL SCRIPT FOR GLOBAL ANALYSIS
                             full_script_text = " ".join(sentences)
-                            roadmap_prompt = f"""# SYSTEM PROMPT: VISUAL CONTINUITY ARCHITECT (ARABIC CREATOR STYLE)
-Create a visual roadmap for Google Flow still-image animation.
+                            roadmap_prompt = f"""### SYSTEM_PROMPT: AL_DAHEEH_VISUAL_ROADMAP_ENGINE_V4.0 ###
 
-### CHARACTER TOKENS
-1. **HOST (Sparing, <25%)**: 2D faceless character, smooth featureless white circular head (no eyes, no nose, no mouth, no glasses), short wavy black hair, wearing a vibrant red baseball cap, dark charcoal t-shirt, and an open light-grey lab coat / jacket.
-2. **USER (Main Actor)**: Minimalist stick figure, white circular head, vertical line eyes (`||`), black t-shirt, line limbs.
-3. **MAIN CHARACTER (SINGLE)**: Main character alone.
-4. **SECONDARY CHARACTERS (DUO / MULTI)**: Main character interacting with a distinct, 2D secondary character.
-5. **CROWD / GROUPS (GROUP)**: An active crowd of stick-figures.
-6. **ABSENT**: For standalone diagrams, conceptual diagrams, hardware devices, B-roll, UI HUDs, typography, pure typography scenes, or isolated objects.
+ROLE: Lead Visual Director and Storyboard Architect for Al-Daheeh Production Pipeline.
+OBJECTIVE: Ingest the complete Arabic script and generate a hyper-precise Markdown Continuity Table to guide Google Flow (Nano Banana / Imagen).
 
-### PROGRESSIVE CONCEPT BUILD-UP VARIANTS (SELECT FIT FOR SCRIPT CONTEXT)
-Whenever the script explains a process, mechanism, comparison, or breakdown:
-- **DO NOT** condense it into 1 frame.
-- **BUILD IT PROGRESSIVELY** across extended keyframe chains using one of these visual variants:
-  * **Variant A (Flow & Transmission)**: Base Subject -> Vector Arrow -> Active Payload -> Target Node -> Result Inset -> Arabic Callout Badge.
-  * **Variant B (Comparison/Split)**: Dual Split Screen -> Left Option A -> Right Option B -> VS/Checkmark Badge.
-  * **Variant C (Macro Inset Breakdown)**: Wide Subject -> Circular Magnifying Lens -> Internal Mechanics -> Component Labels.
-  * **Variant D (Pipeline & Network Nodes)**: Core Node -> Connector Lines -> Terminal Nodes -> Energy Pulses -> Status Cards.
-  * **Variant E (Collection Grid)**: Empty Display Shelf -> Batch 1 Items -> Batch 2 Items -> Summary Badge.
-  * **Variant F (Infographic Data HUD)**: Gauge Baseline -> 50% Fill -> 100% Fill + Spotlight -> Metric Callout.
+I. CHARACTER ARCHETYPES:
+1. [HOST_STORYTELLER]: 2D flat vector cutout of a manic millennial Cairene intellectual, wide expressive eyes, dark hoodie, messy desk background.
+2. [HISTORICAL_PARODY]: Formal 18th-century oil painting portrait of historical king/scientist undercut with cheap modern Egyptian props (sunglasses, plastic tea cup, shisha, 'kouz lanchon').
+3. [BUREAUCRATIC_SCIENCE]: Biological cells, atoms, or organs personified as tired Egyptian government employees with ID badges and tea cups.
+4. [RETRO_BLUEPRINT]: Dark navy background, glowing cyan vector lines, Maxwell equations, floating HUD diagrams.
 
-### STORYBOARD BEAT-BY-BEAT PRODUCTION ARC
-When designing a scene sequence, map the progression to this structural arc:
-- OPENER: Wide establishing shot introducing the environment, the main character, and the core goal/object.
-- PREPARATION: Medium shot revealing the tools, steps, or concepts needed.
-- FIRST ACTION: Close-up showing the process beginning with visible, clear progress.
-- TRANSFORMATION: Extreme close-up of the most visually satisfying, peak moment.
-- PROGRESS: Medium close-up showing continuation and improvement.
-- FINAL STEP: Dramatic close shot building high anticipation.
-- FINAL REVEAL: Wide cinematic shot showing the finished result, character reaction, and a satisfying wrap-up.
+II. LAYOUT CLASSIFICATIONS:
+- [AHWA_STUDIO]: Cluttered Egyptian room, dangling cables, monitors, books, tea glasses.
+- [ISOLATED_VECTOR_WHITE]: Pure #FFFFFF background for rapid list montages.
+- [HISTORICAL_OIL]: Symmetrical museum-grade framing undercut by trivial street props.
+- [RETRO_BLUEPRINT]: High-tech dark vector HUD for technical blueprints and equations.
 
-### HIGH QUALITY SEQUENCE TYPES & DIRECTIVES
-1. **STANDALONE**: Single isolated keyframe concept or visual beat.
-2. **PROGRESSIVE_BUILD_SET**: Multi-frame step-by-step element accumulation (Device -> Arrow -> Payload -> Signal -> Output).
-3. **THEME_SET_CONTINUITY**: Multi-frame scene holding subject & room background steady across state/pose shifts.
-4. **STOP_MOTION_SET**: High-frequency frame sequence simulating fluid animation cuts or physical motion.
-5. **CAMERA_ZOOM_SEQUENCE**: Multi-frame push-in (wide establishing shot -> medium detail -> extreme macro close-up) or pull-out.
-6. **PANORAMIC_PAN_SET**: Multi-frame seamless horizontal or vertical camera pan across a continuous visual canvas.
-7. **CHARACTER_ACTION_ARC**: Multi-frame step-by-step breakdown of dynamic movement, body gesture, or physical action.
-8. **CHALLENGER_CARD**: Gamified vs matchup layout, head-to-head comparison, or dual-threat card visual.
-9. **COLLECTION_BOARD**: Grid or display shelf gathering multiple collected items, tech icons, badges, or concepts.
-10. **SPEED_ROUND_HUD**: Rapid-fire quiz/data HUD layout with glowing timer, live point counters, and status badges.
-11. **DIAGRAM_BREAKDOWN**: Technical blueprint or schematic with glowing vector directional arrows, callouts, and component labels.
-12. **INFOGRAPHIC_PHOTO_INSET**: Graphic vector layout featuring a realistic photographic or high-tech blueprint inset card.
-13. **FLASHBACK_STORY**: Retro monochromatic or sepia-toned historical memory, backstory, or contextual origin scene.
-14. **SPLIT_PANEL**: Dual-view screen (vertical or horizontal split) comparing two contrasting states, choices, or perspectives.
-15. **BEFORE_AFTER_TRANSFORMATION**: Dramatic transition split or cut showing "Before" state vs "After" state visual impact.
-16. **ISOMETRIC_PIPELINE**: 3D-angled isometric vector schema detailing system architectures, workflows, network nodes, or data paths.
-17. **COMIC_MULTI_PANEL**: Multi-panel comic strip layout (2-panel or 3-panel grid with crisp black borders) for fast comedic beats.
-18. **MACRO_INSET_FOCUS**: Wide scene with a magnified circular vector lens highlight displaying microscopic or technical inner details.
-19. **TYPOGRAPHY_SCENE**: Bold Arabic text-centric frame for chapter titles, key statistics, major statements, or punchlines.
-20. **POV**: Direct first-person point-of-view perspective framing the scene through the main character's eyes.
+III. PROGRESSIVE BUILD LOGIC (Variants A–F):
+Variant A (Base Entity) -> Variant B (+Bold Label) -> Variant C (+Vector Force Arrows) -> Variant D (+Scale Comparison) -> Variant E (+Sarcastic Meme Asset) -> Variant F (Existential Dark Fade).
 
-### LAYOUT TOKENS (MUST BE USED IN LAYOUT CLASSIFICATION COLUMN)
-1. **ISOLATED_WHITE**: Seamless pure white background (`#FFFFFF`) with no floor/wall textures.
-2. **ENVIRONMENT_ROOM**: Cartoon room, beige tiled floor, brown wooden table, front orthographic perspective.
-3. **CINEMATIC_PACING**: Wide-angle dramatic framing, dynamic depth, cinematic perspective.
-
-### CAMERA & MOOD GUIDELINES FOR VISUAL CONCEPT COLUMN
-- Include camera framing cues in the Visual Concept column: Wide Establishing (Fisheye 35mm), Medium Action, Close-Up Macro (120mm), or POV.
-- Include lighting mood presets: Playful/Optimistic, Educational/Informative, Serious/Tension, or Melancholy.
-
---------------------------------------------------------------------------------
-### ROADMAP TABLE OUTPUT FORMAT
+IV. OUTPUT SCHEMA:
+Output ONLY a Markdown table with these exact columns:
 | Index | Timestamp | Script Line | Sequence Type | Layout Classification | Visual Concept & Composition | Color & Selective Text Overlay |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+
+RULES FOR TEXT OVERLAY:
+- Arabic Text ONLY for: Authority Anchors (University names), Sarcastic Labels (e.g., 'دا قِسط!'), and Numbers (e.g., '18 كوينتيليون').
+- Value MUST be 'NONE' during the opening 90s sketch and the closing outro.
 
 SCRIPT:
 {full_script_text}
@@ -870,9 +839,8 @@ SCRIPT:
 
                         if chunks_to_process:
                             print(f"[PHASE 1B] Initializing Gemini setup for {len(chunks_to_process)} missing chunk(s)...")
-                            generic_monolithic_template = """# SYSTEM PROMPT: KEYFRAME PROMPT ARCHITECT (ARABIC CREATOR STYLE)
-
-Translate the Master Visual Roadmap into stateless keyframe JSON prompts for Google Flow.
+                            generic_monolithic_template = """# SYSTEM PROMPT: KEYFRAME PROMPT ARCHITECT (AL-DAHEEH VISUAL STYLE)
+Translate the Master Continuity Roadmap into stateless keyframe JSON prompts for Google Flow.
 
 ---
 
@@ -881,144 +849,51 @@ Translate the Master Visual Roadmap into stateless keyframe JSON prompts for Goo
 
 ---
 
-### MANDATORY TOKENS & DIRECTIVES
+### MANDATORY TOKENS & STYLE ANCHORS:
+1. STYLE ANCHOR: "2D editorial cartoon satire mixed with 18th-century oil painting cutout parody. Crisp vector line art, high-contrast studio lighting, bold colors, absurd visual juxtapositions, 16:9 widescreen format, 4K resolution."
+2. CHARACTER TOKENS:
+   - "HOST: 2D flat vector cutout illustration of a manic millennial Cairene intellectual with expressive eyes, messy hair, dark charcoal hoodie, sitting in a cluttered studio."
+   - "HISTORICAL: Authentic classical oil painting portrait of [Figure Name] wearing formal attire but holding [Egyptian street prop: sunglasses / plastic tea glass / kouz lanchon]."
+   - "PERSONIFIED_SCIENCE: Abstract biological organ or atom illustrated as a bored Egyptian civil servant in a beige suit with a government ID badge."
+   - "ABSENT: For standalone technical HUD blueprints, maps, and isolated objects."
 
-1. **VERBATIM CHARACTER TOKENS**:
-   - **HOST**: `"HOST: 2D faceless character, smooth featureless white circular head (no eyes, no nose, no mouth, no glasses), short wavy black hair, wearing a vibrant red baseball cap, dark charcoal t-shirt, and an open light-grey lab coat / jacket."` (Use sparingly, <25%).
-   - **USER**: `"USER: Minimalist 2D stick figure, white circular head with simple vertical line eyes (||), wearing a plain black t-shirt with thin black line-art limbs."`
-   - **MAIN CHARACTER**: `"SINGLE: A simple 2D character. Head is a uniform white circle with no nose or ears. Mouth is a single expressive black vector stroke. Exactly 3 to 5 thin black hair strands curving from the top of the scalp (bald otherwise). Wears an unbranded charcoal-grey hoodie (with a visible hood resting on the shoulders) and dark sweatpants. Arms and legs are simple, uniform black line art.`"
-   - **SECONDARY CHARACTERS**: `"DUO / MULTI: Same 2D vector style. To distinguish them, they must have a flat-colored circle head (e.g., pale flat yellow), different hair configurations, or a simple flat-blue or flat-maroon hoodie. They must be drawn interacting directly with the main character (e.g., talking, pointing, handing over an object)."`
-   - **CROWD / GROUPS**: `"GROUP: A background collection of multiple minimalist circle-head stick figures interacting naturally."`
-   - **ABSENT**: `"ABSENT"`
+3. LAYOUT TOKENS:
+   - "AHWA_STUDIO: Cluttered Egyptian room set in flat orthographic view, books, cables, monitors, warm indoor lighting."
+   - "ISOLATED_WHITE: Pure solid white background (#FFFFFF) with zero textures or shadows."
+   - "RETRO_BLUEPRINT: Deep dark navy background with glowing cyan blueprint schematic lines and mathematical equations."
 
-2. **VERBATIM LAYOUT TOKENS**:
-   - **ENVIRONMENT_ROOM**: `"ENVIRONMENT_ROOM: Simple 2D cartoon room set in a flat orthographic front-facing perspective. Off-white plain background wall with a dark horizontal dividing line, light beige square tiled floor with subtle brown grid lines, and a plain rectangular brown wooden four-legged table placed horizontally in the center foreground."`
-   - **ISOLATED_WHITE**: `"ISOLATED_WHITE: Isolated subject on a seamless, pure solid white background (#FFFFFF) with no shadows or wall textures."`
-   - **CINEMATIC_PACING**: `"CINEMATIC_PACING: Wide-angle cinematic framing for dramatic reveals, emphasizing depth and perspective."`
-
-3. **PROGRESSIVE ELEMENT ACCUMULATION & HIGH QUALITY SEQUENCE TYPES**:
-   - **PROGRESSIVE VISUAL BUILD VARIANTS (SELECT THE BEST MATCH FOR SCRIPT CONTEXT)**:
-     Build elements additively across consecutive keyframes while keeping camera coordinates and room background 100% FROZEN:
-
-     - **VARIANT A (FLOW & TRANSMISSION - 3 to 6 frames)**:
-       * F1: Base Source Object/Subject alone (e.g., Router, Heart, Bank, Brain, Server).
-       * F2: Append thick curved directional arrow/vector line originating from source.
-       * F3: Append active payload/particles (e.g., signal waves, blood cells, coins, light rays, binary bits, molecules).
-       * F4: Append receiving target node/device (e.g., Smartphone, Organ, Customer, Output Screen).
-       * F5: Append result thumbnail inset card (e.g., video thumbnail, chart, medical scan).
-       * F6: Append bold Arabic concept callout badge with high-contrast accent outline.
-
-     - **VARIANT B (COMPARISON / BEFORE-AFTER - 2 to 4 frames)**:
-       * F1: Split canvas into dual equal panels (`SPLIT_PANEL`).
-       * F2: Left panel populates with Option A / "Before" state illustration.
-       * F3: Right panel populates with Option B / "After" state illustration.
-       * F4: Append central "VS" or Checkmark vs Cross comparison callout badge.
-
-     - **VARIANT C (MACRO INSET BREAKDOWN - 3 to 5 frames)**:
-       * F1: Wide shot of main subject (e.g., Human Body, Engine, Smartphone, Cell, Planet).
-       * F2: Append magnified circular vector lens target over specific sub-component.
-       * F3: Reveal micro/internal mechanics inside the circular lens highlight (`MACRO_INSET_FOCUS`).
-       * F4: Append labeled directional callout arrows and short Arabic component tags around the lens.
-
-     - **VARIANT D (PIPELINE & NETWORK NODES - 4 to 8 frames)**:
-       * F1: Central core node appears (`ISOMETRIC_PIPELINE`).
-       * F2: Branching connector lines shoot outward to empty node slots.
-       * F3: Terminal node icons populate at line ends.
-       * F4: Data packets / energy pulses travel along connecting pathways.
-       * F5: Status indicators / result cards pop up at terminal nodes.
-
-     - **VARIANT E (COLLECTION GRID ASSEMBLY - 3 to 5 frames)**:
-       * F1: Display empty grid board or shelf layout (`COLLECTION_BOARD`).
-       * F2: First batch of collected items/badges pop into initial slots.
-       * F3: Remaining slots populate with items.
-       * F4: Summary badge or total metric card pops up at the center.
-
-     - **VARIANT F (INFOGRAPHIC DATA HUD RISE - 3 to 5 frames)**:
-       * F1: Baseline metric gauge or bar chart layout (`SPEED_ROUND_HUD`).
-       * F2: Progress gauge fills to 50% + live numeric counter appears.
-       * F3: Progress gauge fills to 100% + glowing accent highlight.
-       * F4: Append top Arabic statistical result badge (e.g., `"نمو بنسبة 100%"`)..
-   - SPEECH BUBBLES: Render clean 2D white vector speech bubbles with dark outlines containing Arabic dialogue (e.g., `"شغل الفيديو الي بعده"`).
-   - TECHNICAL GRAPHICS: Use curved yellow directional arrows, floating neon-green binary digits (`0` and `1`), blue radiating Wi-Fi arcs, and rectangular inset media cards (e.g., funny cat video thumbnail).
-   - **STANDALONE**: Single isolated keyframe concept or visual beat.   
-   - **THEME_SET_CONTINUITY**: Multi-frame consistency locking room/character baseline while mutating gestures.
-   - **STOP_MOTION_SET**: High-frequency frame sequence simulating fluid movement.
-   - **CAMERA_ZOOM_SEQUENCE**: Multi-frame camera distance shift (Wide establishing -> Medium -> Extreme Close-Up Macro).
-   - **PANORAMIC_PAN_SET**: Multi-frame panning action across an extended scene.
-   - **CHARACTER_ACTION_ARC**: Multi-frame movement or reaction arc.
-   - **CHALLENGER_CARD**: Versus matchup card or direct comparison frame.
-   - **COLLECTION_BOARD**: Multi-item display shelf or visual collection grid.
-   - **SPEED_ROUND_HUD**: Rapid data HUD layout with glowing timer and score counters.
-   - **DIAGRAM_BREAKDOWN**: Detailed schematic breakdown with vector arrows and callouts.
-   - **INFOGRAPHIC_PHOTO_INSET**: Clean graphic with photographic/blueprint inset panel.
-   - **FLASHBACK_STORY**: Sepia/monochromatic narrative backstory scene.
-   - **SPLIT_PANEL**: Vertical or horizontal dual-view comparison.
-   - **BEFORE_AFTER_TRANSFORMATION**: Before vs After state comparison layout.
-   - **ISOMETRIC_PIPELINE**: 3D isometric vector schema detailing system components or flow.
-   - **COMIC_MULTI_PANEL**: Multi-panel comic strip format (2-panel or 3-panel layout).
-   - **MACRO_INSET_FOCUS**: Main wide scene with a magnified circular lens highlight showing micro details.
-   - **TYPOGRAPHY_SCENE**: Bold Arabic text-centric frame for chapters or major punchlines.
-   - **POV**: First-person point-of-view perspective frame.
-
-4. **CAMERA RECIPES & MOOD PRESETS**:
-   - Camera Lenses: Fisheye 35mm at f/8 (Wide/Establishing), Macro 120mm f/4 at f/2.8 (Close-Up/Metaphor), 35mm f/4 (Medium/Standard), POV (First-person).
-   - Mood Presets: Playful/Optimistic (Warm pastel yellow/sky blue), Educational/Informative (Crisp neutral light grey), Serious/Tension (Deep charcoal/slate blue), Melancholy (Desaturated cold blue).
-
-5. **RETENTION & COMPOSITION RULES**:
-   - **LAYOUT ROTATION**: Max 15 consecutive identical layouts/sequence types. Rotate layout classifications constantly.
-   - **LOCKED SET CONTINUITY**: For multi-frame sets (up to 15 frames), lock room/camera coordinates verbatim; mutate ONLY `subject_action_increment`.
-
-6. **SELECTIVE ARABIC TEXT DIRECTIVES (`text_overlay_arabic`)**:
-   - `text_overlay_arabic` MUST contain either the **ACTUAL ARABIC WORDS** to be rendered on screen (in clean, correct Arabic script) OR `"NONE"`.
-   - **WHEN TO INCLUDE ARABIC TEXT**:
-     - **Major Questions / Statements**: Render the actual Arabic question (e.g., `"كيف يعمل الواي فاي؟"`).
-     - - **Top Topic Header**: Render a clean 1-2 word Arabic topic category title at top-center when explaining a technical/scientific concept (derived dynamically from current script topic).
-     - **Contextual Action/Concept Callout**: Render 1 to 3 bold, accurate Arabic words inside a vibrant callout badge with thick black outline highlighting the specific step, action, key term, or punchline relevant to the current script sentence.
-     - **Chapter Headers / Section Titles**: Render clean Arabic section titles (e.g., `"الخطوة الأولى"`).
-     - **Typography Punchlines**: Render dramatic glowing Arabic text for major reveals (e.g., `"السر الحقيقي!"`).
-   - **WHEN TO SET `"NONE"`**:
-     - Set `text_overlay_arabic` to `"NONE"` for routine character actions, B-roll, narrative scenes, or background visuals to prevent visual clutter and rendering artifacts.
-   - **CRITICAL FORMAT RULE**: NEVER output meta-label category descriptions such as `"Text/Question Overlay"` or `"Typography Punchline"`. ALWAYS write the literal Arabic text itself in Arabic script or `"NONE"`.
-
-7. **STYLE ANCHOR**: `"2D webcomic vector style, thick clean black outlines, flat base colors, simple clean lighting, high contrast, crisp line art, cool-toned desaturated slate palette with exactly one vibrant pop of accent color, hyper-sharp focus, dynamic composition, 16:9 aspect ratio."`
-
-8. **JSON SYNTAX**: Output valid JSON array only. Escape inner quotes as `\"`.
+4. ARABIC TEXT DIRECTIVE:
+   - "text_overlay_arabic": Must be 1 to 3 words of bold Arabic text (e.g., "دا قِسط!", "الـ CEO", "جامعة هارفارد") OR strictly "NONE". Zero Latin/English text.
 
 ---
 
-### JSON SCHEMA CONTRACT
-
+### JSON SCHEMA CONTRACT:
 ```json
 [
   {
     "index": 1,
     "timestamp": "[00:00]",
-    "sequence_type": "STANDALONE | PROGRESSIVE_BUILD_SET | THEME_SET_CONTINUITY | STOP_MOTION_SET | CAMERA_ZOOM_SEQUENCE | PANORAMIC_PAN_SET | CHARACTER_ACTION_ARC | CHALLENGER_CARD | COLLECTION_BOARD | SPEED_ROUND_HUD | DIAGRAM_BREAKDOWN | INFOGRAPHIC_PHOTO_INSET | FLASHBACK_STORY | SPLIT_PANEL | BEFORE_AFTER_TRANSFORMATION | ISOMETRIC_PIPELINE | COMIC_MULTI_PANEL | MACRO_INSET_FOCUS | TYPOGRAPHY_SCENE | POV",
-    "layout_classification": "ISOLATED_WHITE | ENVIRONMENT_ROOM | CINEMATIC_PACING",
+    "sequence_type": "STANDALONE | PROGRESSIVE_BUILD_SET | HISTORICAL_PARODY | SCIENTIFIC_BLUEPRINT | SKEPTIC_SPLIT",
+    "layout_classification": "AHWA_STUDIO | ISOLATED_WHITE | RETRO_BLUEPRINT",
     "sequence_metadata": {
       "set_id": "SET_01",
       "frame_index": 1,
-      "total_frames_in_set": 15
+      "total_frames_in_set": 1
     },
     "visual_prompt": {
-      "subject_details": "Verbatim character token string from Section 1 (e.g., 'SINGLE: A simple 2D character...', 'USER: ...', or 'ABSENT').",
-      "subject_action_increment": "Describe exact new visual delta added in this keyframe index.",
-      "motion_delta_description": "Exact motion vector or dynamic movement arrow direction relative to previous keyframe (e.g., 'Curved yellow arrow shoots from left to right at 45 degrees', or 'Static scene with new pop-up inset card').",
-      "environment_coordinates": "Verbatim string definition from Section 2 (e.g., 'ENVIRONMENT_ROOM: ...', 'ISOLATED_WHITE: ...', or 'CINEMATIC_PACING: ...').",
-      "composition_layout": "Spatial arrangement & rule-of-thirds framing (e.g., 'Orthographic front view, rule of thirds: Subject on left, target on right', 'Centered focal point', or 'Dual split screen layout').",
-      "text_overlay_arabic": "Exact Arabic text string in Arabic script (e.g., 'كيف يعمل هذا؟' or 'السر الحقيقي'), OR 'NONE'.",
-      "color_palette_mood": "Base color harmony lock (e.g., 'Cool desaturated slate palette (#2B303A), crisp white background (#FFFFFF), neutral grey tones').",
-      "lighting_setup": "Flat studio vector lighting, clean high contrast, OR mood preset (e.g., 'Playful / Optimistic', 'Educational / Informative', 'Serious / Tension').",
-      "accent_color_hook": "Select exactly ONE context-appropriate vibrant pop accent color matching the topic domain: Sky Blue/Cyan for tech/signals, Neon Green for data/growth, Vibrant Yellow/Gold for arrows/currency/highlights, Crimson Red for medical/heat/warnings, or Electric Violet for AI/quantum.",
-      "camera_specifications": "Camera angle/lens specification (e.g., 'Flat 2D front view framing, 16:9 aspect ratio', or 'Vintage 35mm fisheye lens at f/8', or 'Hasselblad H6D-100c with Macro 120mm f/4').",
-      "style_anchor": "2D webcomic vector style, thick clean black outlines, flat base colors, simple clean lighting, high contrast, crisp line art, cool-toned desaturated slate palette with exactly one vibrant pop of accent color, hyper-sharp focus, dynamic composition, 16:9 aspect ratio.",
-      "aspect_ratio_and_resolution": "16:9 widescreen format, 4K resolution, ultra-clean vector line art, hyper-sharp focus.",
+      "subject_details": "Verbatim character token string.",
+      "subject_action_increment": "Exact action or visual gag depicted.",
+      "environment_coordinates": "Verbatim layout token string.",
+      "composition_layout": "Framing and camera movement: 'Push-in close-up' (zoom_in), 'Pull-out wide' (zoom_out), 'Pan left', 'Pan right', 'Tilt up', 'Tilt down', or 'Orthographic static'.",
+      "camera_specifications": "zoom_in | zoom_out | pan_left | pan_right | tilt_up | tilt_down | static",
+      "text_overlay_arabic": "Bold Arabic string OR 'NONE'",
+      "accent_color_hook": "Cyan for tech, Gold/Yellow for history, Crimson for warnings.",
+      "style_anchor": "2D editorial cartoon satire mixed with 18th-century oil painting cutout parody, crisp outlines, high contrast, 16:9.",
       "negative": {
-        "content": ["English text", "Latin alphabet", "3D shading", "photorealistic textures", "realistic human faces", "real photos", "3D renders", "complex backgrounds", "distracting elements"],
-        "style": "No 3D render style, no real photos, no text, no letters, no watermarks, no gibberish, no AI signatures"
+        "content": ["English text", "Latin alphabet", "3D photorealism", "generic stock photos"],
+        "style": "No 3D renders, no realistic human skin textures, no watermarks"
       }
     }
-  }
 ]
 ```
 
@@ -1130,9 +1005,12 @@ Reply EXACTLY with: **"JSON System Ready. Awaiting chunks."**
                                 try:
                                     # --- CONTINUITY CHAINING PAYLOAD ---
                                     multiframe_seq_types = [
-                                        "STOP_MOTION_SET", "THEME_SET_CONTINUITY", "PROGRESSIVE_BUILD_SET",
-                                        "CAMERA_ZOOM_SEQUENCE", "PANORAMIC_PAN_SET", "CHARACTER_ACTION_ARC",
-                                        "BEFORE_AFTER_TRANSFORMATION", "COMIC_MULTI_PANEL"
+                                        "PROGRESSIVE_BUILD_SET",
+                                        "HISTORICAL_PARODY",
+                                        "SCIENTIFIC_BLUEPRINT",
+                                        "SKEPTIC_SPLIT",
+                                        "THEME_SET_CONTINUITY",
+                                        "CAMERA_ZOOM_SEQUENCE",
                                     ]
 
                                     is_multiframe_continuity = (
@@ -1164,19 +1042,7 @@ Reply EXACTLY with: **"JSON System Ready. Awaiting chunks."**
                                         try:
                                             src = flow_page.locator("img").nth(i).get_attribute("src")
                                             if src: pre_image_srcs.add(src)
-                                        except: pass
-                                    # Multi-frame sequence types that require continuity image anchoring
-                                    multiframe_seq_types = [
-                                        "STOP_MOTION_SET", "THEME_SET_CONTINUITY", "PROGRESSIVE_BUILD_SET",
-                                        "CAMERA_ZOOM_SEQUENCE", "PANORAMIC_PAN_SET", "CHARACTER_ACTION_ARC",
-                                        "BEFORE_AFTER_TRANSFORMATION", "COMIC_MULTI_PANEL"
-                                    ]
-
-                                    is_multiframe_continuity = (
-                                        (seq_type in multiframe_seq_types and frame_idx > 1)
-                                        or (occ > 1)
-                                        or (frame_idx > 1)
-                                    )
+                                        except Exception: pass
 
                                     if is_multiframe_continuity:
                                         attach_previous_image_to_prompt(flow_page)
@@ -1332,47 +1198,61 @@ Reply EXACTLY with: **"JSON System Ready. Awaiting chunks."**
                                         img_locator.scroll_into_view_if_needed()
                                         time.sleep(0.5)
 
+                                        # --- ATTEMPT 1: Native Playwright Screenshot (CORS & Taint Proof) ---
+                                        saved = False
                                         try:
-                                            js_code = """
-                                            async (img) => {
-                                                if (img.src && img.src.startsWith('data:image')) {
-                                                    return img.src;
+                                            img_locator.screenshot(path=current_save_path, type="png")
+                                            if os.path.exists(current_save_path) and os.path.getsize(current_save_path) > 1000:
+                                                print(f"  ✅ Saved (Native Snapshot): {os.path.basename(current_save_path)}")
+                                                saved = True
+                                                if not is_duplicate:
+                                                    download_attempt_success = True
+                                        except Exception as snap_err:
+                                            print(f"  ⚠️ Native screenshot failed ({snap_err}), falling back to Base64 fetch...")
+
+                                        # --- ATTEMPT 2: Base64 / Blob Evaluation Fallback ---
+                                        if not saved:
+                                            try:
+                                                js_code = """
+                                                async (img) => {
+                                                    if (img.src && img.src.startsWith('data:image')) {
+                                                        return img.src;
+                                                    }
+                                                    try {
+                                                        const response = await fetch(img.src);
+                                                        const blob = await response.blob();
+                                                        return new Promise((resolve) => {
+                                                            const reader = new FileReader();
+                                                            reader.onloadend = () => resolve(reader.result);
+                                                            reader.readAsDataURL(blob);
+                                                        });
+                                                    } catch (e) {
+                                                        const canvas = document.createElement('canvas');
+                                                        canvas.width = img.naturalWidth || img.width;
+                                                        canvas.height = img.naturalHeight || img.height;
+                                                        const ctx = canvas.getContext('2d');
+                                                        ctx.drawImage(img, 0, 0);
+                                                        return canvas.toDataURL('image/png');
+                                                    }
                                                 }
-                                                try {
-                                                    const response = await fetch(img.src);
-                                                    const blob = await response.blob();
-                                                    return new Promise((resolve) => {
-                                                        const reader = new FileReader();
-                                                        reader.onloadend = () => resolve(reader.result);
-                                                        reader.readAsDataURL(blob);
-                                                    });
-                                                } catch (e) {
-                                                    const canvas = document.createElement('canvas');
-                                                    canvas.width = img.naturalWidth || img.width;
-                                                    canvas.height = img.naturalHeight || img.height;
-                                                    const ctx = canvas.getContext('2d');
-                                                    ctx.drawImage(img, 0, 0);
-                                                    return canvas.toDataURL('image/png');
-                                                }
-                                            }
-                                            """
-                                            base64_data_url = img_locator.evaluate(js_code)
+                                                """
+                                                base64_data_url = img_locator.evaluate(js_code)
 
-                                            if base64_data_url and isinstance(base64_data_url, str) and "," in base64_data_url:
-                                                base64_string = base64_data_url.split(",")[1]
-                                                img_bytes = base64.b64decode(base64_string)
+                                                if base64_data_url and isinstance(base64_data_url, str) and "," in base64_data_url:
+                                                    base64_string = base64_data_url.split(",")[1]
+                                                    img_bytes = base64.b64decode(base64_string)
 
-                                                with open(current_save_path, "wb") as f:
-                                                    f.write(img_bytes)
+                                                    with open(current_save_path, "wb") as f:
+                                                        f.write(img_bytes)
 
-                                                if os.path.exists(current_save_path) and os.path.getsize(current_save_path) > 100:
-                                                    print(f"  ✅ Saved: {os.path.basename(current_save_path)}")
-                                                    if not is_duplicate:
-                                                        download_attempt_success = True
-                                            else:
-                                                print("  ⚠️ Failed to parse Base64 data from browser.")
-                                        except Exception as e:
-                                            print(f"  ⚠️ Direct extraction failed: {e}")
+                                                    if os.path.exists(current_save_path) and os.path.getsize(current_save_path) > 100:
+                                                        print(f"  ✅ Saved (Base64 Stream): {os.path.basename(current_save_path)}")
+                                                        if not is_duplicate:
+                                                            download_attempt_success = True
+                                                else:
+                                                    print("  ⚠️ Failed to parse Base64 data from browser.")
+                                            except Exception as e:
+                                                print(f"  ⚠️ Direct extraction failed: {e}")
 
                                     if download_attempt_success:
                                         success = True

@@ -636,14 +636,12 @@ def main():
                             textbox = find_input_box(gemini_page)
                             if textbox:
                                 academic_setup = (
-                                    "ACADEMIC DIRECTIVE: You are executing a"
-                                    " highly structured, analytical comparative"
-                                    " linguistic transcreation task. You must"
-                                    " analyze English source texts and adapt"
-                                    " them into regional colloquial Egyptian"
-                                    " Arabic dialects. Acknowledge the style"
-                                    f" guide:\n\n{prompt_p3}"
+                                    "ACADEMIC DIRECTIVE: You are executing a highly structured, analytical comparative "
+                                    "linguistic transcreation task for an educational science documentary. You must "
+                                    "adapt English source texts into conversational Egyptian Arabic (30% Academic Fusha : 70% Cairene Amiya). "
+                                    f"Acknowledge the style guide:\n\n{prompt_p3}"
                                 )
+                                
                                 textbox.click()
                                 textbox.fill(academic_setup)
                                 time.sleep(1)

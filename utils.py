@@ -53,12 +53,17 @@ def kill_cdp_chrome(port=9222):
         cmd = f"netstat -ano | findstr :{port}"
         try:
             lines = subprocess.check_output(cmd, shell=True).decode().strip().split('\n')
+            killed_pids = set()
             for line in lines:
-                if 'LISTENING' in line:
-                    pid = line.strip().split()[-1]
-                    subprocess.run(f"taskkill /F /T /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    print(f"Killed CDP Chrome process (PID: {pid}) on port {port}.")
-                    time.sleep(2)  # CRITICAL: Wait for the OS to free the TCP socket
+                parts = line.strip().split()
+                if len(parts) >= 5 and 'LISTENING' in parts:
+                    pid = parts[-1]
+                    if pid.isdigit() and pid not in killed_pids and int(pid) > 4:
+                        subprocess.run(f"taskkill /F /T /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        killed_pids.add(pid)
+                        print(f"[SYSTEM] Killed CDP Chrome process (PID: {pid}) on port {port}.")
+            if killed_pids:
+                time.sleep(2)  # Wait for OS to release the socket
         except Exception:
             pass
 

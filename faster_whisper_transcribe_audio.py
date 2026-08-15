@@ -5,6 +5,7 @@ import torch
 import wave
 import glob
 import re
+import math
 from faster_whisper import WhisperModel
 
 # Ensure WinGet binaries (ffmpeg) are accessible
@@ -27,10 +28,8 @@ def load_transcribe_config(config_path="transcribe_config.txt") -> dict:
         "WHISPER_MIN_SPEECH_DURATION_MS": 250,
         "INITIAL_PROMPT_MAX_WORDS": 120,
         "DEFAULT_INITIAL_PROMPT": "يا عم، بتهلوس؟ الجاس لايتنج ده بجد، والمريونيط بيتحرك، والرموت كونترول تاه. سدقني، بلاش تلعب بالنار.",
-        "PACING_MAX_WORDS": 4,
-        "PACING_MIN_DURATION": 1.8,
-        "PACING_TARGET_DURATION": 3.2,
-        "PACING_MAX_DURATION": 4.2,
+        "MAX_WORDS_PER_CHUNK": 6,
+        "SUB_SPLIT_TARGET_WORDS": 3,
         "PACING_MIN_GAP_SPLIT": 0.45,
         "RUNS_DIR": "youtube_runs",
         "POLISHED_AUDIO_SUBDIR": "audacity_voice",
@@ -62,9 +61,15 @@ def load_transcribe_config(config_path="transcribe_config.txt") -> dict:
                     if isinstance(default_val, bool):
                         config[key] = value.lower() in ('true', '1', 'yes', 'on')
                     elif isinstance(default_val, int):
-                        config[key] = int(float(value))
+                        try:
+                            config[key] = int(float(value))
+                        except ValueError:
+                            pass
                     elif isinstance(default_val, float):
-                        config[key] = float(value)
+                        try:
+                            config[key] = float(value)
+                        except ValueError:
+                            pass
                     else:
                         config[key] = value
     return config
@@ -171,29 +176,154 @@ def read_initial_prompt(latest_run, config):
     return None
 
 
-def align_and_pace_script(custom_prompt, all_words, config):
-    """
-    ANIMATION CADENCE ENGINE:
-    Splits audio into visually rhythmic units using transcribe_config.txt constraints.
-    Guarantees strict time monotonicity (prevents backwards/overlapping timestamps).
-    """
-    def clean_tok(w):
-        return re.sub(r'[^\w\s]', '', w).strip().lower()
+def clean_text_for_transcript_and_srt(text: str) -> str:
+    """Strips punctuation marks, brackets, and quotation marks for transcript and SRT subtitles."""
+    cleaned = re.sub(r'[\(\)\[\]\{\}\"\'«»“”‘’،,\.\!\?\؟\:\;\؛—\-\…]+', ' ', text)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned
 
+
+def split_word_list_balanced(words_list: list, max_words: int = 6, target_size: int = 3) -> list:
+    """
+    Subdivides any word list with more than max_words (e.g. > 6 words) into balanced 
+    sub-chunks of target_size (e.g., 3-3, 4-3, 4-4, 3-3-3 words).
+    """
+    n = len(words_list)
+    if n <= max_words:
+        return [words_list]
+
+    k = max(2, math.ceil(n / 4))
+    while math.ceil(n / k) > 4:
+        k += 1
+
+    base_size = n // k
+    rem = n % k
+
+    sub_chunks = []
+    idx = 0
+    for i in range(k):
+        size = base_size + (1 if i < rem else 0)
+        sub_chunks.append(words_list[idx:idx + size])
+        idx += size
+    return sub_chunks
+
+
+def process_words_to_paced_chunks(aligned_words: list, config: dict) -> list:
+    """
+    TIMELINE PUNCTUATION & CADENCE ENGINE:
+    - Splits on opening brackets/quotes (BEFORE the word).
+    - Splits on closing brackets/quotes, commas, and punctuation (AFTER the word).
+    - Splits on audio silence gaps >= PACING_MIN_GAP_SPLIT.
+    - If a chunk exceeds MAX_WORDS_PER_CHUNK (> 6 words), it splits into balanced 3-3 chunks.
+    """
+    if not aligned_words:
+        return []
+
+    OPENING_PUNCT_REGEX = re.compile(r'^[\(\[\{\"\«\“\‘\']')
+    CLOSING_OR_END_PUNCT_REGEX = re.compile(r'[\)\]\}\"\»\”\’\'\,\،\.\!\?\؟\:\;\؛\-\—\…]+$')
+    ANY_PUNCT_INSIDE_REGEX = re.compile(r'[،,.\?!؟:;؛—\-\…\(\)\[\]\{\}\"\'«»“”‘’]')
+
+    MAX_WORDS = config.get("MAX_WORDS_PER_CHUNK", 6)
+    TARGET_WORDS = config.get("SUB_SPLIT_TARGET_WORDS", 3)
+    MIN_GAP_SPLIT = config.get("PACING_MIN_GAP_SPLIT", 0.45)
+
+    raw_chunks = []
+    curr_words = []
+
+    for i, w_info in enumerate(aligned_words):
+        w_text = w_info["text"]
+        w_start = w_info["start"]
+        w_end = w_info["end"]
+
+        # Check if the word begins with an opening bracket/quote -> Split BEFORE this word
+        if curr_words and OPENING_PUNCT_REGEX.search(w_text):
+            raw_chunks.append(curr_words)
+            curr_words = []
+
+        curr_words.append(w_info)
+
+        is_last_word = (i == len(aligned_words) - 1)
+        has_closing_or_punct = bool(CLOSING_OR_END_PUNCT_REGEX.search(w_text) or ANY_PUNCT_INSIDE_REGEX.search(w_text))
+
+        next_gap = 0.0
+        if i < len(aligned_words) - 1:
+            next_gap = max(0.0, aligned_words[i + 1]["start"] - w_end)
+
+        should_split = False
+        if is_last_word:
+            should_split = True
+        elif has_closing_or_punct:
+            should_split = True
+        elif next_gap >= MIN_GAP_SPLIT:
+            should_split = True
+
+        if should_split:
+            raw_chunks.append(curr_words)
+            curr_words = []
+
+    if curr_words:
+        raw_chunks.append(curr_words)
+
+    # Sub-split any chunk > MAX_WORDS (e.g. > 6 words) into balanced 3-3 word units
+    final_chunks = []
+    last_end = 0.0
+
+    for chunk in raw_chunks:
+        if not chunk:
+            continue
+        sub_chunk_lists = split_word_list_balanced(chunk, max_words=MAX_WORDS, target_size=TARGET_WORDS)
+        for sub_list in sub_chunk_lists:
+            if not sub_list:
+                continue
+            
+            c_start = max(sub_list[0]["start"], last_end)
+            c_end = max(sub_list[-1]["end"], c_start + 0.1)
+            last_end = c_end
+
+            raw_clause = " ".join(w["text"] for w in sub_list).strip()
+            clean_clause = clean_text_for_transcript_and_srt(raw_clause)
+
+            final_chunks.append({
+                "start": c_start,
+                "end": c_end,
+                "raw_text": raw_clause,
+                "clean_text": clean_clause
+            })
+
+    return final_chunks
+
+def normalize_arabic_token(w: str) -> str:
+    """Normalizes Arabic text variations, strips diacritics/tashkeel, and removes punctuation."""
+    if not w:
+        return ""
+    # Strip Harakat (Tashkeel / vowels)
+    w = re.sub(r'[\u064B-\u065F\u0670]', '', w)
+    # Normalize all forms of Alef (أ, إ, آ, ٱ -> ا)
+    w = re.sub(r'[إأآٱ]', 'ا', w)
+    # Normalize Yaa / Alef Maksura (ى -> ي)
+    w = re.sub(r'ى', 'ي', w)
+    # Normalize Taa Marbuta (ة -> ه)
+    w = re.sub(r'ة', 'ه', w)
+    # Strip all non-alphanumeric characters and symbols
+    w = re.sub(r'[^\w\s]', '', w)
+    return w.strip().lower()
+
+def align_and_pace_script(custom_prompt: str, all_words: list, config: dict) -> list:
+    """Aligns full custom script text to Whisper word timings, then applies punctuation pacing."""
     script_words = custom_prompt.split()
     aligned_words = []
     w_idx = 0
     n_whisper = len(all_words)
-
     last_valid_end = 0.0
 
     for word_raw in script_words:
-        tok = clean_tok(word_raw)
+        # Use the robust Arabic normalizer here
+        tok = normalize_arabic_token(word_raw)
         matched_item = None
 
         if tok and w_idx < n_whisper:
             for search_i in range(w_idx, min(w_idx + 20, n_whisper)):
-                whisper_tok = clean_tok(all_words[search_i].get("word", ""))
+                whisper_tok = normalize_arabic_token(all_words[search_i].get("word", ""))
                 if tok == whisper_tok or (len(tok) > 2 and tok in whisper_tok) or (len(whisper_tok) > 2 and whisper_tok in tok):
                     matched_item = all_words[search_i]
                     w_idx = search_i + 1
@@ -201,7 +331,7 @@ def align_and_pace_script(custom_prompt, all_words, config):
 
         if matched_item:
             start_t = max(matched_item["start"], last_valid_end)
-            end_t = max(matched_item["end"], start_t + 0.1)
+            end_t = max(matched_item["end"], start_t + 0.05)
             aligned_words.append({
                 "text": word_raw,
                 "start": start_t,
@@ -209,8 +339,13 @@ def align_and_pace_script(custom_prompt, all_words, config):
             })
             last_valid_end = end_t
         else:
+            # Anchor fallback to nearest upcoming Whisper word or last valid end without artificial time expansion
+            next_anchor_t = last_valid_end + 0.05
+            if w_idx < n_whisper:
+                next_anchor_t = min(all_words[w_idx]["start"], last_valid_end + 0.15)
+            
             fallback_start = last_valid_end
-            fallback_end = fallback_start + 0.25
+            fallback_end = max(fallback_start + 0.05, next_anchor_t)
             aligned_words.append({
                 "text": word_raw,
                 "start": fallback_start,
@@ -218,69 +353,7 @@ def align_and_pace_script(custom_prompt, all_words, config):
             })
             last_valid_end = fallback_end
 
-    ARABIC_TRANSITION_WORDS = {"علشان", "عشان", "بس", "لكن", "يعني", "ثم", "لما", "بعدين", "فبالتالي", "معنى", "زي", "أو", "أوكي", "تمام", "طيب"}
-    PUNCTUATION_REGEX = re.compile(r'[،,.؟?!\n]+')
-
-    chunks = []
-    curr_words = []
-    chunk_start = None
-
-    MIN_DURATION = config["PACING_MIN_DURATION"]
-    TARGET_DURATION = config["PACING_TARGET_DURATION"]
-    MAX_DURATION = config["PACING_MAX_DURATION"]
-    MAX_WORDS = config["PACING_MAX_WORDS"]
-    MIN_GAP_SPLIT = config["PACING_MIN_GAP_SPLIT"]
-
-    for i, w_info in enumerate(aligned_words):
-        w_text = w_info["text"]
-        w_start = w_info["start"]
-        w_end = w_info["end"]
-
-        if chunk_start is None:
-            chunk_start = w_start
-
-        curr_words.append(w_text)
-        curr_duration = w_end - chunk_start
-        word_count = len(curr_words)
-
-        has_punctuation = bool(PUNCTUATION_REGEX.search(w_text))
-        is_last_word = (i == len(aligned_words) - 1)
-        
-        next_gap = 0.0
-        if i < len(aligned_words) - 1:
-            next_gap = max(0.0, aligned_words[i + 1]["start"] - w_end)
-
-        clean_w = clean_tok(w_text)
-        is_transition = clean_w in ARABIC_TRANSITION_WORDS
-
-        should_split = False
-
-        if is_last_word:
-            should_split = True
-        elif word_count >= MAX_WORDS:
-            should_split = True
-        elif curr_duration >= MAX_DURATION:
-            should_split = True
-        elif curr_duration >= MIN_DURATION:
-            if has_punctuation:
-                should_split = True
-            elif next_gap >= MIN_GAP_SPLIT:
-                should_split = True
-            elif is_transition and curr_duration >= TARGET_DURATION:
-                should_split = True
-
-        if should_split:
-            chunk_text = " ".join(curr_words).strip()
-            if chunk_text:
-                chunks.append({
-                    "start": chunk_start,
-                    "end": max(w_end, chunk_start + 0.5),
-                    "text": chunk_text
-                })
-            curr_words = []
-            chunk_start = None
-
-    return chunks
+    return process_words_to_paced_chunks(aligned_words, config)
 
 
 def load_whisper_model(config):
@@ -319,7 +392,7 @@ def main():
     print("=============================================")
 
     config = load_transcribe_config("transcribe_config.txt")
-    print(f"Loaded config: MAX_WORDS={config['PACING_MAX_WORDS']}, TARGET_DURATION={config['PACING_TARGET_DURATION']}s")
+    print(f"Loaded config: MAX_WORDS_PER_CHUNK={config['MAX_WORDS_PER_CHUNK']}, SUB_SPLIT_TARGET={config['SUB_SPLIT_TARGET_WORDS']}")
 
     latest_run = get_latest_run_folder(config["RUNS_DIR"])
     if not latest_run:
@@ -349,7 +422,8 @@ def main():
     # Safe initial prompt slicing (Prevents 224-token buffer overflow)
     initial_prompt_sliced = slice_initial_prompt(raw_custom_prompt, config["INITIAL_PROMPT_MAX_WORDS"]) if raw_custom_prompt else config["DEFAULT_INITIAL_PROMPT"]
 
-    output_text_lines = []
+    transcript_text_lines = []
+    image_timestamp_lines = []
     output_srt_lines = []
     srt_index = 1
 
@@ -372,42 +446,41 @@ def main():
                 for word in segment.words:
                     all_words.append({
                         "word": word.word,
+                        "text": word.word,
                         "start": word.start,
                         "end": word.end
                     })
                 
         if raw_custom_prompt and all_words:
-            # Align full script text with speech timings
             paced_chunks = align_and_pace_script(raw_custom_prompt, all_words, config)
-            for chunk in paced_chunks:
-                c_start = chunk["start"]
-                c_end = chunk["end"]
-                clause = chunk["text"]
-
-                output_text_lines.append(f"{format_timestamp(c_start)} {clause}")
-                output_srt_lines.extend([
-                    str(srt_index),
-                    f"{format_srt_timestamp(c_start)} --> {format_srt_timestamp(c_end)}",
-                    clause,
-                    ""
-                ])
-                srt_index += 1
-        elif segments:
-            # Automatic segment chunking fallback if custom_prompt is None
-            for segment in segments:
-                s_start = segment.start
-                s_end = segment.end
-                s_text = segment.text.strip()
-                if s_text:
-                    output_text_lines.append(f"{format_timestamp(s_start)} {s_text}")
-                    output_srt_lines.extend([
-                        str(srt_index),
-                        f"{format_srt_timestamp(s_start)} --> {format_srt_timestamp(s_end)}",
-                        s_text,
-                        ""
-                    ])
-                    srt_index += 1
+        elif all_words:
+            # Fallback to direct Whisper words if no custom script is present
+            paced_chunks = process_words_to_paced_chunks(all_words, config)
         else:
+            paced_chunks = []
+
+        for chunk in paced_chunks:
+            c_start = chunk["start"]
+            c_end = chunk["end"]
+            clean_clause = chunk["clean_text"]
+            raw_clause = chunk["raw_text"]
+
+            if not clean_clause and not raw_clause:
+                continue
+
+            ts_str = format_timestamp(c_start)
+            transcript_text_lines.append(f"{ts_str} {clean_clause}")
+            image_timestamp_lines.append(f"{ts_str} {raw_clause}")
+            
+            output_srt_lines.extend([
+                str(srt_index),
+                f"{format_srt_timestamp(c_start)} --> {format_srt_timestamp(c_end)}",
+                clean_clause,
+                ""
+            ])
+            srt_index += 1
+
+        if not paced_chunks:
             print("[WARN] No speech detected in audio.")
 
     except Exception as e:
@@ -419,13 +492,19 @@ def main():
 
     # Save output timeline files
     if config["EXPORT_TIMELINE_TXT"]:
-        for filename in ["timestamped_transcript.txt", "image_timestamps.txt"]:
-            path = os.path.join(latest_run, filename)
-            with open(path, "w", encoding="utf-8") as f:
-                f.write("\n".join(output_text_lines))
-            print(f"Timeline saved: '{path}'")
+        # 1. Clean formatting transcript
+        path_transcript = os.path.join(latest_run, "timestamped_transcript.txt")
+        with open(path_transcript, "w", encoding="utf-8") as f:
+            f.write("\n".join(transcript_text_lines))
+        print(f"Clean transcript saved: '{path_transcript}'")
 
-    # Save SRT files
+        # 2. Raw punctuation & bracket transcript specifically for image timestamps
+        path_images = os.path.join(latest_run, "image_timestamps.txt")
+        with open(path_images, "w", encoding="utf-8") as f:
+            f.write("\n".join(image_timestamp_lines))
+        print(f"Image timeline (with punctuation/brackets) saved: '{path_images}'")
+
+    # Save SRT files (clean formatting)
     if config["EXPORT_SRT"]:
         for filename in ["timestamped_transcript.srt", "subtitle_chunks.srt"]:
             path = os.path.join(latest_run, filename)

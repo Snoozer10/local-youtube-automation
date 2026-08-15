@@ -149,7 +149,20 @@ def check_is_gemini_complete(manifest, transcript_text):
     completion_ratio = (total_manifest_text_len / total_transcript_len) if total_transcript_len > 0 else 0
     
     last_chap_text = chapters[-1].get("text", "")
-    ending_keywords = ["سلام", "لايك", "شير", "الختام", "الليفل اللي جاي", "اشترك", "متابعة", "FINISHED", "READY"]
+    ending_keywords = [
+    "سلام",
+    "لايك",
+    "شير",
+    "الختام",
+    "الليفل اللي جاي",
+    "اشترك",
+    "متابعة",
+    "FINISHED",
+    "READY",
+    "بس كدا يا عزيزي",
+    "المصادر",
+    "الحلقات اللي فاتت",
+]
     has_ending_keywords = any(kw in last_chap_text for kw in ending_keywords)
     
     if len(chapters) >= 3 and (completion_ratio >= 0.80 or has_ending_keywords):
@@ -406,10 +419,11 @@ def prepare_gemini_chat_session(page, manifest):
     try:
         sidebar_selectors = [
             "a[aria-label*='TTS Orchestrator']",
-            "a[aria-label*='Cairo Cut']",
+            "a[aria-label*='Al-Daheeh']",
+            "a[aria-label*='Daheeh']",
             "a[aria-label*='Script Segmentation']",
             "nav a:has-text('TTS')",
-            "nav a:has-text('Cairo')"
+            "nav a:has-text('Daheeh')",
         ]
         for sel in sidebar_selectors:
             recent_btn = page.locator(sel).first

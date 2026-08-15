@@ -408,7 +408,6 @@ def run_storyboard_planning_phase(page, script_path, prompts_file, sentences, ti
     chunk_size = int(get_config_value("SCRIPT_IMAGE_CHUNK_SIZE", "5"))
     planning_timeout = int(get_config_value("SCRIPT_IMAGE_PLANNING_TIMEOUT", "240"))
     alignment_timeout = int(get_config_value("SCRIPT_IMAGE_ALIGNMENT_TIMEOUT", "60"))
-    wait_for_gemini_response(page, initial_count, timeout_seconds=alignment_timeout)
     reset_interval = int(get_config_value("SCRIPT_IMAGE_PLANNING_RESET_INTERVAL", "8"))
 
     chunks = [sentences[i:i + chunk_size] for i in range(0, len(sentences), chunk_size)]

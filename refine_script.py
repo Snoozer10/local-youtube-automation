@@ -92,25 +92,67 @@ def delete_checkpoint(folder):
     if os.path.exists(path):
         os.remove(path)
 
+def apply_tashkeel_from_config(text):
+    """Automatically replaces ambiguous Egyptian slang with correct Tashkeel."""
+    config_path = "daheeh_config.json"
+    if not os.path.exists(config_path):
+        return text
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+
+    lexicon = (
+        config.get("al_daheeh_master_pipeline_config", {})
+        .get("dialect_profile", {})
+        .get("tashkeel_lexicon", {})
+    )
+
+    # Automatically replace words like 'كده' with 'كِدَه'
+    for plain_word, vocalized_word in lexicon.items():
+        # Match standalone word boundaries
+        pattern = rf"\b{re.escape(plain_word)}\b"
+        text = re.sub(pattern, vocalized_word, text)
+
+    return text
+
 def clean_refined_paragraph(text):
-    """Clean Gemini response to ensure zero metadata or slang ledgers."""
+    """Clean Gemini response and apply phonetic Tashkeel for TTS."""
     if not text:
         return ""
 
     # Strip XML tags & ledgers
-    text = re.sub(r'<thinking>.*?</thinking>', '', text, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r'<slang_ledger>.*?</slang_ledger>', '', text, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r'<.*?>', '', text)
+    text = re.sub(
+        r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL | re.IGNORECASE
+    )
+    text = re.sub(
+        r"<slang_ledger>.*?</slang_ledger>",
+        "",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    text = re.sub(r"<.*?>", "", text)
 
     # Strip leaked English metadata blocks
-    text = re.sub(r'(?:BLACKLIST|BRAINSTORM|UPDATE LEDGER|DRAFT & VERIFY).*?(?:Tashkeel added[^\.\n]*[\.\s]*|verified[\.\s]*|words[\.\s]*)', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(
+        r"(?:BLACKLIST|BRAINSTORM|UPDATE LEDGER|DRAFT & VERIFY).*?(?:Tashkeel added[^\.\n]*[\.\s]*|verified[\.\s]*|words[\.\s]*)",
+        "",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
 
     # Strip markdown and clean whitespace
-    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-    cleaned_lines = [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("BLACKLIST:")]
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    cleaned_lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.strip().startswith("BLACKLIST:")
+    ]
     cleaned = " ".join(cleaned_lines)
     cleaned = re.sub(r"\([A-Za-z0-9\s\-_,\.\'&]+\)", "", cleaned)
-    return re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    # ◄── Apply Tashkeel from daheeh_config.json right here ──►
+    return apply_tashkeel_from_config(cleaned)
 
 def save_refined_script(folder, refined_paragraphs):
     text_path = os.path.join(folder, "refined_script.txt")
@@ -222,16 +264,17 @@ def setup_refinement_session(page, model_name):
 
 def refine_paragraph(page, paragraph_text, index, total):
     """Turn 2: Send a single paragraph for refinement."""
-    persona = get_config_value("REFINE_PERSONA", "Cairo Hype-Man")
+    persona = get_config_value("REFINE_PERSONA", "Al-Daheeh")
     max_slang = get_config_value("REFINE_MAX_SLANG_PER_SENTENCE", "2")
     
     message = (
         f"Refine paragraph {index} of {total}.\n"
         "SYSTEM OVERRIDE REMINDER:\n"
-        f'1. Maintain "{persona}" persona.\n'
-        f"2. MAX {max_slang} slang words per sentence.\n"
-        "3. SFW metaphors ONLY (Simping/Aura/Dominance).\n"
-        "4. Check your previous <slang_ledger> and do not repeat words.\n\n"
+        f'1. Maintain "{persona}" persona (30% Fusha Data : 70% Cairene Amiya).\n'
+        f"2. Follow the 1-3-1 sentence length cadence (Writing Music).\n"
+        "3. Ground all facts in everyday Egyptian archetypes (Bureaucracy/Street Food/Installments).\n"
+        "4. Apply targeted Tashkeel to ambiguous colloquial words.\n"
+        "5. Check your previous <slang_ledger> and do not repeat words.\n\n"
         f"REFINE THIS PARAGRAPH:\n{paragraph_text}"
     )
 
@@ -389,6 +432,17 @@ def main():
             f"⚠️ Script refinement partial: {video_title} ({current_index}/{len(paragraphs)})"
         )
 
+def verify_script_with_rubric(page, script_text):
+    """Sends the refined script along with Payload 7.6 to verify quality."""
+    with open("audit_rubric.md", "r", encoding="utf-8") as f:
+        rubric_text = f.read()
 
+    verification_prompt = (
+        f"You are the Lead Script Doctor. Audit this script using the rubric below:\n\n"
+        f"RUBRIC:\n{rubric_text}\n\n"
+        f"SCRIPT TO AUDIT:\n{script_text}\n\n"
+        f"Reply strictly with 'PASS' if it meets all 10 criteria, or list the specific failures."
+    )
+    # Send to Gemini to verify before proceeding to TTS
 if __name__ == "__main__":
     main()

@@ -23,7 +23,7 @@ def load_video_config(config_path="video_config.txt") -> dict:
     DEFAULTS = {
         "ENABLE_ANIMATIONS": True,
         "ENABLE_SUBTITLES": False,
-        "ENABLE_HARDWARE_ENCODER": False,
+        "ENABLE_HARDWARE_ENCODER": True,
         "ENABLE_SINGLE_PASS": True,
         "ENABLE_CHECKPOINT_RESUME": True,
         "ENABLE_LOUDNORM_TWOPASS": True,
@@ -38,7 +38,7 @@ def load_video_config(config_path="video_config.txt") -> dict:
         "CPU_CRF": 23,
         "CPU_PRESET": "ultrafast",
         "CPU_TUNE": "fastdecode",
-        "ENCODER_FORCE": "libx264",
+        "ENCODER_FORCE": "",
         "QSV_PRESET": "fast",
         "QSV_GLOBAL_QUALITY": 22,
         "QSV_LOOKAHEAD": 0,
@@ -180,18 +180,23 @@ def _build_encoder_config(encoder: str, config: dict) -> dict:
             base["encoder_args"].extend(["-maxrate", config["VBV_MAXRATE"], "-bufsize", config["VBV_BUFSIZE"]])
 
     else:  # libx264 CPU
+        # 1440p requires H.264 Level 5.0 or 5.1
+        target_level = "5.1" if int(config.get("OUTPUT_HEIGHT", 1080)) >= 1440 else config.get("OUTPUT_LEVEL", "4.1")
         base["encoder_args"] = [
             "-preset", config["CPU_PRESET"],
             "-crf", str(config["CPU_CRF"]),
             "-tune", config["CPU_TUNE"],
             "-profile:v", config["OUTPUT_PROFILE"],
-            "-level", config["OUTPUT_LEVEL"],
+            "-level", target_level,
         ]
         if config["ENABLE_VBV"]:
             base["encoder_args"].extend(["-maxrate", config["VBV_MAXRATE"], "-bufsize", config["VBV_BUFSIZE"]])
 
     base["encoder_args"].extend([
         "-pix_fmt", config["OUTPUT_PIX_FMT"],
+        "-g", str(config["OUTPUT_FPS"] * 2),
+        "-keyint_min", str(config["OUTPUT_FPS"]),
+        "-flags", "+cgop",
         "-movflags", "+faststart",
         "-threads", str(config["FFMPEG_THREADS"]),
     ])
@@ -258,7 +263,7 @@ class CheckpointManager:
         state = self.data.get("clip_states", {}).get(str(clip_idx), {})
         return state.get("status") == "done"
 
-    def mark_clip_done(self, clip_idx: int, clip_path: str, duration: float):
+    def mark_clip_done(self, clip_idx: int, clip_path: str, duration: float, save_now: bool = True):
         if "clip_states" not in self.data:
             self.data["clip_states"] = {}
         self.data["clip_states"][str(clip_idx)] = {
@@ -270,7 +275,8 @@ class CheckpointManager:
         self.data["completed_clips"] = sum(
             1 for v in self.data["clip_states"].values() if v.get("status") == "done"
         )
-        self.save()
+        if save_now:
+            self.save()
 
     def cleanup_on_success(self):
         if os.path.exists(self.checkpoint_path):
@@ -281,58 +287,61 @@ class CheckpointManager:
 
 
 def build_ken_burns_filter(config: dict, frame_count: int, camera_action: str, pix_fmt: str = "yuv420p") -> str:
-    """Builds frame-accurate Ken Burns camera movement based on integer frame counts."""
-    zoom_min = config.get("KEN_BURNS_ZOOM_MIN", 1.0)
-    zoom_max = config.get("KEN_BURNS_ZOOM_MAX", 1.10)
-    upscale = config.get("KEN_BURNS_UPSCALE_FACTOR", 1.2)
+    """Builds frame-accurate Ken Burns camera movement without quote escape errors or thread starvation."""
+    zoom_min = float(config.get("KEN_BURNS_ZOOM_MIN", 1.0))
+    zoom_max = float(config.get("KEN_BURNS_ZOOM_MAX", 1.10))
+    upscale = float(config.get("KEN_BURNS_UPSCALE_FACTOR", 1.15))
     interp = config.get("KEN_BURNS_INTERP_ALGO", "bicubic")
-    fps = config["OUTPUT_FPS"]
-    w = config["OUTPUT_WIDTH"]
-    h = config["OUTPUT_HEIGHT"]
+    fps = int(config["OUTPUT_FPS"])
+    w = int(config["OUTPUT_WIDTH"])
+    h = int(config["OUTPUT_HEIGHT"])
     
     upscale_w = int(w * upscale)
     upscale_h = int(h * upscale)
-    frames = max(1, frame_count)
+    # Ensure dimensions are even numbers for YUV420p
+    upscale_w = upscale_w if upscale_w % 2 == 0 else upscale_w + 1
+    upscale_h = upscale_h if upscale_h % 2 == 0 else upscale_h + 1
+    frames = max(1, int(frame_count))
 
     norm = f",setsar=1,format={pix_fmt}"
     den = max(1, frames - 1)
     t = f"((on-1)/{den})"
     ease = f"({t}*{t}*(3-2*{t}))"
 
-    center_x = f"'({upscale_w}-{upscale_w}/zoom)/2'"
-    center_y = f"'({upscale_h}-{upscale_h}/zoom)/2'"
+    center_x = f"(iw-iw/zoom)/2"
+    center_y = f"(ih-ih/zoom)/2"
 
     if "zoom_in" in camera_action:
-        z_expr = f"'{zoom_min}+({zoom_max}-{zoom_min})*{ease}'"
+        z_expr = f"{zoom_min}+({zoom_max}-{zoom_min})*{ease}"
         x_expr = center_x
         y_expr = center_y
     elif "zoom_out" in camera_action:
-        z_expr = f"'{zoom_max}-({zoom_max}-{zoom_min})*{ease}'"
+        z_expr = f"{zoom_max}-({zoom_max}-{zoom_min})*{ease}"
         x_expr = center_x
         y_expr = center_y
     elif "pan_left" in camera_action:
-        z_expr = f"'{zoom_max}'"
-        x_expr = f"'({upscale_w}-{upscale_w}/zoom)*(1-{ease})'"
+        z_expr = f"{zoom_max}"
+        x_expr = f"(iw-iw/zoom)*(1-{ease})"
         y_expr = center_y
     elif "pan_right" in camera_action:
-        z_expr = f"'{zoom_max}'"
-        x_expr = f"'({upscale_w}-{upscale_w}/zoom)*{ease}'"
+        z_expr = f"{zoom_max}"
+        x_expr = f"(iw-iw/zoom)*{ease}"
         y_expr = center_y
     elif "tilt_up" in camera_action:
-        z_expr = f"'{zoom_max}'"
+        z_expr = f"{zoom_max}"
         x_expr = center_x
-        y_expr = f"'({upscale_h}-{upscale_h}/zoom)*(1-{ease})'"
+        y_expr = f"(ih-ih/zoom)*(1-{ease})"
     elif "tilt_down" in camera_action:
-        z_expr = f"'{zoom_max}'"
+        z_expr = f"{zoom_max}"
         x_expr = center_x
-        y_expr = f"'({upscale_h}-{upscale_h}/zoom)*{ease}'"
+        y_expr = f"(ih-ih/zoom)*{ease}"
     else:  # static
-        return (f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:-1:-1:color=black,"
+        return (f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,"
                 f"trim=start_frame=0:end_frame={frames},setpts=PTS-STARTPTS" + norm)
 
-    return (f"scale={upscale_w}:{upscale_h}:flags=bicubic,"
-            f"zoompan=z={z_expr}:x={x_expr}:y={y_expr}:d={frames}:s={upscale_w}x{upscale_h}:fps={fps},"
-            f"scale={w}:{h}:flags={interp},"
+    return (f"scale={upscale_w}:{upscale_h}:force_original_aspect_ratio=increase:flags=bicubic,"
+            f"crop={upscale_w}:{upscale_h},"
+            f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d={frames}:s={w}x{h}:fps={fps},"
             f"trim=start_frame=0:end_frame={frames},setpts=PTS-STARTPTS" + norm)
 
 
@@ -437,15 +446,30 @@ def load_ai_camera_decisions(run_folder: str) -> dict:
                     continue
 
                 vp = item.get("visual_prompt", {})
+                cam_spec = ""
                 if isinstance(vp, dict):
-                    cam_spec = vp.get("camera_specifications", "").lower()
-                    if any(k in cam_spec for k in ["push-in", "zoom in", "push in"]): cam = "zoom_in"
-                    elif any(k in cam_spec for k in ["pull-out", "zoom out", "pull out"]): cam = "zoom_out"
-                    elif any(k in cam_spec for k in ["pan left", "tracking left"]): cam = "pan_left"
-                    elif any(k in cam_spec for k in ["pan right", "tracking right"]): cam = "pan_right"
-                    elif "tilt up" in cam_spec or "upward" in cam_spec: cam = "tilt_up"
-                    elif "tilt down" in cam_spec or "downward" in cam_spec: cam = "tilt_down"
-                    else: cam = "static"
+                    cam_spec = (vp.get("composition_layout", "") + " " +
+                                vp.get("camera_specifications", "") + " " +
+                                vp.get("subject_action_increment", "")).lower()
+                elif isinstance(vp, str):
+                    cam_spec = vp.lower()
+                
+                # Check sequence_type as well
+                seq_t = str(item.get("sequence_type", "")).lower()
+                if "zoom" in seq_t or "push" in cam_spec or "zoom in" in cam_spec or "zoom_in" in cam_spec:
+                    cam = "zoom_in"
+                elif "pull" in cam_spec or "zoom out" in cam_spec or "zoom_out" in cam_spec:
+                    cam = "zoom_out"
+                elif "pan left" in cam_spec or "pan_left" in cam_spec or "tracking left" in cam_spec:
+                    cam = "pan_left"
+                elif "pan right" in cam_spec or "pan_right" in cam_spec or "tracking right" in cam_spec:
+                    cam = "pan_right"
+                elif "tilt up" in cam_spec or "tilt_up" in cam_spec or "upward" in cam_spec:
+                    cam = "tilt_up"
+                elif "tilt down" in cam_spec or "tilt_down" in cam_spec or "downward" in cam_spec:
+                    cam = "tilt_down"
+                else:
+                    cam = "static"
                     
                     for key in ts_keys:
                         camera_map[key] = cam
@@ -650,17 +674,21 @@ def _resolve_image_path(block_name, idx, images_dir, available_images, last_vali
             if os.path.exists(candidate_path) and os.path.getsize(candidate_path) > 0:
                 return candidate_path, candidate
 
-    # 2. Prefix match inside search directories
+    # Helper for natural sorting (e.g. 00_15_2.png before 00_15_10.png)
+    def natural_sort_key(s):
+        return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+
+    # 2. Prefix match inside search directories with natural numeric ordering
     for s_dir in search_dirs:
         if os.path.exists(s_dir):
             all_files = os.listdir(s_dir)
             for tv in ts_variants:
                 matching = [f for f in all_files if f.startswith(tv) and f.endswith('.png')]
-                matching.sort()
+                matching.sort(key=natural_sort_key)
                 if matching:
                     chosen = matching[min(occurrence - 1, len(matching) - 1)]
                     chosen_path = os.path.join(s_dir, chosen)
-                    if os.path.getsize(chosen_path) > 0:
+                    if os.path.exists(chosen_path) and os.path.getsize(chosen_path) > 0:
                         return chosen_path, chosen
 
     # 3. Fallback: Sequential index match
@@ -780,7 +808,9 @@ def build_chunk_filter_graph(config: dict, encoder_config: dict, chunk_timeline:
         kb = build_ken_burns_filter(config, frame_count, camera_action)
         
         safe_image_path = os.path.abspath(abs_image_path).replace("\\", "/")
-        input_args.extend(["-loop", "1", "-framerate", str(fps), "-i", safe_image_path])
+        clip_duration = block['duration']
+        # Limit image loop duration at demuxer level to prevent memory explosion
+        input_args.extend(["-loop", "1", "-t", f"{clip_duration + 0.5:.3f}", "-framerate", str(fps), "-i", safe_image_path])
         filter_parts.append(f"[{input_idx}:v]{kb}[v{input_idx}];")
         clip_labels.append(f"[v{input_idx}]")
         input_idx += 1
@@ -1043,7 +1073,8 @@ def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list,
 
             if checkpoint:
                 for clip_i, block in enumerate(chunk_timeline):
-                    checkpoint.mark_clip_done(global_offset + clip_i, chunk_file, block['duration'])
+                    checkpoint.mark_clip_done(global_offset + clip_i, chunk_file, block['duration'], save_now=False)
+                checkpoint.save()
 
         if not failed and len(chunk_files) == num_chunks:
             ok = assemble_final_video(config, current_encoder, chunk_files, audio_path, subtitle_path, run_folder)
