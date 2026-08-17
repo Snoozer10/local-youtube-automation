@@ -1,17 +1,52 @@
-# Core Dependencies
-youtube-transcript-api>=1.2.0
-playwright>=1.40.0
-python-docx>=1.1.0
-python-dotenv>=1.0.0
-faster-whisper>=1.0.0
-openai-whisper>=20231117
-torch>=2.0.0
-requests>=2.31.0
+```
+# ==============================================================================
+# YOUTUBE AUTOMATION PIPELINE — DEPENDENCIES
+# ==============================================================================
 
-# Video Processing
-# FFmpeg must be installed separately (system dependency)
-# MoviePy 2.x for compile_video_with_moviepy.py
-moviepy>=2.0.0
+# ------------------------------------------------------------------------------
+# 1. Browser Automation & DevTools Protocol (CDP)
+# ------------------------------------------------------------------------------
+playwright>=1.40.0              # Chrome/Opera CDP automation for Gemini & AI Studio
+requests>=2.31.0                # HTTP network utilities & Telegram webhook calls
+python-dotenv>=1.0.0            # Dynamic .env configuration management
 
-# Utilities
-tqdm>=4.66.0
+# ------------------------------------------------------------------------------
+# 2. YouTube Ingestion & Document Processing
+# ------------------------------------------------------------------------------
+youtube-transcript-api>=1.2.0   # Fast YouTube caption extraction (supports .fetch())
+python-docx>=1.1.0              # Word document (.docx) generation for refined scripts
+
+# ------------------------------------------------------------------------------
+# 3. Speech Recognition & Audio Alignment (ASR)
+# ------------------------------------------------------------------------------
+faster-whisper>=1.0.0           # CTranslate2 GPU/CPU speech recognition with VAD
+openai-whisper>=20231117        # Fallback Whisper engine for standalone transcription
+torch>=2.0.0                    # Deep learning backend for Whisper CUDA acceleration
+torchaudio>=2.0.0               # Audio processing backend for PyTorch
+
+# ------------------------------------------------------------------------------
+# 4. Image, Media & Video Timeline Processing
+# ------------------------------------------------------------------------------
+Pillow>=10.0.0                  # Image processing, bounding box validation & screenshots
+moviepy>=2.0.0                  # Secondary/fallback SRT-synced video compositor
+
+# ------------------------------------------------------------------------------
+# 5. CLI, Monitoring & Progress Utilities
+# ------------------------------------------------------------------------------
+tqdm>=4.66.0                    # Progress bar rendering for batch loops
+
+# ==============================================================================
+# SYSTEM PREREQUISITES (Must be installed separately on host OS)
+# ==============================================================================
+# - FFmpeg & FFprobe (v5.0+ with QSV/NVENC support): winget install Gyan.FFmpeg
+# - Audacity (v3.x+ with mod-script-pipe enabled)
+# - Google Chrome or Opera / Opera GX (Chromium-based with CDP remote debugging)
+# ==============================================================================
+```
+
+***
+
+### 📋 Key Updates & Optimizations:
+1. **Added `torchaudio` & `Pillow`**: Explicitly declared dependencies for audio waveform handling and image validation/thumbnail snapshot extraction.
+2. **Standardized Version Pins**: Set modern, stable version floors (e.g., `youtube-transcript-api>=1.2.0` which supports the class-based `.fetch()` API used in `automate_all.py`).
+3. **Structured Grouping**: Organized by functional subsystem (CDP Automation, ASR / Whisper, YouTube, Video / Imaging, and Utilities) with explicit system binary prerequisite notices.

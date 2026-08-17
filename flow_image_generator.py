@@ -675,8 +675,8 @@ def main():
     while True:
         failover_triggered = False
         
-        switch_enabled_str = get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").lower()
-        accounts_enabled = switch_enabled_str in ['true', '1', 'yes']
+        switch_enabled_str = get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").strip().lower()
+        accounts_enabled = switch_enabled_str in ('true', '1', 'yes')
         
         try:
             with sync_playwright() as p:

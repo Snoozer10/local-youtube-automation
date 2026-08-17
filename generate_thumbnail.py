@@ -451,7 +451,10 @@ def main():
 
     model_name = get_config_value("THUMBNAIL_MODEL", get_config_value("REFINE_MODEL", "Pro"))
     max_retries = int(get_config_value("FAILOVER_RETRY_LIMIT", "4"))
-    switch_accounts = get_config_value("SWITCH_ACCOUNTS_ENABLED", "true").lower() == "true"
+    switch_accounts = (
+        get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").strip().lower()
+        in ("true", "1", "yes")
+    )
     browser_type = get_config_value("BROWSER_TYPE", "chrome")
     profile_index = int(get_config_value("ACTIVE_PROFILE_INDEX", "1"))
 

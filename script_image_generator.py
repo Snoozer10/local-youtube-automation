@@ -646,8 +646,8 @@ def main():
         try:
             with sync_playwright() as p:
                 # Issue 6/7: Multi-Profile & Multi-Browser Framework
-                switch_enabled_str = get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").lower()
-                accounts_enabled = switch_enabled_str in ['true', '1', 'yes']
+                switch_enabled_str = get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").strip().lower()
+                accounts_enabled = switch_enabled_str in ('true', '1', 'yes')
                 current_profile_idx = get_config_value("ACTIVE_PROFILE_INDEX", "1")
                 
                 # NEW: Fetch browser type dynamically from config

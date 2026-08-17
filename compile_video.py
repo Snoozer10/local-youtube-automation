@@ -470,9 +470,9 @@ def load_ai_camera_decisions(run_folder: str) -> dict:
                     cam = "tilt_down"
                 else:
                     cam = "static"
-                    
-                    for key in ts_keys:
-                        camera_map[key] = cam
+
+                for key in ts_keys:
+                    camera_map[key] = cam
             if camera_map:
                 print(f"  [CAMERA] Loaded {len(camera_map)} AI camera decisions from 'flow_prompts.json'")
         except Exception as e:

@@ -1,343 +1,267 @@
-# Contributing to YouTube Video Automation Pipeline
+# 🤝 Contributing to the YouTube Video Automation Pipeline
 
-Thank you for your interest in contributing! This guide will help you get started.
+Thank you for your interest in contributing to the **YouTube Video Automation Pipeline**! This project is an enterprise-grade, zero-cloud-bill autonomous media production engine designed to transcreate source content into high-retention 1440p documentaries in the signature **Al-Daheeh (الدحيح)** style.
 
-## Table of Contents
+This guide provides technical specifications, development environment setups, coding conventions, and pull request workflows for contributors.
 
-- [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [How to Contribute](#how-to-contribute)
-- [Development Setup](#development-setup)
-- [Code Style & Standards](#code-style--standards)
-- [Testing](#testing)
-- [Pull Request Process](#pull-request-process)
-- [Reporting Bugs](#reporting-bugs)
-- [Requesting Features](#requesting-features)
-- [Architecture Decisions](#architecture-decisions)
-- [Getting Help](#getting-help)
+---
 
-## Code of Conduct
+## 📑 Table of Contents
 
-This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+- [Code of Conduct](#-code-of-conduct)
+- [Prerequisites & System Setup](#-prerequisites--system-setup)
+- [Project Architecture & Module Layout](#-project-architecture--module-layout)
+- [Development Conventions & Golden Rules](#-development-conventions--golden-rules)
+- [Code Style & Quality Standards](#-code-style--quality-standards)
+- [Testing & Validation](#-testing--validation)
+- [Pull Request (PR) Workflow](#-pull-request-pr-workflow)
+- [Reporting Issues & Feature Proposals](#-reporting-issues--feature-proposals)
 
-## Getting Started
+---
 
-### Prerequisites
+## 📜 Code of Conduct
 
-- **Windows 10/11** (hard requirement — hardcoded paths, `ctypes.windll`, `CREATE_NEW_CONSOLE`)
-- **Python 3.10+**
-- **FFmpeg** (in PATH, with QSV hardware acceleration support)
-- **Audacity 3.x** with `mod-script-pipe` enabled
-- **Chrome or Opera** browser (for CDP automation)
-- **Git** for version control
+All contributors, maintainers, and community members are expected to adhere to our [Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project, you agree to uphold welcoming, ethical, and harassment-free standards.
 
-### Quick Setup
+---
 
-```bash
+## ⚙️ Prerequisites & System Setup
+
+Because this pipeline interfaces directly with Windows IPC pipes, GPU hardware decoders, and Chromium debugging sessions, development requires the following environment:
+
+### System Requirements
+
+- **Operating System**: Windows 10 / 11 (64-bit required for Win32 Named Pipes, `ctypes.windll`, and CDP process trees).
+- **Python**: `3.10` or higher.
+- **FFmpeg**: Version 5.0+ installed and available in system `PATH` (with Intel QuickSync or NVIDIA NVENC support).
+- **Audacity**: Version 3.x+ with `mod-script-pipe` enabled (**Edit** → **Preferences** → **Modules** → Set `mod-script-pipe` to **Enabled**).
+- **Chromium Browsers**: Google Chrome or Opera / Opera GX.
+
+### Local Development Setup
+
+```powershell
 # 1. Clone the repository
 git clone https://github.com/YOUR-USERNAME/Youtube-Automation.git
 cd Youtube-Automation
 
-# 2. Create virtual environment
+# 2. Create and activate a virtual environment
 python -m venv .venv
 .venv\Scripts\activate
 
-# 3. Install dependencies
+# 3. Install core and development dependencies
 pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
-# 4. Configure
-# - Create gemini_model.txt from template (see README.md)
-# - Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
-# - Configure ACTIVE_PROFILE_INDEX, BROWSER_TYPE, etc.
-
-# 5. Prepare browsers
-# - Open Chrome/Opera, sign into gemini.google.com AND aistudio.google.com
-# - Create 3 browser profiles for account rotation
+# 4. Initialize pre-commit hooks
+pre-commit install
 ```
 
-## How to Contribute
+### Configuring Local Debugging Profiles
 
-### Types of Contributions Welcome
+The pipeline connects to pre-authenticated browser profiles on port `9222`:
 
-- **Bug fixes** — Pipeline failures, edge cases, regression fixes
-- **Feature enhancements** — New pipeline steps, improved prompts, better error handling
-- **Documentation** — README updates, inline comments, workflow guides
-- **Testing** — Unit tests, integration tests, test infrastructure
-- **Refactoring** — Code simplification, removing duplication, performance improvements
-- **Platform support** — Linux/macOS compatibility (major undertaking)
+```powershell
+# Launch Chrome in CDP debugging mode
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\ChromeDebugProfile"
+```
 
-### Before You Start
+Create your `.env` (or `gemini_model.txt`) configuration from the template in [README.md](README.md). **Never commit credentials, tokens, or debug profile directories.**
 
-1. **Check existing issues** — Search [Issues](../../issues) for related work
-2. **Open an issue** — Discuss significant changes before implementing
-3. **Keep it focused** — One PR per logical change
+---
 
-## Development Setup
+## 🏛️ Project Architecture & Module Layout
 
-### Environment
+The codebase follows a modular, phase-based pipeline orchestrated by `run_agency.py`:
+
+```
+├── run_agency.py                     # Master autonomous supervisor & batch state machine
+├── automate_all.py                   # Phase 1: Transcript extraction & 30/70 transcreation
+├── refine_script.py                  # Phase 2: Al-Daheeh cadence, humor & Tashkeel polish
+├── generate_voice.py                 # Phase 3: AI Studio TTS voice synthesis (Achird)
+├── stitch_chapters.py                # Phase 4: Chapter WAV concatenation
+├── automate_audacity.py              # Phase 5: Headless DSP mastering via Named Pipes
+├── faster_whisper_transcribe_audio.py# Phase 6: Zero-drift Faster-Whisper ASR & VAD alignment
+├── correct_transcript_spelling.py    # Phase 7: SequenceMatcher ASR spelling correction
+├── flow_image_generator.py           # Phase 8: Google Flow (Imagen 3) visual generation
+├── script_image_generator.py         # Phase 8b: Gemini UI direct visual generation
+├── fix_timestamps.py                 # Phase 9: Timeline JSON validation & injection
+├── generate_thumbnail.py             # Phase 10: 2D Webcomic CTR thumbnail generator
+├── compile_video.py                  # Phase 11: Hardware-accelerated Ken Burns 1440p compositor
+│
+├── utils.py                          # Core utilities (CDP launcher, configs, Telegram alerts)
+├── gemini_utils.py                   # Gemini Web UI selector abstractions & stability polling
+├── daheeh_config.json                # Dialect profile, Tashkeel lexicon, and acoustic metrics
+├── audit_rubric.md                   # 10-point script quality audit rubric
+├── video_config.txt                  # FFmpeg resolution, bitrate, easing, and encoder settings
+└── transcribe_config.txt             # Whisper chunking, VAD, and model size settings
+```
+
+---
+
+## 📐 Development Conventions & Golden Rules
+
+When contributing code, you must strictly follow these engineering invariants:
+
+### 1. Zero-API-Key Browser Automation (Playwright CDP)
+
+- **Rule**: All generative AI interactions (Gemini, Speech Studio, Flow) must occur via Playwright CDP over `127.0.0.1:9222`. Do not introduce paid cloud API SDKs.
+- **DOM Selectors**: Never hardcode single selectors. Use cascading fallback lists in `gemini_utils.py` and wait for DOM text stability before capturing output.
+
+### 2. Mandatory Idempotency & Checkpoint/Resume
+
+- **Rule**: Every long-running phase must save progress to a local JSON checkpoint in `youtube_runs/<Title>/` after each chunk/turn.
+- If a script is interrupted (e.g., via `Ctrl+C` or a network drop), running it again must instantly resume from the exact last successful paragraph, chapter, or image.
+
+### 3. Al-Daheeh Linguistic Integrity (30/70 Rule)
+
+- **Rule**: All transcreation and refinement changes must adhere to `daheeh_config.json` and `audit_rubric.md`:
+  - **30% Academic Fusha**: Scientific jargon, medical terms, university/journal names, historical dates.
+  - **70% Cairene Amiya**: Conversational connectors, analogies, verbs, and pronouns.
+  - **1-3-1 Cadence**: Varied sentence lengths (Short punch $\rightarrow$ Explanatory flow $\rightarrow$ Slang punchline).
+  - **Tashkeel Vocalization**: Ambiguous slang words (e.g., `كِدَه`, `بِيُقول`, `هُوبَّا`) must be vocalized.
+
+### 4. Zero-Drift Video & Hardware Fallback Rules
+
+- **Rule**: The video compositor (`compile_video.py`) must calculate integer frames (`total_frames = audio_duration * fps`) to guarantee zero sync drift.
+- **Intel QSV Lookahead**: Always keep `QSV_LOOKAHEAD=0`. Enabling lookahead with software-decoded streams causes hardware frame pool starvation.
+- **Encoder Failover**: All hardware rendering must implement a try/catch loop with automatic fallback to CPU `libx264`.
+- **Pixel Formatting**: Append `format=nv12` for QSV encoders and `format=yuv420p` for CPU/NVENC.
+- **Command Line Length Limits**: Large filter graphs (>32 KB) must be written to disk and executed using `-filter_complex_script` (never passed raw in CLI arguments).
+
+### 5. UTF-8 & Arabic Console Safety
+
+- **Rule**: Any script handling Arabic text must include:
+  ```python
+  import sys
+  if hasattr(sys.stdout, 'reconfigure'):
+      sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+  ```
+- All JSON writes must use `ensure_ascii=False` and `indent=2`.
+
+---
+
+## 🎨 Code Style & Quality Standards
+
+We enforce strict formatting, linting, and typing across the codebase:
 
 ```bash
-# Recommended: Use the same Python version as production
-python --version  # 3.10+
+# Format code (Line length: 100)
+black --line-length 100 .
 
-# Install dev dependencies
-pip install -r requirements-dev.txt  # if exists, else:
-pip install pytest pytest-cov black ruff mypy
-```
+# Run linter
+ruff check . --fix
 
-### Project Structure
-
-```
-├── run_agency.py              # Main orchestrator (ENTRY POINT)
-├── *_step*.py                 # Pipeline steps (1-9)
-├── utils.py                   # Shared: browser, config, Telegram
-├── gemini_utils.py            # Shared: Gemini UI helpers
-├── compile_video.py           # FFmpeg Ken Burns compiler
-├── compile_video_with_moviepy.py  # MoviePy SRT compiler
-├── tests/                     # Unit & integration tests
-├── youtube_runs/              # Runtime output (gitignored)
-├── legacy_and_utilities/      # Reference only
-└── Implementation plans/      # Future specs
-```
-
-### Running the Pipeline
-
-```bash
-# Full pipeline (recommended)
-python run_agency.py
-
-# Single steps (idempotent, safe to rerun)
-python automate_all.py
-python refine_script.py
-python generate_voice.py
-# ... etc (see README.md for full list)
-```
-
-### Running Tests
-
-```bash
-# Full test suite
-python -m pytest tests/ -v
-
-# Single test file
-python -m pytest tests/unit/test_timeline.py -v
-
-# With coverage
-python -m pytest tests/ --cov=. --cov-report=html
-```
-
-## Code Style & Standards
-
-### Python Style
-
-- **Formatter:** `black` (line length 100)
-- **Linter:** `ruff` (replaces flake8, isort, pyupgrade)
-- **Type checker:** `mypy` (strict mode preferred)
-
-```bash
-# Format
-black .
-
-# Lint
-ruff check .
-
-# Type check
+# Run type checker
 mypy .
 ```
 
-### Naming Conventions
+### Commit Message Guidelines
 
-| Element | Convention | Example |
-| -------- | ---------- | --------- |
-| Files/modules | snake_case | `generate_voice.py` |
-| Classes | PascalCase | `VideoCompiler` |
-| Functions/variables | snake_case | `rotate_profile_index` |
-| Constants | UPPER_SNAKE_CASE | `FAILOVER_RETRY_LIMIT` |
-| Config keys | UPPER_SNAKE_CASE | `IMAGE_GENERATOR_TYPE` |
-
-### Commit Messages
-
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
+We follow the [Conventional Commits](https://www.conventionalcommits.org/) standard:
 
 ```
-<type>[optional scope]: <description>
+<type>(<scope>): <short description>
 
 [optional body]
 
 [optional footer(s)]
 ```
 
-Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`
-
-Examples:
-```
-feat(pipeline): add timestamp validation in step 8
-fix(audacity): handle named pipe reconnection
-docs(readme): update troubleshooting table
-refactor(utils): extract browser cleanup to helper
-```
-
-### Architecture Principles
-
-1. **Idempotency** — Every pipeline step must be safely rerunnable
-2. **Checkpoint/Resume** — Long operations save JSON checkpoints to `youtube_runs/<Title>/`
-3. **No API keys** — All AI via browser automation (Playwright CDP)
-4. **Windows-first** — Hardcoded paths, `ctypes`, `CREATE_NEW_CONSOLE` acceptable
-5. **Dual-path design** — Audacity (PyAutoGUI + named pipes), Image gen (Gemini UI + Flow), Video compile (FFmpeg + MoviePy)
-6. **Emoji logging** — `✅` `⏭️` `❌` `🔄` for parseable output
-
-### Configuration
-
-- **Root config files** (`gemini_model.txt`, `video_config.txt`, etc.) — project-wide defaults
-- **Per-run overrides** — `youtube_runs/<Title>/<config>.txt` takes precedence
-- **Secrets** — `gemini_model.txt` is gitignored; never commit tokens
-
-## Testing
-
-### Test Organization
-
-```
-tests/
-├── unit/           # Pure function tests, no browser/FFmpeg
-│   ├── test_timeline.py
-│   ├── test_utils.py
-│   └── ...
-├── integration/    # Requires browsers, FFmpeg, Audacity
-│   ├── test_pipeline_steps.py
-│   └── ...
-└── fixtures/       # Test data, mock transcripts, sample configs
-```
-
-### Writing Tests
-
-```python
-# tests/unit/test_timeline.py
-import pytest
-from utils import parse_timestamp
-
-def test_parse_timestamp_mm_ss():
-    assert parse_timestamp("1:30") == 90.0
-    assert parse_timestamp("12:05") == 725.0
-
-def test_parse_timestamp_hh_mm_ss():
-    assert parse_timestamp("1:02:03") == 3723.0
-```
-
-- Use `pytest` fixtures for shared setup
-- Mock external dependencies (Playwright, FFmpeg, Telegram)
-- Integration tests marked with `@pytest.mark.integration`
-
-### Test Coverage
-
-Target: **≥80% coverage** for core utilities (`utils.py`, `gemini_utils.py`, pipeline orchestration).
-
-```bash
-python -m pytest tests/ --cov=. --cov-report=term-missing
-```
-
-## Pull Request Process
-
-### Before Submitting
-
-- [ ] All tests pass (`pytest tests/ -v`)
-- [ ] Code formatted (`black . && ruff check .`)
-- [ ] Type checking passes (`mypy .`)
-- [ ] Documentation updated if behavior changed
-- [ ] CHANGELOG.md updated (if applicable)
-- [ ] No secrets in diff (`git diff --check`)
-
-### PR Template
-
-```markdown
-## Description
-Brief summary of changes.
-
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Refactoring
-- [ ] Documentation
-- [ ] Test
-
-## Testing
-- [ ] Unit tests added/updated
-- [ ] Integration tests pass locally
-- [ ] Manual pipeline run verified
-
-## Checklist
-- [ ] Code follows style guidelines
-- [ ] Self-review completed
-- [ ] No secrets committed
-- [ ] Related issues linked
-```
-
-### Review Process
-
-1. **Automated checks** — CI runs tests, lint, type check
-2. **Code review** — At least one maintainer approval
-3. **Merge** — Squash and merge to `main`
-
-## Reporting Bugs
-
-Use the [Bug Report template](../../issues/new?template=bug_report.md) and include:
-
-- **Environment** — Windows version, Python version, browser version
-- **Pipeline step** — Which script failed (Step 1-9)
-- **Error output** — Full traceback + emoji-prefixed logs
-- **Config** — Relevant `gemini_model.txt` values (redact tokens)
-- **Reproduction** — Minimal steps to reproduce
-- **Expected vs actual** — What should happen vs what happened
-
-### Common Debug Info to Include
-
-```bash
-# Run the failing step with verbose output
-python failing_step.py 2>&1 | head -100
-
-# Check checkpoint state
-cat youtube_runs/"<Title>"/pipeline.json
-
-# Browser inspection
-# Attach Chrome DevTools to localhost:9222 during run
-```
-
-## Requesting Features
-
-Use the [Feature Request template](../../issues/new?template=feature_request.md):
-
-- **Problem statement** — What pipeline limitation are you hitting?
-- **Proposed solution** — How should it work?
-- **Alternatives considered** — Why this approach?
-- **Impact** — Which steps/configs affected?
-- **Priority** — Nice-to-have / needed for production / blocking
-
-## Architecture Decisions
-
-Significant changes should be documented as **Architecture Decision Records (ADRs)** in `docs/adr/`:
-
-```
-docs/adr/
-├── 001-browser-automation-over-api.md
-├── 002-dual-audacity-paths.md
-├── 003-checkpoint-resume-pattern.md
-└── ...
-```
-
-See [ADR template](docs/adr/template.md) if it exists.
-
-## Getting Help
-
-- **Issues** — [GitHub Issues](../../issues) for bugs/features
-- **Discussions** — [GitHub Discussions](../../discussions) for questions/ideas
-- **Documentation** — `Project-workflow.md` for deep architecture details
-
-## Recognition
-
-Contributors are recognized in:
-
-- `AUTHORS.md` (or GitHub contributors graph)
-- Release notes for significant contributions
+- **Types**:
+  - `feat`: A new pipeline feature or phase.
+  - `fix`: A bug fix or DOM selector repair.
+  - `refactor`: Code restructuring without functional change.
+  - `perf`: Performance improvements (e.g., FFmpeg encoding or Whisper ASR speed).
+  - `docs`: Documentation updates (`README.md`, `Project-workflow.md`).
+  - `test`: Adding or updating unit/integration tests.
+  - `chore`: Maintenance tasks, dependencies, or `.gitignore` updates.
+- **Examples**:
+  - `feat(flow): implement multi-frame DOM continuity attachment`
+  - `fix(audacity): prevent named-pipe timeout on large wav export`
+  - `refactor(whisper): replace openai-whisper with faster-whisper vad engine`
 
 ---
 
-*Thank you for contributing to YouTube Video Automation Pipeline!*
+## 🧪 Testing & Validation
+
+All pull requests must pass the automated test suite before merging:
+
+```bash
+# Run full test suite
+python -m pytest tests/ -v
+
+# Run timeline synchronization unit tests
+python -m pytest tests/unit/test_timeline.py -v
+
+# Run with test coverage report
+python -m pytest tests/ --cov=. --cov-report=term-missing
+```
+
+### Writing New Tests
+
+- Unit tests in `tests/unit/` should test pure business logic (timeline math, token parsing, Tashkeel replacement, rubric validation) without external browser/FFmpeg dependencies.
+- Integration tests in `tests/integration/` requiring browsers or Audacity must be marked with `@pytest.mark.integration`.
+
+---
+
+## 🚀 Pull Request (PR) Workflow
+
+1. **Fork & Branch**: Create a feature branch from `main`:
+   ```bash
+   git checkout -b feat/your-feature-name
+   ```
+2. **Implement & Test**: Make your changes, ensure all tests pass, and format code with `black` and `ruff`.
+3. **Verify Checkpoints**: Test that your changes do not break checkpoint creation or resumption in `youtube_runs/`.
+4. **Sanitize Secrets**: Verify no `.env` files, browser profiles (`C:\ChromeDebugProfile`), or Telegram tokens are staged:
+   ```bash
+   git diff --staged --check
+   ```
+5. **Open a PR**: Submit a Pull Request to `main` using the PR template below.
+
+### Pull Request Description Template
+
+```markdown
+## Description
+
+<!-- Provide a concise summary of your changes and why they are needed -->
+
+## Type of Change
+
+- [ ] 🐛 Bug fix (non-breaking fix for an existing issue)
+- [ ] ✨ New feature (adds capability to the pipeline)
+- [ ] ⚡ Performance optimization (FFmpeg, ASR, or Playwright DOM execution)
+- [ ] ♻️ Refactoring (code cleanup with no functional behavior change)
+- [ ] 📚 Documentation update
+
+## Testing Checklist
+
+- [ ] Unit tests pass (`pytest tests/ -v`)
+- [ ] Linting & formatting verified (`ruff check . && black --check .`)
+- [ ] Verified checkpoint/resume functionality locally
+- [ ] Verified no sensitive tokens or debug profile folders are in the diff
+```
+
+---
+
+## 🐛 Reporting Issues & Feature Proposals
+
+### Submitting a Bug Report
+
+When opening an issue, please provide:
+
+1. **Environment**: Windows version, Python version, Browser type (Chrome/Opera).
+2. **Failing Phase**: Specific script (e.g., `flow_image_generator.py` or `compile_video.py`).
+3. **Traceback**: Full terminal output (redacting any private Telegram chat IDs or tokens).
+4. **State File**: Relevant contents of `pipeline.json` or phase checkpoint file.
+
+### Proposing a Feature
+
+Submit a feature request detailing:
+
+- The current bottleneck or limitation in the pipeline.
+- The proposed architecture or script modification.
+- Impact on existing checkpoints, rendering speed, or output quality.
+
+---
+
+Thank you for helping elevate the **YouTube Video Automation Pipeline**! 🚀

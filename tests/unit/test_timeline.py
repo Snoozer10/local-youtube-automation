@@ -1,24 +1,32 @@
 """Unit tests for parse_image_timeline and get_sorted_images."""
 
 import os
+import shutil
 import tempfile
 import pytest
 
 import compile_video
 
 
+def _write_timeline_file(run_folder, content, filename="image_timestamps.txt"):
+    """Write a timeline file into a run folder."""
+    path = os.path.join(run_folder, filename)
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(content)
+    return path
+
+
 class TestParseImageTimeline:
-    """Tests for parse_image_timeline(txt_path, srt_path)."""
+    """Tests for parse_image_timeline(run_folder)."""
 
     def test_parse_mm_ss_format(self):
         """[MM:SS] format parsed to seconds and filename."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-            f.write("[00:00] First paragraph\n")
-            f.write("[00:08] Second paragraph\n")
-            f.write("[01:30] Third paragraph\n")
-            f.flush()
-            blocks = compile_video.parse_image_timeline(f.name, None)
-        os.unlink(f.name)
+        d = tempfile.mkdtemp()
+        try:
+            _write_timeline_file(d, "[00:00] First paragraph\n[00:08] Second paragraph\n[01:30] Third paragraph\n")
+            blocks = compile_video.parse_image_timeline(d)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
 
         assert len(blocks) == 3
         assert blocks[0] == {"name": "00_00", "sec": 0.0}
@@ -26,30 +34,37 @@ class TestParseImageTimeline:
         assert blocks[2] == {"name": "01_30", "sec": 90.0}
 
     def test_parse_hh_mm_ss_format(self):
-        """[HH:MM:SS] format parsed correctly."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-            f.write("[01:00:00] Hour mark\n")
-            f.write("[00:01:30] Ninety seconds\n")
-            f.flush()
-            blocks = compile_video.parse_image_timeline(f.name, None)
-        os.unlink(f.name)
+        """[HH:MM:SS] format parsed correctly, sorted by seconds."""
+        d = tempfile.mkdtemp()
+        try:
+            _write_timeline_file(d, "[01:00:00] Hour mark\n[00:01:30] Ninety seconds\n")
+            blocks = compile_video.parse_image_timeline(d)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
 
         assert len(blocks) == 2
-        assert blocks[0] == {"name": "01_00_00", "sec": 3600.0}
-        assert blocks[1] == {"name": "00_01_30", "sec": 90.0}
+        # blocks are sorted by sec, so 90s (00_01_30) precedes 3600s (01_00_00)
+        assert blocks[0] == {"name": "00_01_30", "sec": 90.0}
+        assert blocks[1] == {"name": "01_00_00", "sec": 3600.0}
 
     def test_parse_missing_file_returns_empty(self):
-        """Non-existent file returns empty list."""
-        blocks = compile_video.parse_image_timeline("/nonexistent/path.txt", None)
+        """Folder without timeline files returns empty list."""
+        d = tempfile.mkdtemp()
+        try:
+            blocks = compile_video.parse_image_timeline(d)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
         assert blocks == []
 
     def test_parse_skips_empty_lines(self):
         """Blank lines are ignored."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-            f.write("[00:00] First\n\n\n[00:10] Second\n")
-            f.flush()
-            blocks = compile_video.parse_image_timeline(f.name, None)
-        os.unlink(f.name)
+        d = tempfile.mkdtemp()
+        try:
+            _write_timeline_file(d, "[00:00] First\n\n\n[00:10] Second\n")
+            blocks = compile_video.parse_image_timeline(d)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
 
         assert len(blocks) == 2
         assert blocks[0]["name"] == "00_00"
@@ -57,31 +72,42 @@ class TestParseImageTimeline:
 
     def test_parse_invalid_lines_skipped(self):
         """Lines without timestamp prefix are skipped."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-            f.write("No timestamp here\n")
-            f.write("[00:05] Valid\n")
-            f.write("Also invalid\n")
-            f.flush()
-            blocks = compile_video.parse_image_timeline(f.name, None)
-        os.unlink(f.name)
+        d = tempfile.mkdtemp()
+        try:
+            _write_timeline_file(d, "No timestamp here\n[00:05] Valid\nAlso invalid\n")
+            blocks = compile_video.parse_image_timeline(d)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
 
         assert len(blocks) == 1
         assert blocks[0]["name"] == "00_05"
 
     def test_parse_mixed_mm_ss_and_hh_mm_ss(self):
         """Both timestamp formats in same file parsed correctly."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-            f.write("[00:00] Start\n")
-            f.write("[00:01:30] Ninety sec\n")
-            f.write("[02:30] Two min thirty\n")
-            f.flush()
-            blocks = compile_video.parse_image_timeline(f.name, None)
-        os.unlink(f.name)
+        d = tempfile.mkdtemp()
+        try:
+            _write_timeline_file(d, "[00:00] Start\n[00:01:30] Ninety sec\n[02:30] Two min thirty\n")
+            blocks = compile_video.parse_image_timeline(d)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
 
         assert len(blocks) == 3
         assert blocks[0] == {"name": "00_00", "sec": 0.0}
         assert blocks[1] == {"name": "00_01_30", "sec": 90.0}
         assert blocks[2] == {"name": "02_30", "sec": 150.0}
+
+    def test_parse_fallback_timestamped_transcript(self):
+        """timestamped_transcript.txt used when image_timestamps.txt missing."""
+        d = tempfile.mkdtemp()
+        try:
+            _write_timeline_file(d, "[00:00] Start\n[00:20] Later\n", filename="timestamped_transcript.txt")
+            blocks = compile_video.parse_image_timeline(d)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+        assert len(blocks) == 2
+        assert blocks[0]["name"] == "00_00"
+        assert blocks[1]["name"] == "00_20"
 
 
 class TestGetSortedImages:
@@ -131,7 +157,7 @@ class TestGetSortedImages:
 
 
 class TestValidateAssets:
-    """Tests for validate_assets(image_blocks, images_dir)."""
+    """Tests for validate_assets(sync_timeline, images_dir)."""
 
     def test_all_assets_exist_and_non_empty(self):
         """All assets exist and are non-empty returns empty invalid list."""
@@ -142,8 +168,8 @@ class TestValidateAssets:
                 with open(os.path.join(d, name), 'w') as f:
                     f.write("dummy content")
             blocks = [
-                {"name": "00_00", "sec": 0.0},
-                {"name": "00_08", "sec": 8.0}
+                {"name": "00_00", "sec": 0.0, "occurrence": 1},
+                {"name": "00_08", "sec": 8.0, "occurrence": 1}
             ]
             invalid = compile_video.validate_assets(blocks, d)
             assert len(invalid) == 0
@@ -157,7 +183,7 @@ class TestValidateAssets:
         d = tempfile.mkdtemp()
         try:
             blocks = [
-                {"name": "00_00", "sec": 0.0}
+                {"name": "00_00", "sec": 0.0, "occurrence": 1}
             ]
             invalid = compile_video.validate_assets(blocks, d)
             assert len(invalid) == 1
@@ -171,11 +197,28 @@ class TestValidateAssets:
         try:
             open(os.path.join(d, "00_00.png"), 'w').close()  # size 0
             blocks = [
-                {"name": "00_00", "sec": 0.0}
+                {"name": "00_00", "sec": 0.0, "occurrence": 1}
             ]
             invalid = compile_video.validate_assets(blocks, d)
             assert len(invalid) == 1
             assert invalid[0] == (0, "00_00")
+        finally:
+            for f in os.listdir(d):
+                os.unlink(os.path.join(d, f))
+            os.rmdir(d)
+
+    def test_duplicate_occurrence_resolves_to_duplicate_image(self):
+        """occurrence > 1 resolves to duplicate image variant."""
+        d = tempfile.mkdtemp()
+        try:
+            open(os.path.join(d, "00_00.png"), 'w').close()
+            with open(os.path.join(d, "00_00_2.png"), 'w') as f:
+                f.write("dummy content")
+            blocks = [
+                {"name": "00_00", "sec": 0.0, "occurrence": 2}
+            ]
+            invalid = compile_video.validate_assets(blocks, d)
+            assert len(invalid) == 0
         finally:
             for f in os.listdir(d):
                 os.unlink(os.path.join(d, f))

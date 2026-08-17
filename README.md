@@ -1,418 +1,391 @@
-# YouTube Video Automation Pipeline
+# 🎬 Autonomous YouTube Video Production Pipeline
 
-> **Automated end-to-end pipeline:** Copy YouTube Video 100% Authenticity. YouTube transcript → Khaleeji Arabic translation (Any Language) → Refinement and Enhancement Script → TTS voice generation → Audacity audio polish → AI image generation (Gemini/Google Flow) → Final video compilation (FFmpeg/MoviePy).
+### *Transcreate any YouTube video into a broadcast-ready Arabic documentary in the Al-Daheeh (الدحيح) style — zero cloud bills, zero API keys.*
 
-**Stack:** Python 3.10+ (Windows), Playwright CDP, Gemini Web UI, AI Studio Speech, FFmpeg, MoviePy 2.x, Audacity (named pipes + PyAutoGUI).
+An enterprise-grade, fully autonomous media pipeline that turns a single YouTube URL into a complete, high-retention Arabic documentary: 30/70 Al-Daheeh script transcreation, studio-grade TTS, DSP mastering, word-level subtitle sync, Imagen 3 visuals, and a 1440p Ken Burns master video.
 
----
-
-**Turn any YouTube video into a polished Any Language episode — fully automated.**
-
-No API keys. No cloud bills. Just point at a URL and watch: transcript → dialect translation → studio-grade TTS → Audacity mastering → AI storyboards (Gemini *or* Google Flow) → Ken Burns cinematic compile → upload-ready MP4.
-
-**Why it’s different:**
-- **Browser automation, not APIs** — uses your logged-in Gemini/AI Studio sessions, sidestepping quotas, keys, and rate limits
-- **Dual-path everything** — fragile-but-fast *or* slow-but-bulletproof at every stage (images, audio, video)
-- **Checkpoint/resume everywhere** — kill it, reboot, it picks up exactly where it left off
-- **Windows-native, zero compromises** — hardware-accelerated FFmpeg (QSV/NVENC/CPU fallback), named-pipe Audacity, Playwright CDP
-
-**Perfect for:** Any Language content channels, faceless automation pipelines, anyone who wants “set it and forget it” video production that *actually works* on retry.
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Playwright](https://img.shields.io/badge/Playwright-CDP%20Automation-2EAD33?style=for-the-badge&logo=playwright&logoColor=white)](https://playwright.dev/)
+[![Faster-Whisper](https://img.shields.io/badge/Whisper-Word--Level%20ASR-412991?style=for-the-badge&logo=openai&logoColor=white)](https://github.com/SYSTRAN/faster-whisper)
+[![Audacity](https://img.shields.io/badge/Audacity-Named%20Pipes%20DSP-0000CC?style=for-the-badge&logo=audacity&logoColor=white)](https://www.audacityteam.org/)
+[![FFmpeg](https://img.shields.io/badge/FFmpeg-QSV%20%2F%20NVENC%201440p-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
+[![Google Flow](https://img.shields.io/badge/Google%20Flow-Imagen%203%20Visuals-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://labs.google/fx/tools/flow)
+[![Gemini 2.5](https://img.shields.io/badge/Gemini-2.5%20Pro%20TTS-8E75B2?style=for-the-badge&logo=google-gemini&logoColor=white)](https://aistudio.google.com/)
+[![Telegram](https://img.shields.io/badge/Telegram-Realtime%20Ops%20Bot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://telegram.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
 ---
 
 ## Table of Contents
 
-- [Quick Start](#quick-start)
-- [Pipeline Overview](#pipeline-overview)
-- [Configuration](#configuration)
-- [Output Structure](#output-structure)
-- [Architecture Overview](#architecture-overview)
-- [Development](#development)
-- [Troubleshooting](#troubleshooting)
-- [Security](#security)
-- [Contributing](#contributing)
-- [Code of Conduct](#code-of-conduct)
-- [License](#license)
-- [Further Reading](#further-reading)
+- [🤔 What Is This Pipeline?](#-what-is-this-pipeline)
+- [⭐ Core Architectural Philosophy](#-core-architectural-philosophy)
+- [🗺️ Master Pipeline Flow](#-master-pipeline-flow)
+- [⚡ Get Started](#-get-started)
+- [🛠️ Pipeline Reference](#-pipeline-reference)
+- [🎛️ Configuration](#-configuration)
+- [🏃 Granular CLI & Modular Execution](#-granular-cli--modular-execution)
+- [📂 Output File Hierarchy](#-output-file-hierarchy)
+- [🩺 Diagnostics & Troubleshooting](#-diagnostics--troubleshooting)
+- [🔒 Security & Safe Automation](#-security--safe-automation)
+- [📄 License](#-license)
 
 ---
 
-## Quick Start
+## 🤔 What Is This Pipeline?
 
-### Prerequisites (One-Time Setup)
+Traditional AI media pipelines depend on fragile, costly API tiers — token quotas, paid SDKs, and restrictive safety filters that kill creative dialects. This pipeline **flips the script**: every AI interaction flows through Playwright CDP automation against the authenticated web apps you already use (Gemini Web, AI Studio Speech Playground, and Google Flow), so a full video costs nothing beyond your existing subscriptions.
 
-1. **Browser Profiles** — Open Chrome/Opera, sign into **both**:
-   - `https://gemini.google.com`
-   - `https://aistudio.google.com`
-   - Create 3 profiles (used for account rotation)
+Input is a single YouTube URL. Output is:
 
-2. **Audacity** — Enable `mod-script-pipe`: Tools → Modules → check `mod-script-pipe`
-
-3. **Audacity Macro** — Create macro named exactly: `Macro_Achird Gemini Voice cut and enhance`
-
-4. **Configuration** — Create `gemini_model.txt` from template below and fill in:
-
-```ini
-# Configuration for Gemini Web App Models & Accounts
-VOICE_GENERATOR_MODEL=Flash-Lite
-IMAGE_PLANNER_MODEL=Pro
-IMAGE_RESET_LOOP_LIMIT=20
-SWITCH_ACCOUNTS_ENABLED=true
-ACTIVE_PROFILE_INDEX=1
-FAILOVER_RETRY_LIMIT=3
-BROWSER_TYPE=opera
-FLOW_IMAGE_MODEL=Nano Banana Pro
-FLOW_IMAGE_COUNT=1x
-IMAGE_GENERATOR_TYPE=flow
-SCRIPT_BREAKER_MODEL=Flash
-SCRIPT_TRANSLATOR_MODEL=Pro
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
-REFINE_MODEL=Pro
-THUMBNAIL_MODEL=Nano Banana Pro
-```
-
-**Required values:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (for notifications), `ACTIVE_PROFILE_INDEX` (1–3), `IMAGE_GENERATOR_TYPE` (`flow` or `script`).
-
-### Run Full Pipeline
-
-```bash
-python run_agency.py
-```
-
-Runs all 9 steps with checkpoint/resume at each stage.
-
-### Run Single Step (Idempotent — Safe to Rerun)
-
-```bash
-python automate_all.py                 # Step 1: transcript → translate
-python refine_script.py                # Step 1b: refine Arabic script
-python generate_voice.py               # Step 2: TTS generation
-python stitch_chapters.py              # Step 3: merge chapter WAVs
-python automate_audacity.py            # Step 4: Audacity PyAutoGUI polish
-python transcribe_audio.py             # Step 5: Audacity named pipes + transcription
-python correct_transcript_spelling.py  # Step 6: fix ASR spelling
-python script_image_generator.py       # Step 7a: Gemini UI images
-python flow_image_generator.py         # Step 7b: Google Flow images
-python generate_thumbnail.py           # Step 7c: thumbnail variants
-python fix_timestamps.py               # Step 8: inject timestamps
-python compile_video.py                # Step 9a: FFmpeg (Ken Burns)
-python compile_video_with_moviepy.py   # Step 9b: MoviePy (SRT timeline)
-```
-
-> **All scripts are idempotent** — they read/write JSON checkpoints in `youtube_runs/<Title>/`. Safe to kill and rerun anytime.
-
-### Clean Room Reset
-
-```bash
-rm -rf youtube_runs/"<Video Title>"
-python run_agency.py
-```
+- **Al-Daheeh Arabic script** — strict 30/70 code-switching (30% academic Fusha : 70% Cairene Amiya), 1-3-1 Gary Provost cadence, comedic dead-air markers, phonetic Tashkeel diacritics
+- **Studio-mastered voice** — Gemini 2.5 Pro TTS chapters stitched losslessly, then DSP-processed in Audacity via Windows Named Pipes
+- **Zero-drift subtitles** — Faster-Whisper word timestamps aligned against the script with `difflib.SequenceMatcher`, split into 3–6 word chunks for mobile reading
+- **Continuity-chained visuals** — Imagen 3 frames driven by a Gemini master roadmap with multi-frame DOM-level reference chaining
+- **A 1440p master video** — hardware-accelerated Ken Burns camera engine with EBU R128 dual-pass loudness normalization
 
 ---
 
-## Pipeline Overview
+## ⭐ Core Architectural Philosophy
 
-| # | Script | Input | Output | Key Config |
-|---|--------|-------|--------|------------|
-| 1 | `automate_all.py` | YouTube URL (prompted) | `raw_transcript.txt` → `breaked_paragraphs.txt` → `final_output.txt` (Khaleeji Arabic) | `prompt.txt`, `prompt_phase3.txt`, `gemini_model.txt` |
-| 1b | `refine_script.py` | `final_output.txt` | `refined_script.txt`, `refined_script.docx` | `refine_prompt.txt`, `REFINE_MODEL` |
-| 2 | `generate_voice.py` | `refined_script.txt` | `Chapter_*.wav` | `TTS_PROMPT.txt`, `VOICE_GENERATOR_MODEL` |
-| 3 | `stitch_chapters.py` | `Chapter_*.wav` | `full_episode_voice.wav` | — |
-| 4 | `automate_audacity.py` | `full_episode_voice.wav` | `audacity_voice/full_episode_voice.wav` | Macro on Ctrl+Shift+O |
-| 5 | `transcribe_audio.py` | `Chapter_*.wav` | `timestamped_transcript.txt`, `.srt`, `image_timestamps.txt` | Named pipes, per-chapter macro |
-| 6 | `correct_transcript_spelling.py` | `timestamped_transcript.txt` + `final_output.txt` | Corrected timestamped transcript | SequenceMatcher alignment |
-| 7a | `script_image_generator.py` | `refined_script.txt` | `pre_planned_prompts.txt` → `generated_images/*.png` | `IMAGE_PLANNER_MODEL`, `visuals_plan.txt` |
-| 7b | `flow_image_generator.py` | `refined_script.txt` | `flow_prompts.json` → `generated_images/*.png` | `FLOW_IMAGE_MODEL`, `FLOW_IMAGE_COUNT` |
-| 7c | `generate_thumbnail.py` | `refined_script.txt` | `thumbnails/variant_*.png` | `THUMBNAIL_MODEL`, Nano Banana Pro prompts |
-| 8 | `fix_timestamps.py` | `timestamped_transcript.txt` + `flow_prompts.json` | Updated `flow_prompts.json` with timestamps | Auto-skips if timestamps present |
-| 9a | `compile_video.py` | `flow_prompts.json` + images | `youtube_ready_video.mp4` (Ken Burns) | `ENABLE_ANIMATIONS`, `manual_animations.txt` |
-| 9b | `compile_video_with_moviepy.py` | `.srt` + images | `youtube_ready_video.mp4` (static) | `ENABLE_SUBTITLES`, MoviePy 2.x API |
-
-**Choose image generator:** `IMAGE_GENERATOR_TYPE=flow` (reliable, slower) or `=script` (faster, fragile) in `gemini_model.txt`.
-
-**Choose video compiler:** Set in `run_agency.py` pipeline config (FFmpeg for animations, MoviePy for subtitle sync).
+1. **CDP Web-Browser Orchestration** — Connects natively over Chrome DevTools Protocol (`localhost:9222`) to automate authenticated sessions in Google Gemini Web App, Google AI Studio Speech Playground, and Google Flow.
+2. **The Al-Daheeh Linguistic Engine** — Implements the strict 30/70 code-switching rule, recursive callbacks, comedic dead-air markers (`...`), and phonetic Tashkeel for TTS vocalization.
+3. **Autonomous Named-Pipe DSP** — Controls Audacity via Windows IPC Named Pipes (`\\.\pipe\ToSrvPipe`) to apply multiband compression, noise gating, EQ curves, and silence truncation without manual GUI interaction.
+4. **Zero-Drift ASR & Cadence Pacing** — Faster-Whisper with GPU/CPU fallbacks, voice-activity detection (VAD), and `difflib.SequenceMatcher` lexical alignment to match every spoken syllable with sub-second visual frame transitions.
+5. **Multi-Frame Continuity Chaining** — Directs Google Flow / Imagen 3 with global master roadmaps, JSON keyframe matrices, and DOM-level reference chip injection for frame-to-frame consistency.
+6. **Hardware-Accelerated Compositing** — FFmpeg Ken Burns camera engine (Push-in, Pull-out, Pan, Tilt, Static) with automatic failover across Intel QuickSync (`h264_qsv`), NVIDIA (`h264_nvenc`), and multi-threaded CPU (`libx264`) rendering at 1440p/1080p with EBU R128 dual-pass loudness normalization.
+7. **Stateful Checkpoint & Failover Engine** — Resumes instantly at the exact paragraph, voice chapter, or visual frame upon interruption, paired with multi-profile browser cycling and Telegram push notifications.
 
 ---
 
-## Configuration
-
-All config files live in **project root**. Per-run overrides go in `youtube_runs/<Title>/`.
-
-| File | Purpose | Key Values |
-|------|---------|------------|
-| `gemini_model.txt` | **Main config** — models, rotation, browser, Telegram, generator selection | `VOICE_GENERATOR_MODEL`, `IMAGE_PLANNER_MODEL`, `FLOW_IMAGE_MODEL`, `IMAGE_GENERATOR_TYPE`, `ACTIVE_PROFILE_INDEX`, `SWITCH_ACCOUNTS_ENABLED`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `BROWSER_TYPE` (chrome/opera), `REFINE_MODEL`, `THUMBNAIL_MODEL` |
-| `video_config.txt` | Video compile toggles | `ENABLE_ANIMATIONS=true/false`, `ENABLE_SUBTITLES=true/false` |
-| `voice_option_notes.txt` | TTS reference (model, temp, voice, whisper) | Read-only reference |
-| `prompt.txt` | Phase 1: paragraph breaking rules | |
-| `prompt_phase3.txt` | Phase 3: Khaleeji White Dialect translation style | |
-| `refine_prompt.txt` | Script refinement: fluency, dialect, hook, outro (2-turn) | |
-| `TTS_PROMPT.txt` | Voice prosody architecture guidelines | |
-| `visual_style.txt` | Visual style rules (per-run override in `youtube_runs/<Title>/`) | |
-| `visuals_plan.txt` | Storyboard blueprint (per-run override in `youtube_runs/<Title>/`) | |
-
-> ⚠️ **`gemini_model.txt` contains Telegram credentials — never commit.** Already in `.gitignore`.
-
----
-
-## Output Structure
-
-```
-youtube_runs/<Video Title>/
-├── raw_transcript.txt              # Raw YouTube transcript
-├── breaked_paragraphs.txt          # Gemini-parsed paragraphs
-├── final_output.txt                # Translated Khaleeji Arabic
-├── refined_script.txt              # Polished Arabic script
-├── refined_script.docx             # Word document copy
-├── timestamped_transcript.txt      # Whisper lines [MM:SS]
-├── timestamped_transcript.srt      # SRT subtitles
-├── image_timestamps.txt            # Alias for image timing
-├── full_episode_voice.wav          # Stitched TTS audio
-├── audacity_voice/
-│   └── full_episode_voice.wav      # PyAutoGUI Audacity output
-├── Chapter_*.wav                   # Per-chapter TTS files
-├── pre_planned_prompts.txt         # Storyboard (Gemini path)
-├── flow_prompts.json               # JSON storyboard (Flow path)
-├── generated_images/               # PNG images per timestamp
-│   └── *.png
-├── generated_images_duplicates/    # Extra copies from multi-gen
-├── thumbnails/
-│   └── variant_*.png               # Thumbnail variants
-├── temp_clips/                     # Per-frame FFmpeg clips
-├── concat.txt                      # FFmpeg concat list
-├── youtube_ready_video.mp4         # **Final output**
-├── flow_workspace_url.txt          # Google Flow resume URL
-├── pipeline.json                   # run_agency.py batch state
-└── *.json                          # Checkpoint files (auto-resume)
-```
-
----
-
-## Architecture Overview
+## 🗺️ Master Pipeline Flow
 
 ```mermaid
 flowchart TD
-    A[run_agency.py] --> B[automate_all.py]
-    B --> C[refine_script.py]
-    C --> D[generate_voice.py]
-    D --> E[stitch_chapters.py]
-    E --> F[automate_audacity.py]
-    F --> G[transcribe_audio.py]
-    G --> H[correct_transcript_spelling.py]
-    H --> I1[script_image_generator.py]
-    H --> I2[flow_image_generator.py]
-    I1 --> J[fix_timestamps.py]
-    I2 --> J
-    J --> K[inject_timestamps.py]
-    K --> L[json_compile_animation_prompt.py]
-    L --> M[generate_thumbnail.py]
-    M --> N1[compile_video.py]
-    M --> N2[compile_video_with_moviepy.py]
+    A[youtube_urls.txt] -->|Fetch Transcript| B(1. automate_all.py)
+    B -->|raw_transcript.txt| B1(Gemini Phase 1: Paragraph Chunker)
+    B1 -->|breaked_paragraphs.txt| B2(Gemini Phase 3: 30/70 Transcreator)
+    B2 -->|final_output.txt| C(2. refine_script.py)
+    C -->|Script Doctor / 1-3-1 Cadence| C1{10-Point Audit Rubric}
+    C1 -->|refined_script.txt| D(3. generate_voice.py)
 
-    subgraph Utils[Shared Utilities]
-        U1[utils.py]
-        U2[gemini_utils.py]
+    subgraph Audio Engineering Matrix
+        D -->|Tab 1: Gemini Chat Voice Director| D1[TTS Markup & Prosody Injector]
+        D -->|Tab 2: AI Studio Playground| D2[Gemini 2.5 Pro TTS - Achird Voice]
+        D2 -->|voice_chapters/*.wav| E(4. stitch_chapters.py / automate_audacity.py)
+        E -->|Named Pipes \\.\pipe\ToSrvPipe| E1[Audacity DSP Macro Chain]
+        E1 -->|full_episode_voice.wav| F(5. faster_whisper_transcribe_audio.py)
+        F -->|Word Timestamps & VAD| F1(6. correct_transcript_spelling.py)
+        F1 -->|Lexical Sequence Alignment| G[image_timestamps.txt & SRTs]
     end
 
-    subgraph Ext[External Systems]
-        S1[Playwright CDP]
-        S2[Gemini Web UI]
-        S3[AI Studio Speech]
-        S4[FFmpeg]
-        S5[Audacity]
-        S6[Telegram Bot API]
+    subgraph Visual Production & Video Engine
+        G -->|Visual Roadmap & Continuity| H(7. flow_image_generator.py / script_image_generator.py)
+        H -->|Google Flow / Imagen 3| H1[generated_images/*.png]
+        G -->|Concept Extraction| I(8. generate_thumbnail.py)
+        I -->|Self-Critique Matrix| I1[thumbnails/title_*_thumbnail.png]
+        H1 --> J(9. fix_timestamps.py / inject_json_timestamps.py)
+        J -->|flow_prompts.json| K(10. compile_video.py)
+        E1 -->|Master WAV| K
+        K -->|QSV / NVENC / CPU Ken Burns 1440p| L[🎬 youtube_ready_video.mp4]
     end
 
-    A -.-> Utils
-    B -.-> Utils
-    C -.-> Utils
-    D -.-> Utils
-    E -.-> Utils
-    F -.-> Utils
-    G -.-> Utils
-    H -.-> Utils
-    I1 -.-> Utils
-    I2 -.-> Utils
-    J -.-> Utils
-    K -.-> Utils
-    L -.-> Utils
-    M -.-> Utils
-    N1 -.-> Utils
-    N2 -.-> Utils
-
-    B -.-> S1
-    C -.-> S1
-    D -.-> S1
-    I1 -.-> S1
-    I2 -.-> S1
-    M -.-> S1
-
-    B -.-> S2
-    C -.-> S2
-    I1 -.-> S2
-    I2 -.-> S2
-    M -.-> S2
-
-    D -.-> S3
-    N1 -.-> S4
-    F -.-> S5
-    G -.-> S5
-    A -.-> S6
-    D -.-> S6
-```
-
-### All AI is Browser Automation
-
-- Playwright CDP → manually-signed-in Chrome/Opera on port 9222
-- **No API keys** — everything via `gemini.google.com` and `aistudio.google.com`
-- Shared utilities: `utils.py` (browser launch/cleanup, config, Telegram), `gemini_utils.py` (Gemini UI helpers)
-- Account rotation: `ACTIVE_PROFILE_INDEX` cycles Chrome profiles 1→3 via `rotate_profile_index()`
-
-### Dual Audacity Paths (Different Mechanisms)
-
-| Script | Mechanism | Scope |
-|--------|-----------|-------|
-| `automate_audacity.py` | PyAutoGUI keystrokes (Ctrl+A → Ctrl+Shift+O) | Full episode |
-| `transcribe_audio.py` | Named pipes (`\\.\pipe\ToSrvPipe`) | Per chapter |
-
-Both required. PyAutoGUI needs macro on Ctrl+Shift+O. Named pipes needs `mod-script-pipe` + macro registered by exact name.
-
-### Checkpoint/Resume Everywhere
-
-Every long-running script saves progress to JSON in `youtube_runs/<Title>/`. Safe to Ctrl+C and rerun. Checkpoints auto-delete on success.
-
-### Dual Image Generation
-
-- **`script_image_generator.py`** → Gemini Web UI direct (Playwright hover+download). Input: `pre_planned_prompts.txt`. Faster, fragile.
-- **`flow_image_generator.py`** → Google Flow (JS base64 extraction). Input: `flow_prompts.json`. Slower, reliable. Saves workspace URL for resume.
-
-### Dual Video Compilation
-
-- **`compile_video.py`** (FFmpeg) — Ken Burns camera moves per frame (zoom/pan/static). Reads `flow_prompts.json`. Supports `manual_animations.txt` overrides.
-- **`compile_video_with_moviepy.py`** (MoviePy 2.x) — SRT-driven timeline, static images. Uses `.with_start()`/`.with_duration()`.
-
-### Windows-Only Constraints
-
-- Hardcoded paths: Chrome, Opera, Audacity, debug profiles
-- `ctypes.windll` for native clipboard (TTS script)
-- `sys.stdout.reconfigure(encoding='utf-8')` for Arabic
-- `CREATE_NEW_CONSOLE | DETACHED_PROCESS` for browser launch
-
----
-
-## Development
-
-### Debugging
-
-- **Browser Inspection:** Attach to `localhost:9222` via Chrome DevTools (no VS Code config needed)
-- **Logs:** All scripts emit emoji-prefixed stdout: `✅` success, `⏭️` skip, `❌` error, `🔄` retry
-- **Browser Inspection:** Attach to CDP port 9222 to inspect DOM during Gemini interactions
-
-### Project Structure
-
-```
-├── run_agency.py              # Main orchestrator (use this)
-├── run.bat                    # Legacy (avoid)
-├── automate_all.py            # Step 1: transcript → translate
-├── refine_script.py           # Step 1b: refine Arabic
-├── generate_voice.py          # Step 2: TTS
-├── stitch_chapters.py         # Step 3: merge WAVs
-├── automate_audacity.py       # Step 4: PyAutoGUI Audacity
-├── transcribe_audio.py        # Step 5: Named pipes Audacity
-├── correct_transcript_spelling.py  # Step 6: spelling fix
-├── script_image_generator.py  # Step 7a: Gemini UI images
-├── flow_image_generator.py    # Step 7b: Google Flow images
-├── generate_thumbnail.py      # Step 7c: thumbnails
-├── fix_timestamps.py          # Step 8: timestamp injection
-├── compile_video.py           # Step 9a: FFmpeg (Ken Burns)
-├── compile_video_with_moviepy.py  # Step 9b: MoviePy (SRT)
-├── utils.py                   # Shared: browser, config, Telegram, profiles
-├── gemini_utils.py            # Shared: Gemini UI helpers
-├── gemini_model.txt           # Main config (gitignored)
-├── video_config.txt           # Video toggles
-├── voice_option_notes.txt     # TTS reference
-├── prompt.txt                 # Phase 1 prompt
-├── prompt_phase3.txt          # Phase 3 prompt
-├── refine_prompt.txt          # Refinement prompt
-├── TTS_PROMPT.txt             # TTS prosody prompt
-├── visual_style.txt           # Visual style rules
-├── visuals_plan.txt           # Storyboard blueprint
-├── youtube_runs/              # Runtime output (per video)
-├── legacy_and_utilities/      # Old scripts (reference only)
-├── Implementation plans/      # Future feature specs
-└── .opencode/agent/AGENTS.md  # OpenCode agent config (mirror)
+    subgraph Autonomous Supervisor
+        M[run_agency.py] -.->|State Machine Checkpoints| B
+        M -.->|Account Rotation & Socket Reset| D
+        M -.->|Realtime Event Alerts| N[📲 Telegram Bot]
+    end
 ```
 
 ---
 
-## Troubleshooting
+## ⚡ Get Started
 
-| # | Symptom | Cause | Fix |
-|---|---------|-------|-----|
-| 1 | "Input box not found" | Browser not signed into **both** Gemini and AI Studio | Sign into both before running |
-| 2 | Gemini response timeout | Google UI changed `model-response div.markdown` | Update `RESPONSE_SELECTOR` in `gemini_utils.py` |
-| 3 | Audacity macro not found | `mod-script-pipe` disabled or macro name mismatch | Enable module; verify exact name `Macro_Achird Gemini Voice cut and enhance` |
-| 4 | `generate_voice.py` hangs 300s | 250MB context limit on `wait_for_selector` | Restart browser profile; check `FAILOVER_RETRY_LIMIT` |
-| 5 | Arabic JSON garbled | Missing `ensure_ascii=False` | Already handled in all scripts |
-| 6 | Used `run.bat` by mistake | Legacy 5-step only (no audacity/stitch/spellcheck/fixtimes) | Always use `python run_agency.py` |
-| 7 | Profile index error | `ACTIVE_PROFILE_INDEX` > 3 | Reset to 1 in `gemini_model.txt` |
-| 8 | FFmpeg concat fails | `temp_clips/` empty or naming mismatch | Check `flow_prompts.json` frame entries |
-| 9 | MoviePy import error | MoviePy 1.x vs 2.x API | Requires MoviePy 2.x (`.with_start()`, `.with_duration()`) |
-| 10 | Flow workspace stale | Google Flow session expired | Delete `flow_workspace_url.txt` to force new session |
-| 11 | Thumbnail generation fails | Nano Banana Pro prompt format changed | Check `generate_thumbnail.py` template |
-| 12 | PyAutoGUI clicks wrong window | Multiple Audacity instances / focus lost | Ensure single Audacity instance; check focus logic |
-| 13 | Named pipe connection refused | Audacity not running or `mod-script-pipe` off | Start Audacity manually; verify Tools → Modules |
+### 1. Repository setup
+
+```bash
+# Clone the repository
+git clone https://github.com/YOUR-USERNAME/Youtube-Automation.git
+cd Youtube-Automation
+
+# Create and activate a virtual environment
+python -m venv .venv
+.venv\Scripts\activate
+
+# Install production dependencies
+pip install -r requirements.txt
+```
+
+### 2. Install external prerequisites
+
+| Component | Requirement | Installation |
+| :-------- | :---------- | :----------- |
+| **FFmpeg & FFprobe** | Added to system `PATH` | `winget install Gyan.FFmpeg` |
+| **Audacity 3.x+** | Installed to default location | **Edit** → **Preferences** → **Modules** → set `mod-script-pipe` to **Enabled** |
+| **Chromium browsers** | Google Chrome and/or Opera / Opera GX | — |
+
+### 3. Calibrate browser profiles
+
+Launch Chrome in remote debugging mode on a dedicated profile so your daily browsing data stays untouched:
+
+```powershell
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\ChromeDebugProfile"
+```
+
+Then sign in to each service in the debug window:
+
+- 🌐 [Google Gemini](https://gemini.google.com/app)
+- 🌐 [Google AI Studio](https://aistudio.google.com/)
+- 🌐 [Google Labs Flow](https://labs.google/fx/tools/flow)
+
+Repeat for additional profiles if you want automated account rotation.
+
+### 4. Configure the environment
+
+Copy `.env.example` to `.env` and set your model routing, voice, and Telegram credentials (full reference in [Configuration](#-configuration)):
+
+```ini
+# --- LLM Engine Selection ---
+VOICE_GENERATOR_MODEL=Flash-Lite
+IMAGE_PLANNER_MODEL=Pro
+SCRIPT_BREAKER_MODEL=Flash
+SCRIPT_TRANSLATOR_MODEL=Pro
+REFINE_MODEL=Pro
+THUMBNAIL_MODEL=Nano Banana Pro
+
+# --- Voice & Speech Studio ---
+TTS_MODEL=gemini-2.5-pro-preview-tts
+TTS_VOICE_NAME=Achird
+TTS_TEMPERATURE=0.8
+WHISPER_ENGINE=faster_whisper
+
+# --- Visual Generation Matrix ---
+IMAGE_GENERATOR_TYPE=flow
+FLOW_IMAGE_MODEL=Nano Banana 2
+FLOW_IMAGE_COUNT=1x
+FLOW_DISABLE_AGENT=true
+FLOW_CHUNK_SIZE=15
+IMAGE_RESET_LOOP_LIMIT=20
+
+# --- Failover & Account Rotation ---
+SWITCH_ACCOUNTS_ENABLED=true
+ACTIVE_PROFILE_INDEX=1
+FAILOVER_RETRY_LIMIT=3
+CDP_PORT=9222
+BROWSER_TYPE=chrome
+
+# --- Pipeline Feature Flags ---
+ENABLE_REFINE_SCRIPT=true
+FLIP_AUDACITY_ORDER=false
+TELEGRAM_NOTIFY_PER_STEP=true
+TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
+TELEGRAM_CHAT_ID=987654321
+```
+
+### 5. Add source URLs
+
+Populate `youtube_urls.txt` with one link per line:
+
+```text
+https://www.youtube.com/watch?v=WhvdzT6YvP8
+```
+
+### 6. Launch the pipeline
+
+```bash
+python run_agency.py
+```
+
+The supervisor state machine drives all eleven stages, rotates browser profiles on failure, and pushes live progress to Telegram.
 
 ---
 
-## Security
+## 🛠️ Pipeline Reference
 
-- **`gemini_model.txt` contains Telegram bot token** — **never commit**. In `.gitignore`.
-- No API keys stored anywhere — all AI via browser automation.
-- Account rotation cycles `ACTIVE_PROFILE_INDEX` across 3 pre-logged-in Chrome profiles.
-- Native Windows clipboard via `ctypes` (TTS script only).
+### Phase-by-phase breakdown
+
+| Phase | Script | Primary function | Input file(s) | Generated asset(s) | Checkpoint / state |
+| :---- | :----- | :--------------- | :------------ | :----------------- | :----------------- |
+| **01** | `automate_all.py` | Fetches YouTube captions, chunks narrative paragraphs, and transcreates them into Al-Daheeh Egyptian dialect. | `youtube_urls.txt`, `prompt.txt`, `prompt_phase3.txt` | `raw_transcript.txt`, `breaked_paragraphs.txt`, `final_output.txt`, `.docx` | `checkpoint.json` |
+| **02** | `refine_script.py` | Injects 1-3-1 sentence cadence, "Abo Hmeed" skeptic interjections, running jokes, and phonetic Tashkeel. | `final_output.txt`, `refine_prompt.txt`, `daheeh_config.json` | `refined_script.txt`, `refined_script.docx` | `refine_checkpoint.json` |
+| **03** | `generate_voice.py` | Dual-browser TTS: directional markup in Gemini Chat, studio audio in AI Studio Speech. | `refined_script.txt`, `TTS_PROMPT.txt`, `voice_option_notes.txt` | `voice_chapters/Chapter_*.wav` | `voice_generation_manifest.json` |
+| **04** | `stitch_chapters.py` | Losslessly concatenates chapter WAV tracks into a unified master audio file. | `voice_chapters/Chapter_*.wav` | `full_episode_voice.wav` | Direct file verification |
+| **05** | `automate_audacity.py` | Windows Named Pipes DSP: EQ curves, compression, noise gating, silence truncation. | `full_episode_voice.wav`, `YouTube_Voice_Optimizer.txt` | `audacity_voice/full_episode_voice.wav` | `audacity_checkpoint.json` |
+| **06** | `faster_whisper_transcribe_audio.py` | GPU-accelerated ASR with VAD, mapping word timestamps to 3–6 word visual chunks. | `audacity_voice/full_episode_voice.wav`, `transcribe_config.txt` | `image_timestamps.txt`, `timestamped_transcript.txt`, `.srt` | Direct output validation |
+| **07** | `correct_transcript_spelling.py` | Aligns Whisper output against `refined_script.txt` via `difflib.SequenceMatcher` to eliminate ASR misspellings. | `timestamped_transcript.txt`, `refined_script.txt` | Corrected `.txt` and `.srt` files | In-place file alignment |
+| **08** | `flow_image_generator.py` | Builds a Master Visual Roadmap + `flow_prompts.json` and drives Google Flow with multi-frame continuity. | `image_timestamps.txt`, `master_roadmap.txt`, `flow_prompts.json` | `generated_images/*.png`, `generated_images_duplicates/` | `flow_workspace_url_profile_*.txt` |
+| **08b** | `script_image_generator.py` | *Alternative generator:* direct Gemini Web UI image production with relative hover-download automation. | `pre_planned_prompts.txt`, `visual_style.txt`, `visuals_plan.txt` | `generated_images/*.png` | `planning_checkpoint.json` |
+| **09** | `fix_timestamps.py` | Validates and aligns timeline brackets between `image_timestamps.txt` and `flow_prompts.json`. | `image_timestamps.txt`, `flow_prompts.json` | Synchronized `flow_prompts.json` | Direct JSON overwrite |
+| **10** | `generate_thumbnail.py` | Analyzes candidate titles, extracts 2D webcomic concepts, scores via self-critique, generates top variants. | `titles.txt`, `refined_script.txt` | `thumbnails/title_*_thumbnail.png` | `thumbnail_critique.json` |
+| **11** | `compile_video.py` | Hardware-accelerated Ken Burns compiler with EBU R128 dual-pass audio and subtitle burn-in. | `generated_images/*.png`, `full_episode_voice.wav`, `video_config.txt` | 🎬 `youtube_ready_video.mp4` | `compile_checkpoint.json` |
+
+### Granular CLI & modular execution
+
+Every step runs independently. Checkpoint files allow seamless restarts from the last successful operation:
+
+```bash
+# 1. Extract YouTube transcript and perform 30/70 Al-Daheeh transcreation
+python automate_all.py
+
+# 2. Refine Arabic script (cadence, Egyptian humor, Tashkeel diacritics)
+python refine_script.py
+
+# 3. Synthesize chapter-by-chapter AI Studio voice tracks
+python generate_voice.py
+
+# 4. Stitch audio chapters into master track
+python stitch_chapters.py
+
+# 5. Apply DSP mastering macros in Audacity via Named Pipes
+python automate_audacity.py
+
+# 6. Generate zero-drift timestamped transcripts via Faster-Whisper
+python faster_whisper_transcribe_audio.py
+
+# 7. Correct ASR spelling mistakes against refined script
+python correct_transcript_spelling.py
+
+# 8. Render AI visual frames via Google Flow / Imagen 3
+python flow_image_generator.py
+
+# 9. Verify and inject timeline timestamps into prompt schema
+python fix_timestamps.py
+
+# 10. Generate high-CTR 2D webcomic thumbnails
+python generate_thumbnail.py
+
+# 11. Compile hardware-accelerated Ken Burns 1440p master video
+python compile_video.py
+```
+
+### Batch processing (default supervisor mode)
+
+`run_agency.py` runs the full pipeline in **batch mode**:
+
+1. It first executes `automate_all.py`, which transcreates **every** URL in `youtube_urls.txt` and creates a per-video folder under `youtube_runs/<title>/`.
+2. It then scans `youtube_runs/` for all folders containing a valid `final_output.txt`.
+3. Each folder is driven through the state machine sequentially — refining, voicing, DSP, ASR, visuals, thumbnails, and compilation — skipping any stage already completed (checkpointed) and halting the batch on fatal errors with a Telegram alert.
+
+Add multiple videos to `youtube_urls.txt` to queue a full batch:
+
+```text
+https://www.youtube.com/watch?v=WhvdzT6YvP8
+https://www.youtube.com/watch?v=dBpVVcPdCpU
+https://www.youtube.com/watch?v=DY1eH-Qm7Gk
+```
+
+Every folder resumes from its own `pipeline.json` state machine, so interrupted batches pick up exactly where they left off on the next run.
 
 ---
 
-## Contributing
+## 🎛️ Configuration
 
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on:
+### Video compilation matrix (`video_config.txt`)
 
-- How to report bugs and request features
-- Code style and commit conventions
-- Pull request process
-- Development environment setup
-- Testing guidelines
+```ini
+# --- Output Resolution & Framing ---
+OUTPUT_WIDTH=2560
+OUTPUT_HEIGHT=1440
+OUTPUT_FPS=30
+OUTPUT_PIX_FMT=yuv420p
+OUTPUT_PROFILE=high
+OUTPUT_LEVEL=5.1
 
-### Quick Contribution Checklist
+# --- Hardware Acceleration ---
+ENABLE_HARDWARE_ENCODER=true
+ENCODER_FORCE=                  # Options: h264_qsv, h264_nvenc, libx264
+QSV_PRESET=fast
+QSV_GLOBAL_QUALITY=20
+QSV_LOOKAHEAD=0                 # Keep 0 to prevent frame pool starvation
 
-- [ ] Fork the repository
-- [ ] Create a feature branch (`git checkout -b feature/amazing-feature`)
-- [ ] Make your changes with clear, descriptive commits
-- [ ] Run the full pipeline locally to verify nothing breaks
-- [ ] Update documentation if you change behavior
-- [ ] Open a Pull Request with a clear description
+# --- Ken Burns Cinematic Camera Easing ---
+ENABLE_ANIMATIONS=true
+KEN_BURNS_ZOOM_MIN=1.0
+KEN_BURNS_ZOOM_MAX=1.10
+KEN_BURNS_EASING=smoothstep
+KEN_BURNS_UPSCALE_FACTOR=1.2
+
+# --- Audio Loudness Normalization (EBU R128) ---
+ENABLE_LOUDNORM_TWOPASS=true
+LOUDNORM_I=-14
+LOUDNORM_TP=-1.0
+LOUDNORM_LRA=11
+AUDIO_BITRATE=320k
+```
+
+### Faster-Whisper ASR settings (`transcribe_config.txt`)
+
+```ini
+WHISPER_MODEL_SIZE=small        # Options: tiny, base, small, medium, large-v3
+WHISPER_LANGUAGE=ar
+WHISPER_BEAM_SIZE=5
+WHISPER_VAD_FILTER=true
+MAX_WORDS_PER_CHUNK=6          # Splits subtitles for rapid mobile reading
+SUB_SPLIT_TARGET_WORDS=3
+PACING_MIN_GAP_SPLIT=0.45       # Audio silence (seconds) triggering a split
+```
 
 ---
 
-## Code of Conduct
+## 📂 Output File Hierarchy
 
-This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold this code. Please report unacceptable behavior to the project maintainers.
+Every video project is assigned a dedicated folder under `youtube_runs/<Cleaned_Title>/`:
+
+```
+youtube_runs/
+└── The_Evolutionary_Mystery_of_Sleep/
+    ├── raw_transcript.txt                   # Raw YouTube caption dump
+    ├── breaked_paragraphs.txt               # Structured narrative paragraphs
+    ├── final_output.txt                     # Phase 1 30/70 transcreated Arabic
+    ├── refined_script.txt                   # Phase 2 Al-Daheeh polished script
+    ├── refined_script.docx                  # Formatted Word Document
+    ├── master_roadmap.txt                   # Visual Scene Continuity Blueprint
+    ├── flow_prompts.json                    # Google Flow keyframe metadata
+    ├── full_episode_voice.wav               # Stitched master voice track
+    ├── timestamped_transcript.txt           # Sentence-level timestamp timeline
+    ├── timestamped_transcript.srt           # Full video subtitle timeline
+    ├── image_timestamps.txt                 # Exact sync anchors for images
+    ├── subtitle_chunks.srt                  # 3-word staccato subtitle clips
+    ├── audacity_voice/
+    │   └── full_episode_voice.wav           # DSP-mastered voice track
+    ├── voice_chapters/
+    │   ├── Chapter_1.wav                    # Sectional audio synthesis
+    │   └── Chapter_2.wav
+    ├── generated_images/
+    │   ├── 00_00.png                        # Frame-accurate scene assets
+    │   ├── 00_05.png
+    │   └── 00_12_2.png                      # Multi-frame continuity duplicates
+    ├── thumbnails/
+    │   ├── title_1_thumbnail.png            # Winning 2D webcomic thumbnail
+    │   └── title_2_thumbnail.png
+    ├── pipeline.json                        # Master supervisor state machine
+    └── 🎬 youtube_ready_video.mp4           # Final 1440p Master Video
+```
 
 ---
 
-## License
+## 🩺 Diagnostics & Troubleshooting
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+| Issue / symptom | Root cause | Verified remediation |
+| :--------------- | :--------- | :------------------- |
+| `Cannot connect to CDP port 9222` | Browser session not open or bound to IPv6 loopback. | Launch browser with `--remote-debugging-port=9222`. Ensure `utils.py` connects to `127.0.0.1:9222`. |
+| `Could not connect to Audacity Named Pipes` | `mod-script-pipe` module disabled or Audacity crashed. | Open Audacity → **Edit** → **Preferences** → **Modules** → set `mod-script-pipe` to **Enabled**. Restart Audacity. |
+| `Intel QSV lookahead frame starvation` | QSV lookahead buffer starved by software demuxing. | Ensure `QSV_LOOKAHEAD=0` in `video_config.txt`. The compiler enforces this convention automatically. |
+| `Whisper CUDA out of memory` | GPU VRAM buffer exceeded. | In `transcribe_config.txt`, change `WHISPER_MODEL_SIZE` from `medium` to `small` or `base`. |
+| `Google Flow generation stalled / frozen` | Cloud UI queue stalled on active project. | Delete `flow_workspace_url_profile_*.txt` in the run folder to force initialization of a clean project workspace. |
+| Windows CLI character corruption (Arabic) | Console default code page is non-UTF8. | All scripts include `sys.stdout.reconfigure(encoding='utf-8')`. Run `chcp 65001` in your terminal. |
+| Tashkeel / diacritic pronunciation errors | Slang word ambiguous in Gemini TTS tokenizer. | Add the vocalized term (e.g. `كِدَه`, `بِيُقول`) to `daheeh_config.json` under `tashkeel_lexicon`. |
 
 ---
 
-## Further Reading
+## 🔒 Security & Safe Automation
 
-- **Developer Workflow:** [Project-workflow.md](Project-workflow.md) — ADRs, detailed architecture, debugging, legacy reference
-- **Implementation Plans:** `Implementation plans/` — upcoming features
-- **Legacy Scripts:** `legacy_and_utilities/` — historical reference only
+- **Credential isolation** — `.env`, `gemini_model.txt`, and user data directories (`C:\ChromeDebugProfile`) are git-ignored. Never commit tokens or session folders.
+- **Rate limiting & safety** — Built-in exponential backoff, proactive browser tab recycling, and organic Bezier mouse smoothing protect against automated bot detection.
+- **Process termination** — `kill_cdp_chrome()` inspects local listening ports via `netstat` and terminates only the child process bound to the specified debug port.
 
 ---
 
-*Built with ❤️ for Arabic content automation on YouTube*
+## 📄 License
+
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.

@@ -1,22 +1,52 @@
-# Development Dependencies
+```
+# ==============================================================================
+# YOUTUBE AUTOMATION PIPELINE — DEVELOPMENT & CI DEPENDENCIES
+# ==============================================================================
+# Install all base dependencies first
 -r requirements.txt
 
-# Testing
-pytest>=7.4.0
-pytest-cov>=4.1.0
-pytest-mock>=3.11.0
+# ------------------------------------------------------------------------------
+# 1. Unit, Integration & Browser Testing
+# ------------------------------------------------------------------------------
+pytest>=8.0.0                   # Core test runner and test discovery engine
+pytest-cov>=5.0.0               # Test coverage reporting and coverage enforcement
+pytest-mock>=3.12.0             # Mocking library for subprocess, pipes, and APIs
+pytest-playwright>=0.4.4        # Playwright fixtures for browser and CDP integration tests
+pytest-timeout>=2.3.0           # Prevents hanging subprocess/pipe tests with hard timeouts
+pytest-asyncio>=0.23.0          # Async testing support for Playwright coroutines
 
-# Code Quality
-black>=23.0.0
-ruff>=0.1.0
-mypy>=1.5.0
+# ------------------------------------------------------------------------------
+# 2. Code Formatting, Linting & Modernization
+# ------------------------------------------------------------------------------
+black>=24.0.0                   # Opinionated deterministic Python code formatter (100-col)
+ruff>=0.4.0                     # High-performance linter (replaces flake8, isort, pyupgrade)
+mypy>=1.9.0                     # Static type checker for strict type safety
 
-# Type Stubs
-types-requests>=2.31.0
-types-urllib3>=1.26.0
+# ------------------------------------------------------------------------------
+# 3. Type Stubs & Typing Extensions
+# ------------------------------------------------------------------------------
+types-requests>=2.31.0          # Mypy type stubs for requests
+types-urllib3>=1.26.0           # Mypy type stubs for urllib3
+types-tqdm>=4.66.0              # Mypy type stubs for tqdm progress bars
+types-Pillow>=10.0.0            # Mypy type stubs for PIL/Pillow image library
+typing-extensions>=4.10.0       # Backported modern typing features for Python 3.10+
 
-# Security
-pip-audit>=2.6.0
+# ------------------------------------------------------------------------------
+# 4. Security & Vulnerability Auditing
+# ------------------------------------------------------------------------------
+pip-audit>=2.7.0                # Audits installed dependencies against known PyPI CVEs
+bandit>=1.7.8                   # Static security analyzer (flags unsafe subprocess & shell risks)
 
-# Pre-commit
-pre-commit>=3.5.0
+# ------------------------------------------------------------------------------
+# 5. Git Hooks & Workflow Automation
+# ------------------------------------------------------------------------------
+pre-commit>=3.7.0               # Git pre-commit hooks manager for formatting and linting
+```
+
+***
+
+### 📋 Key Enhancements & Additions:
+1. **Added Browser & Subprocess Test Fixtures (`pytest-playwright`, `pytest-timeout`, `pytest-asyncio`)**: Enables reliable integration testing for browser CDP sessions, Named Pipes, and FFmpeg processes without hanging your CI runner.
+2. **Added Static Security Auditing (`bandit`)**: Catches unsafe `subprocess` invocations, unescaped shell strings, or accidental hardcoded secrets before committing.
+3. **Comprehensive Type Stubs (`types-tqdm`, `types-Pillow`, `typing-extensions`)**: Ensures `mypy .` passes cleanly across all modules (including image verification and progress bars).
+4. **Modernized Version Constraints**: Updated baseline versions to current standards compatible with Python 3.10, 3.11, and 3.12+.

@@ -1,1 +1,9 @@
-Verified End-to-End Pipeline Execution Order
+graph TD
+    A[youtube_urls.txt] --> B[1. automate_all.py]
+    B -->|final_output.txt| C[2. refine_script.py]
+    C -->|refined_script.txt| D[3. generate_voice.py]
+    D -->|voice_chapters/*.wav| E[4. Audacity / Master Audio Export]
+    E -->|full_episode_voice.wav| F[5. faster_whisper_transcribe_audio.py]
+    F -->|image_timestamps.txt| G[6. flow_image_generator.py]
+    G -->|generated_images/*.png| H[7. compile_video.py]
+    H -->|youtube_ready_video.mp4| I[Production Ready 1440p Video]

@@ -8,6 +8,7 @@ import subprocess
 import pytest
 
 import compile_video
+from ffmpeg_stubs import FakePopen
 
 
 @pytest.fixture
@@ -52,6 +53,12 @@ def sample_timeline():
         {"name": "00_08", "sec": 8.0},
         {"name": "00_15", "sec": 15.0},
     ]
+
+
+@pytest.fixture
+def sync_timeline(config, sample_timeline):
+    """ZERO-DRIFT prepared timeline with frame_count/duration/occurrence fields."""
+    return compile_video.prepare_synchronized_timeline(sample_timeline, 10.0, config["OUTPUT_FPS"])
 
 
 @pytest.fixture
@@ -113,6 +120,19 @@ def mock_ffmpeg(monkeypatch):
     monkeypatch.setattr(subprocess, "run", mock_run)
     monkeypatch.setattr(subprocess, "check_output", lambda *a, **k: b"10.0\n")
     return mock_run
+
+
+@pytest.fixture
+def mock_ffmpeg_popen(monkeypatch):
+    """Patch subprocess.Popen with a successful fake; records commands."""
+    calls = []
+
+    def popen_factory(cmd, **kwargs):
+        calls.append(list(cmd))
+        return FakePopen(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", popen_factory)
+    return calls
 
 
 @pytest.fixture

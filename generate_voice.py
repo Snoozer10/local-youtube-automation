@@ -892,8 +892,8 @@ def main():
         
         try:
             with sync_playwright() as p:
-                switch_enabled_str = get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").lower()
-                accounts_enabled = switch_enabled_str in ['true', '1', 'yes']
+                switch_enabled_str = get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").strip().lower()
+                accounts_enabled = switch_enabled_str in ('true', '1', 'yes')
                 current_profile_idx = get_config_value("ACTIVE_PROFILE_INDEX", "1")
                 browser_type = get_config_value("BROWSER_TYPE", "chrome")
                 

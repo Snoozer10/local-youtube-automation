@@ -15,15 +15,20 @@ WHISPER_MIN_SPEECH_DURATION_MS=250
 INITIAL_PROMPT_MAX_WORDS=120
 DEFAULT_INITIAL_PROMPT=السلام عليكم، أهلاً بيكم. في الفيديو ده هنتكلم بالعامية المصرية، عشان نفهم الموضوع صح. زي الموبايل، التريند، الميكروباص، والسيستم. يا عم ركز معايا، وبلاش كلام كتير.
 
-# --- Animation Cadence & Pacing (Timeline Chunking) ---
-# Maximum words allowed in a single timestamp chunk before sub-splitting
-MAX_WORDS_PER_CHUNK=6
+# --- Subtitle (.SRT) Cadence ---
+# Keeps subtitles snappy and readable
+SUB_MAX_WORDS=6
+SUB_TARGET_WORDS=3
+SUB_MIN_GAP_SPLIT=0.45
 
-# Target size when sub-splitting chunks exceeding MAX_WORDS_PER_CHUNK (e.g. 3-3 words)
-SUB_SPLIT_TARGET_WORDS=3
-
-# Silence pause in audio that triggers a timestamp split (in seconds)
-PACING_MIN_GAP_SPLIT=0.45
+# --- Image Visual Scene Pacing (image_timestamps.txt) ---
+# Perfect YouTube video essay image duration range: 3.5s to 6.0s
+IMAGE_MIN_DURATION_SEC=3.5
+IMAGE_TARGET_DURATION_SEC=5.0
+IMAGE_MAX_DURATION_SEC=7.5
+IMAGE_MIN_WORDS=8
+IMAGE_MAX_WORDS=20
+IMAGE_PAUSE_SPLIT_SEC=0.60
 
 # --- Paths & File Preferences ---
 RUNS_DIR=youtube_runs
