@@ -29,7 +29,7 @@ OUTPUT_LEVEL=5.1
 # Auto-detects Intel HD 5500 QuickSync (h264_qsv) or falls back to libx264
 ENCODER_FORCE=
 CPU_CRF=17
-CPU_PRESET=veryfaster
+CPU_PRESET=veryfast
 CPU_TUNE=animation
 
 # Chunk size 25 prevents memory spikes on 2-Core i7-5600U

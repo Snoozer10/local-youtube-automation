@@ -1000,7 +1000,7 @@ def render_chunk(config: dict, encoder_config: dict, chunk_timeline: list, image
     with open(filter_script_path, "w", encoding="utf-8") as f:
         f.write(filter_complex)
 
-    chunk_tmp_path = chunk_output_path + ".tmp"
+    chunk_tmp_path = os.path.abspath(os.path.join(temp_dir, f"tmp_{chunk_filename}"))
     cmd = [
         "ffmpeg", "-y", "-hide_banner", "-loglevel", config["FFMPEG_LOGLEVEL"],
         *input_args,
@@ -1009,6 +1009,7 @@ def render_chunk(config: dict, encoder_config: dict, chunk_timeline: list, image
         "-c:v", encoder_config["video_codec"],
         *encoder_config["encoder_args"],
         "-an",
+        "-f", "mp4",
         chunk_tmp_path
     ]
 
@@ -1037,7 +1038,7 @@ def render_chunk(config: dict, encoder_config: dict, chunk_timeline: list, image
                 stderr_logs.append(chunk)
                 buffer += chunk
                 while "\r" in buffer or "\n" in buffer:
-                    line, _, buffer = re.split(r"[\r\n]", buffer, maxsplit=1)
+                    line, _, buffer = re.split(r"([\r\n])", buffer, maxsplit=1)
                     if "time=" in line:
                         match = re.search(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)", line)
                         if match:
