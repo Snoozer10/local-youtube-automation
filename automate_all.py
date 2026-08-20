@@ -217,6 +217,27 @@ def is_safety_blocked(translated_text, original_text):
     return False
 
 
+def apply_tashkeel_from_config(text):
+    """Automatically vocalizes ambiguous Egyptian slang words using daheeh_config.json."""
+    config_path = "daheeh_config.json"
+    if not os.path.exists(config_path):
+        return text
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        lexicon = (
+            config.get("al_daheeh_master_pipeline_config", {})
+            .get("dialect_profile", {})
+            .get("tashkeel_lexicon", {})
+        )
+        for plain_word, vocalized_word in lexicon.items():
+            pattern = rf"\b{re.escape(plain_word)}\b"
+            text = re.sub(pattern, vocalized_word, text)
+    except Exception:
+        pass
+    return text
+
+
 def ensure_chrome_debug_session():
     url = "http://localhost:9222/json/version"
     try:
@@ -737,9 +758,11 @@ def main():
                         time.sleep(1)
 
                 # -------------------------------------------------------------
-                # STEP 5: Save Final Outputs
+                # STEP 5: Save Final Outputs (With Baseline Tashkeel)
                 # -------------------------------------------------------------
                 final_output_text = "\n\n".join(final_results_list)
+                final_output_text = apply_tashkeel_from_config(final_output_text)
+
                 with open(final_file_path, "w", encoding="utf-8") as f:
                     f.write(final_output_text)
 

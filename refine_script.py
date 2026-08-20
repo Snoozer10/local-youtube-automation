@@ -263,18 +263,32 @@ def setup_refinement_session(page, model_name):
 
 
 def refine_paragraph(page, paragraph_text, index, total):
-    """Turn 2: Send a single paragraph for refinement."""
+    """Turn 2: Send a single paragraph for refinement with Outro Zone awareness."""
     persona = get_config_value("REFINE_PERSONA", "Al-Daheeh")
-    max_slang = get_config_value("REFINE_MAX_SLANG_PER_SENTENCE", "2")
     
+    # Detect if we have entered the final 2 paragraphs (The Existential Outro Zone)
+    is_outro_zone = (index >= max(1, total - 1))
+    
+    if is_outro_zone:
+        outro_instruction = (
+            "⚠️ [SPECIAL DIRECTIVE: THE EXISTENTIAL OUTRO ZONE]\n"
+            "This is the closing outro of the episode. Drop all slapstick comedy, Abo Hmeed interjections, and street puns.\n"
+            "Shift into an intimate, philosophical, goosebump-inducing tone (العِبرة الوجودية) using short, poetic Provost sentences."
+        )
+    else:
+        outro_instruction = (
+            "3. Ground all facts in everyday Egyptian archetypes (Bureaucracy/Street Food/Installments).\n"
+            "4. Insert Abo Hmeed skeptic interruption if appropriate for comedic pacing."
+        )
+
     message = (
         f"Refine paragraph {index} of {total}.\n"
         "SYSTEM OVERRIDE REMINDER:\n"
         f'1. Maintain "{persona}" persona (30% Fusha Data : 70% Cairene Amiya).\n'
-        f"2. Follow the 1-3-1 sentence length cadence (Writing Music).\n"
-        "3. Ground all facts in everyday Egyptian archetypes (Bureaucracy/Street Food/Installments).\n"
-        "4. Apply targeted Tashkeel to ambiguous colloquial words.\n"
-        "5. Check your previous <slang_ledger> and do not repeat words.\n\n"
+        f"2. Follow the Gary Provost 'Writing Music' cadence (Short hit -> Medium setup -> Dense data -> Staccato punchline).\n"
+        f"{outro_instruction}\n"
+        "5. Apply targeted Tashkeel to ambiguous colloquial words (كِدَه، بِيُقول، هُوبَّا، قِسط).\n"
+        "6. Rotate slang across categories (A, B, C, D) and update your <slang_ledger>.\n\n"
         f"REFINE THIS PARAGRAPH:\n{paragraph_text}"
     )
 

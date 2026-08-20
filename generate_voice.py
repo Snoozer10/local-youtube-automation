@@ -274,10 +274,22 @@ def humanize_text_input(page, textbox, text):
             return False
 
 def sanitize_script_text(text):
-    """Cleans up raw programmatic control triggers, leaving the complete Gemini output completely intact."""
+    """
+    Cleans up raw markdown code fences, strips control keywords, and enforces
+    strict lowercase formatting on all TTS tags ([tone:...], [pace:...], [pause:...])
+    to prevent AI Studio from reading English letters out loud.
+    """
+    # 1. Strip Markdown code blocks
     text = re.sub(r"```[a-zA-Z0-9_-]*\n(.*?)\n```", r"\1", text, flags=re.DOTALL)
     text = text.replace("```", "")
 
+    # 2. Enforce Speech Tag Armor (Force lowercase on all bracket tags)
+    def lowercase_tts_tags(match):
+        return match.group(0).lower()
+
+    text = re.sub(r'\[(tone|pace|pause)\s*:[^\]]+\]', lowercase_tts_tags, text, flags=re.IGNORECASE)
+
+    # 3. Strip control triggers
     lines = text.split("\n")
     cleaned_lines = []
     

@@ -15,20 +15,20 @@ WHISPER_MIN_SPEECH_DURATION_MS=250
 INITIAL_PROMPT_MAX_WORDS=120
 DEFAULT_INITIAL_PROMPT=السلام عليكم، أهلاً بيكم. في الفيديو ده هنتكلم بالعامية المصرية، عشان نفهم الموضوع صح. زي الموبايل، التريند، الميكروباص، والسيستم. يا عم ركز معايا، وبلاش كلام كتير.
 
-# --- Subtitle (.SRT) Cadence ---
-# Keeps subtitles snappy and readable
-SUB_MAX_WORDS=6
-SUB_TARGET_WORDS=3
-SUB_MIN_GAP_SPLIT=0.45
+# --- Subtitle (.SRT) Cadence (High-Retention Kinetic Bursts) ---
+# Keeps subtitles ultra-snappy for 1-second mobile reading
+SUB_MAX_WORDS=4
+SUB_TARGET_WORDS=2
+SUB_MIN_GAP_SPLIT=0.35
 
 # --- Image Visual Scene Pacing (image_timestamps.txt) ---
-# Perfect YouTube video essay image duration range: 3.5s to 6.0s
-IMAGE_MIN_DURATION_SEC=3.5
-IMAGE_TARGET_DURATION_SEC=5.0
-IMAGE_MAX_DURATION_SEC=7.5
-IMAGE_MIN_WORDS=8
-IMAGE_MAX_WORDS=20
-IMAGE_PAUSE_SPLIT_SEC=0.60
+# High-Retention 2.5s to 4.5s Visual Metronome (Prevents static image boredom)
+IMAGE_MIN_DURATION_SEC=2.2
+IMAGE_TARGET_DURATION_SEC=3.5
+IMAGE_MAX_DURATION_SEC=4.8
+IMAGE_MIN_WORDS=5
+IMAGE_MAX_WORDS=12
+IMAGE_PAUSE_SPLIT_SEC=0.40
 
 # --- Paths & File Preferences ---
 RUNS_DIR=youtube_runs

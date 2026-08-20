@@ -1,0 +1,36 @@
+assets/sfx/
+├── whoosh/
+│   ├── whoosh_fast_01.wav
+│   ├── whoosh_airy_02.mp3
+│   └── whoosh_whip_03.wav
+│
+├── paper/
+│   ├── paper_turn_01.wav
+│   ├── paper_rustle_02.mp3
+│   ├── paperclip_click_03.wav
+│   └── document_slide_04.wav
+│
+├── stamp/
+│   ├── stamp_heavy_wax_01.wav
+│   ├── stamp_rubber_thud_02.mp3
+│   └── stamp_rejection_slam_03.wav
+│
+├── punchline/
+│   ├── punchline_pop_01.mp3
+│   ├── punchline_boing_02.wav
+│   ├── punchline_record_scratch_03.mp3
+│   └── punchline_gasp_04.wav
+│
+├── blueprint_hud/
+│   ├── hud_cyber_click_01.wav
+│   ├── hud_digital_beep_02.mp3
+│   └── hud_glitch_03.wav
+│
+├── impact/
+│   ├── impact_sub_boom_01.wav
+│   └── impact_wall_thud_02.mp3
+│
+└── comedy_props/
+    ├── scissors_snip_01.wav
+    ├── cash_register_02.mp3
+    └── tea_glass_clink_03.wav

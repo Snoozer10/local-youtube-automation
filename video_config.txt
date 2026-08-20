@@ -4,14 +4,19 @@
 
 # --- Feature Toggles ---
 ENABLE_ANIMATIONS=true
-ENABLE_SUBTITLES=false
 ENABLE_HARDWARE_ENCODER=true
 ENABLE_SINGLE_PASS=true
 ENABLE_CHECKPOINT_RESUME=true
 ENABLE_LOUDNORM_TWOPASS=true
 ENABLE_VBV=true
 
-# --- Output Spec ---
+# --- High-Retention Dynamic Subtitles ---
+ENABLE_SUBTITLES=false
+SUB_FONT_NAME=Cairo-Bold
+SUB_FONT_SIZE=34
+SUB_MARGIN_V=75
+
+# --- Output Spec (1440p forces YouTube VP9/AV1 high-bitrate codecs) ---
 OUTPUT_WIDTH=2560
 OUTPUT_HEIGHT=1440
 # Never change the framerate dynamically between chunks
@@ -20,15 +25,15 @@ OUTPUT_PIX_FMT=yuv420p
 OUTPUT_PROFILE=high
 OUTPUT_LEVEL=5.1
 
-# --- CPU / Hardware Encoding Optimization ---
+# --- CPU / Hardware Encoding Optimization (2D Vector/Animation Profile) ---
 # Auto-detects Intel HD 5500 QuickSync (h264_qsv) or falls back to libx264
 ENCODER_FORCE=
-CPU_CRF=22
-CPU_PRESET=faster
-CPU_TUNE=film
+CPU_CRF=17
+CPU_PRESET=veryfaster
+CPU_TUNE=animation
 
 # Chunk size 25 prevents memory spikes on 2-Core i7-5600U
-CHUNK_SIZE=25
+CHUNK_SIZE=20
 
 # --- Hardware Encoder Preferences (Unused) ---
 QSV_PRESET=fast
@@ -43,17 +48,16 @@ NVENC_MULTIPASS=fullres
 NVENC_SPATIAL_AQ=1
 NVENC_TEMPORAL_AQ=1
 
-# --- Ken Burns / CPU-Friendly Camera Motion ---
+# --- Ken Burns Dynamic Camera Motion (High-Retention Kinetics) ---
 KEN_BURNS_ZOOM_MIN=1.0
-KEN_BURNS_ZOOM_MAX=1.10
+KEN_BURNS_ZOOM_MAX=1.08
 KEN_BURNS_EASING=smoothstep
-KEN_BURNS_UPSCALE_FACTOR=1.2
+KEN_BURNS_UPSCALE_FACTOR=1.12
 KEN_BURNS_INTERP_ALGO=bicubic
-KEN_BURNS_PAN_SPEED=0.08
-KEN_BURNS_ZOOM_SPEED=0.10
+KEN_BURNS_PAN_SPEED=0.10
+KEN_BURNS_ZOOM_SPEED=0.12
 
 # --- Segment/Clip Timing ---
-CHUNK_SIZE=40
 MIN_CLIP_DURATION=0.5
 DEFAULT_CLIP_DURATION=5.0
 MAX_CLIP_DURATION=30.0
@@ -74,8 +78,9 @@ LOUDNORM_LINEAR=true
 LOUDNORM_PRINT_FORMAT=json
 
 # --- VBV (Video Buffering Verifier) ---
-VBV_MAXRATE=24000k
-VBV_BUFSIZE=48000k
+# High-rate VBV ceiling to prevent compression macroblocking on fast transitions
+VBV_MAXRATE=35000k
+VBV_BUFSIZE=70000k
 
 # --- FFmpeg Execution (4 Threads for 2-Core i7) ---
 FFMPEG_THREADS=4
@@ -87,16 +92,16 @@ FFMPEG_LOGLEVEL=warning
 CHECKPOINT_FILE=compile_checkpoint.json
 CHECKPOINT_SAVE_INTERVAL=5
 
-# --- Subtitle Styling ---
-SUB_FONT_NAME=Tahoma
-SUB_FONT_SIZE=22
+# --- High-Contrast Kinetic Subtitle Styling (Mobile Optimized) ---
+SUB_FONT_NAME=Arial
+SUB_FONT_SIZE=26
 SUB_PRIMARY_COLOR=&H00FFFFFF
 SUB_OUTLINE_COLOR=&H00000000
 SUB_BORDER_STYLE=1
-SUB_OUTLINE=2.5
-SUB_SHADOW=1
+SUB_OUTLINE=3.8
+SUB_SHADOW=2.0
 SUB_ALIGNMENT=2
-SUB_MARGIN_V=50
+SUB_MARGIN_V=60
 SUB_BOLD=1
 
 # --- Advanced / Debug ---
@@ -104,8 +109,15 @@ DEBUG_SAVE_INTERMEDIATES=false
 DEBUG_DRY_RUN=false
 DEBUG_FILTER_GRAPH_DUMP=false
 
+# --- BGM / Music Audio Mixing ---
+ENABLE_BGM=false
+BGM_FILE=assets/music/bgm.mp3
+BGM_DEFAULT_VOLUME=0.15
+
 # --- External Sound Effects ---
-SFX_DIR=C:\Users\Snoozer\Downloads\YouTube Stuff\Edits\shorts\Sound effects
+ENABLE_SFX=false
+SFX_DIR=assets/sfx
+SFX_DEFAULT_VOLUME=0.22
 
 EXPORT_SFX_STEM=false
 BURN_SFX_INTO_VIDEO=false

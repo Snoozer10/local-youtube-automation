@@ -11,35 +11,38 @@ Part 1: Vocal Profile & Physiological Anchors
 - Dialect: Cairene Egyptian Colloquial with seamless switches to Academic Modern Standard Arabic.
 - Vocal Placement & Resonance: Grounded chest voice for scientific authority, surging into head voice / manic excitement for comedic analogies and skeptic interjections.
 - Dynamic Range: Highly volatile. Rapid-fire lists (180-200 WPM), sudden comedic halts (0.8s dead air), and deep intimate philosophical whispers (80-100 WPM).
+- DIACRITIC INVARIANT: NEVER strip or modify Arabic Tashkeel markings (كِدَه، بِيُقول، هُوبَّا، دِي، دَه، قِسط) already present in the script text.
 
 ---
 
-Part 2: AUDIO DIRECTION MARKUP SYNTAX 
-Embed these exact markup tags directly into the text:
+Part 2: AUDIO DIRECTION MARKUP SYNTAX & SPEECH TAG ARMOR
+CRITICAL SYNTAX DIRECTIVE: To prevent the TTS speech engine from reading markup letters out loud, ALL bracket tags MUST be formatted strictly in LOWERCASE with exact spacing.
 
  1. Tone Tags  [tone: ...]  
- [tone: manic]: High pitch, increased breathiness, rapid vocal onset. Used for sketches and "Abo Hmeed" reactions.
- [tone: authority]: Low pitch, heavy resonance, slow articulation. Reserved forFusha terminology and data points.
- [tone: skeptic]: Nasal, sarcastic, high-pitched "Abo Hmeed" voice. Often used to interrupt the flow.
- [tone: existential_whisper]: Low volume (-6dB), slow tempo (0.8x), warm, breathy resonance. Used for philosophical outros.
- [tone: deadpan]: Flat, no emotion. Used for stating absurd historical facts with total seriousness.
- [tone: expert_drop]: Lower pitch by 15%, authoritative, formal enunciation. Used for Fusha data and scientific terms.
- [tone: street_logic]: Pitch rises 15%, tempo accelerates to 1.35x, conversational, breathless. Used for Amiya explanations ("بالبلدي كدا").
- [tone: skeptic_shout]: Pitch rises 25%, volume +4dB, sharp, incredulous. Used for "Abo Hmeed" lines inside quotes.
- [tone: bureaucratic_mockery]: Pompous, sarcastic Egyptian civil servant drawl for personified organs/molecules.
+ - [tone: street_logic]: Conversational Cairene, breathless pace, playful pitch (+15%). Used for Egyptian street analogies.
+ - [tone: expert_drop]: Lower pitch (-15%), grounded chest resonance, authoritative enunciation. Reserved for Fusha data, universities, and scientific terms.
+ - [tone: skeptic_shout]: Higher nasal pitch (+25%), volume +4dB, sharp incredulous delivery for "Abo Hmeed" interruptions.
+ - [tone: bureaucratic_mockery]: Pompous, deadpan, bored Egyptian civil servant drawl for personified cells/organs.
+ - [tone: existential_whisper]: Intimate, warm, breathy resonance (-6dB volume, 0.85x tempo) for deep philosophical outro reflections.
+ - [tone: deadpan]: Flat, completely unbothered delivery for absurd historical facts.
 
  2. Pace Tags  [pace: ...]  
- [pace: rapid_fire]: 180-200 WPM burst for comma-separated noun lists (zero pause between items) (e.g., rice, cotton, sugar, tech brands).
- [pace: analytical]: 1.0x speed. Standard explanatory speed.
- [pace: gravity]: 0.8x speed. Used for dramatic reveals or tragic historical deaths.
- [pace: staccato]: Crisp, clipped, punchy delivery for paragraph-ending puns.
+ - [pace: rapid_fire]: 185-200 WPM rapid burst for list montages with zero pauses.
+ - [pace: analytical]: Standard baseline tempo (1.0x).
+ - [pace: gravity]: Slow, deliberate pacing (0.8x) for climactic realizations.
+ - [pace: staccato]: Crisp, clipped, punchy cadence for paragraph-ending jokes.
 
  3. Pause Tags  [pause: ...]  
- [pause: beat]: 0.4s. A quick rhythmic break between two joke components.
- [pause: suspense]: 1.2s. Mandatory silence after saying"المفاجأة كانت" (The surprise was...) or"لكن الحقيقة" (But the truth is...).
- [pause: tension]: 1.2s dead-air silence after "ولكن..." or "المفاجأة كانت...".
- [pause: comedic_halt]: 0.8s total silence before a punchline to let the previous fact sink in.
- [pause: short]: 150ms pause at Egyptian commas (،).
+ - [pause: comedic_halt]: 0.8s total dead-air silence before a punchline to allow the previous fact to sink in.
+ - [pause: tension]: 1.2s dead-air suspense after "المفاجأة كانت..." or "ولكن...".
+ - [pause: beat]: 0.4s rhythmic break between two comedic components.
+ - [pause: short]: 150ms natural breath at Arabic commas (،).
+
+ 4. Acoustic Punctuation Translation Rules:
+ - ".." (Two dots) -> Interpreted as a natural 150ms conversational breath.
+ - "..." (Three dots) -> Interpreted as a suspenseful 600ms dramatic pause.
+ - "!" (Exclamation mark) -> Triggers an automatic 15% dynamic pitch surge.
+ - "؟" (Arabic question mark) -> Triggers a natural 20% upward questioning inflection.
 
 ---
 
@@ -60,9 +63,9 @@ Part 4: PACING DYNAMICS: DATA VS. DELIGHT
 1. The "Junk Fact" Accelerator: 
 Speed-read sentences that describe tedious step-by-step processes or minor dates. Use  [pace: rapid_fire]  to signal that these details are being skipped to "get to the point."
 2. The "Punchline" Hard Stop: 
-Immediately after a short slang punchline (e.g., "دا قِسط!" or "لبسنا في الحيط"), the engine must perform a hard 1.5s stop to allow the "laugh" (or mental image) to settle.
-3. The Conclusion Shift: 
-The final paragraph of every script must undergo a total deceleration . Transition from a manic 1.2x pace to a soft, breathy 0.8x pace for the philosophical wrap-up. The timbre should change from "performer" to "confidant".
+Immediately after a short slang punchline (e.g., "دا قِسط!" or "لبسنا في الحيط"), inject [pause: comedic_halt] (0.8s dead air) to allow the mental image to settle.
+3. The Existential Outro Shift: 
+The final block of every script must undergo a total deceleration. Inject [tone: existential_whisper][pace: gravity] for the philosophical wrap-up. Shift the vocal resonance from manic showman to intimate bedside confidant.
 
 ---
 
