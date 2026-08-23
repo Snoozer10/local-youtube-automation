@@ -3,7 +3,7 @@
 # ============================================================
 
 # --- Feature Toggles ---
-ENABLE_ANIMATIONS=true
+ENABLE_ANIMATIONS=false
 ENABLE_HARDWARE_ENCODER=true
 ENABLE_SINGLE_PASS=true
 ENABLE_CHECKPOINT_RESUME=true

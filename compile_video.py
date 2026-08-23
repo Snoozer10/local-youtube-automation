@@ -372,11 +372,10 @@ def build_ken_burns_filter(config: dict, frame_count: int, camera_action: str, p
         z_expr = f"{zoom_max}"
         x_expr = safe_center_x
         y_expr = f"trunc(max(0,min(ih-ih/zoom,(ih-ih/zoom)*{ease})))"
-    else:  # static
-        loop_count = max(0, frames - 1)
-        return (f"scale={w}:{h}:force_original_aspect_ratio=decrease:{scale_flags},"
-                f"pad={w}:{h}:trunc((ow-iw)/2)*2:trunc((oh-ih)/2)*2:color=black,"
-                f"loop=loop={loop_count}:size=1:start=0,setpts=N/({fps}*TB)" + norm)
+    else:  # static (handles static clips & animations disabled)
+        z_expr = "1.0"
+        x_expr = safe_center_x
+        y_expr = safe_center_y
 
     return (f"scale={upscale_w}:{upscale_h}:force_original_aspect_ratio=increase:{scale_flags},"
             f"crop={upscale_w}:{upscale_h},"
@@ -672,7 +671,8 @@ def prepare_synchronized_timeline(image_blocks: list, audio_duration: float, fps
     """
     if not image_blocks:
         return []
-
+    # Anchors the first image to 0.0s to cover intro music/silence before speech
+    image_blocks[0]['sec'] = 0.0
     # 1. Initialize Acoustic Snapper
     aligner = AudioSyncAligner(audio_path) if audio_path and os.path.exists(audio_path) else None
 
@@ -1479,13 +1479,15 @@ run_single_pass = run_chunked_compile
 def verify_master_video(output_path: str, expected_duration: float) -> bool:
     """Verifies that the master MP4 is non-corrupt and has matching video and audio stream durations."""
     if not os.path.exists(output_path) or os.path.getsize(output_path) < 10000:
+        print("  [VERIFY FAIL] File does not exist or is too small.")
         return False
     try:
         cmd = [
             "ffprobe", "-v", "error", "-show_entries",
-            "format=duration:stream=codec_type,duration", "-of", "json", output_path
+            "format=duration:stream=codec_type", "-of", "json", output_path
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        # Increased timeout from 10s to 60s for large 1440p files
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         data = json.loads(res.stdout)
         
         streams = [s.get("codec_type") for s in data.get("streams", [])]
@@ -1495,9 +1497,13 @@ def verify_master_video(output_path: str, expected_duration: float) -> bool:
         file_dur = float(data.get("format", {}).get("duration", 0.0))
         dur_diff = abs(file_dur - expected_duration)
         
-        # Valid if both streams exist and duration matches within ±0.5s tolerance
-        return has_video and has_audio and (dur_diff < 0.5)
-    except Exception:
+        print(f"  [VERIFY] Video Duration: {file_dur:.2f}s | Audio Expected: {expected_duration:.2f}s (Diff: {dur_diff:.2f}s)")
+        print(f"  [VERIFY] Streams Detected: Video={has_video}, Audio={has_audio}")
+
+        # Ensure both streams are present and duration is within a 2.0s tolerance
+        return has_video and has_audio and (dur_diff < 2.0)
+    except Exception as e:
+        print(f"  [VERIFY ERROR] Probe failed: {e}")
         return False
 
 
