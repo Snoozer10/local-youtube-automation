@@ -1,7 +1,15 @@
+﻿import glob
 import os
 import re
 import sys
-import glob
+
+# Windows console hardening: guarantee UTF-8 for Arabic output even when piped.
+if sys.platform.startswith("win"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 # For script image generator to inject timestamps into pre-planned prompts based on SRT files.
 
@@ -20,10 +28,10 @@ def parse_srt_timestamps(srt_path):
     timestamps = {}
     if not os.path.exists(srt_path):
         return timestamps
-    
-    with open(srt_path, "r", encoding="utf-8-sig") as f:
+
+    with open(srt_path, encoding="utf-8-sig") as f:
         content = f.read()
-        
+
     # Split content by double newlines to process independent blocks
     blocks = [b.strip().split('\n') for b in content.split('\n\n') if b.strip()]
     for block in blocks:
@@ -47,31 +55,31 @@ def inject_timestamps():
     if not latest_run:
         print("Error: No active run folders found in 'youtube_runs/'.")
         sys.exit(1)
-        
+
     print(f"Target Video Folder: '{latest_run}'")
-    
+
     srt_path = os.path.join(latest_run, "timestamped_transcript.srt")
     prompts_path = os.path.join(latest_run, "pre_planned_prompts.txt")
-    
+
     if not os.path.exists(srt_path) or not os.path.exists(prompts_path):
         print("Error: Missing required files in target folder:")
         print(f"  - Looking for: '{srt_path}' (exists: {os.path.exists(srt_path)})")
         print(f"  - Looking for: '{prompts_path}' (exists: {os.path.exists(prompts_path)})")
         sys.exit(1)
-        
+
     # 2. Extract timestamps
     srt_timestamps = parse_srt_timestamps(srt_path)
     print(f"Parsed {len(srt_timestamps)} timestamp keys from SRT.")
-    
+
     # 3. Read pre-planned prompts file
-    with open(prompts_path, "r", encoding="utf-8") as f:
+    with open(prompts_path, encoding="utf-8") as f:
         content = f.read()
-        
+
     lines = content.split('\n')
     new_lines = []
     current_idx = None
     injected_count = 0
-    
+
     # 4. Inject matching timestamps via a state-machine scan
     for line in lines:
         # Match "Index: <number>"
@@ -80,7 +88,7 @@ def inject_timestamps():
             current_idx = int(match_idx.group(1))
             new_lines.append(line)
             continue
-            
+
         # Match "Calculated Timestamp:" line
         if line.strip().startswith("Calculated Timestamp:"):
             if current_idx in srt_timestamps:
@@ -89,13 +97,13 @@ def inject_timestamps():
             else:
                 new_lines.append("Calculated Timestamp:")
             continue
-            
+
         new_lines.append(line)
-        
+
     # 5. Overwrite file with updated contents
     with open(prompts_path, "w", encoding="utf-8") as f:
         f.write('\n'.join(new_lines))
-        
+
     print(f"Success! Injected {injected_count} timestamps into '{prompts_path}'.")
     print("=============================================")
 

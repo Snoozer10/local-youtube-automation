@@ -392,7 +392,16 @@ def load_local_or_global_config(subfolder, config_filename, default_text=""):
             print(f"  Using global config: {fname}")
             with open(fname, "r", encoding="utf-8") as f:
                 return f.read().strip()
-                
+
+    # Prompts directory fallback (visual_style / visuals_plan live under prompts/)
+    prompts_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prompts")
+    for fname in filenames_to_try:
+        prompts_path = os.path.join(prompts_dir, fname)
+        if os.path.exists(prompts_path):
+            print(f"  Using global config: {prompts_path}")
+            with open(prompts_path, "r", encoding="utf-8") as f:
+                return f.read().strip()
+
     print(f"  Warning: '{config_filename}' not found. Utilizing default fallback.")
     return default_text
 

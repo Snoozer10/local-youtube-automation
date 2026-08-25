@@ -1,12 +1,22 @@
+﻿import glob
+import json
 import os
+import re
+import subprocess
 import sys
 import time
-import json
-import subprocess
-import glob
-import re
-from utils import get_config_value, send_telegram_notification
+
 from playwright.sync_api import sync_playwright
+
+from utils import get_config_value, send_telegram_notification
+
+# Windows console hardening: guarantee UTF-8 for Arabic output even when piped.
+if sys.platform.startswith("win"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 
 def get_latest_run_folder(runs_path="youtube_runs"):
@@ -77,7 +87,7 @@ def get_pipeline_state(folder_path):
     }
     if os.path.exists(state_file):
         try:
-            with open(state_file, "r") as f:
+            with open(state_file) as f:
                 default_state.update(json.load(f))
         except Exception:
             pass
@@ -85,11 +95,15 @@ def get_pipeline_state(folder_path):
 
 
 def save_pipeline_state(folder_path, state):
-    """Saves progress back to pipeline.json."""
+    """Saves progress back to pipeline.json atomically (crash-safe rename)."""
     state_file = os.path.join(folder_path, "pipeline.json")
     try:
-        with open(state_file, "w") as f:
+        tmp_file = state_file + ".tmp"
+        with open(tmp_file, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=4)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_file, state_file)
     except Exception:
         pass
 
@@ -182,7 +196,7 @@ def main():
             else "flow_image_generator.py"
         )
         whisper_script = (
-            "transcribe_audio.py"
+            os.path.join("tools", "transcribe_audio.py")
             if whisper_engine == "hard_whisper"
             else "faster_whisper_transcribe_audio.py"
         )

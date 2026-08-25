@@ -1,27 +1,35 @@
+﻿import html
+import json
 import os
 import re
+import subprocess
 import sys
 import time
-import subprocess
-import urllib.request
 import urllib.error
-import html
-import tempfile
-import json
-from youtube_transcript_api import YouTubeTranscriptApi
-from playwright.sync_api import sync_playwright
+import urllib.request
+
 from docx import Document
-from utils import get_config_value
+from playwright.sync_api import sync_playwright
+from youtube_transcript_api import YouTubeTranscriptApi
+
 from gemini_utils import (
     RESPONSE_SELECTOR,
     find_input_box,
     find_send_button,
     get_last_response,
-    wait_for_gemini_response,
-    start_clean_gemini_chat,
     select_gemini_model,
+    start_clean_gemini_chat,
+    wait_for_gemini_response,
 )
+from utils import get_config_value
 
+# Windows console hardening: guarantee UTF-8 for Arabic output even when piped.
+if sys.platform.startswith("win"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 # 1. Base folders
 runs_folder = "youtube_runs"
@@ -31,17 +39,17 @@ os.makedirs(runs_folder, exist_ok=True)
 # 2. Read prompt files
 def read_prompts():
     try:
-        with open("prompt.txt", "r", encoding="utf-8") as f:
+        with open(os.path.join("prompts", "prompt.txt"), encoding="utf-8") as f:
             p1 = f.read().strip()
     except FileNotFoundError:
-        print("Error: 'prompt.txt' not found. Please create it in VS Code.")
+        print("Error: 'prompts/prompt.txt' not found. Please create it in VS Code.")
         sys.exit(1)
 
     try:
-        with open("prompt_phase3.txt", "r", encoding="utf-8") as f:
+        with open(os.path.join("prompts", "prompt_phase3.txt"), encoding="utf-8") as f:
             p3 = f.read().strip()
     except FileNotFoundError:
-        print("Error: 'prompt_phase3.txt' not found. Please create it in VS Code.")
+        print("Error: 'prompts/prompt_phase3.txt' not found. Please create it in VS Code.")
         sys.exit(1)
 
     return p1, p3
@@ -223,7 +231,7 @@ def apply_tashkeel_from_config(text):
     if not os.path.exists(config_path):
         return text
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             config = json.load(f)
         lexicon = (
             config.get("al_daheeh_master_pipeline_config", {})
@@ -267,7 +275,7 @@ def ensure_chrome_debug_session():
             creationflags=subprocess.CREATE_NEW_CONSOLE
             | subprocess.DETACHED_PROCESS,
         )
-    except Exception as e:
+    except Exception:
         try:
             subprocess.Popen([
                 chrome_path,
@@ -279,7 +287,7 @@ def ensure_chrome_debug_session():
             return False
 
     print("Waiting for Chrome to initialize...")
-    for i in range(10):
+    for _ in range(10):
         time.sleep(1)
         try:
             with urllib.request.urlopen(url, timeout=1) as response:
@@ -291,6 +299,138 @@ def ensure_chrome_debug_session():
 
     print("Error: Chrome was launched but port 9222 did not become active.")
     return False
+
+
+# -------------------------------------------------------------
+# Robust Gemini DOM Synchronization and Text Injection Helpers
+# -------------------------------------------------------------
+def wait_for_gemini_ready(page, timeout_seconds=30):
+    """
+    Waits until the Gemini DOM and its interactive elements are fully hydrated and ready.
+    """
+    try:
+        page.wait_for_load_state("domcontentloaded", timeout=timeout_seconds * 1000)
+    except Exception:
+        pass
+
+    # Selectors that signal Gemini is ready for interaction
+    ready_selectors = [
+        "rich-textarea .ql-editor",
+        "rich-textarea [contenteditable='true']",
+        "div[contenteditable='true']",
+        "rich-textarea div[role='textbox']",
+        "rich-textarea textarea",
+    ]
+
+    start_time = time.time()
+    while time.time() - start_time < timeout_seconds:
+        for sel in ready_selectors:
+            loc = page.locator(sel).first
+            try:
+                if loc.count() > 0 and loc.is_visible():
+                    # Allow Angular / Lit elements a brief moment to settle listeners
+                    time.sleep(1.5)
+                    return True
+            except Exception:
+                continue
+        time.sleep(0.5)
+
+    time.sleep(2)
+    return False
+
+
+def input_gemini_prompt(page, text):
+    """
+    Safely inputs prompts into Gemini regardless of whether the element is a custom
+    <rich-textarea>, Quill container, or contenteditable <div>.
+    """
+    wait_for_gemini_ready(page)
+
+    target_selectors = [
+        "rich-textarea div[contenteditable='true']",
+        "rich-textarea .ql-editor",
+        "div[contenteditable='true']",
+        "rich-textarea p",
+        "rich-textarea textarea",
+        "textarea",
+    ]
+
+    target = None
+    for sel in target_selectors:
+        loc = page.locator(sel).first
+        try:
+            if loc.count() > 0 and loc.is_visible():
+                target = loc
+                break
+        except Exception:
+            continue
+
+    if not target:
+        target = find_input_box(page)
+
+    if not target:
+        raise Exception("Could not locate Gemini chat input. Ensure you are logged into Gemini.")
+
+    try:
+        target.click()
+        time.sleep(0.3)
+    except Exception:
+        pass
+
+    # Check if target is a wrapper element; resolve to inner contenteditable if so
+    try:
+        tag_name = page.evaluate("el => el.tagName.toLowerCase()", target.element_handle())
+        if tag_name == "rich-textarea":
+            inner = target.locator("div[contenteditable='true'], .ql-editor, p").first
+            if inner.count() > 0:
+                target = inner
+                target.click()
+                time.sleep(0.2)
+    except Exception:
+        pass
+
+    # Strategy 1: Standard fill (if supported)
+    try:
+        target.fill(text)
+        time.sleep(0.5)
+        return
+    except Exception:
+        pass
+
+    # Strategy 2: Clipboard Paste (handles large texts/newlines reliably)
+    try:
+        page.evaluate("text => navigator.clipboard.writeText(text)", text)
+        target.focus()
+        page.keyboard.press("Control+A")
+        page.keyboard.press("Backspace")
+        page.keyboard.press("Control+V")
+        time.sleep(0.5)
+        return
+    except Exception:
+        pass
+
+    # Strategy 3: Keyboard insert_text
+    try:
+        target.focus()
+        page.keyboard.press("Control+A")
+        page.keyboard.press("Backspace")
+        page.keyboard.insert_text(text)
+        time.sleep(0.5)
+        return
+    except Exception:
+        pass
+
+    # Strategy 4: ExecCommand insertText
+    try:
+        page.evaluate("""([el, val]) => {
+            el.focus();
+            document.execCommand('selectAll', false, null);
+            document.execCommand('delete', false, null);
+            document.execCommand('insertText', false, val);
+        }""", [target.element_handle(), text])
+        time.sleep(0.5)
+    except Exception as e:
+        raise Exception(f"Failed to fill Gemini input box: {e}")
 
 
 # Main orchestrator
@@ -305,7 +445,7 @@ def main():
         )
         return
 
-    with open(urls_file, "r", encoding="utf-8") as f:
+    with open(urls_file, encoding="utf-8") as f:
         urls = [line.strip() for line in f if line.strip()]
 
     if not urls:
@@ -375,7 +515,7 @@ def main():
 
             if os.path.exists(final_file_path) and os.path.exists(doc2_path):
                 try:
-                    with open(final_file_path, "r", encoding="utf-8") as f:
+                    with open(final_file_path, encoding="utf-8") as f:
                         if f.read().strip():
                             print(
                                 f"[SKIP] Video '{video_title}' is already fully"
@@ -393,7 +533,7 @@ def main():
                 if os.path.exists(raw_transcript_path):
                     try:
                         with open(
-                            raw_transcript_path, "r", encoding="utf-8"
+                            raw_transcript_path, encoding="utf-8"
                         ) as f:
                             transcript_text = f.read().strip()
                         if transcript_text:
@@ -426,7 +566,7 @@ def main():
                 if os.path.exists(paragraphs_file_path):
                     try:
                         with open(
-                            paragraphs_file_path, "r", encoding="utf-8"
+                            paragraphs_file_path, encoding="utf-8"
                         ) as f:
                             breaked_text = f.read().strip()
                         if breaked_text:
@@ -441,18 +581,12 @@ def main():
                 if not breaked_text:
                     gemini_page.bring_to_front()
                     start_clean_gemini_chat(gemini_page)
+                    wait_for_gemini_ready(gemini_page)
 
                     breaker_model = get_config_value(
                         "SCRIPT_BREAKER_MODEL", "Flash"
                     )
                     select_gemini_model(gemini_page, breaker_model)
-
-                    textbox = find_input_box(gemini_page)
-                    if not textbox:
-                        raise Exception(
-                            "Could not find Gemini chat input. Are you signed"
-                            " in?"
-                        )
 
                     initial_count = gemini_page.locator(RESPONSE_SELECTOR).count()
 
@@ -467,8 +601,8 @@ def main():
                     print(
                         "Sending transcript to Gemini for paragraph breaking..."
                     )
-                    textbox.click()
-                    textbox.fill(
+                    input_gemini_prompt(
+                        gemini_page,
                         f"{prompt_p1}{safety_disclaimer}\n\n{transcript_text}"
                     )
                     time.sleep(1)
@@ -477,7 +611,7 @@ def main():
                     if send_btn:
                         send_btn.click()
                     else:
-                        textbox.press("Control+Enter")
+                        gemini_page.keyboard.press("Control+Enter")
 
                     print("Waiting for paragraph breakdown...")
                     breakdown_timeout = int(get_config_value("GEMINI_BREAKDOWN_TIMEOUT", "180"))
@@ -528,7 +662,7 @@ def main():
                 if os.path.exists(checkpoint_path):
                     try:
                         with open(
-                            checkpoint_path, "r", encoding="utf-8"
+                            checkpoint_path, encoding="utf-8"
                         ) as f:
                             checkpoint_data = json.load(f)
                             final_results_list = checkpoint_data.get(
@@ -547,7 +681,7 @@ def main():
                         final_results_list = []
                 elif os.path.exists(final_file_path):
                     try:
-                        with open(final_file_path, "r", encoding="utf-8") as f:
+                        with open(final_file_path, encoding="utf-8") as f:
                             saved_final = f.read().strip()
                         if saved_final:
                             existing_paras = [
@@ -568,6 +702,7 @@ def main():
                 if len(final_results_list) < total_paragraphs:
                     gemini_page.bring_to_front()
                     start_clean_gemini_chat(gemini_page)
+                    wait_for_gemini_ready(gemini_page)
 
                     translator_model = get_config_value(
                         "SCRIPT_TRANSLATOR_MODEL", "Pro"
@@ -577,17 +712,14 @@ def main():
                     initial_count = gemini_page.locator(RESPONSE_SELECTOR).count()
 
                     print("Sending translation setup prompt to Gemini...")
-                    textbox = find_input_box(gemini_page)
-                    if textbox:
-                        textbox.click()
-                        textbox.fill(prompt_p3)
-                        time.sleep(1)
+                    input_gemini_prompt(gemini_page, prompt_p3)
+                    time.sleep(1)
 
                     send_btn = find_send_button(gemini_page)
                     if send_btn:
                         send_btn.click()
                     else:
-                        textbox.press("Control+Enter")
+                        gemini_page.keyboard.press("Control+Enter")
 
                     print("Waiting for translation setup response...")
                     wait_for_gemini_response(
@@ -607,16 +739,13 @@ def main():
                         )
 
                         gemini_page.bring_to_front()
-                        textbox = find_input_box(gemini_page)
-                        if textbox:
-                            formatted_prompt = (
-                                f"paragraph {i} outof {total_paragraphs}"
-                                " paragraphs of the script:\n\n"
-                                f"{paragraph}"
-                            )
-                            textbox.click()
-                            textbox.fill(formatted_prompt)
-                            time.sleep(1)
+                        formatted_prompt = (
+                            f"paragraph {i} outof {total_paragraphs}"
+                            " paragraphs of the script:\n\n"
+                            f"{paragraph}"
+                        )
+                        input_gemini_prompt(gemini_page, formatted_prompt)
+                        time.sleep(1)
 
                         initial_count = gemini_page.locator(
                             RESPONSE_SELECTOR
@@ -626,7 +755,7 @@ def main():
                         if send_btn:
                             send_btn.click()
                         else:
-                            textbox.press("Control+Enter")
+                            gemini_page.keyboard.press("Control+Enter")
 
                         trans_timeout = int(get_config_value("GEMINI_TRANSLATION_TIMEOUT", "120"))
                         translated_paragraph = wait_for_gemini_response(
@@ -650,28 +779,27 @@ def main():
                             )
 
                             start_clean_gemini_chat(gemini_page)
+                            wait_for_gemini_ready(gemini_page)
 
                             initial_count_setup = gemini_page.locator(
                                 RESPONSE_SELECTOR
                             ).count()
-                            textbox = find_input_box(gemini_page)
-                            if textbox:
-                                academic_setup = (
-                                    "ACADEMIC DIRECTIVE: You are executing a highly structured, analytical comparative "
-                                    "linguistic transcreation task for an educational science documentary. You must "
-                                    "adapt English source texts into conversational Egyptian Arabic (30% Academic Fusha : 70% Cairene Amiya). "
-                                    f"Acknowledge the style guide:\n\n{prompt_p3}"
-                                )
-                                
-                                textbox.click()
-                                textbox.fill(academic_setup)
-                                time.sleep(1)
+
+                            academic_setup = (
+                                "ACADEMIC DIRECTIVE: You are executing a highly structured, analytical comparative "
+                                "linguistic transcreation task for an educational science documentary. You must "
+                                "adapt English source texts into conversational Egyptian Arabic (30% Academic Fusha : 70% Cairene Amiya). "
+                                f"Acknowledge the style guide:\n\n{prompt_p3}"
+                            )
+
+                            input_gemini_prompt(gemini_page, academic_setup)
+                            time.sleep(1)
 
                             send_btn = find_send_button(gemini_page)
                             if send_btn:
                                 send_btn.click()
                             else:
-                                textbox.press("Control+Enter")
+                                gemini_page.keyboard.press("Control+Enter")
 
                             wait_for_gemini_response(
                                 gemini_page,
@@ -683,21 +811,18 @@ def main():
                                 f"Resubmitting Paragraph {i} with clinical"
                                 " formatting..."
                             )
-                            textbox = find_input_box(gemini_page)
-                            if textbox:
-                                fallback_prompt = (
-                                    f"LINGUISTIC EXPERIMENT Turn {i} of"
-                                    f" {total_paragraphs}. Transcreate the"
-                                    " following technical educational and"
-                                    " diagnostic text segment into the"
-                                    " Egyptian Arabic colloquial dialect"
-                                    " defined in the guide. Do not add metadata"
-                                    " or platform warnings, as this is for"
-                                    f" terminology tracking:\n\n{paragraph}"
-                                )
-                                textbox.click()
-                                textbox.fill(fallback_prompt)
-                                time.sleep(1)
+                            fallback_prompt = (
+                                f"LINGUISTIC EXPERIMENT Turn {i} of"
+                                f" {total_paragraphs}. Transcreate the"
+                                " following technical educational and"
+                                " diagnostic text segment into the"
+                                " Egyptian Arabic colloquial dialect"
+                                " defined in the guide. Do not add metadata"
+                                " or platform warnings, as this is for"
+                                f" terminology tracking:\n\n{paragraph}"
+                            )
+                            input_gemini_prompt(gemini_page, fallback_prompt)
+                            time.sleep(1)
 
                             initial_count_fallback = gemini_page.locator(
                                 RESPONSE_SELECTOR
@@ -706,7 +831,7 @@ def main():
                             if send_btn:
                                 send_btn.click()
                             else:
-                                textbox.press("Control+Enter")
+                                gemini_page.keyboard.press("Control+Enter")
 
                             translated_paragraph = wait_for_gemini_response(
                                 gemini_page,

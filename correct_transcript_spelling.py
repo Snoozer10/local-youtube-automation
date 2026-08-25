@@ -1,7 +1,7 @@
+import difflib
 import os
 import re
 import sys
-import difflib
 
 print("DEBUG: [Checkpoint 1] Imports completed successfully.", flush=True)
 
@@ -46,13 +46,15 @@ def align_and_correct_file(file_path, ref_words, file_type):
     Aligns and spelling-corrects a target file against the reference words list.
     Supports 'txt' (timestamped timelines) and 'srt' (standard subtitle files) formats.
     """
-    # Force UTF-8-sig reading for SRT compatibility
-    encoding_mode = "utf-8-sig" if file_type == "srt" else "utf-8"
-    with open(file_path, "r", encoding=encoding_mode) as f:
+    # Force UTF-8-sig reading so a leading BOM never corrupts line 1 parsing;
+    # files are written back WITHOUT a BOM for txt (downstream parsers use
+    # plain utf-8) and WITH the conventional BOM for srt.
+    read_encoding = "utf-8-sig"
+    with open(file_path, encoding=read_encoding) as f:
         lines = f.readlines()
 
     trans_words = [] # List of (word, group_idx)
-    
+
     if file_type == "txt":
         line_timestamps = []
         for idx, line in enumerate(lines):
@@ -72,7 +74,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
             for w in words:
                 trans_words.append((w, idx))
         original_group_count = len(lines)
-        
+
     elif file_type == "srt":
         srt_headers = [] # List of (idx_str, time_str)
         blocks = []
@@ -86,7 +88,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
                 current_block.append(line.strip())
         if current_block:
             blocks.append(current_block)
-            
+
         for block_idx, block in enumerate(blocks):
             if len(block) >= 2:
                 idx_str = block[0]
@@ -101,10 +103,17 @@ def align_and_correct_file(file_path, ref_words, file_type):
                 srt_headers.append((block[0] if block else "", ""))
         original_group_count = len(blocks)
 
-    # Convert transcript words into sequence list for matching
+    # Convert transcript words into sequence list for matching.
+    # autojunk=False is mandatory: with the default heuristic, frequent Arabic
+    # tokens (في/من/اللي) in 200+ word transcripts are treated as junk and the
+    # alignment silently redistributes them across timestamp groups.
     trans_words_seq = [tw[0] for tw in trans_words]
-    matcher = difflib.SequenceMatcher(None, trans_words_seq, ref_words)
-    
+    if not trans_words_seq or not ref_words:
+        # Nothing alignable (empty transcript/reference): leave file untouched
+        # instead of truncating it through the reconstruction path.
+        return
+    matcher = difflib.SequenceMatcher(None, trans_words_seq, ref_words, autojunk=False)
+
     # Store word structures for reconstruction
     corrected_groups_words = [[] for _ in range(original_group_count)]
 
@@ -116,7 +125,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
                 ref_word_idx = j1 + offset
                 group_idx = trans_words[word_idx][1]
                 corrected_groups_words[group_idx].append(ref_words[ref_word_idx])
-                
+
         elif tag == 'replace':
             ref_words_sub = ref_words[j1:j2]
             group_indices = [trans_words[k][1] for k in range(i1, i2)]
@@ -125,7 +134,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
                     mapped_pos = int((r_idx / len(ref_words_sub)) * len(group_indices))
                     group_idx = group_indices[mapped_pos]
                     corrected_groups_words[group_idx].append(r_word)
-                    
+
         elif tag == 'insert':
             if i1 > 0:
                 nearest_idx = trans_words[i1 - 1][1]
@@ -135,7 +144,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
                 nearest_idx = 0
             for ref_word in ref_words[j1:j2]:
                 corrected_groups_words[nearest_idx].append(ref_word)
-                
+
         elif tag == 'delete':
             pass
 
@@ -149,7 +158,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
                 new_lines.append(f"{timestamp} {reconstructed_text}\n")
             else:
                 new_lines.append(f"{timestamp}\n" if timestamp else "\n")
-                
+
     elif file_type == "srt":
         for idx, (idx_str, time_str) in enumerate(srt_headers):
             if not idx_str:
@@ -160,15 +169,19 @@ def align_and_correct_file(file_path, ref_words, file_type):
             new_lines.append(f"{time_str}\n")
             new_lines.append(f"{reconstructed_text}\n\n")
 
-    # Save output with appropriate encoding flags
-    with open(file_path, "w", encoding=encoding_mode) as f:
+    # Save output atomically (temp file + os.replace) so a crash mid-write can
+    # never destroy the only copy of the transcript artifact.
+    write_encoding = "utf-8-sig" if file_type == "srt" else "utf-8"
+    tmp_path = file_path + ".tmp"
+    with open(tmp_path, "w", encoding=write_encoding) as f:
         f.writelines(new_lines)
+    os.replace(tmp_path, file_path)
 
 def correct_transcript():
     print("DEBUG: [Checkpoint 3] Entering correct_transcript().", flush=True)
     target_dir = get_target_directory()
     print(f"DEBUG: [Checkpoint 5] Target directory resolved to: '{target_dir}'", flush=True)
-    
+
     # Prioritize refined_script.txt, fallback to final_output.txt
     ref_refined = os.path.join(target_dir, "refined_script.txt")
     ref_final = os.path.join(target_dir, "final_output.txt")
@@ -186,7 +199,7 @@ def correct_transcript():
     print("DEBUG: [Checkpoint 6] Target reference file exists. Reading contents...", flush=True)
 
     # 1. Read and tokenize reference text
-    with open(ref_path, "r", encoding="utf-8") as f:
+    with open(ref_path, encoding="utf-8") as f:
         ref_text = f.read().strip()
     ref_words = ref_text.split()
     print(f"DEBUG: Reference text loaded. Word count = {len(ref_words)}", flush=True)
@@ -217,7 +230,7 @@ def correct_transcript():
 
 if __name__ == "__main__":
     print("DEBUG: [Checkpoint 2] Entered main block.", flush=True)
-    
+
     # Safely reconfigure consoles with replacements to avoid crash loops
     if sys.platform.startswith("win"):
         try:

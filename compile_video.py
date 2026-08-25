@@ -1,13 +1,16 @@
 from __future__ import annotations
-import os
+
 import json
-import re
-import sys
-import time 
+import os
+import queue
 import random
-import subprocess
+import re
 import shutil
 import struct
+import subprocess
+import sys
+import threading
+import time
 import wave
 from datetime import datetime, timezone
 
@@ -109,7 +112,7 @@ def load_video_config(config_path="video_config.txt") -> dict:
         return DEFAULTS.copy()
 
     config = DEFAULTS.copy()
-    with open(config_path, 'r', encoding='utf-8') as f:
+    with open(config_path, encoding='utf-8') as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith('#'):
@@ -223,16 +226,16 @@ def _build_encoder_config(encoder: str, config: dict) -> dict:
 def detect_hardware_encoder(config: dict) -> dict:
     if config.get("ENCODER_FORCE"):
         return _build_encoder_config(config["ENCODER_FORCE"], config)
-    
+
     is_high_res = int(config.get("OUTPUT_HEIGHT", 1080)) > 1080 or int(config.get("OUTPUT_WIDTH", 1920)) > 1920
-    
+
     if config.get("ENABLE_HARDWARE_ENCODER"):
         if _probe_encoder("h264_nvenc"):
             return _build_encoder_config("h264_nvenc", config)
         # Broadwell Intel HD 5500 QSV is unreliable above 1080p
         if not is_high_res and _probe_encoder("h264_qsv"):
             return _build_encoder_config("h264_qsv", config)
-            
+
     return _build_encoder_config("libx264", config)
 
 
@@ -247,7 +250,7 @@ class CheckpointManager:
         if not os.path.exists(self.checkpoint_path):
             return None
         try:
-            with open(self.checkpoint_path, 'r', encoding='utf-8') as f:
+            with open(self.checkpoint_path, encoding='utf-8') as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError):
             return None
@@ -264,7 +267,7 @@ class CheckpointManager:
         now_str = datetime.now(timezone.utc).isoformat()
         # Save render spec signature to detect config changes across runs
         render_signature = f"{self.config.get('OUTPUT_WIDTH')}x{self.config.get('OUTPUT_HEIGHT')}@{self.config.get('OUTPUT_FPS')}"
-        
+
         self.data = {
             "version": 3,
             "render_signature": render_signature,
@@ -326,7 +329,7 @@ def build_ken_burns_filter(config: dict, frame_count: int, camera_action: str, p
     fps = int(config["OUTPUT_FPS"])
     w = int(config["OUTPUT_WIDTH"])
     h = int(config["OUTPUT_HEIGHT"])
-    
+
     upscale_w = int(w * upscale)
     upscale_h = int(h * upscale)
     upscale_w = upscale_w if upscale_w % 2 == 0 else upscale_w + 1
@@ -336,13 +339,13 @@ def build_ken_burns_filter(config: dict, frame_count: int, camera_action: str, p
     # Master vector animation chroma interpolation (Preserves 3px line art and saturated typography)
     scale_flags = "flags=lanczos+accurate_rnd+full_chroma_int+full_chroma_inp"
     norm = f",scale=out_color_matrix=bt709:flags=lanczos+accurate_rnd,setsar=1,format={pix_fmt}"
-    
+
     den = max(1, frames - 1)
     t = f"((on-1)/{den})"
     ease = f"({t}*{t}*(3-2*{t}))"
 
-    center_x = f"(iw-iw/zoom)/2"
-    center_y = f"(ih-ih/zoom)/2"
+    center_x = "(iw-iw/zoom)/2"
+    center_y = "(ih-ih/zoom)/2"
 
     # Bounded expressions prevent floating-point edge flashes & sub-pixel aliasing
     safe_center_x = "trunc((iw-iw/zoom)*0.5)"
@@ -391,7 +394,7 @@ def get_audio_duration(audio_path):
 def get_latest_run_folder(runs_path="youtube_runs"):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     rel_to_script = os.path.join(script_dir, runs_path)
-    
+
     resolved_path = runs_path
     if os.path.exists(rel_to_script):
         resolved_path = rel_to_script
@@ -408,14 +411,14 @@ def _parse_pre_planned_prompts_txt(txt_path: str) -> dict:
         return camera_map
 
     try:
-        with open(txt_path, 'r', encoding='utf-8') as f:
+        with open(txt_path, encoding='utf-8') as f:
             content = f.read()
 
         entries = re.split(r'\bIndex:\s*\d+', content)
         for entry in entries:
             if not entry.strip():
                 continue
-            
+
             ts_match = re.search(r'\[(?:(\d+):)?(\d+):(\d+)\]', entry)
             if not ts_match:
                 continue
@@ -423,7 +426,7 @@ def _parse_pre_planned_prompts_txt(txt_path: str) -> dict:
             h = ts_match.group(1)
             m = int(ts_match.group(2))
             s = int(ts_match.group(3))
-            
+
             ts_keys = []
             if h is not None:
                 h_int = int(h)
@@ -454,16 +457,16 @@ def _parse_pre_planned_prompts_txt(txt_path: str) -> dict:
 
 def load_ai_camera_decisions(run_folder: str) -> dict:
     camera_map = {}
-    
+
     json_path = os.path.join(run_folder, "flow_prompts.json") if os.path.isdir(run_folder) else run_folder
     txt_path = os.path.join(run_folder, "pre_planned_prompts.txt") if os.path.isdir(run_folder) else os.path.join(os.path.dirname(run_folder), "pre_planned_prompts.txt")
 
     # 1. Primary: Try flow_prompts.json
     if os.path.exists(json_path) and os.path.isfile(json_path):
         try:
-            with open(json_path, 'r', encoding='utf-8') as f:
+            with open(json_path, encoding='utf-8') as f:
                 content = f.read().strip()
-            
+
             cleaned_content = re.sub(r'\]\s*\[', ',', content)
             if not cleaned_content.startswith('['): cleaned_content = '[' + cleaned_content
             if not cleaned_content.endswith(']'): cleaned_content += ']'
@@ -472,7 +475,7 @@ def load_ai_camera_decisions(run_folder: str) -> dict:
             for item in data:
                 ts_raw = str(item.get("timestamp", "")).strip("[] ")
                 parts = ts_raw.split(":")
-                
+
                 ts_keys = []
                 if len(parts) == 2:
                     ts_keys.append(f"{int(parts[0]):02d}_{int(parts[1]):02d}")
@@ -491,7 +494,7 @@ def load_ai_camera_decisions(run_folder: str) -> dict:
                                 vp.get("subject_action_increment", "")).lower()
                 elif isinstance(vp, str):
                     cam_spec = vp.lower()
-                
+
                 # Prioritize explicit camera motion specs over generic sequence types
                 if any(k in cam_spec for k in ["zoom_out", "zoom out", "pull out", "pull-out", "pull_out"]):
                     cam = "zoom_out"
@@ -538,7 +541,7 @@ def load_manual_overrides(txt_path="manual_animations.txt"):
     if not os.path.exists(txt_path):
         return overrides
     try:
-        with open(txt_path, 'r', encoding='utf-8') as f:
+        with open(txt_path, encoding='utf-8') as f:
             for line in f:
                 if '=' in line:
                     k, v = line.split('=', 1)
@@ -558,7 +561,7 @@ def parse_image_timeline(run_folder: str) -> list:
     if not os.path.exists(txt_path):
         return blocks
 
-    with open(txt_path, 'r', encoding='utf-8') as f:
+    with open(txt_path, encoding='utf-8') as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -623,7 +626,7 @@ class AudioSyncAligner:
                     raw_bytes = wf.readframes(chunk_frames)
                     if not raw_bytes:
                         break
-                    
+
                     count = len(raw_bytes) // 2
                     shorts = struct.unpack(f"<{count}h", raw_bytes)
                     # Sum amplitude across channels
@@ -693,7 +696,7 @@ def prepare_synchronized_timeline(image_blocks: list, audio_duration: float, fps
 
         next_raw_sec = image_blocks[j]['sec'] if j < n else audio_duration
         next_sec = aligner.snap_to_nearest_silence(next_raw_sec, search_radius_sec=0.20) if (aligner and j < n) else next_raw_sec
-        
+
         group_duration = max(0.1, next_sec - current_sec)
         group_len = len(group)
 
@@ -721,11 +724,18 @@ def prepare_synchronized_timeline(image_blocks: list, audio_duration: float, fps
     final_timeline = []
     total_audio_frames = max(1, int(round(audio_duration * fps)))
     num_clips = len(processed)
-    
+
+    # Degenerate-input guard: when there are more visual blocks than available
+    # frames, the per-clip minimum-frame rule would push end_frame past the
+    # audio budget (negative-length tail clips). Fold surplus blocks away.
+    if num_clips > total_audio_frames:
+        processed = processed[:total_audio_frames]
+        num_clips = len(processed)
+
     current_frame = 0
     for idx, block in enumerate(processed):
         start_frame = current_frame
-        
+
         if idx == num_clips - 1:
             end_frame = total_audio_frames
         else:
@@ -752,7 +762,7 @@ def prepare_synchronized_timeline(image_blocks: list, audio_duration: float, fps
 
 
 def fix_arabic_srt(input_path, output_path):
-    with open(input_path, "r", encoding="utf-8-sig") as f: content = f.read()
+    with open(input_path, encoding="utf-8-sig") as f: content = f.read()
     with open(output_path, "w", encoding="utf-8") as f: f.write(content)
 
 
@@ -784,7 +794,7 @@ def _resolve_image_path(block_name, idx, images_dir, available_images, last_vali
     """
     ts_name = block_name
     ts_variants = [ts_name]
-    
+
     # Generate timestamp variant aliases (e.g. 00_01_15 <-> 01_15)
     if ts_name.startswith("00_"):
         ts_variants.append(ts_name[3:])
@@ -859,7 +869,7 @@ def validate_assets(sync_timeline: list, images_dir: str) -> list:
     if not sync_timeline: return invalid
     available_images = get_sorted_images(images_dir)
     last_valid_image = None
-    
+
     for idx, block in enumerate(sync_timeline):
         abs_image_path, _ = _resolve_image_path(
             block['name'], idx, images_dir, available_images, last_valid_image, occurrence=block['occurrence']
@@ -878,9 +888,9 @@ def _extract_loudnorm_measured(stderr: str, config: dict, run_folder: str) -> di
     match = re.search(r'\{\s*"input_i"\s*:\s*"?[-\d.]+"?.*?\}', stderr, re.DOTALL)
     if match:
         blob = match.group(0)
-        try: 
+        try:
             data = json.loads(blob)
-        except json.JSONDecodeError: 
+        except json.JSONDecodeError:
             data = None
     if isinstance(data, dict) and "input_i" in data:
         measured["LOUDNORM_MEASURED_I"] = float(data.get("input_i", config["LOUDNORM_MEASURED_I"]))
@@ -956,7 +966,7 @@ def build_chunk_filter_graph(config: dict, encoder_config: dict, chunk_timeline:
                 camera_action = manual_cameras[block['name']]
 
         kb = build_ken_burns_filter(config, frame_count, camera_action)
-        
+
         safe_image_path = os.path.abspath(abs_image_path).replace("\\", "/")
         # Pass 1-frame image directly without demuxer loop; zoompan/loop will generate exact frame count
         input_args.extend(["-i", safe_image_path])
@@ -1022,7 +1032,27 @@ def render_chunk(config: dict, encoder_config: dict, chunk_timeline: list, image
             text=True, encoding='utf-8', errors='ignore'
         )
 
+        # Pump FFmpeg stderr on a background thread: a blocking read on the
+        # main thread would stall forever when a hardware encoder hangs
+        # silently, making FFMPEG_CLIP_TIMEOUT unreachable.
         stderr_logs = []
+        stderr_queue = queue.Queue()
+
+        def _pump_stderr(stream, out_queue):
+            try:
+                while True:
+                    chunk = stream.read(256)
+                    if not chunk:
+                        break
+                    out_queue.put(chunk)
+            except Exception:
+                pass
+            finally:
+                out_queue.put(None)  # EOF sentinel
+
+        pump_thread = threading.Thread(target=_pump_stderr, args=(process.stderr, stderr_queue), daemon=True)
+        pump_thread.start()
+
         buffer = ""
         while True:
             if time.time() - start_time > timeout:
@@ -1030,22 +1060,28 @@ def render_chunk(config: dict, encoder_config: dict, chunk_timeline: list, image
                 print(f"\n  [ERROR Chunk {chunk_idx+1}] FFmpeg timeout ({timeout}s)")
                 return None
 
-            chunk = process.stderr.read(256)
-            if not chunk and process.poll() is not None:
-                break
+            try:
+                chunk = stderr_queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
 
-            if chunk:
-                stderr_logs.append(chunk)
-                buffer += chunk
-                while "\r" in buffer or "\n" in buffer:
-                    line, _, buffer = re.split(r"([\r\n])", buffer, maxsplit=1)
-                    if "time=" in line:
-                        match = re.search(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)", line)
-                        if match:
-                            h, m, s = map(float, match.groups())
-                            current_sec = h * 3600 + m * 60 + s
-                            pct = min(100.0, (current_sec / max(0.1, chunk_duration_sec)) * 100)
-                            print(f"\r  [Chunk {chunk_idx+1}] Progress: {pct:.1f}% ({int(current_sec)}s / {int(chunk_duration_sec)}s)", end="", flush=True)
+            if chunk is None and process.poll() is not None:
+                break
+            if chunk is None:
+                # EOF but process still running: let the timeout check decide.
+                continue
+
+            stderr_logs.append(chunk)
+            buffer += chunk
+            while "\r" in buffer or "\n" in buffer:
+                line, _, buffer = re.split(r"([\r\n])", buffer, maxsplit=1)
+                if "time=" in line:
+                    match = re.search(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)", line)
+                    if match:
+                        h, m, s = map(float, match.groups())
+                        current_sec = h * 3600 + m * 60 + s
+                        pct = min(100.0, (current_sec / max(0.1, chunk_duration_sec)) * 100)
+                        print(f"\r  [Chunk {chunk_idx+1}] Progress: {pct:.1f}% ({int(current_sec)}s / {int(chunk_duration_sec)}s)", end="", flush=True)
 
         process.wait()
 
@@ -1163,7 +1199,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         return f"{h}:{m:02d}:{s:05.2f}"
 
     lines = []
-    with open(raw_transcript_path, "r", encoding="utf-8") as f:
+    with open(raw_transcript_path, encoding="utf-8") as f:
         for raw_line in f:
             line_str = raw_line.strip()
             if not line_str:
@@ -1182,7 +1218,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     for i, (start_sec, text) in enumerate(lines):
         end_sec = lines[i + 1][0] if i < len(lines) - 1 else (total_duration if total_duration > start_sec else start_sec + 3.5)
         duration = max(0.5, end_sec - start_sec)
-        
+
         words = text.split()
         if not words:
             continue
@@ -1193,7 +1229,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         # Build dynamic word-by-word timing tags
         word_dur_cs = int((duration * 100) / max(1, len(words)))  # Centiseconds per word
         highlighted_body = "".join([f"{{\\c{highlight_color}\\t(0,200,\\fscx105\\fscy105)}}{w}{{\\c{primary_color}\\fscx100\\fscy100}} " for w in words])
-        
+
         event_line = f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{highlighted_body.strip()}"
         events.append(event_line)
 
@@ -1231,7 +1267,7 @@ def assemble_final_video(config: dict, encoder_config: dict, chunk_files: list[s
         prompt_items = []
         if os.path.exists(json_path):
             try:
-                with open(json_path, "r", encoding="utf-8") as f:
+                with open(json_path, encoding="utf-8") as f:
                     prompt_items = json.load(f)
             except Exception:
                 pass
@@ -1244,7 +1280,7 @@ def assemble_final_video(config: dict, encoder_config: dict, chunk_files: list[s
             if sfx_res:
                 sfx_file, offset_ms = sfx_res
                 actual_time_ms = max(0, int((exact_sec * 1000.0) + offset_ms))
-                
+
                 audio_inputs.extend(["-i", os.path.abspath(sfx_file).replace("\\", "/")])
                 filter_parts.append(
                     f"[{input_counter}:a]aformat=sample_rates=48000:channel_layouts=stereo,"
@@ -1295,7 +1331,7 @@ def assemble_final_video(config: dict, encoder_config: dict, chunk_files: list[s
 
     if subtitle_path and os.path.exists(subtitle_path):
         safe_sub = os.path.abspath(subtitle_path).replace("\\", "/").replace(":", "\\:").replace("'", "'\\\\''")
-        
+
         # Auto-detect local project fonts directory (assets/fonts)
         fonts_dir = os.path.join(script_dir, "assets", "fonts")
         font_arg = ""
@@ -1392,7 +1428,7 @@ def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list,
         transcript_source = os.path.join(run_folder, "image_timestamps.txt")
         if not os.path.exists(transcript_source):
             transcript_source = os.path.join(run_folder, "timestamped_transcript.txt")
-        
+
         if os.path.exists(transcript_source):
             ass_path = os.path.join(run_folder, "dynamic_subtitles.ass")
             audio_duration = config.get("_audio_duration", 0.0)
@@ -1412,7 +1448,7 @@ def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list,
 
     chunk_size = config.get("CHUNK_SIZE", 40)
     total_clips = len(sync_timeline)
-    
+
     chunks = [sync_timeline[i:i + chunk_size] for i in range(0, total_clips, chunk_size)]
     num_chunks = len(chunks)
 
@@ -1420,7 +1456,7 @@ def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list,
 
     while True:
         print(f"\n[Chunked Render] Processing {total_clips} synchronized clips in {num_chunks} chunk(s) (batch size: {chunk_size}) using {current_encoder['video_codec']}...")
-        
+
         chunk_files = []
         failed = False
 
@@ -1463,7 +1499,7 @@ def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list,
         if failed:
             if current_encoder["video_codec"] == "libx264":
                 return False
-            print(f"\n  [FALLBACK] Hardware encoder failed. Purging incompatible chunks & retrying with libx264...")
+            print("\n  [FALLBACK] Hardware encoder failed. Purging incompatible chunks & retrying with libx264...")
             # Purge partial or mismatched chunks so all chunks are uniformly rendered with libx264
             for fname in os.listdir(temp_dir):
                 if fname.startswith("chunk_") and fname.endswith(".mp4"):
@@ -1489,14 +1525,14 @@ def verify_master_video(output_path: str, expected_duration: float) -> bool:
         # Increased timeout from 10s to 60s for large 1440p files
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         data = json.loads(res.stdout)
-        
+
         streams = [s.get("codec_type") for s in data.get("streams", [])]
         has_video = "video" in streams
         has_audio = "audio" in streams
-        
+
         file_dur = float(data.get("format", {}).get("duration", 0.0))
         dur_diff = abs(file_dur - expected_duration)
-        
+
         print(f"  [VERIFY] Video Duration: {file_dur:.2f}s | Audio Expected: {expected_duration:.2f}s (Diff: {dur_diff:.2f}s)")
         print(f"  [VERIFY] Streams Detected: Video={has_video}, Audio={has_audio}")
 

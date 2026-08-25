@@ -683,18 +683,19 @@ def is_profile_assets_initialized(subfolder: str, profile_index: str) -> bool:
 
 def mark_profile_assets_initialized(subfolder: str, profile_index: str, project_url: str):
     manifest_path = get_profile_assets_manifest_path(subfolder, profile_index)
+    payload = {
+        "assets_initialized": True,
+        "profile_index": profile_index,
+        "project_url": project_url,
+        "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
     try:
-        with open(manifest_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "assets_initialized": True,
-                    "profile_index": profile_index,
-                    "project_url": project_url,
-                    "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
-                },
-                f,
-                indent=2,
-            )
+        # Atomic commit prevents a half-written memoization flag from being
+        # misread as initialized on the next resume.
+        tmp_path = manifest_path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        os.replace(tmp_path, manifest_path)
     except Exception as e:
         print(f"  ⚠️ Warning saving asset manifest: {e}")
 
@@ -3236,7 +3237,7 @@ Reply EXACTLY with: **"JSON System Ready. Awaiting chunks."**
                                     if attach_count > 0:
                                         # Detect active character entity to anchor correct visual biometrics
                                         subj_lower = str(prompt_item.raw_payload.get("visual_prompt", {}).get("subject_details", "")).lower() if isinstance(prompt_item.raw_payload, dict) else ""
-                                        
+
                                         if "clerk" in subj_lower or "bureaucrat" in subj_lower:
                                             char_lock = "the Science Bureaucrat (beige suit, receding hair, thick glasses)"
                                         elif "skeptic" in subj_lower or "abo hmeed" in subj_lower:
@@ -3317,7 +3318,7 @@ Reply EXACTLY with: **"JSON System Ready. Awaiting chunks."**
                                             is_absent_subject = subject_details.upper().startswith("ABSENT")
                                             if chars_enabled and not is_absent_subject:
                                                 is_skeptic = "skeptic" in subject_details.lower() or "abo hmeed" in subject_details.lower()
-                                                
+
                                                 for char_k, char_v in FLOW_ASSET_PRESETS.get(
                                                     "CHARACTERS", {}
                                                 ).items():

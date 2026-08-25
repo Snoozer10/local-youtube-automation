@@ -1,17 +1,22 @@
+import ctypes
+import glob
+import hashlib
+import json
 import os
+import random
 import re
 import sys
 import time
-import glob
-import subprocess
-import ctypes
-import random
-import math
-import json
-import tempfile
-import hashlib
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-from utils import get_config_value, launch_browser_with_profile, rotate_profile_index, kill_cdp_chrome
+
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import sync_playwright
+
+from utils import (
+    get_config_value,
+    kill_cdp_chrome,
+    launch_browser_with_profile,
+    rotate_profile_index,
+)
 
 # Selector constants for the standard Gemini Web App
 RESPONSE_SELECTOR = "model-response div.markdown"
@@ -78,7 +83,7 @@ def read_voice_options():
     }
     if os.path.exists(preset_path):
         try:
-            with open(preset_path, "r", encoding="utf-8") as f:
+            with open(preset_path, encoding="utf-8") as f:
                 for line in f:
                     if ":" in line:
                         key, val = line.split(":", 1)
@@ -108,7 +113,7 @@ def load_or_create_manifest(latest_run, voice_options):
     manifest_path = get_manifest_path(latest_run)
     if os.path.exists(manifest_path):
         try:
-            with open(manifest_path, "r", encoding="utf-8") as f:
+            with open(manifest_path, encoding="utf-8") as f:
                 data = json.load(f)
                 print(f"[MANIFEST] Loaded active manifest checkpoint from '{manifest_path}'.")
                 if "voice_config" not in data or not data["voice_config"]:
@@ -128,46 +133,78 @@ def load_or_create_manifest(latest_run, voice_options):
 
 def save_manifest(latest_run, manifest_data):
     manifest_path = get_manifest_path(latest_run)
+    tmp_path = manifest_path + ".tmp"
     try:
-        with open(manifest_path, "w", encoding="utf-8") as f:
+        # Atomic commit: a crash mid-write must never leave a zero-byte or
+        # truncated manifest behind (resume depends on parsing this file).
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(manifest_data, f, ensure_ascii=False, indent=4)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, manifest_path)
     except Exception as e:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
         print(f"[MANIFEST WARNING] Failed to write manifest checkpoint: {e}")
 
-def check_is_gemini_complete(manifest, transcript_text):
-    """Determines if Gemini text generation is complete based on manifest state, chapter count, and text coverage."""
+def extract_total_blocks_count(text):
+    """Extracts (current_idx, total_idx) from headers like 'TTS BLOCK 1 of 8'.
+
+    Scans ALL header occurrences and returns the highest current index found,
+    so a response that echoes the full plan ('BLOCK 1 of 8 ... BLOCK 2 of 8')
+    still resolves to the most recent block instead of the first mention.
+    """
+    if not text:
+        return None, None
+    matches = re.findall(
+        r"(?:TTS\s*BLOCK|BLOCK|CHAPTER|الجزء)\s*\[?(\d+)\]?\s*(?:of|OF|من|\/)\s*\[?(\d+)\]?",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not matches:
+        return None, None
+    best_curr, best_total = None, None
+    for curr_s, total_s in matches:
+        try:
+            curr, total = int(curr_s), int(total_s)
+        except ValueError:
+            continue
+        if total <= 0:
+            continue
+        if best_curr is None or curr > best_curr:
+            best_curr, best_total = curr, total
+    return best_curr, best_total
+
+def check_is_gemini_complete(manifest, transcript_text, last_raw_response=""):
+    """Determines if Gemini text generation is complete based on block headers.
+
+    Header-driven only: the char-ratio/ending-keyword heuristics were removed
+    because speech-tag markup bloat inflated the coverage ratio past 80% and
+    words like 'سلام'/'المصادر' inside body text triggered premature exits
+    mid-script. A run is complete only when the newest 'TTS BLOCK N of M'
+    header reports N == M (or all M chapters are already harvested).
+    """
     if manifest.get("gemini_completed"):
         return True
-        
+
     chapters = manifest.get("chapters", [])
     if not chapters:
         return False
-        
-    total_transcript_len = len(transcript_text.strip())
-    total_manifest_text_len = sum(len(c.get("text", "")) for c in chapters)
-    
-    completion_ratio = (total_manifest_text_len / total_transcript_len) if total_transcript_len > 0 else 0
-    
-    last_chap_text = chapters[-1].get("text", "")
-    ending_keywords = [
-    "سلام",
-    "لايك",
-    "شير",
-    "الختام",
-    "الليفل اللي جاي",
-    "اشترك",
-    "متابعة",
-    "FINISHED",
-    "READY",
-    "بس كدا يا عزيزي",
-    "المصادر",
-    "الحلقات اللي فاتت",
-]
-    has_ending_keywords = any(kw in last_chap_text for kw in ending_keywords)
-    
-    if len(chapters) >= 3 and (completion_ratio >= 0.80 or has_ending_keywords):
-        return True
-        
+
+    # Newest evidence first: the raw response just received, then saved
+    # chapter texts in reverse order (headers survive sanitization, which
+    # makes this fallback work on resume where last_raw_response is empty).
+    texts_to_check = [last_raw_response] + [c.get("text", "") for c in reversed(chapters)]
+    for txt in texts_to_check:
+        curr, total = extract_total_blocks_count(txt)
+        if curr is not None and total is not None:
+            if len(chapters) >= total or curr >= total:
+                return True
+            return False  # Header present but remaining blocks outstanding
+
     return False
 
 # Human-like Mouse Emulation functions
@@ -178,25 +215,25 @@ def simulate_human_mouse_move(page, target_locator, steps=25):
         box = target_locator.bounding_box()
         if not box:
             return
-        
+
         target_x = box['x'] + box['width'] / 2 + random.uniform(-box['width']*0.08, box['width']*0.08)
         target_y = box['y'] + box['height'] / 2 + random.uniform(-box['height']*0.08, box['height']*0.08)
     except Exception:
         return
 
     start_x, start_y = current_mouse_pos
-    
+
     ctrl_x = start_x + (target_x - start_x) * random.uniform(0.2, 0.8) + random.uniform(-60, 60)
     ctrl_y = start_y + (target_y - start_y) * random.uniform(0.2, 0.8) + random.uniform(-60, 60)
-    
+
     for i in range(steps + 1):
         t = i / steps
         x = (1-t)**2 * start_x + 2*(1-t)*t * ctrl_x + t**2 * target_x
         y = (1-t)**2 * start_y + 2*(1-t)*t * ctrl_y + t**2 * target_y
-        
+
         page.mouse.move(x, y)
         time.sleep(random.uniform(0.004, 0.012))
-        
+
     current_mouse_pos = [target_x, target_y]
     time.sleep(random.uniform(0.12, 0.28))
 
@@ -206,20 +243,20 @@ def human_click(page, target_locator):
         target_locator.scroll_into_view_if_needed()
     except Exception:
         pass
-    
+
     box = None
     try:
         box = target_locator.bounding_box()
     except Exception:
         pass
-        
+
     if not box:
         try:
             target_locator.click(timeout=3000)
         except Exception:
             pass
         return
-        
+
     try:
         simulate_human_mouse_move(page, target_locator)
         page.mouse.down()
@@ -238,7 +275,7 @@ def human_hover_and_click(page, locator):
         locator.scroll_into_view_if_needed()
         simulate_human_mouse_move(page, locator)
         time.sleep(random.uniform(0.4, 0.9))
-        
+
         page.mouse.down()
         time.sleep(random.uniform(0.08, 0.15))
         page.mouse.up()
@@ -257,7 +294,7 @@ def humanize_text_input(page, textbox, text):
         textbox.click()
         textbox.fill(text)
         time.sleep(random.uniform(1.2, 2.5))
-        
+
         page.keyboard.press("End")
         time.sleep(0.1)
         page.keyboard.type(" ")
@@ -292,13 +329,13 @@ def sanitize_script_text(text):
     # 3. Strip control triggers
     lines = text.split("\n")
     cleaned_lines = []
-    
+
     for line in lines:
         trimmed = line.strip()
         if trimmed.upper() in ["COMPLETE", "FINISHED", "READY", "PROCEED"]:
             continue
         cleaned_lines.append(line)
-        
+
     return "\n".join(cleaned_lines).strip()
 
 def get_latest_run_folder(runs_path="youtube_runs"):
@@ -341,11 +378,13 @@ def find_input_box(page):
 
 def find_send_button(page):
     selectors = [
-        "button[aria-label*='Submit' i]",
+        "button.send-button",
         "button[aria-label*='Send message' i]",
         "button[aria-label*='Send' i]",
-        "button.send-button",
+        "button[aria-label*='Submit' i]",
+        "div.send-button-container button",
         "div[class*='send-button-container'] button",
+        "button:has(mat-icon[fonticon*='send'])",
         "button[id*='send']"
     ]
     for sel in selectors:
@@ -359,6 +398,69 @@ def find_send_button(page):
         except Exception:
             continue
     return None
+
+def send_gemini_prompt(page, text):
+    """Pastes text into the Gemini chat input, ensures DOM state sync, and guarantees dispatch.
+
+    Root cause this guards against: clicking Send / pressing Ctrl+Enter before the rich
+    textarea re-renders leaves the prompt sitting unsent in the box, and the caller then
+    blocks forever waiting for a response that was never initiated.
+    """
+    chat_box = find_input_box(page)
+    if not chat_box:
+        raise Exception("Could not find Gemini Chat input box. Ensure you are signed in.")
+
+    # 1. Focus and select-clear any residual text
+    chat_box.focus()
+    human_click(page, chat_box)
+    time.sleep(0.3)
+
+    # 2. Paste via Windows system clipboard
+    set_clipboard_text(text)
+    page.keyboard.press("Control+a")
+    time.sleep(0.1)
+    page.keyboard.press("Control+v")
+    time.sleep(1.0)
+
+    # 3. Micro-edit (space + backspace) to fire Gemini's Angular input-change listener
+    #    so framework state acknowledges the pasted content and enables the Send button.
+    page.keyboard.press("End")
+    time.sleep(0.1)
+    page.keyboard.type(" ")
+    time.sleep(0.1)
+    page.keyboard.press("Backspace")
+    time.sleep(1.0)
+
+    # 4. Submit: click the Send button when available, else plain Enter
+    submit_btn = find_send_button(page)
+    if submit_btn and submit_btn.is_visible() and submit_btn.is_enabled():
+        try:
+            submit_btn.click(force=True)
+        except Exception:
+            human_click(page, submit_btn)
+    else:
+        page.keyboard.press("Enter")
+
+    time.sleep(1.5)
+
+    # 5. Guardrail: if text still sits in the box, force one more Enter
+    def _input_still_full():
+        try:
+            return len(chat_box.inner_text().strip()) > 10
+        except Exception:
+            return False
+
+    if _input_still_full():
+        print("[SEND GUARDRAIL] Text still in input box after first submit attempt. Forcing Enter...")
+        chat_box.focus()
+        page.keyboard.press("Enter")
+        time.sleep(1.5)
+
+        if _input_still_full():
+            raise Exception(
+                "Gemini prompt could not be dispatched: input box still contains text "
+                "after click + two Enter attempts. Triggering recovery."
+            )
 
 def get_last_response(page):
     try:
@@ -384,7 +486,7 @@ def start_clean_gemini_chat(page):
         "div.new-chat-button",
         "button:has-text('New chat')"
     ]
-    
+
     clicked_new_chat = False
     for sel in new_chat_selectors:
         try:
@@ -405,7 +507,7 @@ def start_clean_gemini_chat(page):
             time.sleep(2)
         except Exception as e:
             print(f"Warning: Keyboard shortcut call returned an exception: {e}")
-            
+
     print("Waiting for chat session to initialize and clear...")
     clear_start = time.time()
     while time.time() - clear_start < 10:
@@ -453,7 +555,7 @@ def prepare_gemini_chat_session(page, manifest):
 def ensure_speech_playground_tab(context, target_tts_model="gemini-2.5-pro-preview-tts"):
     """Finds or opens the Google AI Studio Speech Playground tab and guarantees Playwright is on the correct UI."""
     tab1_speech = None
-    
+
     # 1. Search existing tabs for generate-speech
     for page in context.pages:
         if "generate-speech" in page.url:
@@ -471,9 +573,9 @@ def ensure_speech_playground_tab(context, target_tts_model="gemini-2.5-pro-previ
             tab1_speech = context.new_page()
 
     tab1_speech.bring_to_front()
-    
+
     clean_speech_url = f"https://aistudio.google.com/generate-speech?model={target_tts_model}"
-    
+
     if "generate-speech" not in tab1_speech.url:
         print(f"Navigating to Speech Playground: {clean_speech_url}")
         tab1_speech.goto(clean_speech_url, wait_until="domcontentloaded")
@@ -492,9 +594,9 @@ def wait_for_gemini_response(page, step_name="AI Response", max_wait_sec=120):
     last_length = 0
     stable_cycles = 0
     start_time = time.time()
-    
+
     initial_count = page.locator(RESPONSE_SELECTOR).count()
-    
+
     new_response_started = False
     while time.time() - start_time < 30:
         try:
@@ -505,11 +607,11 @@ def wait_for_gemini_response(page, step_name="AI Response", max_wait_sec=120):
         except Exception:
             pass
         time.sleep(0.5)
-        
+
     if not new_response_started:
         print(f"Warning: Timeout waiting for response to start rendering for {step_name}.")
         return get_last_response(page)
-        
+
     while time.time() - start_time < max_wait_sec:
         try:
             current_count = page.locator(RESPONSE_SELECTOR).count()
@@ -518,24 +620,24 @@ def wait_for_gemini_response(page, step_name="AI Response", max_wait_sec=120):
                 current_text = last_el.evaluate("el => el.innerText").strip()
                 if current_text.startswith("Gemini said"):
                     current_text = current_text[len("Gemini said"):].strip()
-                    
+
                 if "something went wrong" in current_text.lower() or "try reloading" in current_text.lower():
                     print("Warning: Gemini Web App reported an execution block or crash. Retrying...")
                     time.sleep(2)
                     continue
-                    
+
                 if current_text and len(current_text) == last_length:
                     stable_cycles += 1
                 else:
                     stable_cycles = 0
                     last_length = len(current_text)
-                
+
                 if current_text and stable_cycles >= 3:
                     return current_text
         except Exception:
             pass
         time.sleep(0.5)
-        
+
     return get_last_response(page)
 
 def select_gemini_model(page, model_name):
@@ -549,7 +651,7 @@ def select_gemini_model(page, model_name):
         "button[aria-label*='model' i]",
         "button[aria-label*='Model' i]",
     ]
-    
+
     btn = None
     for sel in trigger_selectors:
         try:
@@ -562,25 +664,25 @@ def select_gemini_model(page, model_name):
                 break
         except Exception:
             continue
-            
+
     if not btn:
         print("[WARNING] Could not find Gemini model dropdown trigger button in UI.")
         return False
-        
+
     try:
         current_text = btn.inner_text().strip() if btn.inner_text() else ""
         if model_name.lower() in current_text.lower():
             print(f"[SYSTEM] Model '{model_name}' is already active.")
             return True
-            
+
         btn.click()
         time.sleep(1.5)
-        
+
         opt = page.locator("[role='menuitem'], [role='option'], li").filter(has_text=re.compile(model_name, re.IGNORECASE)).first
-        
+
         if not opt.is_visible():
             opt = page.locator(f'text="{model_name}"').filter(visible=True).last
-            
+
         if opt.is_visible():
             opt.click()
             print(f"[SYSTEM] Successfully switched model to {model_name}")
@@ -588,10 +690,10 @@ def select_gemini_model(page, model_name):
             return True
         else:
             print(f"[WARNING] Target model '{model_name}' not visible in dropdown menu.")
-            
+
     except Exception as e:
         print(f"[WARNING] Model selection process failed: {e}")
-        
+
     return False
 
 def select_ai_studio_tts_model(page, target_model):
@@ -600,7 +702,7 @@ def select_ai_studio_tts_model(page, target_model):
         return True
 
     print(f"[SYSTEM] Verifying AI Studio TTS model: '{target_model}'...")
-    
+
     # 1. Check if active model card in sidebar already matches target model
     try:
         model_card = page.locator("ms-run-settings .model-card, ms-run-settings mat-card, ms-run-settings div:has-text('TTS')").first
@@ -614,7 +716,7 @@ def select_ai_studio_tts_model(page, target_model):
         pass
 
     print(f"[SYSTEM] Switching active TTS Model to '{target_model}' via Model selection modal...")
-    
+
     # 2. Open Model selection modal dialog
     card_clicked = False
     card_selectors = [
@@ -648,7 +750,7 @@ def select_ai_studio_tts_model(page, target_model):
 
         # Flexible text matching for target TTS model
         short_target = target_model.lower().replace("-preview-tts", "").replace("gemini-", "").strip()
-        
+
         target_option = None
         dialog_loc = page.locator("mat-dialog-container, [role='dialog']").first
         if dialog_loc.is_visible():
@@ -666,7 +768,7 @@ def select_ai_studio_tts_model(page, target_model):
             human_click(page, target_option)
             print(f"[SYSTEM] Successfully assigned TTS Model to '{target_model}'")
             time.sleep(1.2)
-            
+
             close_btn = page.locator("mat-dialog-container button[aria-label*='Close' i], mat-dialog-container button:has-text('Close')").first
             if close_btn.is_visible():
                 human_click(page, close_btn)
@@ -687,9 +789,9 @@ def reapply_speech_settings(page, options):
     target_model = options.get("model", "gemini-2.5-pro-preview-tts")
     temp_val = options.get("temperature", "1.1")
     voice_name = options.get("voice", "Achird")
-    
+
     print(f"Re-applying Speech Playground settings (Model {target_model}, Temperature {temp_val}, speaker {voice_name})...")
-    
+
     # 0. Bypass Splash screen
     splash_selector = "text='Turn text into natural-sounding speech...'"
     try:
@@ -724,9 +826,9 @@ def reapply_speech_settings(page, options):
     try:
         temp_input = None
         temp_selectors = [
-            "ms-run-settings input[type='number']", 
+            "ms-run-settings input[type='number']",
             "ms-run-settings input.slider-number-input",
-            "input[type='number']", 
+            "input[type='number']",
             "ms-run-settings input"
         ]
         for sel in temp_selectors:
@@ -734,7 +836,7 @@ def reapply_speech_settings(page, options):
             if loc.is_visible():
                 temp_input = loc
                 break
-                
+
         if temp_input:
             human_click(page, temp_input)
             page.keyboard.press("Control+a")
@@ -765,17 +867,17 @@ def reapply_speech_settings(page, options):
             if loc.is_visible():
                 speaker_card = loc
                 break
-                
+
         if speaker_card:
             human_click(page, speaker_card)
             time.sleep(2.0)
-            
+
             voice_option = page.locator(f"mat-dialog-container :text('{voice_name}'), mat-dialog-container button:has-text('{voice_name}'), :text('{voice_name}')").first
             if voice_option.is_visible():
                 human_click(page, voice_option)
                 print(f"Successfully assigned speaker to: {voice_name}")
                 time.sleep(1.2)
-                
+
                 close_btn = page.locator("mat-dialog-container button:has-text('Close'), mat-dialog-container button:has-text('OK'), mat-dialog-container button[aria-label*='Close' i]").first
                 if close_btn.is_visible():
                     human_click(page, close_btn)
@@ -841,7 +943,7 @@ def main():
 
     # Parse initial preset configuration choices (voice_option_notes.txt)
     voice_options = read_voice_options()
-    
+
     # Fetch target LLM model for Tab 2
     target_llm_model = get_config_value("VOICE_GENERATOR_MODEL", "Flash-Lite")
 
@@ -849,7 +951,7 @@ def main():
     if not latest_run:
         print("Error: No active run folders found in 'youtube_runs/'.")
         sys.exit(1)
-    
+
     # File selection logic for transcript input
     refined_primary = os.path.join(latest_run, "refined_script.txt")
     refined_secondary = os.path.join(latest_run, "refine_script.txt")
@@ -878,15 +980,15 @@ def main():
     voice_config = manifest.get("voice_config", voice_options)
     target_tts_model = voice_config.get("model", "gemini-2.5-pro-preview-tts")
 
-    prompt_path = "TTS_PROMPT.txt"
+    prompt_path = os.path.join("prompts", "TTS_PROMPT.txt")
     if not os.path.exists(prompt_path):
-        print(f"Error: '{prompt_path}' not found in root folder.")
+        print(f"Error: '{prompt_path}' not found in prompts folder.")
         sys.exit(1)
 
-    with open(prompt_path, "r", encoding="utf-8") as f:
+    with open(prompt_path, encoding="utf-8") as f:
         tts_prompt = f.read().strip()
 
-    with open(transcript_path, "r", encoding="utf-8") as f:
+    with open(transcript_path, encoding="utf-8") as f:
         transcript_text = f.read().strip()
 
     # Smart auto-detection of Gemini completeness from manifest
@@ -901,19 +1003,19 @@ def main():
     # Main Playwright Outer Recovery Loop
     while True:
         failover_triggered = False
-        
+
         try:
             with sync_playwright() as p:
                 switch_enabled_str = get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").strip().lower()
                 accounts_enabled = switch_enabled_str in ('true', '1', 'yes')
                 current_profile_idx = get_config_value("ACTIVE_PROFILE_INDEX", "1")
                 browser_type = get_config_value("BROWSER_TYPE", "chrome")
-                
+
                 try:
                     browser = p.chromium.connect_over_cdp("http://localhost:9222")
                     print(f"Successfully connected to existing {browser_type.capitalize()} session.")
                 except Exception:
-                    print(f"Debugging browser is closed or unreachable. Launching framework...")
+                    print("Debugging browser is closed or unreachable. Launching framework...")
                     if not launch_browser_with_profile(browser_type, current_profile_idx):
                         sys.exit(1)
                     browser = p.chromium.connect_over_cdp("http://localhost:9222")
@@ -927,7 +1029,7 @@ def main():
                 # =========================================================
                 if manifest.get("gemini_completed") and len(manifest.get("chapters", [])) > 0:
                     print("\n=========================================================")
-                    print(f"[MANIFEST VERIFIED] Gemini script generation is 100% complete!")
+                    print("[MANIFEST VERIFIED] Gemini script generation is 100% complete!")
                     print(f"Total stored chapters ready for synthesis: {len(manifest['chapters'])}")
                     print("=========================================================\n")
                 else:
@@ -952,39 +1054,13 @@ def main():
 
                     if not is_resumed:
                         # 1. Send TTS_PROMPT payload
-                        chat_box = find_input_box(tab2_chat)
-                        if not chat_box:
-                            raise Exception("Could not find Gemini Chat prompt input box. Ensure you are signed in.")
-
                         print("Pasting guidelines payload (TTS_PROMPT) to Gemini...")
-                        chat_box.focus()
-                        human_click(tab2_chat, chat_box)
-                        set_clipboard_text(tts_prompt)
-                        tab2_chat.keyboard.press("Control+v")
-                        time.sleep(1.2)
-                        
-                        submit_btn = find_send_button(tab2_chat)
-                        if submit_btn:
-                            human_click(tab2_chat, submit_btn)
-                        else:
-                            tab2_chat.keyboard.press("Control+Enter")
-
+                        send_gemini_prompt(tab2_chat, tts_prompt)
                         wait_for_gemini_response(tab2_chat, step_name="Rules Confirmation")
 
                         # 2. Upload transcript script to Chat
                         print("Submitting the raw transcript script to Gemini...")
-                        chat_box = find_input_box(tab2_chat)
-                        chat_box.focus()
-                        human_click(tab2_chat, chat_box)
-                        set_clipboard_text(f"This is My Transcript script:\n\n{transcript_text}")
-                        tab2_chat.keyboard.press("Control+v")
-                        time.sleep(1.2)
-                        
-                        submit_btn = find_send_button(tab2_chat)
-                        if submit_btn:
-                            human_click(tab2_chat, submit_btn)
-                        else:
-                            tab2_chat.keyboard.press("Control+Enter")
+                        send_gemini_prompt(tab2_chat, f"This is My Transcript script:\n\n{transcript_text}")
 
                         # Capture breakdown structure & voice recommendation options
                         breakdown_response = wait_for_gemini_response(tab2_chat, step_name="Breakdown Structure & Voice Recommendations")
@@ -994,48 +1070,24 @@ def main():
 
                         # 3. Trigger run flow with Option A selection
                         print("Triggering run flow with 'Choose the Option A and proceed.' command...")
-                        chat_box = find_input_box(tab2_chat)
-                        chat_box.focus()
-                        human_click(tab2_chat, chat_box)
-                        set_clipboard_text("Choose the Option A and proceed.")
-                        tab2_chat.keyboard.press("Control+v")
-                        time.sleep(1.2)
-                        
-                        submit_btn = find_send_button(tab2_chat)
-                        if submit_btn:
-                            human_click(tab2_chat, submit_btn)
-                        else:
-                            tab2_chat.keyboard.press("Control+Enter")
-
+                        send_gemini_prompt(tab2_chat, "Choose the Option A and proceed.")
                         wait_for_gemini_response(tab2_chat, step_name="Chapter 1 Text Setup")
 
                         # 4. Confirmation check
                         confirmation_text = get_last_response(tab2_chat)
                         if "confirm" in confirmation_text.lower() or "ready with the first" in confirmation_text.lower():
                             print("Gemini is waiting for voice confirmation. Sending 'proceed' to trigger Section 1 script generation...")
-                            chat_box = find_input_box(tab2_chat)
-                            chat_box.focus()
-                            human_click(tab2_chat, chat_box)
-                            set_clipboard_text("proceed")
-                            tab2_chat.keyboard.press("Control+v")
-                            time.sleep(1.2)
-                            
-                            submit_btn = find_send_button(tab2_chat)
-                            if submit_btn:
-                                human_click(tab2_chat, submit_btn)
-                            else:
-                                tab2_chat.keyboard.press("Control+Enter")
-                                
+                            send_gemini_prompt(tab2_chat, "proceed")
                             wait_for_gemini_response(tab2_chat, step_name="Actual Section 1 Script Text")
 
                     # Harvest remaining script chapters from Gemini
                     existing_chapters_count = len(manifest.get("chapters", []))
                     current_chap_idx = existing_chapters_count + 1
-                    
+
                     while True:
                         print(f"\nHarvesting Chapter {current_chap_idx} script from Gemini...")
                         raw_content = get_last_response(tab2_chat)
-                        
+
                         if not raw_content or len(raw_content.strip()) < 10:
                             print(f"Warning: Response for Chapter {current_chap_idx} empty or loading. Waiting...")
                             time.sleep(3)
@@ -1043,8 +1095,10 @@ def main():
 
                         # Check completion signal
                         has_arabic = bool(re.search(r"[\u0600-\u06FF]", raw_content))
-                        if not has_arabic or check_is_gemini_complete(manifest, transcript_text):
-                            print("[COMPLETED] Detected final completion signal from Gemini.")
+                        is_complete = check_is_gemini_complete(manifest, transcript_text, raw_content)
+
+                        if not has_arabic:
+                            print("[COMPLETED] Detected final non-Arabic/completion signal from Gemini.")
                             manifest["gemini_completed"] = True
                             save_manifest(latest_run, manifest)
                             print(f"[MANIFEST] Gemini script extraction complete. Total chapters saved: {len(manifest['chapters'])}")
@@ -1057,7 +1111,7 @@ def main():
                             continue
 
                         audio_dest_path = os.path.join(voice_folder, f"Chapter_{current_chap_idx}.wav")
-                        
+
                         existing_chap_entry = next((c for c in manifest["chapters"] if c["chapter_num"] == current_chap_idx), None)
                         if existing_chap_entry:
                             existing_chap_entry["text"] = markdown_content
@@ -1069,32 +1123,20 @@ def main():
                                 "audio_file": audio_dest_path,
                                 "status": "PENDING"
                             })
-                        
+
                         save_manifest(latest_run, manifest)
                         print(f"[MANIFEST] Saved Chapter {current_chap_idx} text ({len(markdown_content)} chars).")
 
                         # Re-verify completeness after saving this chapter
-                        if check_is_gemini_complete(manifest, transcript_text):
-                            print("[COMPLETED] Manifest verification confirmed transcript fully covered.")
+                        if is_complete or check_is_gemini_complete(manifest, transcript_text, raw_content):
+                            print("[COMPLETED] Manifest verification confirmed all blocks collected.")
                             manifest["gemini_completed"] = True
                             save_manifest(latest_run, manifest)
                             break
 
                         # Request next chapter from Gemini
                         print(f"Requesting Chapter {current_chap_idx + 1} script...")
-                        chat_box = find_input_box(tab2_chat)
-                        chat_box.focus()
-                        human_click(tab2_chat, chat_box)
-                        set_clipboard_text("proceed")
-                        tab2_chat.keyboard.press("Control+v")
-                        time.sleep(1.2)
-                        
-                        submit_btn = find_send_button(tab2_chat)
-                        if submit_btn:
-                            human_click(tab2_chat, submit_btn)
-                        else:
-                            tab2_chat.keyboard.press("Control+Enter")
-
+                        send_gemini_prompt(tab2_chat, "proceed")
                         wait_for_gemini_response(tab2_chat, step_name=f"Chapter {current_chap_idx + 1} Text")
                         current_chap_idx += 1
 
@@ -1135,7 +1177,7 @@ def main():
 
                         reload_limit = int(get_config_value("TTS_PROACTIVE_RELOAD_INTERVAL", "40"))
                         if chapters_since_reload >= reload_limit:
-                            print(f"\n[MAINTENANCE] Proactively refreshing Speech Playground session...")
+                            print("\n[MAINTENANCE] Proactively refreshing Speech Playground session...")
                             tab1_speech.bring_to_front()
                             try:
                                 tab1_speech.locator("body").first.click(timeout=1000)
@@ -1149,7 +1191,7 @@ def main():
 
                         # Recovery reload if prior attempt failed
                         if getattr(main, 'attempt_count', 0) > 0:
-                            print(f"[RECOVER] Reloading Speech Playground Tab to refresh credentials...")
+                            print("[RECOVER] Reloading Speech Playground Tab to refresh credentials...")
                             tab1_speech.bring_to_front()
                             try:
                                 tab1_speech.locator("body").first.click(timeout=1000)
@@ -1182,7 +1224,7 @@ def main():
                         base_delay = 3.0
                         scaled_delay = (text_length / 500.0) * random.uniform(1.2, 2.8)
                         cooldown_time = base_delay + scaled_delay
-                        
+
                         print(f"Applying dynamic safety cooldown of {cooldown_time:.2f}s for {text_length} characters...")
                         time.sleep(cooldown_time)
 
@@ -1277,7 +1319,7 @@ def main():
                         else:
                             main.attempt_count = getattr(main, 'attempt_count', 0) + 1
                             retry_limit = int(get_config_value("FAILOVER_RETRY_LIMIT", "3"))
-                            
+
                             if getattr(main, 'attempt_count', 0) >= retry_limit:
                                 if accounts_enabled:
                                     print(f"\n[FAILOVER ALERT] Chapter {chap_num} failed {retry_limit} times. Rotating Account Profile...")

@@ -70,6 +70,13 @@ You MUST execute the structured thinking process inside XML `<thinking>...</thin
 6. UPDATE_LEDGER: Update the <slang_ledger> list.
 </thinking>
 
-Outside the `<thinking>` tags, output ONLY the single, unbroken, refined Arabic paragraph.
+MANDATORY OUTPUT FORMAT:
+You must wrap your single final refined Arabic paragraph inside <final_script>...</final_script> XML tags.
+DO NOT write any Beat labels, explanations, or category notes outside of <thinking>.
+
+Example:
+<final_script>
+النص النهائي المنقح هنا بالكامل بدون أي تسميات أو تقسيمات إنجليزية...
+</final_script>
 
 Reply ONLY with "مستعد" to confirm calibration.

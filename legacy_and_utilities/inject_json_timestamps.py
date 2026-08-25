@@ -1,7 +1,17 @@
+﻿import glob
+import json
 import os
 import re
-import json
-import glob
+
+# Windows console hardening: guarantee UTF-8 for Arabic output even when piped.
+import sys
+
+if sys.platform.startswith("win"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 # Injects timestamps from image_timestamps.txt into flow_prompts.json based on matching index values.
 
@@ -12,14 +22,14 @@ def get_target_directory():
     """
     if os.path.exists("image_timestamps.txt") and os.path.exists("flow_prompts.json"):
         return "."
-    
+
     runs_path = "youtube_runs"
     if os.path.exists(runs_path):
         folders = glob.glob(os.path.join(runs_path, "*"))
         folders = [f for f in folders if os.path.isdir(f)]
         if folders:
             return max(folders, key=os.path.getmtime)
-            
+
     return "."
 
 def parse_image_timestamps(timestamps_path):
@@ -30,9 +40,9 @@ def parse_image_timestamps(timestamps_path):
     timestamps_map = {}
     if not os.path.exists(timestamps_path):
         return timestamps_map
-        
+
     index = 1
-    with open(timestamps_path, "r", encoding="utf-8-sig") as f:
+    with open(timestamps_path, encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
             # Extract timestamp inside brackets e.g., [00:00] or [01:23:45]
@@ -40,7 +50,7 @@ def parse_image_timestamps(timestamps_path):
             if match:
                 timestamps_map[index] = f"[{match.group(1)}]"
                 index += 1
-                
+
     return timestamps_map
 
 def sanitize_json_content(content):
@@ -53,32 +63,32 @@ def sanitize_json_content(content):
     """
     lines = content.splitlines()
     fixed_lines = []
-    
+
     # Matches lines structured as:  "key": "value string" or "key": "value string",
     kv_pattern = re.compile(r'^(\s*"[^"]+"\s*:\s*")(.+)("\s*,?\s*)$')
-    
+
     for line in lines:
         match = kv_pattern.match(line)
         if match:
             prefix = match.group(1)
             body = match.group(2)
             suffix = match.group(3)
-            
+
             # Escape inner unescaped quotes
             body_fixed = re.sub(r'(?<!\\)"', r'\"', body)
             fixed_lines.append(prefix + body_fixed + suffix)
         else:
             fixed_lines.append(line)
-            
+
     return '\n'.join(fixed_lines)
 
 def load_flow_prompts_json(json_path):
     """
     Reads flow_prompts.json safely, fixing unescaped inner quotes and multi-array JSON blocks.
     """
-    with open(json_path, "r", encoding="utf-8-sig") as f:
+    with open(json_path, encoding="utf-8-sig") as f:
         content = f.read()
-        
+
     # Clean header/footer lines if present
     content = re.sub(r'^---.*?\n', '', content, flags=re.MULTILINE)
     content = re.sub(r'---.*?$', '', content, flags=re.MULTILINE)
@@ -92,10 +102,10 @@ def load_flow_prompts_json(json_path):
     sanitized_content = sanitize_json_content(content)
 
     blocks = []
-    
+
     # 1. Match all JSON array patterns [...]
     array_matches = re.findall(r'\[\s*\{[\s\S]*?\}\s*\]', sanitized_content)
-    
+
     for match_str in array_matches:
         # Clean trailing commas if present e.g. ", }" or ", ]"
         clean_str = re.sub(r',\s*([\}\]])', r'\1', match_str)
@@ -140,12 +150,12 @@ def inject_timestamps():
     target_dir = get_target_directory()
     timestamps_path = os.path.join(target_dir, "image_timestamps.txt")
     json_path = os.path.join(target_dir, "flow_prompts.json")
-    
+
     print("=============================================")
     print("Injecting Timestamps into flow_prompts.json")
     print(f"Target Directory: '{os.path.abspath(target_dir)}'")
     print("=============================================")
-    
+
     if not os.path.exists(timestamps_path) or not os.path.exists(json_path):
         print(f"Error: Missing required files in '{target_dir}'")
         print(f" - image_timestamps.txt (exists: {os.path.exists(timestamps_path)})")
@@ -161,22 +171,27 @@ def inject_timestamps():
     if not blocks:
         print("Error: Could not parse any JSON blocks from flow_prompts.json")
         return
-    
+
     # 3. Inject timestamps into items matching index
     injected_count = 0
     for block in blocks:
         for item in block:
-            idx = item.get("index")
+            # LLM-repaired JSON frequently emits string indices ("index": "3");
+            # coerce to int so the int-keyed lookup cannot silently skip them.
+            try:
+                idx = int(item.get("index", -1))
+            except (TypeError, ValueError):
+                continue
             if idx in timestamps_map:
                 item["timestamp"] = timestamps_map[idx]
                 injected_count += 1
 
     # 4. Save updated flow_prompts.json with valid escaped JSON encoding
     json_blocks_str = [json.dumps(block, ensure_ascii=False, indent=2) for block in blocks]
-    
+
     with open(json_path, "w", encoding="utf-8") as f:
         f.write("\n\n".join(json_blocks_str))
-        
+
     print(f"Success! Injected timestamps into {injected_count} prompt entries.")
     print("=============================================")
 

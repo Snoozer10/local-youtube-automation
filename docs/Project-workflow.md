@@ -1,6 +1,6 @@
 # 🛠️ YouTube Video Automation Pipeline — Developer Technical Workflow
 
-> **Developer-Facing Architecture Reference.** For the user-facing quick start and setup guide, see [README.md](README.md).
+> **Developer-Facing Architecture Reference.** For the user-facing quick start and setup guide, see [README.md](../README.md).
 
 ---
 
@@ -31,7 +31,7 @@
 | **Runtime Environment**     | Python 3.10+ (Windows 10/11 x64)       | Relies on `ctypes.windll` (native Win32 clipboard), Named Pipes IPC, and Win32 process creation flags (`CREATE_NEW_CONSOLE`).                      |
 | **Browser CDP Engine**      | Playwright Sync API                    | Connects over Chrome DevTools Protocol (`127.0.0.1:9222`) to control authenticated browser profiles. **No API keys or billed tokens**.             |
 | **Linguistic Transcreator** | Gemini 2.5 Pro / Flash                 | 30/70 Fusha/Amiya hybrid code-switching, 1-3-1 sentence cadence, anti-translatese filters, and automated diacritic injection.                      |
-| **Voice Synthesis**         | AI Studio Speech Playground            | Drives `gemini-2.5-pro-preview-tts` (Voice: _Achird_, Temp: _0.8_). Uses Bezier mouse emulation and MD5 hash caching to detect stale audio.        |
+| **Voice Synthesis**         | AI Studio Speech Playground            | Drives `gemini-2.5-pro-preview-tts` (Voice: _Achird_, Temp: _1.1_ via `.env:TTS_TEMPERATURE`). Uses Bezier mouse emulation and MD5 hash caching to detect stale audio. |
 | **Audio Mastering**         | Audacity 3.x Scripting Pipe            | Non-blocking Win32 named pipes (`\\.\pipe\ToSrvPipe` & `\\.\pipe\FromSrvPipe`) for deterministic multiband DSP mastering.                          |
 | **ASR & Synchronization**   | Faster-Whisper + SequenceMatcher       | Word-level alignment with VAD filtering; spelling alignment against refined scripts via `difflib.SequenceMatcher`.                                 |
 | **Visual Diffusion Engine** | Google Flow (Nano Banana 2 / Imagen 3) | Master Visual Roadmap generation, JSON keyframe matrices, and DOM-level continuity chaining via "Add to prompt" card injection.                    |
@@ -130,10 +130,11 @@ youtube_runs/<Cleaned_Title>/
 - **Context:** Dynamic framerates and multi-pass stitching cause millisecond-level audio/video desynchronization over long documentary timelines.
 - **Decision:**
   1. `compile_video.py` pre-calculates exact integer frame counts for every clip (`total_frames = audio_duration * fps`), forcing clip 0 to frame 0.
-  2. Renders batches of clips (chunk size: 25–40) to temporary MP4s via `-filter_complex_script` to prevent 32 KB Windows CLI argument overflow.
-  3. Probe-detects hardware encoders with automatic cascading fallback:
-     $$\text{Intel QuickSync (\texttt{h264\_qsv})} \longrightarrow \text{NVIDIA (\texttt{h264\_nvenc})} \longrightarrow \text{CPU (\texttt{libx264})}$$
-  4. Always forces `QSV_LOOKAHEAD=0` and pixel format normalization (`format=nv12` for QSV, `format=yuv420p` for CPU/NVENC).
+   2. Renders batches of clips (chunk size: `CHUNK_SIZE`, default 20) to temporary MP4s via `-filter_complex_script` to prevent 32 KB Windows CLI argument overflow.
+   3. Probe-detects hardware encoders with automatic cascading fallback. **Actual probe order is NVENC first, with QSV gated behind ≤1080p** (Broadwell HD5500 instability at higher resolutions), then CPU:
+      $$\text{NVIDIA (\texttt{h264\_nvenc})} \longrightarrow \text{Intel QuickSync (\texttt{h264\_qsv}}, \leq 1080\texttt{p}\texttt{)} \longrightarrow \text{CPU (\texttt{libx264})}$$
+      A mid-render hardware failure falls back to `libx264` only.
+   4. Always forces `QSV_LOOKAHEAD=0` and pixel format normalization (`format=nv12` for QSV, `format=yuv420p` for CPU/NVENC).
 
 ---
 
@@ -141,7 +142,7 @@ youtube_runs/<Cleaned_Title>/
 
 - **Status:** Accepted
 - **Context:** Speech-to-text models (Whisper) often phonetically misspell Egyptian colloquial slang or specialized scientific terminology.
-- **Decision:** `correct_transcript_spelling.py` runs `difflib.SequenceMatcher` over the raw ASR tokens against the ground-truth `refined_script.txt`, replacing misspelled words while preserving millisecond-accurate timestamps across `.txt` and `.srt` files.
+- **Decision:** `correct_transcript_spelling.py` runs `difflib.SequenceMatcher` (with `autojunk=False` — mandatory for Arabic, whose high-frequency function words would otherwise be misclassified as junk on ≥200-word sequences) over the raw ASR tokens against the ground-truth `refined_script.txt`, replacing misspelled words while preserving millisecond-accurate timestamps across `.txt` and `.srt` files.
 
 ---
 
@@ -173,45 +174,47 @@ Audacity named pipe commands must be formatted as `<Command>:<Parameter>="<Value
 
 | Component         | Failure Trigger                                   | Automated Recovery Mechanism                                                                              |
 | :---------------- | :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------- |
-| **Gemini Chat**   | Content policy refusal / safety block             | Triggers academic disclaimer re-framing prompt in fresh chat session.                                     |
+| **Gemini Chat**   | Repeated paragraph failures                       | Cumulative `FAILURE_BUDGET` (`max(max_retries*5, 20)`) aborts rotation cleanly; profile retries reset on rotation. Academic re-framing fallback is *planned, not implemented*. |
 | **AI Studio TTS** | Session token expiry / 500 error / stalled render | Exponential backoff $(5\text{s} \times 2^n)$; reloads session and reapplies settings.                     |
 | **Account Quota** | 3 consecutive chapter/frame failures              | `rotate_profile_index()` cycles `ACTIVE_PROFILE_INDEX`, kills CDP socket, and relaunches browser profile. |
 | **Google Flow**   | "Something went wrong loading media"              | Auto-clicks card retry button; if stalled >120s, forces workspace URL reload.                             |
-| **Audacity**      | Pipe connection broken / crash                    | Surgically terminates `Audacity.exe`, wipes `SessionData`/`AutoSave`, and relaunches instance.            |
-| **FFmpeg**        | Hardware encoder driver crash (QSV/NVENC)         | Catches non-zero exit code and transparently re-renders all chunks using CPU `libx264`.                   |
+| **Audacity**      | Pipe connection broken / crash                    | Surgically terminates `Audacity.exe`, wipes `SessionData`/`AutoSave`, and relaunches instance. Exports bounded by a 900 s deadline; timed-out chapters are skipped *without* being marked polished, so resume retries them. |
+| **FFmpeg**        | Hardware encoder driver crash (QSV/NVENC)         | Catches non-zero exit codes and re-renders affected chunks via CPU `libx264`. A stderr pump-thread keeps the per-chunk timeout enforceable even when an encoder hangs silently. |
+
+All state files (`pipeline.json`, refine/voice/audacity checkpoints, voice manifest, asset memos) are written atomically — temp file + `fsync` + `os.replace` — so a crash mid-write can never leave truncated state behind.
 
 ---
 
 ## 🧪 Testing & Validation
 
 ```bash
-# Run full unit and integration test suite
+# Run the audit test suite (117 tests; no GUI/Audacity/FFmpeg required)
+python -m pytest .tests/unit -v
+
+# Run the legacy compile_video test suite
 python -m pytest tests/ -v
 
 # Test timeline synchronization math
-python -m pytest tests/unit/test_timeline.py -v
+python -m pytest .tests/unit/test_timeline.py -v
 
-# Run linting and type checking
+# Run linting and type checking (formatting is enforced by pre-commit's ruff-format)
 ruff check .
 mypy .
-black --check .
 ```
+
+> Note: the legacy `tests/unit` suite currently carries ~11 stale expectations
+> (occurrence-suffixed dict keys, `raw_sec` field, real-hardware encoder probes)
+> that predate recent production evolution — see `.docs/TEST_EXECUTION_REPORT.md`.
 
 ---
 
 ## 📚 Related Documentation Files
 
-- **User Quick Start & Config:** [README.md](README.md)
-- **Code of Conduct:** [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-- **Security & Credential Policy:** [SECURITY.md](SECURITY.md)
-- **Contribution Guidelines:** [CONTRIBUTING.md](CONTRIBUTING.md)
-- **Dialect Configuration:** `daheeh_config.json`
-- **Quality Audit Rubric:** `audit_rubric.md`
-
----
-
-### 🎯 Next Steps You Can Request:
-
-1. **Automated Test Suite Expansion**: Build comprehensive unit tests in `tests/unit/` for `test_timeline.py`, `test_daheeh_config.py`, or `test_audacity_pipe.py`.
-2. **Setup Script / Installer**: Create an automated `setup_environment.ps1` script that configures Chrome debug shortcuts, checks FFmpeg/Audacity paths, and provisions virtual environments.
-3. **Refactoring a Specific Script**: Target any script (such as `compile_video.py` or `flow_image_generator.py`) for further modularization, type annotations, or performance tuning.
+- **User Quick Start & Config:** [README.md](../README.md)
+- **Agent Instructions:** [AGENTS.md](../AGENTS.md) · [CLAUDE.md](../CLAUDE.md)
+- **Code of Conduct:** [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md)
+- **Security & Credential Policy:** [SECURITY.md](../SECURITY.md)
+- **Contribution Guidelines:** [CONTRIBUTING.md](../CONTRIBUTING.md)
+- **Dialect Configuration:** `daheeh_config.json` (repo root)
+- **Quality Audit Rubric:** [audit_rubric.md](audit_rubric.md) (this directory)
+- **Audit Deliverables:** `.docs/` (AUDIT_REPORT, TEST_EXECUTION_REPORT, ARCHITECTURE_HEALTH_CHECK)

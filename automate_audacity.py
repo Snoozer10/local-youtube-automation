@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import time
 import subprocess
@@ -6,6 +6,14 @@ import shutil
 import re
 import glob
 import json
+
+# Windows console hardening: guarantee UTF-8 for Arabic output even when piped.
+if sys.platform.startswith("win"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 def get_latest_run_folder(runs_path="youtube_runs"):
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -124,9 +132,22 @@ def load_checkpoint(folder):
 
 
 def save_checkpoint(folder, polished_files):
+    os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, "audacity_checkpoint.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump({"polished_files": polished_files}, f, ensure_ascii=False, indent=2)
+    tmp_path = path + ".tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump({"polished_files": polished_files}, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+        raise
 
 
 def delete_checkpoint(folder):
@@ -275,6 +296,8 @@ def main():
         sys.exit(1)
 
     # 4. Polish target audio files sequentially
+    EXPORT_WAIT_TIMEOUT_SEC = 900  # bound both export-wait loops (was: infinite)
+
     for idx, name, base_dir, output_dir in files_to_process:
         if name in polished_files:
             print(f"Skipping already polished file: {name}")
@@ -298,92 +321,111 @@ def main():
 
         clear_audacity_temp_data()
 
-        if base_dir == latest_run:
-            print(f"\nProcessing Master Track: {name}...")
-        else:
-            print(f"\nProcessing Chapter {idx}: {name}...")
-
-        print("  Launching fresh Audacity instance...")
-        subprocess.Popen([executable_path])
-
-        # Connect to Named Pipes
         write_pipe, read_pipe = None, None
-        for attempt in range(20):
-            try:
-                write_pipe = open(r'\\.\pipe\ToSrvPipe', 'w', encoding='utf-8')
-                read_pipe = open(r'\\.\pipe\FromSrvPipe', 'r', encoding='utf-8')
-                break
-            except Exception:
+        try:
+            if base_dir == latest_run:
+                print(f"\nProcessing Master Track: {name}...")
+            else:
+                print(f"\nProcessing Chapter {idx}: {name}...")
+
+            print("  Launching fresh Audacity instance...")
+            subprocess.Popen([executable_path])
+
+            # Connect to Named Pipes
+            for attempt in range(20):
+                try:
+                    write_pipe = open(r'\\.\pipe\ToSrvPipe', 'w', encoding='utf-8')
+                    read_pipe = open(r'\\.\pipe\FromSrvPipe', 'r', encoding='utf-8')
+                    break
+                except Exception:
+                    time.sleep(0.5)
+
+            if not write_pipe or not read_pipe:
+                print("  [ERROR] Could not connect to Audacity Named Pipes!")
+                print("  Please open Audacity manually -> Edit -> Preferences -> Modules -> Set 'mod-script-pipe' to 'Enabled', then restart Audacity.")
+                continue
+
+            print("  Waiting for Audacity GUI to initialize...")
+            time.sleep(2.5)
+
+            clean_import_path = os.path.abspath(raw_audio_path).replace("\\", "\\\\")
+            clean_export_path = os.path.abspath(polished_audio_path).replace("\\", "\\\\")
+
+            # 1. Import raw audio
+            send_audacity_command(write_pipe, read_pipe, f'Import2:Filename="{clean_import_path}"')
+
+            # 2. Apply preset settings (NoiseGate, TruncateSilence, BassAndTreble, Compressor, Normalize)
+            preset_success = apply_preset_file(write_pipe, read_pipe, preset_file_path)
+
+            # Fallback if preset file was missing
+            if not preset_success:
+                print("  Falling back to internal macro command...")
+                send_audacity_command(write_pipe, read_pipe, 'SelectAll:')
+                send_audacity_command(write_pipe, read_pipe, 'Macro_YouTube_Voice_Optimizer:')
+
+            # 3. Export polished track
+            send_audacity_command(write_pipe, read_pipe, 'SelectAll:')
+            send_audacity_command(write_pipe, read_pipe, f'Export2:Filename="{clean_export_path}" NumChannels=1')
+
+            # 4. Wait for exported file to complete (bounded: a silent Export2
+            # failure must skip the file instead of hanging the pipeline forever)
+            print(f"  Waiting for Audacity to finish processing and save to {output_dir}...")
+            wait_start = time.time()
+            while not os.path.exists(polished_audio_path):
+                if time.time() - wait_start > EXPORT_WAIT_TIMEOUT_SEC:
+                    raise TimeoutError(f"Export never produced '{name}' within {EXPORT_WAIT_TIMEOUT_SEC}s")
                 time.sleep(0.5)
 
-        if not write_pipe or not read_pipe:
-            print("  [ERROR] Could not connect to Audacity Named Pipes!")
-            print("  Please open Audacity manually -> Edit -> Preferences -> Modules -> Set 'mod-script-pipe' to 'Enabled', then restart Audacity.")
-            continue
+            last_size = -1
+            size_stable_since = time.time()
+            while True:
+                try:
+                    current_size = os.path.getsize(polished_audio_path)
+                    if current_size > 0 and current_size == last_size:
+                        break
+                    if current_size != last_size:
+                        last_size = current_size
+                        size_stable_since = time.time()
+                    elif time.time() - size_stable_since > EXPORT_WAIT_TIMEOUT_SEC:
+                        raise TimeoutError(f"'{name}' size never stabilized within {EXPORT_WAIT_TIMEOUT_SEC}s")
+                except OSError:
+                    pass
+                time.sleep(0.5)
 
-        print("  Waiting for Audacity GUI to initialize...")
-        time.sleep(2.5)
+            print("  Polished file successfully exported!")
 
-        clean_import_path = os.path.abspath(raw_audio_path).replace("\\", "\\\\")
-        clean_export_path = os.path.abspath(polished_audio_path).replace("\\", "\\\\")
-            
-        # 1. Import raw audio
-        send_audacity_command(write_pipe, read_pipe, f'Import2:Filename="{clean_import_path}"')
-        
-        # 2. Apply preset settings (NoiseGate, TruncateSilence, BassAndTreble, Compressor, Normalize)
-        preset_success = apply_preset_file(write_pipe, read_pipe, preset_file_path)
-        
-        # Fallback if preset file was missing
-        if not preset_success:
-            print("  Falling back to internal macro command...")
-            send_audacity_command(write_pipe, read_pipe, 'SelectAll:')
-            send_audacity_command(write_pipe, read_pipe, 'Macro_YouTube_Voice_Optimizer:')
+            # --- OUTPUT SYNC SAFEGUARD ---
+            if name == "full_episode_voice.wav" and os.path.exists(polished_audio_path):
+                try:
+                    shutil.copy(polished_audio_path, master_track_path)
+                    print(f"  [SYNC] Synchronized polished voice track to root: '{master_track_path}'")
+                except Exception as e:
+                    print(f"  [WARNING] Sync copy failed: {e}")
 
-        # 3. Export polished track
-        send_audacity_command(write_pipe, read_pipe, 'SelectAll:')
-        send_audacity_command(write_pipe, read_pipe, f'Export2:Filename="{clean_export_path}" NumChannels=1')
-        
-        # 4. Wait for exported file to complete
-        print(f"  Waiting for Audacity to finish processing and save to {output_dir}...")
-        while not os.path.exists(polished_audio_path):
-            time.sleep(0.5)
-            
-        last_size = -1
-        while True:
+            polished_files.append(name)
+            save_checkpoint(latest_run, polished_files)
+
+        except TimeoutError as te:
+            print(f"  [TIMEOUT] {te}")
+            print(f"  Skipping '{name}' — it will be retried on the next pipeline resume.")
+        except Exception as e:
+            print(f"  [ERROR] Processing failed for '{name}': {e}")
+            print("  Skipping to next file; checkpoint state preserved.")
+        finally:
             try:
-                current_size = os.path.getsize(polished_audio_path)
-                if current_size > 0 and current_size == last_size:
-                    break
-                last_size = current_size
-            except Exception: 
+                if write_pipe:
+                    write_pipe.close()
+                if read_pipe:
+                    read_pipe.close()
+            except Exception:
                 pass
-            time.sleep(0.5)
-        
-        print("  Polished file successfully exported!")
 
-# --- OUTPUT SYNC SAFEGUARD ---
-        if name == "full_episode_voice.wav" and os.path.exists(polished_audio_path):
+            print("  Safely closing Audacity instance...")
             try:
-                shutil.copy(polished_audio_path, master_track_path)
-                print(f"  [SYNC] Synchronized polished voice track to root: '{master_track_path}'")
-            except Exception as e:
-                print(f"  [WARNING] Sync copy failed: {e}")
-                
-        try:
-            write_pipe.close()
-            read_pipe.close()
-        except Exception:
-            pass
-
-        print("  Safely closing Audacity instance...")
-        try:
-            subprocess.run(["taskkill", "/F", "/IM", "Audacity.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            time.sleep(1.0)
-        except Exception:
-            pass
-
-        polished_files.append(name)
-        save_checkpoint(latest_run, polished_files)
+                subprocess.run(["taskkill", "/F", "/IM", "Audacity.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                time.sleep(1.0)
+            except Exception:
+                pass
 
     print("\n[SYSTEM] Polishing complete.")
     delete_checkpoint(latest_run)
