@@ -124,14 +124,8 @@ def resolve_step_timeout() -> int:
     return max(value, 300)
 
 
-def main():
-    print_header("Initializing Fully Autonomous Media Pipeline (Batch Mode)")
-    time.sleep(2)
-    global_start_time = time.time()
-    step_timeout = resolve_step_timeout()
-
-    # 1. Run the global script generator first (Processes youtube_urls.txt)
-    print_header("Phase 1: Global Script Translation & Extraction")
+def _run_translation_phase(step_timeout: int) -> None:
+    """Phase 1 bootstrap: global script translation. Exits the supervisor on failure."""
     try:
         if step_timeout > 0:
             subprocess.run(
@@ -156,6 +150,111 @@ def main():
         print(f"\n{timeout_msg}")
         send_telegram_notification(timeout_msg)
         sys.exit(1)
+
+
+def _execute_folder_steps(
+    folder: str, state: dict, folder_steps: list, video_title: str, step_timeout: int
+) -> bool:
+    """Runs pending pipeline steps for one folder; True when no step failed."""
+    folder_failed = False
+
+    for step in folder_steps:
+        if state.get(step["key"], False):
+            print(f"⏭️  [SKIP] {step['desc']} already completed.")
+            continue
+
+        if (
+            step["script"] == "fix_timestamps.py"
+            and are_images_timestamped(folder)
+        ):
+            print(
+                f"⏭️  [SKIP] {step['desc']}: Generated image assets are"
+                " already sorted by timeline layout on disk."
+            )
+            state[step["key"]] = True
+            save_pipeline_state(folder, state)
+            continue
+
+        print(f"\n⏳ [RUNNING] {step['desc']} ({step['script']})...")
+        try:
+            if step["script"] == "compile_video.py":
+                subprocess.run(
+                    [sys.executable, step["script"], folder],
+                    check=True,
+                    timeout=3600,
+                )
+            elif step_timeout > 0:
+                subprocess.run(
+                    [sys.executable, step["script"]],
+                    check=True,
+                    timeout=step_timeout,
+                )
+            else:
+                subprocess.run([sys.executable, step["script"]], check=True)
+
+            state[step["key"]] = True
+            save_pipeline_state(folder, state)
+            clean_browser_tabs()
+
+            notify_per_step = (
+                get_config_value("TELEGRAM_NOTIFY_PER_STEP", "false")
+                .strip()
+                .lower()
+                in ["true", "1", "yes"]
+            )
+            if notify_per_step:
+                send_telegram_notification(
+                    f"✅ [Step Completed]\n"
+                    f"Video: {video_title}\n"
+                    f"Completed: {step['desc']}"
+                )
+            time.sleep(2)
+
+        except subprocess.CalledProcessError as err:
+            error_msg = (
+                f"❌ [PIPELINE CRASH]\n"
+                f"Video: {video_title}\n"
+                f"Failed At: {step['desc']} ({step['script']})\n"
+                f"Status Code: {err.returncode}"
+            )
+            print(f"\n{error_msg}")
+            send_telegram_notification(error_msg)
+            folder_failed = True
+            break
+
+        except subprocess.TimeoutExpired:
+            timeout_msg = (
+                f"⚠️ [TIMEOUT EXPIRED]\n"
+                f"Video: {video_title}\n"
+                f"Step: {step['desc']} timed out."
+            )
+            print(f"\n{timeout_msg}")
+            send_telegram_notification(timeout_msg)
+            folder_failed = True
+            break
+
+        except KeyboardInterrupt:
+            cancel_msg = (
+                f"🛑 [USER INTERRUPTION]\n"
+                f"Video: {video_title}\n"
+                f"Pipeline aborted during step: {step['desc']}"
+            )
+            print(f"\n{cancel_msg}")
+            send_telegram_notification(cancel_msg)
+            raise
+
+    return not folder_failed
+
+
+def main():
+    print_header("Initializing Fully Autonomous Media Pipeline (Batch Mode)")
+    time.sleep(2)
+    global_start_time = time.time()
+    step_timeout = resolve_step_timeout()
+
+    # 1. Run the global script generator first (Processes youtube_urls.txt)
+    print_header("Phase 1: Global Script Translation & Extraction")
+    _run_translation_phase(step_timeout)
 
     # 2. Scan for all valid video folders
     runs_dir = "youtube_runs"
@@ -311,94 +410,7 @@ def main():
             },
         ])
 
-        folder_failed = False
-
-        for step in folder_steps:
-            if state.get(step["key"], False):
-                print(f"⏭️  [SKIP] {step['desc']} already completed.")
-                continue
-
-            if (
-                step["script"] == "fix_timestamps.py"
-                and are_images_timestamped(folder)
-            ):
-                print(
-                    f"⏭️  [SKIP] {step['desc']}: Generated image assets are"
-                    " already sorted by timeline layout on disk."
-                )
-                state[step["key"]] = True
-                save_pipeline_state(folder, state)
-                continue
-
-            print(f"\n⏳ [RUNNING] {step['desc']} ({step['script']})...")
-            try:
-                if step["script"] == "compile_video.py":
-                    subprocess.run(
-                        [sys.executable, step["script"], folder],
-                        check=True,
-                        timeout=3600,
-                    )
-                elif step_timeout > 0:
-                    subprocess.run(
-                        [sys.executable, step["script"]],
-                        check=True,
-                        timeout=step_timeout,
-                    )
-                else:
-                    subprocess.run([sys.executable, step["script"]], check=True)
-
-                state[step["key"]] = True
-                save_pipeline_state(folder, state)
-                clean_browser_tabs()
-
-                notify_per_step = (
-                    get_config_value("TELEGRAM_NOTIFY_PER_STEP", "false")
-                    .strip()
-                    .lower()
-                    in ["true", "1", "yes"]
-                )
-                if notify_per_step:
-                    send_telegram_notification(
-                        f"✅ [Step Completed]\n"
-                        f"Video: {video_title}\n"
-                        f"Completed: {step['desc']}"
-                    )
-                time.sleep(2)
-
-            except subprocess.CalledProcessError as err:
-                error_msg = (
-                    f"❌ [PIPELINE CRASH]\n"
-                    f"Video: {video_title}\n"
-                    f"Failed At: {step['desc']} ({step['script']})\n"
-                    f"Status Code: {err.returncode}"
-                )
-                print(f"\n{error_msg}")
-                send_telegram_notification(error_msg)
-                folder_failed = True
-                break
-
-            except subprocess.TimeoutExpired:
-                timeout_msg = (
-                    f"⚠️ [TIMEOUT EXPIRED]\n"
-                    f"Video: {video_title}\n"
-                    f"Step: {step['desc']} timed out."
-                )
-                print(f"\n{timeout_msg}")
-                send_telegram_notification(timeout_msg)
-                folder_failed = True
-                break
-
-            except KeyboardInterrupt:
-                cancel_msg = (
-                    f"🛑 [USER INTERRUPTION]\n"
-                    f"Video: {video_title}\n"
-                    f"Pipeline aborted during step: {step['desc']}"
-                )
-                print(f"\n{cancel_msg}")
-                send_telegram_notification(cancel_msg)
-                raise
-
-        if folder_failed:
+        if not _execute_folder_steps(folder, state, folder_steps, video_title, step_timeout):
             continue
 
     elapsed = time.time() - global_start_time

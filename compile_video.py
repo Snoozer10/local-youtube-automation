@@ -484,6 +484,73 @@ def _parse_pre_planned_prompts_txt(txt_path: str) -> dict:
     return camera_map
 
 
+def _parse_flow_prompts_cameras(json_path: str, camera_map: dict) -> None:
+    """Parses camera decisions from flow_prompts.json, mutating camera_map in place."""
+    try:
+        with open(json_path, encoding='utf-8') as f:
+            content = f.read().strip()
+
+        cleaned_content = re.sub(r'\]\s*\[', ',', content)
+        if not cleaned_content.startswith('['): cleaned_content = '[' + cleaned_content
+        if not cleaned_content.endswith(']'): cleaned_content += ']'
+
+        data = json.loads(cleaned_content)
+        for item in data:
+            ts_raw = str(item.get("timestamp", "")).strip("[] ")
+            parts = ts_raw.split(":")
+
+            ts_keys = []
+            if len(parts) == 2:
+                ts_keys.append(f"{int(parts[0]):02d}_{int(parts[1]):02d}")
+            elif len(parts) == 3:
+                ts_keys.append(f"{int(parts[0]):02d}_{int(parts[1]):02d}_{int(parts[2]):02d}")
+                if int(parts[0]) == 0:
+                    ts_keys.append(f"{int(parts[1]):02d}_{int(parts[2]):02d}")
+            else:
+                continue
+
+            vp = item.get("visual_prompt", {})
+            cam_spec = ""
+            if isinstance(vp, dict):
+                cam_spec = (vp.get("composition_layout", "") + " " +
+                            vp.get("camera_specifications", "") + " " +
+                            vp.get("subject_action_increment", "")).lower()
+            elif isinstance(vp, str):
+                cam_spec = vp.lower()
+
+            # Prioritize explicit camera motion specs over generic sequence types
+            if any(k in cam_spec for k in ["zoom_out", "zoom out", "pull out", "pull-out", "pull_out"]):
+                cam = "zoom_out"
+            elif any(k in cam_spec for k in ["zoom_in", "zoom in", "push in", "push-in", "push_in"]):
+                cam = "zoom_in"
+            elif any(k in cam_spec for k in ["pan_left", "pan left", "tracking left"]):
+                cam = "pan_left"
+            elif any(k in cam_spec for k in ["pan_right", "pan right", "tracking right"]):
+                cam = "pan_right"
+            elif any(k in cam_spec for k in ["tilt_up", "tilt up", "upward"]):
+                cam = "tilt_up"
+            elif any(k in cam_spec for k in ["tilt_down", "tilt down", "downward"]):
+                cam = "tilt_down"
+            else:
+                # Fallback to sequence_type only if camera_spec is neutral
+                seq_t = str(item.get("sequence_type", "")).lower()
+                if "zoom" in seq_t:
+                    cam = "zoom_in"
+                else:
+                    cam = "static"
+
+            seq_meta = item.get("sequence_metadata", {})
+            occ_idx = seq_meta.get("frame_index", 1) if isinstance(seq_meta, dict) else 1
+
+            for key in ts_keys:
+                camera_map[key] = cam
+                camera_map[f"{key}_{occ_idx}"] = cam
+        if camera_map:
+            print(f"  [CAMERA] Loaded {len(camera_map)} AI camera decisions from 'flow_prompts.json'")
+    except Exception as e:
+        print(f"  [WARN] Failed to parse camera decisions from {json_path}: {e}")
+
+
 def load_ai_camera_decisions(run_folder: str) -> dict:
     camera_map = {}
 
@@ -492,69 +559,7 @@ def load_ai_camera_decisions(run_folder: str) -> dict:
 
     # 1. Primary: Try flow_prompts.json
     if os.path.exists(json_path) and os.path.isfile(json_path):
-        try:
-            with open(json_path, encoding='utf-8') as f:
-                content = f.read().strip()
-
-            cleaned_content = re.sub(r'\]\s*\[', ',', content)
-            if not cleaned_content.startswith('['): cleaned_content = '[' + cleaned_content
-            if not cleaned_content.endswith(']'): cleaned_content += ']'
-
-            data = json.loads(cleaned_content)
-            for item in data:
-                ts_raw = str(item.get("timestamp", "")).strip("[] ")
-                parts = ts_raw.split(":")
-
-                ts_keys = []
-                if len(parts) == 2:
-                    ts_keys.append(f"{int(parts[0]):02d}_{int(parts[1]):02d}")
-                elif len(parts) == 3:
-                    ts_keys.append(f"{int(parts[0]):02d}_{int(parts[1]):02d}_{int(parts[2]):02d}")
-                    if int(parts[0]) == 0:
-                        ts_keys.append(f"{int(parts[1]):02d}_{int(parts[2]):02d}")
-                else:
-                    continue
-
-                vp = item.get("visual_prompt", {})
-                cam_spec = ""
-                if isinstance(vp, dict):
-                    cam_spec = (vp.get("composition_layout", "") + " " +
-                                vp.get("camera_specifications", "") + " " +
-                                vp.get("subject_action_increment", "")).lower()
-                elif isinstance(vp, str):
-                    cam_spec = vp.lower()
-
-                # Prioritize explicit camera motion specs over generic sequence types
-                if any(k in cam_spec for k in ["zoom_out", "zoom out", "pull out", "pull-out", "pull_out"]):
-                    cam = "zoom_out"
-                elif any(k in cam_spec for k in ["zoom_in", "zoom in", "push in", "push-in", "push_in"]):
-                    cam = "zoom_in"
-                elif any(k in cam_spec for k in ["pan_left", "pan left", "tracking left"]):
-                    cam = "pan_left"
-                elif any(k in cam_spec for k in ["pan_right", "pan right", "tracking right"]):
-                    cam = "pan_right"
-                elif any(k in cam_spec for k in ["tilt_up", "tilt up", "upward"]):
-                    cam = "tilt_up"
-                elif any(k in cam_spec for k in ["tilt_down", "tilt down", "downward"]):
-                    cam = "tilt_down"
-                else:
-                    # Fallback to sequence_type only if camera_spec is neutral
-                    seq_t = str(item.get("sequence_type", "")).lower()
-                    if "zoom" in seq_t:
-                        cam = "zoom_in"
-                    else:
-                        cam = "static"
-
-                seq_meta = item.get("sequence_metadata", {})
-                occ_idx = seq_meta.get("frame_index", 1) if isinstance(seq_meta, dict) else 1
-
-                for key in ts_keys:
-                    camera_map[key] = cam
-                    camera_map[f"{key}_{occ_idx}"] = cam
-            if camera_map:
-                print(f"  [CAMERA] Loaded {len(camera_map)} AI camera decisions from 'flow_prompts.json'")
-        except Exception as e:
-            print(f"  [WARN] Failed to parse camera decisions from {json_path}: {e}")
+        _parse_flow_prompts_cameras(json_path, camera_map)
 
     # 2. Fallback: Try pre_planned_prompts.txt
     if not camera_map and os.path.exists(txt_path):
@@ -1014,51 +1019,57 @@ def build_chunk_filter_graph(config: dict, encoder_config: dict, chunk_timeline:
     return input_args, filter_complex, "vout"
 
 
-def render_chunk(config: dict, encoder_config: dict, chunk_timeline: list, images_dir: str,
-                 ai_cameras: dict, manual_cameras: dict, anim_enabled: bool,
-                 chunk_idx: int, temp_dir: str, run_folder: str, global_offset_idx: int) -> str | None:
-    chunk_filename = f"chunk_{chunk_idx:04d}.mp4"
-    chunk_output_path = os.path.abspath(os.path.join(temp_dir, chunk_filename))
-
-    chunk_duration_sec = sum(b['duration'] for b in chunk_timeline)
-
-    if os.path.exists(chunk_output_path) and os.path.getsize(chunk_output_path) > 1000:
-        print(f"  [CHUNK {chunk_idx+1}] Already rendered: {chunk_filename} ({chunk_duration_sec:.1f}s)")
-        return chunk_output_path
-
-    try:
-        input_args, filter_complex, video_label = build_chunk_filter_graph(
-            config, encoder_config, chunk_timeline, images_dir, ai_cameras, manual_cameras,
-            anim_enabled, global_offset_idx
-        )
-    except ValueError as e:
-        print(f"  [ERROR Chunk {chunk_idx+1}] {e}")
-        return None
-
-    filter_script_path = os.path.abspath(os.path.join(temp_dir, f"filter_chunk_{chunk_idx:04d}.txt"))
-    with open(filter_script_path, "w", encoding="utf-8") as f:
-        f.write(filter_complex)
-
-    chunk_tmp_path = os.path.abspath(os.path.join(temp_dir, f"tmp_{chunk_filename}"))
-    cmd = [
-        "ffmpeg", "-y", "-hide_banner", "-loglevel", config["FFMPEG_LOGLEVEL"],
+def _build_chunk_ffmpeg_cmd(
+    config: dict,
+    encoder_config: dict,
+    input_args: list,
+    video_label: str,
+    filter_script_path: str,
+    chunk_tmp_path: str,
+) -> list[str]:
+    return [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        config["FFMPEG_LOGLEVEL"],
         *input_args,
-        "-filter_complex_script", filter_script_path,
-        "-map", f"[{video_label}]",
-        "-c:v", encoder_config["video_codec"],
+        "-filter_complex_script",
+        filter_script_path,
+        "-map",
+        f"[{video_label}]",
+        "-c:v",
+        encoder_config["video_codec"],
         *encoder_config["encoder_args"],
         "-an",
-        "-f", "mp4",
-        chunk_tmp_path
+        "-f",
+        "mp4",
+        chunk_tmp_path,
     ]
 
+
+def _execute_chunk_ffmpeg(
+    cmd: list,
+    config: dict,
+    cwd: str,
+    chunk_idx: int,
+    chunk_duration_sec: float,
+    chunk_filename: str,
+    chunk_tmp_path: str,
+    chunk_output_path: str,
+) -> str | None:
     start_time = time.time()
     timeout = config.get("FFMPEG_CLIP_TIMEOUT", 300)
 
     try:
         process = subprocess.Popen(
-            cmd, cwd=run_folder, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-            text=True, encoding='utf-8', errors='ignore'
+            cmd,
+            cwd=cwd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
         )
 
         # Pump FFmpeg stderr on a background thread: a blocking read on the
@@ -1131,6 +1142,49 @@ def render_chunk(config: dict, encoder_config: dict, chunk_timeline: list, image
     except Exception as e:
         print(f"\n  [ERROR Chunk {chunk_idx+1}] Execution error: {e}")
         return None
+
+
+def render_chunk(config: dict, encoder_config: dict, chunk_timeline: list, images_dir: str,
+                 ai_cameras: dict, manual_cameras: dict, anim_enabled: bool,
+                 chunk_idx: int, temp_dir: str, run_folder: str, global_offset_idx: int) -> str | None:
+    chunk_filename = f"chunk_{chunk_idx:04d}.mp4"
+    chunk_output_path = os.path.abspath(os.path.join(temp_dir, chunk_filename))
+
+    chunk_duration_sec = sum(b['duration'] for b in chunk_timeline)
+
+    if os.path.exists(chunk_output_path) and os.path.getsize(chunk_output_path) > 1000:
+        print(f"  [CHUNK {chunk_idx+1}] Already rendered: {chunk_filename} ({chunk_duration_sec:.1f}s)")
+        return chunk_output_path
+
+    try:
+        input_args, filter_complex, video_label = build_chunk_filter_graph(
+            config, encoder_config, chunk_timeline, images_dir, ai_cameras, manual_cameras,
+            anim_enabled, global_offset_idx
+        )
+    except ValueError as e:
+        print(f"  [ERROR Chunk {chunk_idx+1}] {e}")
+        return None
+
+    filter_script_path = os.path.abspath(os.path.join(temp_dir, f"filter_chunk_{chunk_idx:04d}.txt"))
+    with open(filter_script_path, "w", encoding="utf-8") as f:
+        f.write(filter_complex)
+
+    chunk_tmp_path = os.path.abspath(os.path.join(temp_dir, f"tmp_{chunk_filename}"))
+    cmd = _build_chunk_ffmpeg_cmd(
+        config, encoder_config, input_args, video_label, filter_script_path, chunk_tmp_path
+    )
+
+    return _execute_chunk_ffmpeg(
+        cmd,
+        config,
+        run_folder,
+        chunk_idx,
+        chunk_duration_sec,
+        chunk_filename,
+        chunk_tmp_path,
+        chunk_output_path,
+    )
+
 
 # -------------------------------------------------------------
 # INSERTION POINT 1: Place directly above assemble_final_video
@@ -1267,27 +1321,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     return output_ass_path
 
-def assemble_final_video(config: dict, encoder_config: dict, chunk_files: list[str],
-                         audio_path: str, subtitle_path: str | None, run_folder: str,
-                         sync_timeline: list = None) -> bool:
-    output_path = os.path.abspath(os.path.join(run_folder, "youtube_ready_video.mp4"))
-    temp_dir = os.path.abspath(os.path.join(run_folder, "temp_clips"))
-    concat_txt_path = os.path.join(temp_dir, "concat_chunks.txt")
-
-    with open(concat_txt_path, "w", encoding="utf-8") as f:
-        for c_file in chunk_files:
-            safe_c_path = os.path.abspath(c_file).replace("\\", "/")
-            f.write(f"file '{safe_c_path}'\n")
-
-    safe_audio_path = os.path.abspath(audio_path).replace("\\", "/")
-
+def _build_audio_filter_chain(
+    config: dict,
+    audio_path: str,
+    safe_audio_path: str,
+    sync_timeline: list | None,
+    run_folder: str,
+    script_dir: str,
+) -> tuple[list, list]:
+    """Returns (filter_parts, audio_inputs) covering SFX stems, BGM ducking and loudnorm."""
     filter_parts = []
     audio_inputs = ["-i", safe_audio_path]
     sfx_labels = []
 
     # 1. Build Sample-Exact SFX Stems from sync_timeline
     raw_sfx_dir = config.get("SFX_DIR", "assets/sfx")
-    script_dir = os.path.dirname(os.path.abspath(__file__))
     sfx_resolved_path = raw_sfx_dir if os.path.isabs(raw_sfx_dir) else os.path.join(script_dir, raw_sfx_dir)
 
     if config.get("ENABLE_SFX") and os.path.exists(sfx_resolved_path) and sync_timeline:
@@ -1355,6 +1403,80 @@ def assemble_final_video(config: dict, encoder_config: dict, chunk_files: list[s
         f"{ln},afade=t=out:st={fade_start:.2f}:d=0.10[aout]"
     )
 
+    return filter_parts, audio_inputs
+
+
+def _execute_final_assembly(
+    cmd: list, cwd: str, timeout: int, total_duration: float, output_path: str
+) -> bool:
+    start_time = time.time()
+    try:
+        process = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+        )
+
+        stderr_logs = []
+        while True:
+            if time.time() - start_time > timeout:
+                process.kill()
+                print(f"\n  [ERROR Final Assembly] FFmpeg timeout ({timeout}s)")
+                return False
+
+            line = process.stderr.readline()
+            if not line and process.poll() is not None:
+                break
+
+            if line:
+                stderr_logs.append(line)
+                if "time=" in line:
+                    match = re.search(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)", line)
+                    if match:
+                        h, m, s = map(float, match.groups())
+                        current_sec = h * 3600 + m * 60 + s
+                        pct = min(100.0, (current_sec / max(0.1, total_duration)) * 100)
+                        print(f"\r  [Assembly] Progress: {pct:.1f}% ({int(current_sec)}s / {int(total_duration)}s)", end="", flush=True)
+
+        process.wait()
+        print("\n")
+
+        if process.returncode != 0:
+            full_stderr = "".join(stderr_logs)
+            print(f"  [ERROR Final Assembly] FFmpeg failed:\n{full_stderr[-2000:]}")
+            return False
+
+        print(f"  [SUCCESS] Master Video Created: {output_path}")
+        return True
+
+    except Exception as e:
+        print(f"\n  [ERROR Final Assembly] Execution error: {e}")
+        return False
+
+
+def assemble_final_video(config: dict, encoder_config: dict, chunk_files: list[str],
+                         audio_path: str, subtitle_path: str | None, run_folder: str,
+                         sync_timeline: list = None) -> bool:
+    output_path = os.path.abspath(os.path.join(run_folder, "youtube_ready_video.mp4"))
+    temp_dir = os.path.abspath(os.path.join(run_folder, "temp_clips"))
+    concat_txt_path = os.path.join(temp_dir, "concat_chunks.txt")
+
+    with open(concat_txt_path, "w", encoding="utf-8") as f:
+        for c_file in chunk_files:
+            safe_c_path = os.path.abspath(c_file).replace("\\", "/")
+            f.write(f"file '{safe_c_path}'\n")
+
+    safe_audio_path = os.path.abspath(audio_path).replace("\\", "/")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    filter_parts, audio_inputs = _build_audio_filter_chain(
+        config, audio_path, safe_audio_path, sync_timeline, run_folder, script_dir
+    )
+
     video_label = "0:v"
     video_codec_args = ["-c:v", "copy"]
 
@@ -1396,51 +1518,10 @@ def assemble_final_video(config: dict, encoder_config: dict, chunk_files: list[s
     ]
 
     print("\n[Final Assembly] Combining chunk videos + audio track...")
-    start_time = time.time()
-    audio_duration = config.get("_audio_duration", 1.0)
     timeout = config.get("FFMPEG_FINAL_TIMEOUT", 5400)
-
-    try:
-        process = subprocess.Popen(
-            cmd, cwd=run_folder, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-            text=True, encoding='utf-8', errors='ignore'
-        )
-
-        stderr_logs = []
-        while True:
-            if time.time() - start_time > timeout:
-                process.kill()
-                print(f"\n  [ERROR Final Assembly] FFmpeg timeout ({timeout}s)")
-                return False
-
-            line = process.stderr.readline()
-            if not line and process.poll() is not None:
-                break
-
-            if line:
-                stderr_logs.append(line)
-                if "time=" in line:
-                    match = re.search(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)", line)
-                    if match:
-                        h, m, s = map(float, match.groups())
-                        current_sec = h * 3600 + m * 60 + s
-                        pct = min(100.0, (current_sec / max(0.1, audio_duration)) * 100)
-                        print(f"\r  [Assembly] Progress: {pct:.1f}% ({int(current_sec)}s / {int(audio_duration)}s)", end="", flush=True)
-
-        process.wait()
-        print("\n")
-
-        if process.returncode != 0:
-            full_stderr = "".join(stderr_logs)
-            print(f"  [ERROR Final Assembly] FFmpeg failed:\n{full_stderr[-2000:]}")
-            return False
-
-        print(f"  [SUCCESS] Master Video Created: {output_path}")
-        return True
-
-    except Exception as e:
-        print(f"\n  [ERROR Final Assembly] Execution error: {e}")
-        return False
+    return _execute_final_assembly(
+        cmd, run_folder, timeout, config.get("_audio_duration", 1.0), output_path
+    )
 
 
 def _signature_drift_reason(data: dict, config: dict, expected_codec: str) -> str:
@@ -1462,13 +1543,13 @@ def _signature_drift_reason(data: dict, config: dict, expected_codec: str) -> st
     return f"encoder codec ({data.get('encoder')} vs {expected_codec})"
 
 
-def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list, images_dir: str,
-                        audio_path: str, run_folder: str, checkpoint: CheckpointManager = None) -> bool:
-    output_path = os.path.abspath(os.path.join(run_folder, "youtube_ready_video.mp4"))
-
+def _checkpoint_resume_gate(
+    config: dict, checkpoint: CheckpointManager, output_path: str, expected_codec: str
+) -> bool:
+    """Invalidates drifted checkpoints in place; True when the render is already complete."""
     if config["ENABLE_CHECKPOINT_RESUME"] and checkpoint and isinstance(checkpoint.data, dict):
-        if not checkpoint.is_signature_valid(expected_codec=encoder_config["video_codec"]):
-            drift_reason = _signature_drift_reason(checkpoint.data, config, encoder_config["video_codec"])
+        if not checkpoint.is_signature_valid(expected_codec=expected_codec):
+            drift_reason = _signature_drift_reason(checkpoint.data, config, expected_codec)
             print(f"  [RESUME] {drift_reason} drifted since checkpoint creation.")
             print("  [RESUME] Render signature drifted - reinitializing checkpoint.")
             checkpoint.data = None
@@ -1477,6 +1558,60 @@ def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list,
         if checkpoint.data.get("completed_clips") == checkpoint.data.get("total_clips") and os.path.exists(output_path):
             print("  [RESUME] Video render already complete. Skipping.")
             return True
+
+    return False
+
+
+def _render_all_chunks_parallel(
+    config: dict,
+    encoder_config: dict,
+    chunks: list,
+    chunk_size: int,
+    images_dir: str,
+    ai_cameras: dict,
+    manual_cameras: dict,
+    temp_dir: str,
+    run_folder: str,
+) -> tuple[dict, bool]:
+    """Renders every chunk concurrently; returns ({chunk_idx: path}, any_failed)."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    num_chunks = len(chunks)
+    max_workers = min(2, num_chunks) if "qsv" in encoder_config.get("video_codec", "") else min(2, max(1, os.cpu_count() // 2))
+    print(f"  [RENDER ENGINE] Parallel rendering across {max_workers} worker threads...")
+
+    rendered_map = {}
+    failed = False
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(
+                render_chunk, config, encoder_config, chunk_timeline, images_dir,
+                ai_cameras, manual_cameras, config["ENABLE_ANIMATIONS"],
+                chunk_idx, temp_dir, run_folder, chunk_idx * chunk_size
+            ): chunk_idx for chunk_idx, chunk_timeline in enumerate(chunks)
+        }
+
+        for future in as_completed(futures):
+            c_idx = futures[future]
+            try:
+                result = future.result()
+                if result:
+                    rendered_map[c_idx] = result
+                else:
+                    failed = True
+            except Exception as e:
+                print(f"  [ERROR] Chunk {c_idx+1} raised exception: {e}")
+                failed = True
+
+    return rendered_map, failed
+
+
+def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list, images_dir: str,
+                        audio_path: str, run_folder: str, checkpoint: CheckpointManager = None) -> bool:
+    output_path = os.path.abspath(os.path.join(run_folder, "youtube_ready_video.mp4"))
+
+    if _checkpoint_resume_gate(config, checkpoint, output_path, encoder_config["video_codec"]):
+        return True
 
     subtitle_path = None
     if config.get("ENABLE_SUBTITLES", False):
@@ -1512,35 +1647,17 @@ def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list,
     while True:
         print(f"\n[Chunked Render] Processing {total_clips} synchronized clips in {num_chunks} chunk(s) (batch size: {chunk_size}) using {current_encoder['video_codec']}...")
 
-        chunk_files = []
-        failed = False
-
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        max_workers = min(2, num_chunks) if "qsv" in current_encoder.get("video_codec", "") else min(2, max(1, os.cpu_count() // 2))
-        print(f"  [RENDER ENGINE] Parallel rendering across {max_workers} worker threads...")
-
-        rendered_map = {}
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(
-                    render_chunk, config, current_encoder, chunk_timeline, images_dir,
-                    ai_cameras, manual_cameras, config["ENABLE_ANIMATIONS"],
-                    chunk_idx, temp_dir, run_folder, chunk_idx * chunk_size
-                ): chunk_idx for chunk_idx, chunk_timeline in enumerate(chunks)
-            }
-
-            for future in as_completed(futures):
-                c_idx = futures[future]
-                try:
-                    result = future.result()
-                    if result:
-                        rendered_map[c_idx] = result
-                    else:
-                        failed = True
-                except Exception as e:
-                    print(f"  [ERROR] Chunk {c_idx+1} raised exception: {e}")
-                    failed = True
+        rendered_map, failed = _render_all_chunks_parallel(
+            config,
+            current_encoder,
+            chunks,
+            chunk_size,
+            images_dir,
+            ai_cameras,
+            manual_cameras,
+            temp_dir,
+            run_folder,
+        )
 
         chunk_files = [rendered_map[i] for i in range(num_chunks) if i in rendered_map]
 
