@@ -159,12 +159,20 @@ Legacy ladder: GeminiSessionClient.dispatch_prompt:289 polled by wait_for_gemini
 - Acoustic snap: AudioSyncAligner 20 ms RMS windows, ±0.20 s dip search :643-667, interior cuts only :689,:698
 - Loudnorm: measure JSON→DOTALL regex :884-908 → measured string `linear=true` applied post `aresample=async=1:min_hard_comp=0.100000:first_pts=0` + 0.10 s tail fade :1317-1327
 
-## 7. Known Drift Register (Phase 5 targets)
+## 7. Drift Register — FINAL STATUS (post Phase 5, 2026-08-26)
 
-1. Hardcoded `9222` × 10 sites + `localhost` × 4 (§4 table)
-2. Non-atomic checkpoint writers × 2 (automate_all:863, script_image_generator:614)
-3. Helper-family duplication: get_latest_run_folder ×9; find_input_box/find_send_button/is_gemini_generating/wait_for_gemini_response/select_gemini_model/start_clean_gemini_chat ×≥4 with selector drift
-4. Mojibake literals generate_voice:165,186-189
-5. requirements.txt markdown fence (blocks pip)
-6. Dead config/env surface (CFG-01/02, ENV-02/03)
-7. Hidden `.tests\` tree uncounted by CI (TST-01); duplicate pytest config pytest.ini ≡ pyproject
+| # | Item | Status |
+|---|---|---|
+| 1 | Hardcoded `9222` ×19 + `localhost` ×4 | ✅ FIXED — all sites `http://127.0.0.1:{cdp_port}` (commit c273e09) |
+| 2 | Non-atomic checkpoint writers ×2 | ✅ FIXED — shared `utils.atomic_write_json` (c273e09) |
+| 3 | Helper-family duplication ×≥4 | ⏸ OPEN — consolidation needs live selector calibration; modern layer authoritative |
+| 4 | Mojibake literals generate_voice:165,186-189 | ⏸ DEFERRED — behavior-load-bearing; needs live calibration run |
+| 5 | requirements.txt markdown fence | ✅ FIXED (c273e09); pip dry-run green |
+| 6 | Dead config/env surface | ⏸ DOCUMENTED — trace map §3 is ground truth until operator rules wire-vs-prune |
+| 7 | Hidden `.tests\` tree uncounted by CI | ✅ RESOLVED — mandated coverage ported to visible `tests\`; dot-tree excluded from tooling scope (53a347b) |
+| 8 | Lint/type gates failing vs own pyproject | ✅ ruff+format ZERO (53a347b); mypy 714 documented residual (annotation campaign = future project) |
+| 9 | Checkpoint signature gap (audio/encoder) | ✅ FIXED+WIRED with drift logging (c273e09) |
+| 10 | Stitch contiguity contract | ✅ FIXED, pinned by tests (c273e09) |
+
+**Zero-drift math sites (§6) and all IPC protocols (§4) verified unchanged through the program — pinned by `tests\unit\test_timeline_sync.py`, `test_checkpoint_resilience.py`, `test_audacity_pipe_protocol.py`.**
+Final suite state: **320 passed** (303 unit + 17 integration). Full audit trail: `.docs\PHASE_1…PHASE_5 reports.`
