@@ -30,6 +30,9 @@ C:\OperaDebugProfile
 %LOCALAPPDATA%\Google\Chrome\User Data\Default
 %LOCALAPPDATA%\Opera Software\Opera Stable
 
+# Runtime Input (tracked placeholder; local URL edits hidden via skip-worktree)
+youtube_urls.txt
+
 # Runtime Artifacts
 youtube_runs/
 __pycache__/
