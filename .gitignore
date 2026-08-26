@@ -61,6 +61,7 @@ graphify-out/
 Implementation plans/
 legacy_and_utilities/
 Security Division Analysis/
+releases/
 
 # Distribution / Packaging
 *.egg-info/

@@ -1,14 +1,15 @@
 """Shared pytest fixtures for compile_video tests."""
 
-import os
-import tempfile
-import shutil
 import json
+import os
+import shutil
 import subprocess
+import tempfile
+
 import pytest
+from ffmpeg_stubs import FakePopen
 
 import compile_video
-from ffmpeg_stubs import FakePopen
 
 
 @pytest.fixture
@@ -67,10 +68,13 @@ def sample_flow_prompts(temp_run_folder):
     path = os.path.join(temp_run_folder, "flow_prompts.json")
     data = [
         {"timestamp": "[00:00]", "visual_prompt": {"camera_specifications": "zoom in slowly"}},
-        {"timestamp": "[00:08]", "visual_prompt": {"camera_specifications": "pan left across scene"}},
+        {
+            "timestamp": "[00:08]",
+            "visual_prompt": {"camera_specifications": "pan left across scene"},
+        },
         {"timestamp": "[00:15]", "visual_prompt": {"camera_specifications": "static shot"}},
     ]
-    with open(path, 'w', encoding='utf-8') as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f)
     return path
 
@@ -79,7 +83,7 @@ def sample_flow_prompts(temp_run_folder):
 def sample_manual_animations(temp_run_folder):
     """Write manual_animations.txt with overrides."""
     path = os.path.join(temp_run_folder, "manual_animations.txt")
-    with open(path, 'w', encoding='utf-8') as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write("00_00=zoom_out\n")
         f.write("00_15=pan_right\n")
     return path
@@ -88,26 +92,33 @@ def sample_manual_animations(temp_run_folder):
 @pytest.fixture
 def mock_ffmpeg(monkeypatch):
     """Patch subprocess.run for ffmpeg/ffprobe calls."""
+
     def mock_run(cmd, *args, **kwargs):
         # Mock ffprobe duration
         if "ffprobe" in cmd[0]:
+
             class R:
                 stdout = "10.0\n"
                 returncode = 0
+
             return R()
 
         # Mock ffmpeg -encoders
         if "-encoders" in cmd:
+
             class R:
                 stdout = "h264_qsv\nh264_nvenc\nlibx264\n"
                 returncode = 0
+
             return R()
 
         # Mock loudnorm measure pass
         if "loudnorm" in " ".join(cmd) and "print_format=json" in " ".join(cmd):
+
             class R:
                 stderr = '{"input_i":"-14.5","input_tp":"-1.2","input_lra":"7.8","input_thresh":"-25.3","target_offset":"0.5"}'
                 returncode = 0
+
             return R()
 
         # Default: success
@@ -115,6 +126,7 @@ def mock_ffmpeg(monkeypatch):
             stdout = ""
             stderr = ""
             returncode = 0
+
         return R()
 
     monkeypatch.setattr(subprocess, "run", mock_run)
@@ -143,9 +155,20 @@ def test_images_dir():
     for name in ["00_00.png", "00_08.png", "00_15.png"]:
         img_path = os.path.join(d, name)
         cmd = [
-            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-            "-f", "lavfi", "-i", "color=c=blue:s=200x200", "-frames:v", "1",
-            "-update", "1", img_path
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=200x200",
+            "-frames:v",
+            "1",
+            "-update",
+            "1",
+            img_path,
         ]
         subprocess.run(cmd, capture_output=True)
     yield d
@@ -158,9 +181,18 @@ def dummy_audio_file():
     d = tempfile.mkdtemp()
     audio_path = os.path.join(d, "audio.wav")
     cmd = [
-        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-        "-f", "lavfi", "-i", "sine=frequency=440:duration=10",
-        "-ar", "48000", audio_path
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:duration=10",
+        "-ar",
+        "48000",
+        audio_path,
     ]
     r = subprocess.run(cmd, capture_output=True)
     if r.returncode != 0:
@@ -172,10 +204,10 @@ def dummy_audio_file():
 
 
 @pytest.fixture
-def dummy_srt_file(temp_run_folder):
-    """Create a dummy SRT file for subtitle testing."""
-    srt_path = os.path.join(temp_run_folder, "timestamped_transcript.srt")
-    with open(srt_path, "w", encoding="utf-8-sig") as f:
-        f.write("1\n00:00:00,000 --> 00:00:05,000\nTest subtitle\n\n")
-        f.write("2\n00:00:05,000 --> 00:00:10,000\nAnother subtitle\n")
-    return srt_path
+def dummy_transcript_file(temp_run_folder):
+    """Create a timestamped transcript source (image_timestamps.txt) for subtitle testing."""
+    txt_path = os.path.join(temp_run_folder, "image_timestamps.txt")
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write("[00:00] Test subtitle\n")
+        f.write("[00:05] Another subtitle\n")
+    return txt_path

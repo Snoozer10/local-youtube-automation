@@ -1,4 +1,5 @@
 import ctypes
+import difflib
 import glob
 import hashlib
 import json
@@ -7,6 +8,7 @@ import random
 import re
 import sys
 import time
+import wave
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
@@ -160,7 +162,7 @@ def extract_total_blocks_count(text):
     if not text:
         return None, None
     matches = re.findall(
-        r"(?:TTS\s*BLOCK|BLOCK|CHAPTER|الجزء)\s*\[?(\d+)\]?\s*(?:of|OF|من|\/)\s*\[?(\d+)\]?",
+        r"(?:TTS\s*BLOCK|BLOCK|CHAPTER|ط§ظ„ط¬ط²ط،)\s*\[?(\d+)\]?\s*(?:of|OF|ظ…ظ†|\/)\s*\[?(\d+)\]?",
         text,
         flags=re.IGNORECASE,
     )
@@ -183,7 +185,7 @@ def check_is_gemini_complete(manifest, transcript_text, last_raw_response=""):
 
     Header-driven only: the char-ratio/ending-keyword heuristics were removed
     because speech-tag markup bloat inflated the coverage ratio past 80% and
-    words like 'سلام'/'المصادر' inside body text triggered premature exits
+    words like 'ط³ظ„ط§ظ…'/'ط§ظ„ظ…طµط§ط¯ط±' inside body text triggered premature exits
     mid-script. A run is complete only when the newest 'TTS BLOCK N of M'
     header reports N == M (or all M chapters are already harvested).
     """
@@ -203,7 +205,19 @@ def check_is_gemini_complete(manifest, transcript_text, last_raw_response=""):
         if curr is not None and total is not None:
             if len(chapters) >= total or curr >= total:
                 return True
-            return False  # Header present but remaining blocks outstanding
+            break  # Header present but remaining blocks outstanding -> fall through to ceiling
+
+    # Safety net: hard runaway ceiling for instruction drift (Gemini dropping
+    # 'TTS BLOCK N of M' headers after several turns). Block size varies per the
+    # prompt's word-count targets, so the default is generous and env-overridable.
+    max_allowed_cfg = str(get_config_value("MAX_HARVEST_BLOCKS", "") or "").strip()
+    if max_allowed_cfg.isdigit():
+        max_blocks = int(max_allowed_cfg)
+    else:
+        max_blocks = max(len(transcript_text or "") // 700 + 4, 8)
+    if len(chapters) >= max_blocks:
+        print(f"[GUARDRAIL] Runaway block ceiling reached ({len(chapters)} >= {max_blocks}). Forcing Phase 1 completion.")
+        return True
 
     return False
 
@@ -912,6 +926,21 @@ def get_file_md5(file_path):
         print(f"Warning: Could not calculate MD5 for {file_path}: {e}")
         return None
 
+def is_valid_wav_file(file_path, min_frames=1000):
+    """Verifies the file is a readable, non-truncated WAV containing actual audio frames.
+
+    Guards against AI Studio serving silent failures: quota-limited or 500-errored
+    downloads often land as a bare ~44-byte RIFF header or a truncated stream that
+    passes a naive getsize() check but poisons stitch/whisper far downstream.
+    """
+    try:
+        if not os.path.exists(file_path) or os.path.getsize(file_path) < 500:
+            return False
+        with wave.open(file_path, "rb") as wf:
+            return wf.getnchannels() > 0 and wf.getframerate() > 0 and wf.getnframes() >= min_frames
+    except Exception:
+        return False
+
 def check_ai_studio_errors(page):
     error_selectors = [
         "text='Http response'",
@@ -1084,12 +1113,42 @@ def main():
                     existing_chapters_count = len(manifest.get("chapters", []))
                     current_chap_idx = existing_chapters_count + 1
 
+                    # Harvest reliability counters: empty/unparsable responses must
+                    # never loop forever. After FAILOVER_RETRY_LIMIT stalls we nudge
+                    # the chat (max MAX_HARVEST_NUDGES per run), then escalate via
+                    # profile rotation when enabled, mirroring the audio-side path.
+                    harvest_attempts = 0
+                    nudges_sent = 0
+                    consecutive_repeats = 0
+                    max_harvest_retries = int(get_config_value("FAILOVER_RETRY_LIMIT", "3"))
+                    max_nudges = int(get_config_value("MAX_HARVEST_NUDGES", "2"))
+
+                    def _escalate_harvest_failure(chap_idx, reason, switching_enabled):
+                        """Rotates profile when account switching is on, else hard-stops."""
+                        nonlocal failover_triggered
+                        if switching_enabled:
+                            print(f"\n[FAILOVER ALERT] Text harvest stalled on Chapter {chap_idx}: {reason}. Rotating Account Profile...")
+                            rotate_profile_index()
+                            kill_cdp_chrome()
+                            failover_triggered = True
+                            raise Exception(f"Text harvest failed for Chapter {chap_idx} ({reason}). Triggering profile rotation.")
+                        raise Exception(f"[FATAL ERROR] Text harvest failed for Chapter {chap_idx} after repeated attempts ({reason}). Halting.")
+
                     while True:
                         print(f"\nHarvesting Chapter {current_chap_idx} script from Gemini...")
                         raw_content = get_last_response(tab2_chat)
 
                         if not raw_content or len(raw_content.strip()) < 10:
-                            print(f"Warning: Response for Chapter {current_chap_idx} empty or loading. Waiting...")
+                            harvest_attempts += 1
+                            print(f"[RETRY {harvest_attempts}/{max_harvest_retries}] Empty response for Chapter {current_chap_idx}. Waiting...")
+                            if harvest_attempts >= max_harvest_retries:
+                                if nudges_sent >= max_nudges:
+                                    _escalate_harvest_failure(current_chap_idx, "persistent empty responses", accounts_enabled)
+                                print(f"[NUDGE {nudges_sent + 1}/{max_nudges}] Chat appears stalled. Sending recovery nudge...")
+                                send_gemini_prompt(tab2_chat, "proceed")
+                                wait_for_gemini_response(tab2_chat, step_name=f"Chapter {current_chap_idx} Recovery")
+                                nudges_sent += 1
+                                harvest_attempts = 0
                             time.sleep(3)
                             continue
 
@@ -1106,9 +1165,39 @@ def main():
 
                         markdown_content = sanitize_script_text(raw_content)
                         if not markdown_content:
-                            print("Warning: Sanitizer output was empty. Retrying...")
+                            harvest_attempts += 1
+                            print(f"[RETRY {harvest_attempts}/{max_harvest_retries}] Sanitized content empty. Retrying...")
+                            if harvest_attempts >= max_harvest_retries:
+                                if nudges_sent >= max_nudges:
+                                    _escalate_harvest_failure(current_chap_idx, "sanitizer produced no usable text", accounts_enabled)
+                                print(f"[NUDGE {nudges_sent + 1}/{max_nudges}] Chat appears stalled. Sending recovery nudge...")
+                                send_gemini_prompt(tab2_chat, "proceed")
+                                wait_for_gemini_response(tab2_chat, step_name=f"Chapter {current_chap_idx} Recovery")
+                                nudges_sent += 1
+                                harvest_attempts = 0
                             time.sleep(3)
                             continue
+
+                        # Anti-drift guard: Gemini re-generating the previous chapter on
+                        # repeated "proceed" is the classic end-of-context loop. Two
+                        # consecutive strikes (>0.90 similarity) => wrap up; a single
+                        # strike just discards and re-requests (avoids false positives
+                        # from shared outro boilerplate between legitimate chapters).
+                        prev_chapter_text = manifest["chapters"][-1].get("text", "") if manifest.get("chapters") else ""
+                        if prev_chapter_text:
+                            repetition_ratio = difflib.SequenceMatcher(None, markdown_content, prev_chapter_text).ratio()
+                            if repetition_ratio > 0.90:
+                                consecutive_repeats += 1
+                                if consecutive_repeats >= 2:
+                                    print(f"[COMPLETED] Repetition loop confirmed ({repetition_ratio:.0%} match, twice consecutively). Wrapping up.")
+                                    manifest["gemini_completed"] = True
+                                    save_manifest(latest_run, manifest)
+                                    break
+                                print(f"[DRIFT GUARD] Chapter {current_chap_idx} repeats previous chapter ({repetition_ratio:.0%}). Strike {consecutive_repeats}/2. Re-requesting...")
+                                send_gemini_prompt(tab2_chat, "proceed")
+                                wait_for_gemini_response(tab2_chat, step_name=f"Chapter {current_chap_idx} Drift Retry")
+                                continue
+                        consecutive_repeats = 0
 
                         audio_dest_path = os.path.join(voice_folder, f"Chapter_{current_chap_idx}.wav")
 
@@ -1161,7 +1250,7 @@ def main():
                     target_dest = chap_entry["audio_file"]
 
                     # Check if audio file is already completed and verified
-                    if chap_entry.get("status") == "COMPLETED" and os.path.exists(target_dest) and os.path.getsize(target_dest) > 100:
+                    if chap_entry.get("status") == "COMPLETED" and is_valid_wav_file(target_dest):
                         print(f"[SKIP] Chapter {chap_num} audio already generated and verified at '{target_dest}'.")
                         continue
 
@@ -1288,19 +1377,32 @@ def main():
                             except Exception as e:
                                 print(f"\n[ERROR] Error downloading audio file: {e}")
 
+                        # Frame-level validation: a "successful" download can still be a
+                        # bare RIFF header or truncated stream (quota/500 failures).
+                        # Treat invalid audio exactly like a failed download.
+                        if download_success and not is_valid_wav_file(target_dest):
+                            print(f"[ALERT] Downloaded WAV for Chapter {chap_num} failed frame validation (corrupt/truncated). Treating as failure.")
+                            try:
+                                os.remove(target_dest)
+                            except Exception:
+                                pass
+                            download_success = False
+
                         if download_success:
-                            # MD5 verification against previous chapter
-                            is_duplicate = False
-                            if chap_num > 1:
+                            current_md5 = get_file_md5(target_dest)
+
+                            # Global MD5 dedup: compare against every prior COMPLETED
+                            # chapter's stored hash, with disk fallback for the immediate
+                            # predecessor when legacy manifests lack the md5 field.
+                            prior_md5s = {c.get("md5") for c in manifest.get("chapters", []) if c.get("md5")}
+                            if chap_num > 1 and current_md5:
                                 previous_dest = os.path.join(voice_folder, f"Chapter_{chap_num - 1}.wav")
                                 if os.path.exists(previous_dest):
-                                    current_md5 = get_file_md5(target_dest)
-                                    previous_md5 = get_file_md5(previous_dest)
-                                    if current_md5 and previous_md5 and current_md5 == previous_md5:
-                                        is_duplicate = True
-                                        print(f"\n[ALERT] MD5 Match! Stale audio served (Duplicate of Chapter {chap_num - 1}).")
+                                    prior_md5s.add(get_file_md5(previous_dest))
+                            prior_md5s.discard(None)
 
-                            if is_duplicate:
+                            if current_md5 and current_md5 in prior_md5s:
+                                print(f"\n[ALERT] Duplicate audio detected for Chapter {chap_num} (MD5 match with a prior chapter). Discarding stale file.")
                                 try:
                                     os.remove(target_dest)
                                 except Exception:
@@ -1310,8 +1412,10 @@ def main():
 
                             # Update manifest chapter status to COMPLETED
                             chap_entry["status"] = "COMPLETED"
+                            if current_md5:
+                                chap_entry["md5"] = current_md5
                             save_manifest(latest_run, manifest)
-                            print(f"[MANIFEST] Chapter {chap_num} marked COMPLETED in manifest.")
+                            print(f"[MANIFEST] Chapter {chap_num} marked COMPLETED (MD5: {(current_md5 or 'n/a')[:8]}).")
 
                             chapters_since_reload += 1
                             main.attempt_count = 0

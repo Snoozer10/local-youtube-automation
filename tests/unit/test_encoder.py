@@ -1,6 +1,5 @@
 """Integration tests for hardware encoder detection and configuration."""
 
-import pytest
 import compile_video
 
 
@@ -9,32 +8,42 @@ class TestProbeEncoder:
 
     def test_probe_encoder_found(self, monkeypatch):
         """Encoder present in ffmpeg -encoders output returns True."""
+
         def mock_run(cmd, *args, **kwargs):
             class R:
                 stdout = "h264_qsv\nh264_nvenc\nlibx264\n"
                 returncode = 0
+
             return R()
+
         monkeypatch.setattr("compile_video.subprocess.run", mock_run)
 
         assert compile_video._probe_encoder("h264_qsv") is True
         assert compile_video._probe_encoder("libx264") is True
 
     def test_probe_encoder_not_found(self, monkeypatch):
-        """Encoder absent from ffmpeg -encoders output returns False."""
+        """Functional probe: nonzero ffmpeg exit code returns False."""
+
         def mock_run(cmd, *args, **kwargs):
             class R:
-                stdout = "h264_nvenc\nlibx264\n"
-                returncode = 0
+                stdout = ""
+                stderr = "Encoder not found or init failed\n"
+                returncode = 1
+
             return R()
+
         monkeypatch.setattr("compile_video.subprocess.run", mock_run)
 
         assert compile_video._probe_encoder("h264_qsv") is False
 
     def test_probe_encoder_exception_returns_false(self, monkeypatch):
         """Subprocess exception returns False (safe fallback)."""
+
         def mock_run(cmd, *args, **kwargs):
             raise subprocess.TimeoutExpired("ffmpeg", 10)
+
         import subprocess
+
         monkeypatch.setattr("compile_video.subprocess.run", mock_run)
 
         assert compile_video._probe_encoder("h264_qsv") is False
@@ -104,10 +113,27 @@ class TestBuildEncoderConfig:
 class TestDetectHardwareEncoder:
     """Tests for detect_hardware_encoder(config)."""
 
-    def test_qsv_priority_when_available(self, encoder_config, monkeypatch):
-        """QSV selected first when available."""
+    def test_nvenc_priority_when_available(self, encoder_config, monkeypatch):
+        """NVENC selected first when both hardware encoders are available."""
+
         def mock_probe(encoder):
             return encoder in ["h264_qsv", "h264_nvenc", "libx264"]
+
+        monkeypatch.setattr(compile_video, "_probe_encoder", mock_probe)
+
+        result = compile_video.detect_hardware_encoder(encoder_config)
+
+        assert result["video_codec"] == "h264_nvenc"
+        assert result["hwaccel"] == "cuda"
+
+    def test_qsv_selected_when_low_res_and_no_nvenc(self, encoder_config, monkeypatch):
+        """QSV selected when NVENC unavailable and output is at or below 1080p."""
+        encoder_config["OUTPUT_WIDTH"] = 1920
+        encoder_config["OUTPUT_HEIGHT"] = 1080
+
+        def mock_probe(encoder):
+            return encoder in ["h264_qsv", "libx264"]
+
         monkeypatch.setattr(compile_video, "_probe_encoder", mock_probe)
 
         result = compile_video.detect_hardware_encoder(encoder_config)
@@ -115,10 +141,27 @@ class TestDetectHardwareEncoder:
         assert result["video_codec"] == "h264_qsv"
         assert result["hwaccel"] == "qsv"
 
+    def test_qsv_skipped_when_high_res(self, encoder_config, monkeypatch):
+        """QSV skipped above 1080p even when available; falls back to CPU."""
+        encoder_config["OUTPUT_WIDTH"] = 2560
+        encoder_config["OUTPUT_HEIGHT"] = 1440
+
+        def mock_probe(encoder):
+            return encoder in ["h264_qsv", "libx264"]
+
+        monkeypatch.setattr(compile_video, "_probe_encoder", mock_probe)
+
+        result = compile_video.detect_hardware_encoder(encoder_config)
+
+        assert result["video_codec"] == "libx264"
+        assert result["hwaccel"] == "none"
+
     def test_nvenc_fallback_when_no_qsv(self, encoder_config, monkeypatch):
         """NVENC selected when QSV unavailable."""
+
         def mock_probe(encoder):
             return encoder in ["h264_nvenc", "libx264"]
+
         monkeypatch.setattr(compile_video, "_probe_encoder", mock_probe)
 
         result = compile_video.detect_hardware_encoder(encoder_config)
@@ -128,8 +171,10 @@ class TestDetectHardwareEncoder:
 
     def test_cpu_fallback_when_no_hw(self, encoder_config, monkeypatch):
         """CPU libx264 selected when no hardware encoders."""
+
         def mock_probe(encoder):
             return encoder == "libx264"
+
         monkeypatch.setattr(compile_video, "_probe_encoder", mock_probe)
 
         result = compile_video.detect_hardware_encoder(encoder_config)
@@ -144,6 +189,7 @@ class TestDetectHardwareEncoder:
         # Even if probe would fail, force should work
         def mock_probe(encoder):
             return False
+
         monkeypatch.setattr(compile_video, "_probe_encoder", mock_probe)
 
         result = compile_video.detect_hardware_encoder(encoder_config)

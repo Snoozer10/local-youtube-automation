@@ -29,17 +29,20 @@
 
 - **Single-package monorepo.** No multi-package workspace. Real entrypoints: `run_agency.py` (supervisor) or single-phase scripts: `automate_all.py` → `refine_script.py` → `generate_voice.py` → `stitch_chapters.py`/`automate_audacity.py` → `faster_whisper_transcribe_audio.py` → `correct_transcript_spelling.py` → `flow_image_generator.py` (or `script_image_generator.py`) → `fix_timestamps.py` → `compile_video.py` → `generate_thumbnail.py`. See `README.md:207` + `Project-workflow.md:5`.
 - **State belongs to `youtube_runs/<Title>/` (gitignored).** Never commit `.env`, `gemini_model.txt`, `runtime_state.json`, or `*_checkpoint.json`/`pipeline.json`. Batch mode: `run_agency.py` scans `youtube_runs/` for `final_output.txt` folders and drives `pipeline.json` state machine (`translate, refine, voice, audacity, stitch, transcribe, images, fixtimes, video, thumbnail` in `run_agency.py:66`).
+- **Gemini planning layer (2026-08 refactor):** `flow_image_generator.py` main() delegates planning/state to `pipeline_manifest.py` → `json_sanitizer.py` → `validator.py` → `gemini_controller.py` → `roadmap_orchestrator.py` → `prompt_planner.py`. DAG strictly acyclic — never import upward. `validator.py` owns the relocated pure text utils (`flatten_visual_prompt_to_diffusion_text`, `enforce_arabic_in_prompt`, `purge_subtitle_phrases`); fig keeps aliases. Flow rendering code is untouched by this layer.
 
 ### Setup (Windows PowerShell, order matters)
 
 ```powershell
-python -m venv .venv; .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+python -m venv venv; .\venv\Scripts\Activate.ps1   # actual dir is venv\ — README's .venv is aspirational
+pip install -r requirements.txt       # NOTE: file currently wrapped in markdown ``` fences + trailing prose — sanitize to plain reqs first or pip chokes
 pip install -r requirements-dev.txt   # ruff, black, mypy, pytest-cov, bandit, types-*  (pyproject.toml:34 dev)
 python -m playwright install --with-deps
 # Externals: FFmpeg/FFprobe on PATH (winget install Gyan.FFmpeg), Audacity 3.x → Preferences→Modules set mod-script-pipe=Enabled, Chrome/Opera with --remote-debugging-port=9222 --user-data-dir=C:\ChromeDebugProfile
 copy .env.example .env   # fill TELEGRAM_*, CDP_PORT, model routing; ACTIVE_PROFILE_INDEX migrated to runtime_state.json (utils.py:269)
 ```
+
+- **Env split reality:** runtime deps live in `venv\`; pytest/ruff/black/mypy are installed in the GLOBAL python only. `pydantic>=2.0` required at runtime since the 2026-08 refactor (installed both places).
 
 ### Verify (run before concluding any refactor)
 
@@ -54,11 +57,16 @@ mypy .                         # strict + ignore_missing_imports (pyproject.toml
 pre-commit run --all-files     # ruff, ruff-format, mypy --strict, trailing-whitespace, check-json/yaml/toml
 ```
 
+- Always invoke tests as `python -m pytest ...` from repo root — bare `pytest` fails because `tests/conftest.py` imports need cwd on `sys.path`.
+- Green baseline (2026-08-26): unit 170 passed / integration 17 passed. Integration suite shells out to real ffmpeg lavfi — skips/fails without it.
+- `pyproject.toml` top-level `[tool.ruff] select/ignore` emits a deprecation warning under ruff ≥0.16 (pre-existing, harmless).
+
 ### Pipeline execution & idempotency
 
 - **Supervisor:** `run_agency.py` batch state machine skips completed `pipeline.json` flags, calls `clean_browser_tabs()` between phases, sends Telegram on crash/timeout. `compile_video.py` `Chunk 300s / Final 3600s` timeouts; `video`+`thumbnail` done → skip folder entirely (`run_agency.py:154`).
 - **Never destructive-overwrite** `pipeline.json`/`checkpoint.json`/`refine_checkpoint.json`/`voice_generation_manifest.json`/`compile_checkpoint.json`/`audacity_checkpoint.json`/`planning_checkpoint.json` without user confirmation. Schema changes require backward-compatible migration (see `CLAUDE.md:242`).
 - **Phase toggles (`.env`):** `ENABLE_REFINE_SCRIPT=true` (skip phase 2 if false), `FLIP_AUDACITY_ORDER=false` (default polish→stitch), `IMAGE_GENERATOR_TYPE=flow|script`, `WHISPER_ENGINE=faster_whisper|hard_whisper` (`run_agency.py:164`).
+- **Images phase state machine (2026-08 refactor):** `youtube_runs/<Title>/pipeline_manifest.json` gates resume. `script_hash = SHA256(transcript + prompt-template + presets)`; mismatch ⇒ auto-invalidates roadmap+planning caches. Chunk statuses `{PENDING, VERIFIED, REPAIRED, FAILED}` — FAILED dumps raw model output to `debug/malformed_chunk_N.json`, then halts via `ChunkPlanningError`. `master_roadmap.jsonl` is the source of truth (`master_roadmap.txt` legacy auto-migrates; corrupt ⇒ regenerate). Paging: `ROADMAP_WINDOW_SIZE=25`; planning: `FLOW_CHUNK_SIZE=15`.
 
 ### Config sources of truth (executable > prose)
 
@@ -71,7 +79,8 @@ pre-commit run --all-files     # ruff, ruff-format, mypy --strict, trailing-whit
 
 - **QSV starvation:** `QSV_LOOKAHEAD=0` mandatory (`compile_video.py:46`, `video_config.txt:23`) — `>0` starves hardware frame pool on sw-decoded inputs. Always `format=nv12` for QSV else `yuv420p`; auto-fallback `h264_qsv → h264_nvenc → libx264` probed via `ffmpeg -encoders` (`compile_video.py:227`).
 - **FFmpeg CLI 32KB limit:** filter graphs >1K chars written to `temp_clips/filter_chunk_*.txt` and invoked via `-filter_complex_script` (`compile_video.py:1000`). Zero-drift integer math `frame_count = round(duration*30)`, clip 0 forced to frame 0, CFR `fps_mode cfr` (`compile_video.py:726`). WinGet FFmpeg injected via `%LOCALAPPDATA%\Microsoft\WinGet\Links` (`compile_video.py:15`).
-- **CDP socket:** connect to `127.0.0.1:9222` not `localhost` (IPv6 fails). Kill only PID on port via `kill_cdp_chrome(port)` (`netstat -ano` + `taskkill /F /T /PID >100`, poll 4s) — never blind `taskkill /IM chrome.exe` (`utils.py:123`). `launch_browser_with_profile` wipes `SingletonLock/SingletonSocket/lockfile` and verifies `http://127.0.0.1:{port}/json/version` (`utils.py:255`).
+- **CDP socket:** connect to `127.0.0.1:9222` not `localhost` (IPv6 fails). Kill only PID on port via `kill_cdp_chrome(port)` (`netstat -ano` + `taskkill /F /T /PID >100`, poll 4s) — never blind `taskkill /IM chrome.exe` (`utils.py:123`). `launch_browser_with_profile` wipes `SingletonLock/SingletonSocket/lockfile` and verifies `http://127.0.0.1:{port}/json/version` (`utils.py:255`). `localhost` still lurks in `run_agency.clean_browser_tabs:57`, `generate_voice.py:1015`, `script_image_generator.py:667`, `automate_all.py:250/463`.
+- **Gemini planning injection/completion (2026-08 refactor):** prompts go through `gemini_controller.inject_prompt_via_cdp` ladder (`keyboard.insert_text` → clipboard grant+Ctrl+V → `execCommand('insertText')` → `fill()` only <500 chars) with a mandatory ≥95% `inner_text()` readback gate BEFORE submit — never `input_value()` on contenteditable, never bare `fill()` on big payloads. Completion = tri-factor handshake (`wait_for_gemini_turn_completion`): stop-absent + 3× stability@500ms are HARD; action-bar is SOFT — never hard-gate cosmetic selectors. Ephemeral fresh chat per roadmap page AND per chunk (+1.5–3.0s jitter). Roadmap pages are FIXED-SIZE 25-line slices — never tail-merge (a 49-row page hits the ~50-60 row truncation ceiling). Validator enforces WEAK timestamp monotonicity: `TS[i]≤TS[i+1]`; equal TS ⇒ strict `index`+`frame_index` progression.
 - **Gemini polling:** never `time.sleep` poll. `gemini_utils.wait_for_gemini_response` waits for stop button absent + 5 consecutive stable reads (~5-6s) + `len>=1` on last `model-response` node; fast-fails on error card (`gemini_utils.py:372`). Strip `Gemini said`/`قال Gemini` prefix, handle transient `Analyzing/Thinking/Visualizing` placeholders.
 - **Audacity IPC:** `\\.\pipe\ToSrvPipe`/`FromSrvPipe`, every command ends `\n`, read until empty line (`\n` terminator). Always `SelectAll:` before DSP. Presets synced from `YouTube_Voice_Optimizer.txt` → `%APPDATA%\audacity\macros\`; wipe `SessionData`/`AutoSave` before pipe open to avoid recovery modals (`CLAUDE.md:105`).
 - **Google Flow (hard-won selector facts, validated 2026-08-20):** cascade selectors — never single. `wait_for_flow_app_ready` 3s stability after `goto`/hydration. Submit = `button:has(i.google-symbols:text-is('arrow_forward'))` (zero svg buttons — `button:has(svg)` fails, need Enter fallback). `Describe your character` = `textarea[placeholder*='Describe your character']` or contenteditable whose `innerText` contains it; `+ New Character` card only empty-gallery (templates screen if non-empty). Body popup = LAST `div[contenteditable=true]` (floating card). Never fill workspace bar `What do you want to create?` (creates regular image, not character). Editor mount ≤3s verified via `/character/<id>` + `Done` button. Assets memoized per `flow_assets_profile_*.json` + workspace URL `flow_workspace_url_profile_*.txt`; `SUMMON_ASSET` adds `@Character` via search `Search assets` → card → `Add to Prompt`.
@@ -91,6 +100,8 @@ pre-commit run --all-files     # ruff, ruff-format, mypy --strict, trailing-whit
 | Audio Stitching          | `stitch_chapters.py`                 | lossless Wave frames, zero drop                                            |
 | ASR & Cadence Pacing     | `faster_whisper_transcribe_audio.py` | 3-6 words/chunk; VAD split `0.40-0.45s`; `transcribe_config.txt`           |
 | Lexical Spellcheck       | `correct_transcript_spelling.py`     | `difflib.SequenceMatcher` vs `refined_script.txt`, timestamps untouched    |
+| Roadmap Paging           | `roadmap_orchestrator.py`            | fixed 25-row pages; anchor = exact last row of K-1; atomic jsonl rewrite/page |
+| JSON Planning            | `prompt_planner.py`                  | slice ±1 buffer rows; single-turn ephemeral session; self-heal ≤2 same-session |
 | Visual Generation        | `flow_image_generator.py`            | `@asset` chip injection; native screenshot capture; multi-frame continuity |
 | Thumbnail                | `generate_thumbnail.py`              | self-critique scoring, 2 variants                                          |
 | Video Compositing        | `compile_video.py`                   | zero-drift frames; `filter_complex_script`; QSV→NVENC→CPU fallback         |

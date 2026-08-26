@@ -3,7 +3,6 @@
 import os
 import shutil
 import tempfile
-import pytest
 
 import compile_video
 
@@ -11,7 +10,7 @@ import compile_video
 def _write_timeline_file(run_folder, content, filename="image_timestamps.txt"):
     """Write a timeline file into a run folder."""
     path = os.path.join(run_folder, filename)
-    with open(path, 'w', encoding='utf-8') as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(content)
     return path
 
@@ -23,15 +22,17 @@ class TestParseImageTimeline:
         """[MM:SS] format parsed to seconds and filename."""
         d = tempfile.mkdtemp()
         try:
-            _write_timeline_file(d, "[00:00] First paragraph\n[00:08] Second paragraph\n[01:30] Third paragraph\n")
+            _write_timeline_file(
+                d, "[00:00] First paragraph\n[00:08] Second paragraph\n[01:30] Third paragraph\n"
+            )
             blocks = compile_video.parse_image_timeline(d)
         finally:
             shutil.rmtree(d, ignore_errors=True)
 
         assert len(blocks) == 3
-        assert blocks[0] == {"name": "00_00", "sec": 0.0}
-        assert blocks[1] == {"name": "00_08", "sec": 8.0}
-        assert blocks[2] == {"name": "01_30", "sec": 90.0}
+        assert blocks[0] == {"name": "00_00", "sec": 0.0, "raw_sec": 0.0}
+        assert blocks[1] == {"name": "00_08", "sec": 8.0, "raw_sec": 8.0}
+        assert blocks[2] == {"name": "01_30", "sec": 90.0, "raw_sec": 30.0}
 
     def test_parse_hh_mm_ss_format(self):
         """[HH:MM:SS] format parsed correctly, sorted by seconds."""
@@ -44,8 +45,8 @@ class TestParseImageTimeline:
 
         assert len(blocks) == 2
         # blocks are sorted by sec, so 90s (00_01_30) precedes 3600s (01_00_00)
-        assert blocks[0] == {"name": "00_01_30", "sec": 90.0}
-        assert blocks[1] == {"name": "01_00_00", "sec": 3600.0}
+        assert blocks[0] == {"name": "00_01_30", "sec": 90.0, "raw_sec": 30.0}
+        assert blocks[1] == {"name": "01_00_00", "sec": 3600.0, "raw_sec": 0.0}
 
     def test_parse_missing_file_returns_empty(self):
         """Folder without timeline files returns empty list."""
@@ -86,21 +87,37 @@ class TestParseImageTimeline:
         """Both timestamp formats in same file parsed correctly."""
         d = tempfile.mkdtemp()
         try:
-            _write_timeline_file(d, "[00:00] Start\n[00:01:30] Ninety sec\n[02:30] Two min thirty\n")
+            _write_timeline_file(
+                d, "[00:00] Start\n[00:01:30] Ninety sec\n[02:30] Two min thirty\n"
+            )
             blocks = compile_video.parse_image_timeline(d)
         finally:
             shutil.rmtree(d, ignore_errors=True)
 
         assert len(blocks) == 3
-        assert blocks[0] == {"name": "00_00", "sec": 0.0}
-        assert blocks[1] == {"name": "00_01_30", "sec": 90.0}
-        assert blocks[2] == {"name": "02_30", "sec": 150.0}
+        assert blocks[0] == {"name": "00_00", "sec": 0.0, "raw_sec": 0.0}
+        assert blocks[1] == {"name": "00_01_30", "sec": 90.0, "raw_sec": 30.0}
+        assert blocks[2] == {"name": "02_30", "sec": 150.0, "raw_sec": 30.0}
+
+    def test_parse_subsecond_precision(self):
+        """Fractional seconds parsed: sec carries float total, raw_sec the seconds component."""
+        d = tempfile.mkdtemp()
+        try:
+            _write_timeline_file(d, "[00:02.5] Half-second mark\n")
+            blocks = compile_video.parse_image_timeline(d)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+        assert len(blocks) == 1
+        assert blocks[0] == {"name": "00_02", "sec": 2.5, "raw_sec": 2.5}
 
     def test_parse_fallback_timestamped_transcript(self):
         """timestamped_transcript.txt used when image_timestamps.txt missing."""
         d = tempfile.mkdtemp()
         try:
-            _write_timeline_file(d, "[00:00] Start\n[00:20] Later\n", filename="timestamped_transcript.txt")
+            _write_timeline_file(
+                d, "[00:00] Start\n[00:20] Later\n", filename="timestamped_transcript.txt"
+            )
             blocks = compile_video.parse_image_timeline(d)
         finally:
             shutil.rmtree(d, ignore_errors=True)
@@ -118,9 +135,14 @@ class TestGetSortedImages:
         d = tempfile.mkdtemp()
         try:
             for name in ["sentence_1.png", "sentence_10.png", "sentence_2.png", "sentence_3.png"]:
-                open(os.path.join(d, name), 'w').close()
+                open(os.path.join(d, name), "w").close()
             images = compile_video.get_sorted_images(d)
-            assert images == ["sentence_1.png", "sentence_2.png", "sentence_3.png", "sentence_10.png"]
+            assert images == [
+                "sentence_1.png",
+                "sentence_2.png",
+                "sentence_3.png",
+                "sentence_10.png",
+            ]
         finally:
             for f in os.listdir(d):
                 os.unlink(os.path.join(d, f))
@@ -135,10 +157,10 @@ class TestGetSortedImages:
         """Only .png files are returned."""
         d = tempfile.mkdtemp()
         try:
-            open(os.path.join(d, "a.png"), 'w').close()
-            open(os.path.join(d, "b.jpg"), 'w').close()
-            open(os.path.join(d, "c.txt"), 'w').close()
-            open(os.path.join(d, "d.PNG"), 'w').close()  # case sensitive
+            open(os.path.join(d, "a.png"), "w").close()
+            open(os.path.join(d, "b.jpg"), "w").close()
+            open(os.path.join(d, "c.txt"), "w").close()
+            open(os.path.join(d, "d.PNG"), "w").close()  # case sensitive
             images = compile_video.get_sorted_images(d)
             assert images == ["a.png"]
         finally:
@@ -165,11 +187,11 @@ class TestValidateAssets:
         try:
             # Create non-empty images
             for name in ["00_00.png", "00_08.png"]:
-                with open(os.path.join(d, name), 'w') as f:
+                with open(os.path.join(d, name), "w") as f:
                     f.write("dummy content")
             blocks = [
                 {"name": "00_00", "sec": 0.0, "occurrence": 1},
-                {"name": "00_08", "sec": 8.0, "occurrence": 1}
+                {"name": "00_08", "sec": 8.0, "occurrence": 1},
             ]
             invalid = compile_video.validate_assets(blocks, d)
             assert len(invalid) == 0
@@ -182,9 +204,7 @@ class TestValidateAssets:
         """Missing asset with no fallback returns invalid list."""
         d = tempfile.mkdtemp()
         try:
-            blocks = [
-                {"name": "00_00", "sec": 0.0, "occurrence": 1}
-            ]
+            blocks = [{"name": "00_00", "sec": 0.0, "occurrence": 1}]
             invalid = compile_video.validate_assets(blocks, d)
             assert len(invalid) == 1
             assert invalid[0] == (0, "00_00")
@@ -195,10 +215,8 @@ class TestValidateAssets:
         """Asset with size 0 returns invalid list."""
         d = tempfile.mkdtemp()
         try:
-            open(os.path.join(d, "00_00.png"), 'w').close()  # size 0
-            blocks = [
-                {"name": "00_00", "sec": 0.0, "occurrence": 1}
-            ]
+            open(os.path.join(d, "00_00.png"), "w").close()  # size 0
+            blocks = [{"name": "00_00", "sec": 0.0, "occurrence": 1}]
             invalid = compile_video.validate_assets(blocks, d)
             assert len(invalid) == 1
             assert invalid[0] == (0, "00_00")
@@ -211,12 +229,10 @@ class TestValidateAssets:
         """occurrence > 1 resolves to duplicate image variant."""
         d = tempfile.mkdtemp()
         try:
-            open(os.path.join(d, "00_00.png"), 'w').close()
-            with open(os.path.join(d, "00_00_2.png"), 'w') as f:
+            open(os.path.join(d, "00_00.png"), "w").close()
+            with open(os.path.join(d, "00_00_2.png"), "w") as f:
                 f.write("dummy content")
-            blocks = [
-                {"name": "00_00", "sec": 0.0, "occurrence": 2}
-            ]
+            blocks = [{"name": "00_00", "sec": 0.0, "occurrence": 2}]
             invalid = compile_video.validate_assets(blocks, d)
             assert len(invalid) == 0
         finally:

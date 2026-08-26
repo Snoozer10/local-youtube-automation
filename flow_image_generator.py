@@ -11,11 +11,19 @@ from urllib.parse import urljoin
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
+from pipeline_manifest import PhaseStatus, PipelineManifest, compute_script_hash
+from prompt_planner import build_compact_preamble, plan_all_chunks
+from roadmap_orchestrator import generate_master_roadmap, load_or_migrate_roadmap
 from utils import (
     get_config_value,
     kill_cdp_chrome,
     launch_browser_with_profile,
     rotate_profile_index,
+)
+from validator import (
+    enforce_arabic_in_prompt,
+    flatten_visual_prompt_to_diffusion_text,
+    verify_pipeline_integrity,
 )
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -1514,171 +1522,6 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
         )
 
 
-def flatten_visual_prompt_to_diffusion_text(vp) -> str:
-    """
-    Transforms a structured visual_prompt dictionary into an elevated,
-    high-salience, production-grade diffusion prompt for Google Flow / Imagen 3.
-    Purges meta-tokens (ABSENT), strips all subtitle triggers, and removes prompt bloat.
-    """
-    if isinstance(vp, str):
-        try:
-            vp = json.loads(vp)
-        except Exception:
-            return vp.strip()
-
-    if not isinstance(vp, dict):
-        return str(vp)
-
-    subject = vp.get("subject_details", "").strip()
-    action = vp.get("subject_action_increment", "").strip()
-    layout = vp.get("composition_layout", "").strip()
-    env = vp.get("environment_coordinates", "").strip()
-    accent = vp.get("accent_color_hook", "").strip()
-    style = vp.get("style_anchor", "").strip()
-    text_ar = vp.get("text_overlay_arabic", "NONE").strip()
-
-    # 1. Purge ABSENT tokens
-    if subject.upper().startswith("ABSENT"):
-        subject = ""
-    if env.upper().startswith("ABSENT"):
-        env = ""
-
-    # 2. Sanitize and purge all subtitle / caption / margin triggers
-    def purge_subtitle_phrases(text: str) -> str:
-        text = re.sub(r"(?i)\b\d+%\s*bottom\s*safe\s*margin\b[^.]*", "", text)
-        text = re.sub(r"(?i)\bfor\s*subtitles?\b", "", text)
-        text = re.sub(r"(?i)\bsubtitle\s*overlay\b", "", text)
-        text = re.sub(r"(?i)\bcaption(s)?\b", "", text)
-        return " ".join(text.split()).strip(" ,.-")
-
-    layout = purge_subtitle_phrases(layout)
-    action = purge_subtitle_phrases(action)
-    subject = purge_subtitle_phrases(subject)
-    env = purge_subtitle_phrases(env)
-
-    prompt_parts = []
-
-    # 3. Front-Loaded Action & Subject Core
-    core_action = []
-    if subject and action:
-        core_action.append(f"{subject}, {action}")
-    elif subject:
-        core_action.append(subject)
-    elif action:
-        core_action.append(action)
-
-    if core_action:
-        prompt_parts.append(" ".join(core_action).rstrip(".") + ".")
-
-    # 4. Scenography
-    if env:
-        prompt_parts.append(f"Scene Setting: {env.rstrip('.')}.")
-
-    # 5. Clean Composition (Strictly textless framing)
-    if layout:
-        prompt_parts.append(f"Composition: {layout.rstrip('.')}.")
-    else:
-        prompt_parts.append("Composition: Balanced 16:9 widescreen framing, sharp central subject focus.")
-
-    # 6. Lighting & Chromatic Palette
-    if accent:
-        prompt_parts.append(
-            f"Color & Lighting: High-contrast 2D studio illumination with {accent.rstrip('.')} accent highlights."
-        )
-    else:
-        prompt_parts.append(
-            "Color & Lighting: Warm amber keylight (#E09F3E) with high-contrast cel-shading."
-        )
-
-    # 7. Arabic Typography (Integrated cleanly into scene)
-    if text_ar and text_ar.upper() != "NONE":
-        prompt_parts.append(
-            f'Typography: A single clean Arabic title graphic reading "{text_ar}" in bold modern Kufic script.'
-        )
-
-    # 8. Style Anchor (Matching Image 3's Crisp Vector Cel-Shaded Aesthetic)
-    clean_style = style
-    if "oil painting" in clean_style.lower() and ("ahwa" in env.lower() or "host" in subject.lower()):
-        # Purge oil painting references for standard host/studio scenes
-        clean_style = re.sub(r"(?i)mixed with 18th-century oil painting cutout parody\.?", "", clean_style).strip()
-
-    if clean_style:
-        prompt_parts.append(f"Art Style: {clean_style.rstrip('.')}.")
-    else:
-        prompt_parts.append(
-            "Art Style: 2D graphic vector animation explainer style, crisp 3px black outlines, rich 2-step flat cel-shading, vibrant warm studio illumination, 16:9 widescreen."
-        )
-
-    return " ".join(prompt_parts)
-
-
-def enforce_arabic_in_prompt(prompt_text: str) -> str:
-    """
-    Sanitizes prompt text: maps English structural tokens into authentic Arabic labels,
-    enforces clean single-instance Arabic typography, and suppresses text overlays cleanly.
-    """
-    replacements = {
-        # --- UI & Structural Replacements ---
-        r'(?i)"CHALLENGER\s*(\d+)?:?\s*([^"]*)"': r'"التحدي \1: \2"',
-        r"(?i)CHALLENGER\s*(\d+)": r"التحدي \1",
-        r'(?i)"COLLECTION BOARD"': r'"لوحة التجميع"',
-        r"(?i)COLLECTION BOARD": r"لوحة التجميع",
-        r'(?i)"SPEED ROUND"': r'"الجولة السريعة"',
-        r"(?i)SPEED ROUND": r"الجولة السريعة",
-        r'(?i)"DIAGRAM"': r'"مخطط"',
-        r'(?i)"INFOGRAPHIC"': r'"انفوجرافيك"',
-        r'(?i)"BLUEPRINT"': r'"مخطط تفصيلي"',
-        r'(?i)"SECRET"': r'"السر"',
-        r'(?i)"WARNING"': r'"تحذير"',
-        r'(?i)"RESULT"': r'"النتيجة"',
-        r'(?i)"STAGE\s*(\d+)"': r'"المرحلة \1"',
-        r"(?i)STAGE\s*(\d+)": r"المرحلة \1",
-        r"(?i)STEP\s*(\d+)": r"الخطوة \1",
-        r"(?i)\bBEFORE\b": r"قبل",
-        r"(?i)\bAFTER\b": r"بعد",
-        r"(?i)\bVS\.?\b|\bVERSUS\b": r"ضد",
-        r"(?i)English text": r"Arabic text",
-        r"(?i)English typography": r"Arabic typography",
-        r"(?i)English labels": r"Arabic labels",
-
-        # --- Policy & Safety Filter Sanitizers (Bypasses False Positives) ---
-        r"(?i)Ahmed El-Ghandour": r"Al-Daheeh character",
-        r"تزوّر كيانك": r"قناع الذات",
-        r"تزوير|تزوّر|مزوّر": r"قناع رمزي",
-        r"forged|forgery|counterfeit": r"theatrical prop",
-        r"خازوق|الخازوق": r"فخ كوميدي",
-        r"إعدام إكلينيكي": r"توقف مؤقت",
-        r"السرقة العلمية|سرقة": r"اقتباس كوميدي",
-        r"نصاب|يا نصاب|نصّاب": r"مخادع كوميدي",
-        r"مرتزقة بلاك ووتر": r"حراس كرتونيين",
-    }
-
-    sanitized = prompt_text
-    for pattern, repl in replacements.items():
-        sanitized = re.sub(pattern, repl, sanitized)
-
-    # Purge any remaining subtitle or margin triggers
-    sanitized = re.sub(r"(?i)\b\d+%\s*bottom\s*safe\s*margin\b[^.]*", "", sanitized)
-    sanitized = re.sub(r"(?i)\bfor\s*subtitles?\b", "", sanitized)
-    sanitized = re.sub(r"(?i)\bsubtitle\s*overlay\b", "", sanitized)
-
-    # Extract clean target Arabic text if present in prompt
-    arabic_title_match = re.search(r'Typography:\s*A single clean Arabic title graphic reading\s*"([^"]+)"', sanitized)
-
-    if arabic_title_match:
-        target_text = arabic_title_match.group(1).strip()
-        typography_directive = (
-            f" Typography Directive: Render exactly ONE clean upper-third title graphic in bold modern Arabic Kufic calligraphy reading '{target_text}'. "
-            "All in-scene documents and labels must use authentic Arabic script with zero Latin or English letters."
-        )
-    else:
-        typography_directive = (
-            " Typography Directive: Completely textless illustration. Zero on-screen text, zero floating words, zero typography overlays, zero watermarks."
-        )
-
-    return sanitized.strip() + typography_directive
-
-
 def count_attached_prompt_chips(page) -> int:
     """Returns the count of visible reference image chips strictly inside the prompt bar."""
     prompt_container = page.locator(
@@ -2722,11 +2565,11 @@ def main():
                 browser_type = get_config_value("BROWSER_TYPE", "chrome")
 
                 try:
-                    browser = p.chromium.connect_over_cdp("http://localhost:9222")
+                    browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
                 except Exception:
                     if not launch_browser_with_profile(browser_type, current_profile_idx):
                         sys.exit(1)
-                    browser = p.chromium.connect_over_cdp("http://localhost:9222")
+                    browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
 
                 context = browser.contexts[0]
                 gemini_page = context.new_page()
@@ -2776,335 +2619,67 @@ def main():
                                     timestamps.append(ts_str)
                                     sentences.append(text)
 
-                    storyboard_prompts = parse_json_prompts(prompts_file)
+                    storyboard_prompts = []
 
-                    # Auto-sort flow_prompts.json on disk to clean up out-of-order/duplicate entries
-                    if storyboard_prompts:
-                        save_sorted_prompts_file(storyboard_prompts, prompts_file)
-
-                    # Set-based index check
-                    expected_indices = set(range(1, len(sentences) + 1))
-                    existing_indices = {item.index for item in storyboard_prompts}
-                    missing_indices = expected_indices - existing_indices
-
-                    skip_planning = (len(missing_indices) == 0) and (len(sentences) > 0)
-
-                    if skip_planning:
-                        print(
-                            f"\n[SKIP] All {len(sentences)} prompt indices found in flow_prompts.json. Proceeding to image rendering..."
+                    if sentences:
+                        transcript_text = "\n".join(
+                            f"[{ts}] {s}" for ts, s in zip(timestamps, sentences, strict=False)
                         )
-                    else:
-                        print(
-                            f"\n[PLANNING] {len(missing_indices)} missing indices detected out of {len(sentences)}. Running Phase 1..."
+                        presets_text = json.dumps(
+                            FLOW_ASSET_PRESETS, ensure_ascii=False, sort_keys=True
                         )
-
-                    # ---------------------------------------------------------
-                    # PHASE 1: TWO-PASS MASTER ROADMAP & JSON PLANNING (CHECKPOINTED)
-                    # ---------------------------------------------------------
-                    roadmap_file = os.path.join(subfolder, "master_roadmap.txt")
-
-                    if not skip_planning and len(sentences) > 0:
-                        gemini_page.bring_to_front()
-
-                        # --- PHASE 1A: MASTER ROADMAP CHECKPOINT ---
-                        master_roadmap = ""
-
-                        if os.path.exists(roadmap_file):
-                            with open(roadmap_file, encoding="utf-8") as f:
-                                cached_roadmap = f.read().strip()
-                                if len(cached_roadmap) > 150 and cached_roadmap.lower() not in [
-                                    "analyzing",
-                                    "thinking",
-                                ]:
-                                    print(
-                                        "\n[RESUME] Found valid cached Master Roadmap. Loading from disk..."
-                                    )
-                                    master_roadmap = cached_roadmap
-
-                        if not master_roadmap:
-                            print(
-                                "\n[PHASE 1A] Analyzing full script to generate Master Continuity Roadmap..."
+                        script_hash = compute_script_hash(
+                            transcript_text, build_compact_preamble(None), presets_text
+                        )
+                        manifest = PipelineManifest.load_or_create(subfolder, script_hash)
+                        if manifest.was_reset:
+                            log(
+                                "[MANIFEST] Script changed since last run - invalidating cached "
+                                "roadmap/planning state."
                             )
-                            gemini_page.goto(GeminiSelectors.URL, wait_until="domcontentloaded")
-                            time.sleep(3)
-                            select_gemini_model(gemini_page, target_planner_model)
-
-                            initial_count = gemini_page.locator("model-response").count()
-                            input_box = gemini_page.locator(GeminiSelectors.INPUT_BOX).first
-
-                            # 1. SEND THE FULL SCRIPT FOR GLOBAL ANALYSIS
-                            full_script_text = " ".join(sentences)
-                            roadmap_prompt = f"""### SYSTEM_PROMPT: AL_DAHEEH_MASTER_VISUAL_ROADMAP_DIRECTOR_V7.0 ###
-
-ROLE: Lead Visual Sequence Architect for "Al-Daheeh" (الدحيح).
-OBJECTIVE: Transform the Arabic script into a high-retention Master Visual Continuity Roadmap in a clean 2D graphic vector animation style.
-
-═══════════════════════════════════════════════════════════════
-I. CORE CHARACTER & VISUAL LEXICON (2D VECTOR ANIMATION STYLE)
-═══════════════════════════════════════════════════════════════
-1. [HOST]: Ahmed El-Ghandour in clean 2D vector animation style (wireframe glasses, curly afro hair, charcoal hoodie #2B2D42, 3px black contours, flat cel-shading).
-2. [SKEPTIC]: Abo Hmeed, expressive Egyptian viewer in a casual navy jacket and grey tee.
-3. [GOVERNMENT_CLERK]: Exhausted science bureaucrat in a baggy beige suit (#D4C5A9) with thick black glasses.
-4. [HISTORICAL_FIGURE]: 2D vector illustrated historical scientist/leader holding Egyptian street props (e.g., glass tea cup with mint, mustard jar, rubber stamps).
-
-═══════════════════════════════════════════════════════════════
-II. VISUAL PACING & DENSITY (A-B-A RULE)
-═══════════════════════════════════════════════════════════════
-- Shot A (DENSE SCENE / DOSSIER): Ahwa studio desk, Baroque museum, or an Archival Casefile Dossier with paperclips, scientific news clippings, and pinned photo cards.
-- Shot B (MINIMALIST / DIAGRAM): Comparative anatomical chart on a clipboard (e.g., normal vs disease with red dashed lines) or macro document on pure white (#FFFFFF).
-- Shot C (MEDIUM ACTION): Single focused character reacting or holding research props.
-
-═══════════════════════════════════════════════════════════════
-III. CAMERA SPECIFICATIONS & COMPOSITION
-═══════════════════════════════════════════════════════════════
-- Staging: Balanced 16:9 widescreen composition with subject in 60% center.
-- Camera Enum: `zoom_in` | `zoom_out` | `pan_left` | `pan_right` | `tilt_up` | `tilt_down` | `static`
-- CRITICAL: Never write "for subtitles", "subtitle overlay", or "margin" in descriptions.
-
-═══════════════════════════════════════════════════════════════
-IV. OUTPUT SCHEMA CONTRACT
-═══════════════════════════════════════════════════════════════
-Output ONLY a comprehensive Markdown table with these exact columns:
-| Index | Timestamp | Script Line | Sequence Type | Layout Classification | Camera Specification | Visual Concept & Composition | Color & Selective Arabic Text |
-
-TEXT OVERLAY RULES:
-- Arabic text ONLY for key punchlines (e.g., 'دا قِسط!', 'الـ CEO') or academic seals. Otherwise strictly 'NONE'. Zero Latin/English words.
-
-SCRIPT:
-{full_script_text}
-"""
-                            # Submit Roadmap Prompt
-                            input_box.fill(roadmap_prompt)
-                            input_box.press("Control+Enter")
-
-                            # Require a minimum of 200 characters for a valid Master Roadmap
-                            master_roadmap = wait_for_gemini_response(
-                                gemini_page, initial_count, min_length=200, timeout_seconds=180
-                            )
-
-                            if (
-                                not master_roadmap
-                                or len(master_roadmap) < 150
-                                or master_roadmap.strip().lower() in ["analyzing", "thinking"]
-                            ):
-                                raise Exception(
-                                    "Generated Master Roadmap is invalid or stuck on 'Analyzing'. Retrying run..."
-                                )
-
-                            with open(roadmap_file, "w", encoding="utf-8") as f:
-                                f.write(master_roadmap)
-                            print(
-                                "✅ Master Roadmap successfully generated and saved to checkpoint."
-                            )
-
-                        # --- PHASE 1B: JSON CHUNKING CHECKPOINT ---
-                        print("\n[PHASE 1B] Checking chunks for missing indices...")
-
-                        existing_prompts = parse_json_prompts(prompts_file)
-                        existing_indices = {item.index for item in existing_prompts}
-
+                        manifest.set_roadmap_status(PhaseStatus.IN_PROGRESS)
+                        window_size = int(get_config_value("ROADMAP_WINDOW_SIZE", "25") or 25)
                         chunk_size = int(get_config_value("FLOW_CHUNK_SIZE", "15"))
-                        chunks = [
-                            sentences[i : i + chunk_size]
-                            for i in range(0, len(sentences), chunk_size)
-                        ]
-
-                        # Filter chunks to find only those containing missing indices
-                        chunks_to_process = []
-                        for chunk_idx, chunk in enumerate(chunks, 1):
-                            start_idx = (chunk_idx - 1) * chunk_size + 1
-                            chunk_indices = set(range(start_idx, start_idx + len(chunk)))
-                            if not chunk_indices.issubset(existing_indices):
-                                chunks_to_process.append((chunk_idx, start_idx, chunk))
-
-                        if chunks_to_process:
-                            print(
-                                f"[PHASE 1B] Initializing Gemini setup for {len(chunks_to_process)} missing chunk(s)..."
+                        roadmap_rows = load_or_migrate_roadmap(subfolder, sentences, manifest)
+                        if roadmap_rows is None:
+                            roadmap_rows = generate_master_roadmap(
+                                gemini_page,
+                                sentences,
+                                subfolder,
+                                manifest,
+                                window_size=window_size,
+                                planner_model=target_planner_model,
                             )
-                            generic_monolithic_template = """# SYSTEM PROMPT: KEYFRAME PROMPT ARCHITECT (AL-DAHEEH VISUAL STYLE V5.0)
-Translate the Master Visual Continuity Roadmap into robust, stateless keyframe JSON prompts calibrated for Google Flow (Nano Banana 2 / Imagen 3).
-
----
-
-### === MASTER VISUAL CONTINUITY ROADMAP ===
-[INJECT_ROADMAP_HERE]
-
----
-
-### MANDATORY TOKENS & STYLE RULES:
-1. UNBREAKABLE STYLE ANCHOR:
-   "2D graphic vector animation style, crisp 3px black vector outlines, bold flat cel-shading, vibrant saturated studio illumination, clean graphic cartoon comedy, 16:9 widescreen composition."
-
-2. REUSABLE CHARACTER TOKENS:
-   - "HOST: 2D flat vector cutout of Ahmed El-Ghandour (Al-Daheeh), thin round glasses, messy dark curly hair, wide energetic eyes, wearing an unbranded charcoal-grey hoodie."
-   - "HISTORICAL: Authentic 18th-century classical oil painting portrait of [Historical Figure] wearing formal period attire but holding [Egyptian street prop: sunglasses / plastic tea glass 'كوباية شاي' / 'كوز لانشون']."
-   - "PERSONIFIED_SCIENCE: Biological organ, neuron, or particle illustrated as an exhausted Egyptian civil servant in a beige suit with a government ID badge."
-   - "SKEPTIC: Split-screen caricature of an everyday Egyptian viewer with bewildered hand gestures."
-   - "ABSENT": Use ONLY the exact word "ABSENT" (nothing else) for macro objects, HUD blueprints, documents, and textless scenes.
-
-3. REUSABLE ENVIRONMENT TOKENS:
-   - "AHWA_STUDIO: Cluttered Egyptian room set in flat orthographic view, books, monitors, warm lighting, tea glass with mint."
-   - "ARCHIVAL_DOSSIER: Warm parchment background (#F4EBD9) with faint anatomical sketches, metal paperclips, plastic protector sleeve, and photo card borders."
-   - "COMPARATIVE_DIAGRAM_DESK: Clean cream clipboard with top brass clip, transparent sleeve, and red dashed comparative vector lines on aged sketch background."
-   - "ISOLATED_WHITE: Solid pure white background (#FFFFFF) with zero shadows or textures."
-   - "RETRO_BLUEPRINT: Deep dark navy canvas (#0A1128) with glowing cyan vector schematics and formulas."
-   - "HISTORICAL_MUSEUM: Grand Baroque museum gallery with red damask wallpaper (#540B0E) and ornate gilded frames."
-
-4. CRITICAL RULE FOR COMPOSITION & SUBTITLES:
-   - DO NOT write "for subtitles", "subtitle overlay", or "margin" anywhere in the JSON fields.
-   - Describe only visual geometry (e.g., "Framing: 3-Plane Spatial Depth, midground subject in golden center, clean lower third").
-
-5. ARABIC TYPOGRAPHY RULE:
-   - `text_overlay_arabic`: Must be 1 to 3 words of bold Arabic text (e.g., "دا قِسط!", "الـ CEO") OR strictly "NONE". Zero Latin/English words.
-
----
-
-### JSON SCHEMA CONTRACT:
-```json
-[
-  {
-    "index": 1,
-    "timestamp": "[00:00]",
-    "sequence_type": "STANDALONE | PROGRESSIVE_BUILD_SET | REACTION_PUNCHLINE_SET | HISTORICAL_PARODY | SCIENTIFIC_BLUEPRINT | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM | SKEPTIC_SPLIT",
-    "layout_classification": "AHWA_STUDIO | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM_DESK | RETRO_BLUEPRINT | HISTORICAL_MUSEUM | ISOLATED_WHITE",
-    "sequence_metadata": {
-      "set_id": "SET_01",
-      "frame_index": 1,
-      "total_frames_in_set": 1
-    },
-    "visual_density": "DENSE_SCENE | MINIMALIST_MACRO | MEDIUM_ACTION",
-    "visual_prompt": {
-      "subject_details": "Verbatim character token string (HOST | SKEPTIC | GOVERNMENT_CLERK | ABSENT)",
-      "subject_action_increment": "Exact micro-action or visual metaphor",
-      "environment_coordinates": "Verbatim layout token string",
-      "composition_layout": "Framing: 3-Plane Spatial Depth with sharp subject focus in 60% center",
-      "camera_specifications": "zoom_in | zoom_out | pan_left | pan_right | tilt_up | tilt_down | static",
-      "text_overlay_arabic": "Bold Arabic text string OR 'NONE'",
-      "accent_color_hook": "Warm Amber (#E09F3E) | Dusty Teal (#335C67) | Terracotta (#9E2A2B) | Glowing Cyan (#00F0FF)",
-      "style_anchor": "2D graphic vector animation explainer style, crisp 3px black outlines, flat 2-step cel-shading, 16:9 widescreen"
-    }
-  }
-]
-```
-
----
-Reply EXACTLY with: **"JSON System Ready. Awaiting chunks."**
-"""
-                        final_system_prompt = generic_monolithic_template.replace(
-                            "[INJECT_ROADMAP_HERE]", master_roadmap
-                        )
-
-                        gemini_page.goto(GeminiSelectors.URL, wait_until="domcontentloaded")
-                        time.sleep(3)
-                        select_gemini_model(gemini_page, target_planner_model)
-
-                        initial_count = gemini_page.locator("model-response").count()
-                        input_box = gemini_page.locator(GeminiSelectors.INPUT_BOX).first
-                        input_box.fill(final_system_prompt)
-                        input_box.press("Control+Enter")
-                        wait_for_gemini_response(gemini_page, initial_count, min_length=20)
-
-                        for chunk_idx, start_idx, chunk in chunks_to_process:
-                            expected_chunk_indices = set(range(start_idx, start_idx + len(chunk)))
-                            print(f"\nVerifying Gemini idle status before Chunk {chunk_idx}...")
-                            wait_until_gemini_idle(gemini_page)
-
-                            print(
-                                f"Planning Chunk {chunk_idx}/{len(chunks)} (Indices {start_idx}-{start_idx + len(chunk) - 1})..."
-                            )
-                            chunk_text = "\n".join(
-                                [
-                                    f"Index {start_idx + i} ({timestamps[start_idx + i - 1]}): {s}"
-                                    for i, s in enumerate(chunk)
-                                ]
-                            )
-
-                            initial_count = gemini_page.locator("model-response").count()
-                            payload = f"Generate the JSON array for this chunk:\n\n{chunk_text}"
-
-                            input_box = gemini_page.locator(GeminiSelectors.INPUT_BOX).first
-                            input_box.fill(payload)
-                            time.sleep(1)
-                            input_box.press("Control+Enter")
-
-                            resp = wait_for_gemini_response(
-                                gemini_page, initial_count, timeout_seconds=180
-                            )
-                            if resp:
-                                clean_resp = re.sub(r"```json\s*", "", resp, flags=re.IGNORECASE)
-                                clean_resp = re.sub(r"```\s*", "", clean_resp).strip()
-                                with open(prompts_file, "a", encoding="utf-8") as f:
-                                    f.write(clean_resp + "\n\n")
-
-                                # --- CLOSED-LOOP VERIFICATION FOR THIS CHUNK ---
-                                current_prompts = parse_json_prompts(prompts_file)
-                                parsed_chunk_indices = {
-                                    p.index
-                                    for p in current_prompts
-                                    if p.index in expected_chunk_indices
-                                }
-                                missing_in_chunk = expected_chunk_indices - parsed_chunk_indices
-
-                                repair_attempts = 0
-                                while missing_in_chunk and repair_attempts < 2:
-                                    repair_attempts += 1
-                                    missing_list = sorted(list(missing_in_chunk))
-                                    print(
-                                        f"  ⚠️ Chunk {chunk_idx} missed indices: {missing_list}. Triggering self-healing repair (Attempt {repair_attempts}/2)..."
-                                    )
-
-                                    repair_text = "\n".join(
-                                        [
-                                            f"Index {m_idx} ({timestamps[m_idx - 1]}): {sentences[m_idx - 1]}"
-                                            for m_idx in missing_list
-                                        ]
-                                    )
-                                    repair_payload = f"You missed these specific indices. Output ONLY a valid JSON array containing objects for these missing indices:\n\n{repair_text}"
-
-                                    wait_until_gemini_idle(gemini_page)
-                                    initial_repair_count = gemini_page.locator(
-                                        "model-response"
-                                    ).count()
-                                    input_box = gemini_page.locator(GeminiSelectors.INPUT_BOX).first
-                                    input_box.fill(repair_payload)
-                                    time.sleep(1)
-                                    input_box.press("Control+Enter")
-
-                                    repair_resp = wait_for_gemini_response(
-                                        gemini_page, initial_repair_count, timeout_seconds=120
-                                    )
-                                    if repair_resp:
-                                        clean_repair = re.sub(
-                                            r"```json\s*", "", repair_resp, flags=re.IGNORECASE
-                                        )
-                                        clean_repair = re.sub(r"```\s*", "", clean_repair).strip()
-                                        with open(prompts_file, "a", encoding="utf-8") as f:
-                                            f.write(clean_repair + "\n\n")
-
-                                    current_prompts = parse_json_prompts(prompts_file)
-                                    parsed_chunk_indices = {
-                                        p.index
-                                        for p in current_prompts
-                                        if p.index in expected_chunk_indices
-                                    }
-                                    missing_in_chunk = expected_chunk_indices - parsed_chunk_indices
-
-                                if not missing_in_chunk:
-                                    print(
-                                        f"✅ Chunk {chunk_idx} verified with 100% index coverage."
-                                    )
+                        expected_total = len(sentences)
+                        prompts_complete = False
+                        if manifest.all_chunks_done():
+                            try:
+                                if os.path.exists(prompts_file):
+                                    with open(prompts_file, encoding="utf-8") as f:
+                                        existing = json.load(f)
                                 else:
-                                    print(
-                                        f"⚠️ Chunk {chunk_idx} completed with missing indices: {missing_in_chunk}"
-                                    )
-                            else:
-                                print(
-                                    f"❌ Error: Failed to get JSON response for chunk {chunk_idx}"
-                                )
-
-                    # Refresh parsed prompts after chunk generation
-                    storyboard_prompts = parse_json_prompts(prompts_file)
-                    save_sorted_prompts_file(storyboard_prompts, prompts_file)
+                                    existing = []
+                                prompts_complete = sorted(
+                                    int(p["index"]) for p in existing
+                                ) == list(range(1, expected_total + 1))
+                            except Exception:
+                                prompts_complete = False
+                        if not prompts_complete:
+                            plan_all_chunks(
+                                gemini_page,
+                                sentences,
+                                timestamps,
+                                roadmap_rows,
+                                subfolder,
+                                manifest,
+                                chunk_size=chunk_size,
+                                planner_model=target_planner_model,
+                                presets=FLOW_ASSET_PRESETS,
+                            )
+                        storyboard_prompts = parse_json_prompts(prompts_file)
+                        verify_pipeline_integrity(
+                            [frame.raw_payload for frame in storyboard_prompts], expected_total
+                        )
 
                     # ---------------------------------------------------------
                     # PHASE 2: IMAGE RENDERING (GOOGLE FLOW WITH FREEZE PROTECTION)
@@ -3628,6 +3203,8 @@ Reply EXACTLY with: **"JSON System Ready. Awaiting chunks."**
                                             total_storyboard_frames,
                                             image_name,
                                         )
+                                        manifest.record_rendered(idx)
+                                        manifest.save()
                                         break
 
                                 except PlaywrightTimeoutError:

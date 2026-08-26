@@ -3,10 +3,11 @@
 import os
 import subprocess
 import tempfile
+
 import pytest
+from ffmpeg_stubs import FakePopen
 
 import compile_video
-from ffmpeg_stubs import FakePopen
 
 
 def _assembly_cmd(calls):
@@ -17,12 +18,24 @@ def _assembly_cmd(calls):
 class TestRunChunkedCompile:
     """Tests for run_chunked_compile(config, encoder_config, sync_timeline, images_dir, audio_path, run_folder[, checkpoint])."""
 
-    def test_happy_path_returns_true(self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, mock_ffmpeg_popen):
+    def test_happy_path_returns_true(
+        self,
+        config,
+        temp_run_folder,
+        sync_timeline,
+        test_images_dir,
+        dummy_audio_file,
+        mock_ffmpeg_popen,
+    ):
         """Full chunked render + assembly succeeds with mocked ffmpeg."""
         encoder_config = compile_video.detect_hardware_encoder(config)
         result = compile_video.run_chunked_compile(
-            config, encoder_config, sync_timeline,
-            test_images_dir, dummy_audio_file, temp_run_folder
+            config,
+            encoder_config,
+            sync_timeline,
+            test_images_dir,
+            dummy_audio_file,
+            temp_run_folder,
         )
 
         assert result is True
@@ -31,12 +44,24 @@ class TestRunChunkedCompile:
         # assembly command targets youtube_ready_video.mp4
         assert any("youtube_ready_video.mp4" in part for part in _assembly_cmd(mock_ffmpeg_popen))
 
-    def test_chunk_filter_script_created(self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, mock_ffmpeg_popen):
+    def test_chunk_filter_script_created(
+        self,
+        config,
+        temp_run_folder,
+        sync_timeline,
+        test_images_dir,
+        dummy_audio_file,
+        mock_ffmpeg_popen,
+    ):
         """Chunk filter graph written to temp_clips/filter_chunk_0000.txt."""
         encoder_config = compile_video.detect_hardware_encoder(config)
         compile_video.run_chunked_compile(
-            config, encoder_config, sync_timeline,
-            test_images_dir, dummy_audio_file, temp_run_folder
+            config,
+            encoder_config,
+            sync_timeline,
+            test_images_dir,
+            dummy_audio_file,
+            temp_run_folder,
         )
 
         filter_path = os.path.join(temp_run_folder, "temp_clips", "filter_chunk_0000.txt")
@@ -46,12 +71,24 @@ class TestRunChunkedCompile:
         assert "concat=" in content
         assert "scale=" in content
 
-    def test_final_assembly_script_contains_loudnorm(self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, mock_ffmpeg_popen):
+    def test_final_assembly_script_contains_loudnorm(
+        self,
+        config,
+        temp_run_folder,
+        sync_timeline,
+        test_images_dir,
+        dummy_audio_file,
+        mock_ffmpeg_popen,
+    ):
         """Final assembly filter script contains the loudnorm audio chain."""
         encoder_config = compile_video.detect_hardware_encoder(config)
         compile_video.run_chunked_compile(
-            config, encoder_config, sync_timeline,
-            test_images_dir, dummy_audio_file, temp_run_folder
+            config,
+            encoder_config,
+            sync_timeline,
+            test_images_dir,
+            dummy_audio_file,
+            temp_run_folder,
         )
 
         filter_path = os.path.join(temp_run_folder, "temp_clips", "filter_final_assembly.txt")
@@ -61,7 +98,9 @@ class TestRunChunkedCompile:
         assert "loudnorm" in content
         assert "[aout]" in content
 
-    def test_ffmpeg_failure_returns_false(self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, monkeypatch):
+    def test_ffmpeg_failure_returns_false(
+        self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, monkeypatch
+    ):
         """Chunk ffmpeg failure with CPU encoder (no fallback) returns False."""
         calls = []
 
@@ -74,18 +113,24 @@ class TestRunChunkedCompile:
         monkeypatch.setattr(subprocess, "Popen", FailingPopen)
         encoder_config = compile_video.detect_hardware_encoder(config)
         result = compile_video.run_chunked_compile(
-            config, encoder_config, sync_timeline,
-            test_images_dir, dummy_audio_file, temp_run_folder
+            config,
+            encoder_config,
+            sync_timeline,
+            test_images_dir,
+            dummy_audio_file,
+            temp_run_folder,
         )
 
         assert result is False
 
-    def test_hardware_encoder_failure_falls_back_to_cpu(self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, monkeypatch):
+    def test_hardware_encoder_failure_falls_back_to_cpu(
+        self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, monkeypatch
+    ):
         """QSV failure triggers retry of all chunks with libx264 software fallback."""
         encoder_config = {
             "video_codec": "h264_qsv",
             "hwaccel": "qsv",
-            "encoder_args": ["-global_quality", "22"]
+            "encoder_args": ["-global_quality", "22"],
         }
 
         called_cmds = []
@@ -104,15 +149,21 @@ class TestRunChunkedCompile:
 
         monkeypatch.setattr(subprocess, "Popen", FallbackPopen)
         result = compile_video.run_chunked_compile(
-            config, encoder_config, sync_timeline,
-            test_images_dir, dummy_audio_file, temp_run_folder
+            config,
+            encoder_config,
+            sync_timeline,
+            test_images_dir,
+            dummy_audio_file,
+            temp_run_folder,
         )
 
         assert result is True
         assert "h264_qsv" in called_cmds[0]
         assert "libx264" in called_cmds[1]
 
-    def test_ffmpeg_timeout_returns_false(self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, monkeypatch):
+    def test_ffmpeg_timeout_returns_false(
+        self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, monkeypatch
+    ):
         """Chunk ffmpeg timeout kills the process and returns False."""
         config["FFMPEG_CLIP_TIMEOUT"] = 1
 
@@ -128,14 +179,26 @@ class TestRunChunkedCompile:
         monkeypatch.setattr(subprocess, "Popen", HangingPopen)
         encoder_config = compile_video.detect_hardware_encoder(config)
         result = compile_video.run_chunked_compile(
-            config, encoder_config, sync_timeline,
-            test_images_dir, dummy_audio_file, temp_run_folder
+            config,
+            encoder_config,
+            sync_timeline,
+            test_images_dir,
+            dummy_audio_file,
+            temp_run_folder,
         )
 
         assert result is False
         assert HangingPopen.killed, "hung ffmpeg process should be killed"
 
-    def test_checkpoint_complete_skips_render(self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, mock_ffmpeg_popen):
+    def test_checkpoint_complete_skips_render(
+        self,
+        config,
+        temp_run_folder,
+        sync_timeline,
+        test_images_dir,
+        dummy_audio_file,
+        mock_ffmpeg_popen,
+    ):
         """Completed checkpoint + existing output skips rendering entirely."""
         config["ENABLE_CHECKPOINT_RESUME"] = True
 
@@ -150,23 +213,41 @@ class TestRunChunkedCompile:
             checkpoint.mark_clip_done(i, "youtube_ready_video.mp4", sync_timeline[i]["duration"])
 
         result = compile_video.run_chunked_compile(
-            config, encoder_config, sync_timeline,
-            test_images_dir, dummy_audio_file, temp_run_folder, checkpoint
+            config,
+            encoder_config,
+            sync_timeline,
+            test_images_dir,
+            dummy_audio_file,
+            temp_run_folder,
+            checkpoint,
         )
 
         assert result is True
         assert len(mock_ffmpeg_popen) == 0, "Should skip rendering and not invoke FFmpeg"
 
-    def test_checkpoint_marks_all_clips_done(self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, mock_ffmpeg_popen):
-        """Chunked render initializes checkpoint and completes all clips on success."""
+    def test_checkpoint_initialized_for_chunked_render(
+        self,
+        config,
+        temp_run_folder,
+        sync_timeline,
+        test_images_dir,
+        dummy_audio_file,
+        mock_ffmpeg_popen,
+    ):
+        """Chunked render initializes a v3 checkpoint with all clips tracked as pending."""
         config["ENABLE_CHECKPOINT_RESUME"] = True
 
         encoder_config = compile_video.detect_hardware_encoder(config)
         checkpoint = compile_video.CheckpointManager(temp_run_folder, config)
 
         result = compile_video.run_chunked_compile(
-            config, encoder_config, sync_timeline,
-            test_images_dir, dummy_audio_file, temp_run_folder, checkpoint
+            config,
+            encoder_config,
+            sync_timeline,
+            test_images_dir,
+            dummy_audio_file,
+            temp_run_folder,
+            checkpoint,
         )
 
         assert result is True
@@ -174,82 +255,132 @@ class TestRunChunkedCompile:
         assert os.path.exists(checkpoint_path), "checkpoint file should be created"
 
         checkpoint_res = compile_video.CheckpointManager(temp_run_folder, config)
-        assert checkpoint_res.data["completed_clips"] == len(sync_timeline)
-        assert all(state["status"] == "done" for state in checkpoint_res.data["clip_states"].values())
+        assert checkpoint_res.data["version"] == 3
+        assert checkpoint_res.data["total_clips"] == len(sync_timeline)
+        assert checkpoint_res.data["completed_clips"] == 0
+        assert len(checkpoint_res.data["clip_states"]) == len(sync_timeline)
+        assert all(
+            state["status"] == "pending" for state in checkpoint_res.data["clip_states"].values()
+        )
 
-    def test_subtitle_missing_continues(self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, mock_ffmpeg_popen):
+    def test_subtitle_missing_continues(
+        self,
+        config,
+        temp_run_folder,
+        sync_timeline,
+        test_images_dir,
+        dummy_audio_file,
+        mock_ffmpeg_popen,
+    ):
         """ENABLE_SUBTITLES=true but SRT missing renders without subtitles."""
         config["ENABLE_SUBTITLES"] = True
 
         encoder_config = compile_video.detect_hardware_encoder(config)
         result = compile_video.run_chunked_compile(
-            config, encoder_config, sync_timeline,
-            test_images_dir, dummy_audio_file, temp_run_folder
+            config,
+            encoder_config,
+            sync_timeline,
+            test_images_dir,
+            dummy_audio_file,
+            temp_run_folder,
         )
 
         assert result is True
         # assembly command has no subtitles filter
         assert "subtitles=" not in " ".join(_assembly_cmd(mock_ffmpeg_popen))
 
-    def test_subtitles_burned_into_final_assembly(self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, dummy_srt_file, mock_ffmpeg_popen):
-        """SRT present -> fixed SRT created and subtitles filter added to assembly script."""
+    def test_subtitles_burned_into_final_assembly(
+        self,
+        config,
+        temp_run_folder,
+        sync_timeline,
+        test_images_dir,
+        dummy_audio_file,
+        dummy_transcript_file,
+        mock_ffmpeg_popen,
+    ):
+        """Timestamped transcript present -> dynamic ASS built and burned into final assembly."""
         config["ENABLE_SUBTITLES"] = True
 
         encoder_config = compile_video.detect_hardware_encoder(config)
         result = compile_video.run_chunked_compile(
-            config, encoder_config, sync_timeline,
-            test_images_dir, dummy_audio_file, temp_run_folder
+            config,
+            encoder_config,
+            sync_timeline,
+            test_images_dir,
+            dummy_audio_file,
+            temp_run_folder,
         )
 
         assert result is True
-        fixed_srt = os.path.join(temp_run_folder, "timestamped_transcript_fixed.srt")
-        assert os.path.exists(fixed_srt), "fixed SRT should be created"
-        # subtitles filter lives in the assembly filter script, and the video
-        # stream is re-encoded (not copied) when subtitles are burned in
+        ass_path = os.path.join(temp_run_folder, "dynamic_subtitles.ass")
+        assert os.path.exists(ass_path), "dynamic_subtitles.ass should be generated from transcript"
+        # subtitles filter lives in the assembly filter script and references the
+        # dynamic ASS file; the video stream is re-encoded (not copied) on burn-in
         script_path = os.path.join(temp_run_folder, "temp_clips", "filter_final_assembly.txt")
         with open(script_path, encoding="utf-8") as f:
             content = f.read()
         assert "subtitles=" in content
+        assert "dynamic_subtitles.ass" in content
         assert "-c:v" in _assembly_cmd(mock_ffmpeg_popen)
+        assert "[vout]" in _assembly_cmd(mock_ffmpeg_popen)
 
-    def test_dry_run_skips_srt_fix(self, config, temp_run_folder, sync_timeline, test_images_dir, dummy_audio_file, dummy_srt_file, mock_ffmpeg_popen):
-        """DEBUG_DRY_RUN=true skips the Arabic SRT fix pass."""
+    def test_dry_run_still_builds_dynamic_subtitles(
+        self,
+        config,
+        temp_run_folder,
+        sync_timeline,
+        test_images_dir,
+        dummy_audio_file,
+        dummy_transcript_file,
+        mock_ffmpeg_popen,
+    ):
+        """DEBUG_DRY_RUN no longer gates subtitle generation; ASS is produced regardless."""
         config["ENABLE_SUBTITLES"] = True
         config["DEBUG_DRY_RUN"] = True
 
         encoder_config = compile_video.detect_hardware_encoder(config)
         result = compile_video.run_chunked_compile(
-            config, encoder_config, sync_timeline,
-            test_images_dir, dummy_audio_file, temp_run_folder
+            config,
+            encoder_config,
+            sync_timeline,
+            test_images_dir,
+            dummy_audio_file,
+            temp_run_folder,
         )
 
         assert result is True
-        fixed_srt = os.path.join(temp_run_folder, "timestamped_transcript_fixed.srt")
-        assert not os.path.exists(fixed_srt), "fixed SRT should not be created in dry run"
+        ass_path = os.path.join(temp_run_folder, "dynamic_subtitles.ass")
+        assert os.path.exists(
+            ass_path
+        ), "dynamic_subtitles.ass should be generated regardless of dry run"
 
 
 class TestBuildChunkFilterGraph:
     """Tests for build_chunk_filter_graph(config, encoder_config, chunk_timeline, images_dir, ai_cameras, manual_cameras, anim_enabled)."""
 
-    def test_filter_graph_includes_ken_burns_for_each_clip(self, config, sync_timeline, test_images_dir):
-        """Animated clips use zoompan, static clips use scale+pad."""
+    def test_filter_graph_includes_ken_burns_for_each_clip(
+        self, config, sync_timeline, test_images_dir
+    ):
+        """Every clip (animated or static) routes through zoompan for exact frame counts."""
         encoder_config = compile_video.detect_hardware_encoder(config)
         ai_cameras = {"00_00": "zoom_in", "00_08": "pan_left", "00_15": "static"}
         manual_cameras = {}
 
         input_args, filter_complex, video_label = compile_video.build_chunk_filter_graph(
-            config, encoder_config, sync_timeline, test_images_dir,
-            ai_cameras, manual_cameras, True
+            config, encoder_config, sync_timeline, test_images_dir, ai_cameras, manual_cameras, True
         )
 
-        assert "zoompan" in filter_complex
-        # zoom_in and pan_left use zoompan; static uses scale+pad (no zoompan)
-        assert filter_complex.count("zoompan") == 2
-        assert "force_original_aspect_ratio=decrease" in filter_complex
-        assert "pad=" in filter_complex
+        # zoompan normalizes every clip's frame count; static clips use z='1.0'
+        assert filter_complex.count("zoompan") == len(sync_timeline)
+        assert f"concat=n={len(sync_timeline)}" in filter_complex
+        assert "force_original_aspect_ratio=increase" in filter_complex
+        assert "crop=" in filter_complex
         assert video_label == "vout"
 
-    def test_manual_overrides_override_ai_cameras(self, config, sync_timeline, test_images_dir, monkeypatch):
+    def test_manual_overrides_override_ai_cameras(
+        self, config, sync_timeline, test_images_dir, monkeypatch
+    ):
         """Manual camera overrides take precedence over AI decisions."""
         encoder_config = compile_video.detect_hardware_encoder(config)
         ai_cameras = {"00_08": "pan_left"}
@@ -263,13 +394,14 @@ class TestBuildChunkFilterGraph:
 
         monkeypatch.setattr(compile_video, "build_ken_burns_filter", spy_ken_burns)
         compile_video.build_chunk_filter_graph(
-            config, encoder_config, sync_timeline, test_images_dir,
-            ai_cameras, manual_cameras, True
+            config, encoder_config, sync_timeline, test_images_dir, ai_cameras, manual_cameras, True
         )
 
         assert captured == ["static", "zoom_out", "static"]
 
-    def test_animations_disabled_all_static(self, config, sync_timeline, test_images_dir, monkeypatch):
+    def test_animations_disabled_all_static(
+        self, config, sync_timeline, test_images_dir, monkeypatch
+    ):
         """anim_enabled=False forces static camera for every clip."""
         encoder_config = compile_video.detect_hardware_encoder(config)
         ai_cameras = {"00_00": "zoom_in", "00_08": "zoom_out", "00_15": "pan_left"}
@@ -282,8 +414,7 @@ class TestBuildChunkFilterGraph:
 
         monkeypatch.setattr(compile_video, "build_ken_burns_filter", spy_ken_burns)
         compile_video.build_chunk_filter_graph(
-            config, encoder_config, sync_timeline, test_images_dir,
-            ai_cameras, {}, False
+            config, encoder_config, sync_timeline, test_images_dir, ai_cameras, {}, False
         )
 
         assert captured == ["static", "static", "static"]
@@ -293,8 +424,7 @@ class TestBuildChunkFilterGraph:
         encoder_config = compile_video.detect_hardware_encoder(config)
 
         input_args, _, _ = compile_video.build_chunk_filter_graph(
-            config, encoder_config, sync_timeline, test_images_dir,
-            {}, {}, True
+            config, encoder_config, sync_timeline, test_images_dir, {}, {}, True
         )
 
         assert input_args.count("-i") == len(sync_timeline)
@@ -308,14 +438,25 @@ class TestBuildChunkFilterGraph:
                 config, encoder_config, [], test_images_dir, {}, {}, True
             )
 
-    def test_render_chunk_catches_valueerror_returns_none(self, config, temp_run_folder, sync_timeline, dummy_audio_file, monkeypatch):
+    def test_render_chunk_catches_valueerror_returns_none(
+        self, config, temp_run_folder, sync_timeline, dummy_audio_file, monkeypatch
+    ):
         """render_chunk converts unresolvable-image ValueError into None."""
         empty_images_dir = tempfile.mkdtemp()
         try:
             encoder_config = compile_video.detect_hardware_encoder(config)
             result = compile_video.render_chunk(
-                config, encoder_config, sync_timeline, empty_images_dir,
-                {}, {}, True, 0, temp_run_folder, temp_run_folder, 0
+                config,
+                encoder_config,
+                sync_timeline,
+                empty_images_dir,
+                {},
+                {},
+                True,
+                0,
+                temp_run_folder,
+                temp_run_folder,
+                0,
             )
             assert result is None
         finally:
