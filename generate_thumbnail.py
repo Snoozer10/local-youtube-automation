@@ -457,6 +457,7 @@ def main():
     )
     browser_type = get_config_value("BROWSER_TYPE", "chrome")
     profile_index = int(get_config_value("ACTIVE_PROFILE_INDEX", "1"))
+    cdp_port = int(get_config_value("CDP_PORT", "9222"))
 
     prompts_path = os.path.join(folder, "thumbnail_prompts.json")
     critique_path = os.path.join(folder, "thumbnail_critique.json")
@@ -464,14 +465,14 @@ def main():
     with sync_playwright() as p:
         try:
             # Attempt to connect to an existing running session on the IPv4 loopback
-            browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-            print(f"Successfully connected to existing {browser_type.capitalize()} session on port 9222.")
+            browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
+            print(f"Successfully connected to existing {browser_type.capitalize()} session on port {cdp_port}.")
         except Exception:
-            print("Debugging browser is closed or unreachable on port 9222. Launching framework...")
+            print(f"Debugging browser is closed or unreachable on port {cdp_port}. Launching framework...")
             # Automatically launch Chrome using your profile index config
             if not launch_browser_with_profile(browser_type, profile_index):
                 sys.exit(1)
-            browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+            browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
 
         context = browser.contexts[0]
         context.grant_permissions(["clipboard-read", "clipboard-write"])

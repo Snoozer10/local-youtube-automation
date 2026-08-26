@@ -2563,13 +2563,14 @@ def main():
             with sync_playwright() as p:
                 current_profile_idx = get_config_value("ACTIVE_PROFILE_INDEX", "1")
                 browser_type = get_config_value("BROWSER_TYPE", "chrome")
+                cdp_port = int(get_config_value("CDP_PORT", "9222"))
 
                 try:
-                    browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                    browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
                 except Exception:
                     if not launch_browser_with_profile(browser_type, current_profile_idx):
                         sys.exit(1)
-                    browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                    browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
 
                 context = browser.contexts[0]
                 gemini_page = context.new_page()

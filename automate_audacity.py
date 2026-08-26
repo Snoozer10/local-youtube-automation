@@ -126,8 +126,8 @@ def load_checkpoint(folder):
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return data.get("polished_files", [])
-        except:
-            pass
+        except Exception as e:
+            print(f"[WARNING] Ignoring unreadable audacity_checkpoint.json: {e}")
     return []
 
 
@@ -155,8 +155,8 @@ def delete_checkpoint(folder):
     if os.path.exists(path):
         try:
             os.remove(path)
-        except:
-            pass
+        except OSError as e:
+            print(f"[WARNING] Could not delete audacity_checkpoint.json: {e}")
 
 def ensure_audacity_script_pipe_enabled():
     """Forces mod-script-pipe=1 in Audacity configuration file."""
@@ -223,8 +223,8 @@ def main():
     try:
         subprocess.run(["taskkill", "/F", "/IM", "Audacity.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(1.0)
-    except:
-        pass
+    except Exception as e:
+        print(f"[WARNING] Audacity taskkill failed (may not be running): {e}")
 
     # Wipe leftover crash files
     clear_audacity_temp_data()

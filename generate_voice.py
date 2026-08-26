@@ -1039,15 +1039,16 @@ def main():
                 accounts_enabled = switch_enabled_str in ('true', '1', 'yes')
                 current_profile_idx = get_config_value("ACTIVE_PROFILE_INDEX", "1")
                 browser_type = get_config_value("BROWSER_TYPE", "chrome")
+                cdp_port = int(get_config_value("CDP_PORT", "9222"))
 
                 try:
-                    browser = p.chromium.connect_over_cdp("http://localhost:9222")
+                    browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
                     print(f"Successfully connected to existing {browser_type.capitalize()} session.")
                 except Exception:
                     print("Debugging browser is closed or unreachable. Launching framework...")
                     if not launch_browser_with_profile(browser_type, current_profile_idx):
                         sys.exit(1)
-                    browser = p.chromium.connect_over_cdp("http://localhost:9222")
+                    browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
 
                 context = browser.contexts[0]
                 context.grant_permissions(["clipboard-read", "clipboard-write"])

@@ -21,7 +21,7 @@ from gemini_utils import (
     start_clean_gemini_chat,
     wait_for_gemini_response,
 )
-from utils import get_config_value
+from utils import atomic_write_json, get_config_value
 
 # Windows console hardening: guarantee UTF-8 for Arabic output even when piped.
 if sys.platform.startswith("win"):
@@ -247,16 +247,17 @@ def apply_tashkeel_from_config(text):
 
 
 def ensure_chrome_debug_session():
-    url = "http://localhost:9222/json/version"
+    cdp_port = int(get_config_value("CDP_PORT", "9222"))
+    url = f"http://127.0.0.1:{cdp_port}/json/version"
     try:
         with urllib.request.urlopen(url, timeout=2) as response:
             if response.status == 200:
-                print("Chrome debugging session is already running on port 9222.")
+                print(f"Chrome debugging session is already running on port {cdp_port}.")
                 return True
     except Exception:
         pass
 
-    print("Chrome debugging session not found on port 9222. Launching Chrome...")
+    print(f"Chrome debugging session not found on port {cdp_port}. Launching Chrome...")
     chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
     profile_dir = r"C:\ChromeDebugProfile"
     os.makedirs(profile_dir, exist_ok=True)
@@ -269,7 +270,7 @@ def ensure_chrome_debug_session():
         subprocess.Popen(
             [
                 chrome_path,
-                "--remote-debugging-port=9222",
+                f"--remote-debugging-port={cdp_port}",
                 f"--user-data-dir={profile_dir}",
             ],
             creationflags=subprocess.CREATE_NEW_CONSOLE
@@ -279,7 +280,7 @@ def ensure_chrome_debug_session():
         try:
             subprocess.Popen([
                 chrome_path,
-                "--remote-debugging-port=9222",
+                f"--remote-debugging-port={cdp_port}",
                 f"--user-data-dir={profile_dir}",
             ])
         except Exception as ex:
@@ -292,12 +293,12 @@ def ensure_chrome_debug_session():
         try:
             with urllib.request.urlopen(url, timeout=1) as response:
                 if response.status == 200:
-                    print("Chrome launched and listening on port 9222!")
+                    print(f"Chrome launched and listening on port {cdp_port}!")
                     return True
         except Exception:
             continue
 
-    print("Error: Chrome was launched but port 9222 did not become active.")
+    print(f"Error: Chrome was launched but port {cdp_port} did not become active.")
     return False
 
 
@@ -459,13 +460,14 @@ def main():
         return
 
     with sync_playwright() as p:
+        cdp_port = int(get_config_value("CDP_PORT", "9222"))
         try:
-            browser = p.chromium.connect_over_cdp("http://localhost:9222")
+            browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
             print("Successfully connected to Chrome!")
         except Exception as e:
             print(
                 "Could not connect to debugging Chrome window. Make sure it is"
-                " running on port 9222."
+                f" running on port {cdp_port}."
             )
             print(f"Error details: {e}")
             return
@@ -861,19 +863,12 @@ def main():
                         final_results_list.append(translated_paragraph)
 
                         try:
-                            with open(
-                                checkpoint_path, "w", encoding="utf-8"
-                            ) as f:
-                                json.dump(
-                                    {
-                                        "translated_paragraphs": (
-                                            final_results_list
-                                        )
-                                    },
-                                    f,
-                                    ensure_ascii=False,
-                                    indent=4,
-                                )
+                            atomic_write_json(
+                                checkpoint_path,
+                                {"translated_paragraphs": final_results_list},
+                                ensure_ascii=False,
+                                indent=4,
+                            )
                         except Exception as e:
                             print(
                                 "Warning: Failed to write checkpoint progress"

@@ -108,21 +108,53 @@ def save_pipeline_state(folder_path, state):
         pass
 
 
+def resolve_step_timeout() -> int:
+    """Resolves the per-step supervisor ceiling; a value <= 0 disables the cap."""
+    raw = get_config_value("STEP_TIMEOUT_SECONDS", "7200")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        print(
+            f"[WARNING] Invalid STEP_TIMEOUT_SECONDS={raw!r};"
+            " falling back to default 7200s cap."
+        )
+        return 7200
+    if value <= 0:
+        return 0
+    return max(value, 300)
+
+
 def main():
     print_header("Initializing Fully Autonomous Media Pipeline (Batch Mode)")
     time.sleep(2)
     global_start_time = time.time()
+    step_timeout = resolve_step_timeout()
 
     # 1. Run the global script generator first (Processes youtube_urls.txt)
     print_header("Phase 1: Global Script Translation & Extraction")
     try:
-        subprocess.run([sys.executable, "automate_all.py"], check=True)
+        if step_timeout > 0:
+            subprocess.run(
+                [sys.executable, "automate_all.py"],
+                check=True,
+                timeout=step_timeout,
+            )
+        else:
+            subprocess.run([sys.executable, "automate_all.py"], check=True)
         clean_browser_tabs()
     except subprocess.CalledProcessError:
         print("❌ [FATAL] automate_all.py failed. Halting pipeline.")
         send_telegram_notification(
             "❌ [FATAL] automate_all.py failed. Halting pipeline."
         )
+        sys.exit(1)
+    except subprocess.TimeoutExpired:
+        timeout_msg = (
+            f"⚠️ [TIMEOUT EXPIRED]\n"
+            f"Step: Phase 1 Global Script Translation timed out after {step_timeout}s."
+        )
+        print(f"\n{timeout_msg}")
+        send_telegram_notification(timeout_msg)
         sys.exit(1)
 
     # 2. Scan for all valid video folders
@@ -305,6 +337,12 @@ def main():
                         [sys.executable, step["script"], folder],
                         check=True,
                         timeout=3600,
+                    )
+                elif step_timeout > 0:
+                    subprocess.run(
+                        [sys.executable, step["script"]],
+                        check=True,
+                        timeout=step_timeout,
                     )
                 else:
                     subprocess.run([sys.executable, step["script"]], check=True)

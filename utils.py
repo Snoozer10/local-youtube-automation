@@ -117,6 +117,29 @@ def update_config_value(target_key, new_val):
     os.replace(temp_name, ENV_PATH)
     logger.info(f"[SYSTEM] Successfully updated config variable: {target_key} -> {new_val}")
 
+
+def atomic_write_json(path: str, payload, *, ensure_ascii: bool = False, indent: int = 4) -> None:
+    """Crash-safe JSON write: temp file in the target dir -> fsync -> os.replace."""
+    directory = os.path.dirname(path) or "."
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=directory, delete=False, encoding="utf-8", suffix=".tmp"
+        ) as tf:
+            tmp_path = tf.name
+            json.dump(payload, tf, ensure_ascii=ensure_ascii, indent=indent)
+            tf.flush()
+            os.fsync(tf.fileno())
+        os.replace(tmp_path, path)
+        tmp_path = None
+    finally:
+        if tmp_path is not None and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
+
 def is_port_in_use(port: int | str) -> bool:
     """Checks if a local TCP port is actively occupied."""
     port_num = int(port)

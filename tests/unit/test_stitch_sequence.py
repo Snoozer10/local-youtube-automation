@@ -70,10 +70,6 @@ class TestSequentialScan:
         assert found == []
         assert missing == []
 
-    @pytest.mark.xfail(
-        reason="ERR-03: post-gap orphan included in found; fix scheduled Phase 5",
-        strict=True,
-    )
     def test_gap_truncates_found_to_contiguous_prefix(self, chapters_dir):
         make_chapters(chapters_dir, 1, 2, 4)
         found, missing = stitch_chapters.scan_sequential_chapters(str(chapters_dir))
@@ -82,3 +78,25 @@ class TestSequentialScan:
             str(chapters_dir / "Chapter_1.wav"),
             str(chapters_dir / "Chapter_2.wav"),
         ]
+
+    def test_post_gap_orphans_warned_and_excluded(self, chapters_dir, capsys):
+        make_chapters(chapters_dir, 1, 2, 4, 5, 7)
+        found, missing = stitch_chapters.scan_sequential_chapters(str(chapters_dir))
+        assert missing == ["Chapter_3.wav", "Chapter_6.wav"]
+        assert found == [
+            str(chapters_dir / "Chapter_1.wav"),
+            str(chapters_dir / "Chapter_2.wav"),
+        ]
+        out = capsys.readouterr().out
+        assert (
+            "[WARN] 3 orphan chapter(s) beyond gap ignored: Chapter_4.wav, Chapter_5.wav, Chapter_7.wav"
+            in out
+        )
+
+    def test_gap_at_start_reports_missing_first_and_orphans(self, chapters_dir, capsys):
+        make_chapters(chapters_dir, 2, 3)
+        found, missing = stitch_chapters.scan_sequential_chapters(str(chapters_dir))
+        assert found == []
+        assert missing == ["Chapter_1.wav"]
+        out = capsys.readouterr().out
+        assert "[WARN] 2 orphan chapter(s) beyond gap ignored: Chapter_2.wav, Chapter_3.wav" in out

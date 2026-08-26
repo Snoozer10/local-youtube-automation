@@ -32,6 +32,11 @@ def get_latest_run_folder(runs_path="youtube_runs"):
 def scan_sequential_chapters(chapters_source_dir, start_index=1):
     """Scans for Chapter_X.wav files and identifies genuine gaps between 1 and the max index.
 
+    found contains only the contiguous prefix before the first absent index.
+    missing lists every absent Chapter_X.wav within the scan window. Present
+    files beyond the first gap are excluded from found and reported once via
+    a single [WARN] line.
+
     Returns:
         tuple(list, list): (found_paths, missing_names)
     """
@@ -52,13 +57,24 @@ def scan_sequential_chapters(chapters_source_dir, start_index=1):
     max_idx = max(present_indices.keys())
     file_list = []
     missing = []
+    orphan_names = []
+    gap_found = False
 
-    # Check for gaps between start_index and max_idx
     for i in range(start_index, max_idx + 1):
         if i in present_indices:
-            file_list.append(present_indices[i])
+            if gap_found:
+                orphan_names.append(f"Chapter_{i}.wav")
+            else:
+                file_list.append(present_indices[i])
         else:
             missing.append(f"Chapter_{i}.wav")
+            gap_found = True
+
+    if orphan_names:
+        print(
+            f"[WARN] {len(orphan_names)} orphan chapter(s) beyond gap ignored:"
+            f" {', '.join(orphan_names)}"
+        )
 
     return file_list, missing
 

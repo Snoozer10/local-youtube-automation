@@ -1,5 +1,6 @@
 """Unit tests for compile_video.CheckpointManager and run_agency pipeline.json state."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -85,17 +86,40 @@ class TestSignatureValidation:
         reloaded = compile_video.CheckpointManager(str(tmp_path), drifted)
         assert not reloaded.is_signature_valid()
 
-    def test_audio_duration_change_alone_does_not_invalidate(self, tmp_path, config):
+    @pytest.mark.parametrize(
+        ("new_duration", "expect_valid"),
+        [
+            pytest.param(10.04, True, id="duration-drift-within-tolerance-stays-valid"),
+            pytest.param(999.0, False, id="duration-drift-beyond-tolerance-invalidates"),
+        ],
+    )
+    def test_audio_duration_drift_gate(self, tmp_path, config, new_duration, expect_valid):
         self._initialize(tmp_path, config)
         drifted = dict(config)
-        drifted["_audio_duration"] = 999.0
+        drifted["_audio_duration"] = new_duration
         reloaded = compile_video.CheckpointManager(str(tmp_path), drifted)
-        assert reloaded.is_signature_valid()
+        assert reloaded.is_signature_valid() is expect_valid
 
-    def test_encoder_swap_alone_does_not_invalidate(self, tmp_path, config):
-        self._initialize(tmp_path, config)
+    def test_encoder_swap_invalidates_only_with_expected_codec(self, tmp_path, config):
+        manager = self._initialize(tmp_path, config)
+        manager.data["encoder"] = "h264_qsv"
+        manager.save()
+
         reloaded = compile_video.CheckpointManager(str(tmp_path), config)
-        assert reloaded.data["encoder"] == "libx264"
+        assert reloaded.data["encoder"] == "h264_qsv"
+        assert not reloaded.is_signature_valid(
+            expected_codec="libx264"
+        ), "codec mismatch must invalidate when expected_codec is supplied"
+        assert reloaded.is_signature_valid(), "no-arg call preserves legacy dims/FPS-only semantics"
+
+    def test_legacy_minimal_checkpoint_without_duration_key_stays_valid(self, tmp_path, config):
+        sig = f"{config['OUTPUT_WIDTH']}x{config['OUTPUT_HEIGHT']}@{config['OUTPUT_FPS']}"
+        legacy_payload = {"version": 3, "render_signature": sig}
+        (tmp_path / config["CHECKPOINT_FILE"]).write_text(
+            json.dumps(legacy_payload), encoding="utf-8"
+        )
+        reloaded = compile_video.CheckpointManager(str(tmp_path), config)
+        assert reloaded.data is not None
         assert reloaded.is_signature_valid()
 
 
@@ -117,11 +141,16 @@ class TestCorruptAndMissingCheckpoint:
         assert reloaded.data is None
         assert reloaded.is_signature_valid(), "fresh semantics: no data means valid"
 
-    def test_is_clip_done_on_fresh_checkpoint_raises_attribute_error(self, tmp_path, config):
+    def test_is_clip_done_returns_false_on_fresh_checkpoint(self, tmp_path, config):
         (tmp_path / config["CHECKPOINT_FILE"]).write_text("{not json", encoding="utf-8")
         reloaded = compile_video.CheckpointManager(str(tmp_path), config)
-        with pytest.raises(AttributeError):
-            reloaded.is_clip_done(0)
+        assert reloaded.is_clip_done(0) is False
+
+    def test_mark_clip_done_on_fresh_checkpoint_raises_runtime_error(self, tmp_path, config):
+        (tmp_path / config["CHECKPOINT_FILE"]).write_text("{not json", encoding="utf-8")
+        reloaded = compile_video.CheckpointManager(str(tmp_path), config)
+        with pytest.raises(RuntimeError, match="checkpoint not initialized"):
+            reloaded.mark_clip_done(0, "clip_0.mp4", 3.0)
 
     def test_initialize_after_corrupt_load_recovers_clip_queries(self, tmp_path, config):
         (tmp_path / config["CHECKPOINT_FILE"]).write_text("{not json", encoding="utf-8")
@@ -139,7 +168,7 @@ class TestCorruptAndMissingCheckpoint:
     def test_corrupt_checkpoint_then_initialize_recovers(self, tmp_path, config):
         (tmp_path / config["CHECKPOINT_FILE"]).write_text("garbage{", encoding="utf-8")
         manager = compile_video.CheckpointManager(str(tmp_path), config)
-        manager.initialize(1, make_encoder_config(), "audio.wav", 4.0)
+        manager.initialize(1, make_encoder_config(), "audio.wav", config["_audio_duration"])
         reloaded = compile_video.CheckpointManager(str(tmp_path), config)
         assert reloaded.data is not None
         assert reloaded.is_signature_valid()

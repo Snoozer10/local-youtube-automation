@@ -5,7 +5,7 @@ import time
 import subprocess
 import base64
 from playwright.sync_api import sync_playwright
-from utils import get_config_value, launch_browser_with_profile, rotate_profile_index, kill_cdp_chrome
+from utils import atomic_write_json, get_config_value, launch_browser_with_profile, rotate_profile_index, kill_cdp_chrome
 
 # Force standard streams to use UTF-8 to prevent Windows terminal encoding errors with Arabic text
 if hasattr(sys.stdout, 'reconfigure'):
@@ -613,12 +613,16 @@ Visual Prompt: [Timestamp] 2D vector webcomic style, [Camera Angle]. Subject: [2
         
         # Save planning checkpoint progress
         try:
-            with open(planning_checkpoint, "w", encoding="utf-8") as cp:
-                json.dump({
+            atomic_write_json(
+                planning_checkpoint,
+                {
                     "completed_chunks": chunk_idx,
                     "chunk_responses": chunk_responses,
-                    "all_parsed_prompts": all_parsed_prompts
-                }, cp, ensure_ascii=False, indent=4)
+                    "all_parsed_prompts": all_parsed_prompts,
+                },
+                ensure_ascii=False,
+                indent=4,
+            )
         except Exception as ec:
             print(f"Warning: Failed to save planning checkpoint ({ec})")
             
@@ -661,17 +665,18 @@ def main():
                 
                 # NEW: Fetch browser type dynamically from config
                 browser_type = get_config_value("BROWSER_TYPE", "chrome")
-                
+                cdp_port = int(get_config_value("CDP_PORT", "9222"))
+
                 try:
                     # Attempt to connect to an existing running session
-                    browser = p.chromium.connect_over_cdp("http://localhost:9222")
+                    browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
                     print(f"Successfully connected to existing {browser_type.capitalize()} session.")
                 except Exception:
                     print(f"Debugging browser is closed or unreachable. Launching framework...")
                     # Call the unified launcher
                     if not launch_browser_with_profile(browser_type, current_profile_idx):
                         sys.exit(1)
-                    browser = p.chromium.connect_over_cdp("http://localhost:9222")
+                    browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
 
                 context = browser.contexts[0]
                 context.grant_permissions(["clipboard-read", "clipboard-write"])

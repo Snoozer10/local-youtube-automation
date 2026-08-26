@@ -83,6 +83,7 @@ def load_video_config(config_path="video_config.txt") -> dict:
         "FFMPEG_CLIP_TIMEOUT": 300,
         "FFMPEG_FINAL_TIMEOUT": 5400,
         "FFMPEG_LOGLEVEL": "warning",
+        "FFPROBE_TIMEOUT": 60,
         "CHECKPOINT_FILE": "compile_checkpoint.json",
         "CHECKPOINT_SAVE_INTERVAL": 5,
         "SUB_FONT_NAME": "Tahoma",
@@ -287,18 +288,40 @@ class CheckpointManager:
         }
         self.save()
 
-    def is_signature_valid(self) -> bool:
-        """Returns False if video_config dimensions or FPS changed since checkpoint creation."""
-        if not self.data:
+    def is_signature_valid(self, expected_codec: str | None = None) -> bool:
+        """Returns False if the render spec drifted since checkpoint creation.
+
+        Always checks dimensions/FPS signature; adds audio-duration tolerance
+        (+/-0.05s) when both stored and current durations are known (legacy
+        checkpoints without the key skip the check); verifies codec only when
+        expected_codec is supplied.
+        """
+        if not isinstance(self.data, dict):
             return True
         current_sig = f"{self.config.get('OUTPUT_WIDTH')}x{self.config.get('OUTPUT_HEIGHT')}@{self.config.get('OUTPUT_FPS')}"
-        return self.data.get("render_signature") == current_sig
+        if self.data.get("render_signature") != current_sig:
+            return False
+
+        stored_duration = self.data.get("audio_duration")
+        current_duration = self.config.get("_audio_duration")
+        if stored_duration is not None and current_duration is not None:
+            try:
+                if abs(float(stored_duration) - float(current_duration)) > 0.05:
+                    return False
+            except (TypeError, ValueError):
+                return False
+
+        if expected_codec is not None and self.data.get("encoder") != expected_codec:
+            return False
+        return True
 
     def is_clip_done(self, clip_idx: int) -> bool:
-        state = self.data.get("clip_states", {}).get(str(clip_idx), {})
+        state = (self.data or {}).get("clip_states", {}).get(str(clip_idx), {})
         return state.get("status") == "done"
 
     def mark_clip_done(self, clip_idx: int, clip_path: str, duration: float, save_now: bool = True):
+        if self.data is None:
+            raise RuntimeError("checkpoint not initialized")
         if "clip_states" not in self.data:
             self.data["clip_states"] = {}
         self.data["clip_states"][str(clip_idx)] = {
@@ -386,9 +409,15 @@ def build_ken_burns_filter(config: dict, frame_count: int, camera_action: str, p
             f"trim=start_frame=0:end_frame={frames},setpts=PTS-STARTPTS" + norm)
 
 
-def get_audio_duration(audio_path):
+def get_audio_duration(audio_path, timeout: float = 60.0) -> float:
     cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', audio_path]
-    return float(subprocess.check_output(cmd).decode('utf-8').strip())
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        if res.returncode != 0:
+            raise RuntimeError(f"ffprobe failed rc={res.returncode}: {(res.stderr or '')[:200]}")
+        return float(res.stdout.strip())
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"ffprobe duration probe exceeded {timeout}s cap") from e
 
 
 def get_latest_run_folder(runs_path="youtube_runs"):
@@ -1414,9 +1443,35 @@ def assemble_final_video(config: dict, encoder_config: dict, chunk_files: list[s
         return False
 
 
+def _signature_drift_reason(data: dict, config: dict, expected_codec: str) -> str:
+    current_sig = f"{config.get('OUTPUT_WIDTH')}x{config.get('OUTPUT_HEIGHT')}@{config.get('OUTPUT_FPS')}"
+    if data.get("render_signature") != current_sig:
+        return "dimensions/FPS"
+    stored_duration = data.get("audio_duration")
+    current_duration = config.get("_audio_duration")
+    try:
+        duration_drifted = (
+            stored_duration is not None
+            and current_duration is not None
+            and abs(float(stored_duration) - float(current_duration)) > 0.05
+        )
+    except (TypeError, ValueError):
+        duration_drifted = True
+    if duration_drifted:
+        return "audio duration"
+    return f"encoder codec ({data.get('encoder')} vs {expected_codec})"
+
+
 def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list, images_dir: str,
                         audio_path: str, run_folder: str, checkpoint: CheckpointManager = None) -> bool:
     output_path = os.path.abspath(os.path.join(run_folder, "youtube_ready_video.mp4"))
+
+    if config["ENABLE_CHECKPOINT_RESUME"] and checkpoint and isinstance(checkpoint.data, dict):
+        if not checkpoint.is_signature_valid(expected_codec=encoder_config["video_codec"]):
+            drift_reason = _signature_drift_reason(checkpoint.data, config, encoder_config["video_codec"])
+            print(f"  [RESUME] {drift_reason} drifted since checkpoint creation.")
+            print("  [RESUME] Render signature drifted - reinitializing checkpoint.")
+            checkpoint.data = None
 
     if config["ENABLE_CHECKPOINT_RESUME"] and checkpoint and checkpoint.data is not None:
         if checkpoint.data.get("completed_clips") == checkpoint.data.get("total_clips") and os.path.exists(output_path):
@@ -1576,7 +1631,7 @@ def main(run_folder: str = None):
         print(f"[FATAL ERROR] No voice track found in '{latest_run}'. Expected 'full_episode_voice.wav'.")
         sys.exit(1)
 
-    audio_duration = get_audio_duration(audio_path)
+    audio_duration = get_audio_duration(audio_path, timeout=config.get("FFPROBE_TIMEOUT", 60))
     config["_audio_duration"] = audio_duration
 
     images_dir = os.path.join(latest_run, "generated_images")
