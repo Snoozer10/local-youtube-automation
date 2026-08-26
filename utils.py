@@ -38,6 +38,7 @@ logger = logging.getLogger("Pipeline")
 @dataclass(frozen=True)
 class PipelineConfig:
     """Centralized typed configuration for the refinement pipeline."""
+
     cdp_port: int = 9222
     browser_type: str = "chrome"
     model_name: str = "Pro"
@@ -54,7 +55,8 @@ class PipelineConfig:
             model_name=get_config_value("REFINE_MODEL", "Pro"),
             timeout_seconds=int(get_config_value("REFINE_PARAGRAPH_TIMEOUT", "420")),
             max_retries=int(get_config_value("FAILOVER_RETRY_LIMIT", "4")),
-            switch_accounts=get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").lower() in ("true", "1", "yes"),
+            switch_accounts=get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").lower()
+            in ("true", "1", "yes"),
         )
 
 
@@ -68,7 +70,9 @@ def get_config_value(target_key, default_val=""):
     if val is not None:
         cleaned = val.strip()
         # Strip wrapping single or double quotes
-        if (cleaned.startswith('"') and cleaned.endswith('"')) or (cleaned.startswith("'") and cleaned.endswith("'")):
+        if (cleaned.startswith('"') and cleaned.endswith('"')) or (
+            cleaned.startswith("'") and cleaned.endswith("'")
+        ):
             cleaned = cleaned[1:-1].strip()
         return cleaned
     return default_val
@@ -76,6 +80,7 @@ def get_config_value(target_key, default_val=""):
 
 # Global config instance
 CONFIG = PipelineConfig.from_env()
+
 
 def update_config_value(target_key, new_val):
     """Atomically updates or adds a specific KEY=VALUE pair in .env and syncs active memory."""
@@ -145,37 +150,54 @@ def is_port_in_use(port: int | str) -> bool:
     port_num = int(port)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.5)
-        return s.connect_ex(('127.0.0.1', port_num)) == 0
+        return s.connect_ex(("127.0.0.1", port_num)) == 0
+
 
 def kill_cdp_chrome(port: int | str = 9222):
     """Surgically terminates Chrome/Opera listening on the CDP port without shell=True execution."""
     port = int(port)
     killed_any = False
-    if os.name == 'nt':
+    if os.name == "nt":
         try:
             # Query TCP table directly without shell pipelines
-            proc = subprocess.run(["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True, check=False)
+            proc = subprocess.run(
+                ["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True, check=False
+            )
             killed_pids = set()
             for line in proc.stdout.strip().splitlines():
                 parts = line.strip().split()
-                if (len(parts) >= 5 and
-                    parts[0].upper() == 'TCP' and
-                    parts[1].rsplit(':', 1)[-1] == str(port) and
-                    parts[3].upper() == 'LISTENING'):
+                if (
+                    len(parts) >= 5
+                    and parts[0].upper() == "TCP"
+                    and parts[1].rsplit(":", 1)[-1] == str(port)
+                    and parts[3].upper() == "LISTENING"
+                ):
                     pid = parts[4]
                     # Strict PID validation: must be digits only and > 100 (avoid system criticals)
                     if pid.isdigit():
                         pid_int = int(pid)
                         if pid_int > 100 and pid not in killed_pids:
-                            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid_int)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                            subprocess.run(
+                                ["taskkill", "/F", "/T", "/PID", str(pid_int)],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                check=False,
+                            )
                             killed_pids.add(pid)
                             killed_any = True
-                            logger.info(f"[SYSTEM] Terminated CDP process (PID: {pid_int}) on port {port}.")
+                            logger.info(
+                                f"[SYSTEM] Terminated CDP process (PID: {pid_int}) on port {port}."
+                            )
         except Exception as e:
             logger.warning(f"[WARN] Non-shell process termination encountered an issue: {e}")
     else:
         try:
-            subprocess.run(["fuser", "-k", f"{port}/tcp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            subprocess.run(
+                ["fuser", "-k", f"{port}/tcp"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
             killed_any = True
         except Exception:
             pass
@@ -186,6 +208,7 @@ def kill_cdp_chrome(port: int | str = 9222):
             if not is_port_in_use(port):
                 break
             time.sleep(0.5)
+
 
 def map_profile_index(num_str):
     """Maps a human numeric index to Chrome's native Profile directory names."""
@@ -198,37 +221,42 @@ def map_profile_index(num_str):
     except ValueError:
         return "Default"
 
+
 def get_chrome_path():
     """Dynamically locates Google Chrome executable on Windows across system and user paths."""
-    local_app_data = os.environ.get('LOCALAPPDATA', '')
-    program_files = os.environ.get('ProgramFiles', r"C:\Program Files")
-    program_files_x86 = os.environ.get('ProgramFiles(x86)', r"C:\Program Files (x86)")
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
 
     paths = [
         os.path.join(program_files, r"Google\Chrome\Application\chrome.exe"),
         os.path.join(program_files_x86, r"Google\Chrome\Application\chrome.exe"),
-        os.path.join(local_app_data, r"Google\Chrome\Application\chrome.exe")
+        os.path.join(local_app_data, r"Google\Chrome\Application\chrome.exe"),
     ]
     return next((p for p in paths if p and os.path.exists(p)), None)
 
+
 def get_opera_path():
     """Dynamically locates Opera or Opera GX executable on Windows."""
-    local_app_data = os.environ.get('LOCALAPPDATA', '')
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
     paths = [
         os.path.join(local_app_data, r"Programs\Opera\opera.exe"),
         os.path.join(local_app_data, r"Programs\Opera\launcher.exe"),
         os.path.join(local_app_data, r"Programs\Opera GX\opera.exe"),
         os.path.join(local_app_data, r"Programs\Opera GX\launcher.exe"),
         r"C:\Program Files\Opera\opera.exe",
-        r"C:\Program Files\Opera GX\opera.exe"
+        r"C:\Program Files\Opera GX\opera.exe",
     ]
     return next((p for p in paths if os.path.exists(p)), None)
+
 
 def launch_browser_with_profile(browser_type, profile_index, port=None):
     if port is None:
         port = int(get_config_value("CDP_PORT", "9222"))
 
-    logger.info(f"[SYSTEM DIAGNOSTIC] Launching with browser_type='{browser_type}' (Account index: {profile_index})")
+    logger.info(
+        f"[SYSTEM DIAGNOSTIC] Launching with browser_type='{browser_type}' (Account index: {profile_index})"
+    )
     profile_dir = map_profile_index(profile_index)
     is_opera = "opera" in browser_type.lower()
 
@@ -241,10 +269,14 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
     user_data_dir = get_config_value(env_dir_key, default_dir)
 
     if not exe_path:
-        logger.critical(f"[FATAL ERROR] {browser_name} executable not found. Please check installation paths.")
+        logger.critical(
+            f"[FATAL ERROR] {browser_name} executable not found. Please check installation paths."
+        )
         sys.exit(1)
 
-    logger.info(f"[SYSTEM] Booting {browser_name} connected to Account Index {profile_index} ('{profile_dir}')")
+    logger.info(
+        f"[SYSTEM] Booting {browser_name} connected to Account Index {profile_index} ('{profile_dir}')"
+    )
 
     # Clear the port prior to launching
     kill_cdp_chrome(port)
@@ -253,7 +285,13 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
     target_dirs = [user_data_dir, os.path.join(user_data_dir, profile_dir)]
     for d in target_dirs:
         if os.path.exists(d):
-            for lock_file in ["SingletonLock", "SingletonSocket", "SingletonCookie", "lockfile", "Preferences.bad"]:
+            for lock_file in [
+                "SingletonLock",
+                "SingletonSocket",
+                "SingletonCookie",
+                "lockfile",
+                "Preferences.bad",
+            ]:
                 lock_path = os.path.join(d, lock_file)
                 if os.path.exists(lock_path):
                     try:
@@ -274,7 +312,7 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
         "--disable-backgrounding-occluded-windows",
         "--no-first-run",
         "--no-default-browser-check",
-        "--hide-crash-restore-bubble"
+        "--hide-crash-restore-bubble",
     ]
     subprocess.Popen(cmd)
 
@@ -285,7 +323,9 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
         try:
             with urllib.request.urlopen(url, timeout=1) as response:
                 if response.status == 200:
-                    logger.info(f"[SYSTEM] {browser_name} debugging session successfully established!")
+                    logger.info(
+                        f"[SYSTEM] {browser_name} debugging session successfully established!"
+                    )
                     return True
         except Exception:
             continue
@@ -293,7 +333,9 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
     logger.error(f"[ERROR] {browser_name} failed to start or bind to port {port}.")
     return False
 
+
 STATE_FILE = "runtime_state.json"
+
 
 def get_runtime_state(key: str, default: str = "") -> str:
     """Reads dynamic execution state from a separate JSON store rather than mutating .env."""
@@ -305,6 +347,7 @@ def get_runtime_state(key: str, default: str = "") -> str:
         except Exception:
             pass
     return get_config_value(key, default)
+
 
 def set_runtime_state(key: str, value: str) -> None:
     """Atomically persists dynamic execution state to JSON store without Windows file lock errors."""
@@ -327,25 +370,32 @@ def set_runtime_state(key: str, value: str) -> None:
         tf.close()
     os.replace(temp_name, STATE_FILE)
 
+
 def rotate_profile_index() -> int:
     """Increments the active profile index in runtime state and fires alerts."""
     current_idx = int(get_runtime_state("ACTIVE_PROFILE_INDEX", "1"))
     new_idx = current_idx + 1
     set_runtime_state("ACTIVE_PROFILE_INDEX", str(new_idx))
 
-    logger.warning(f"[FAILOVER SYSTEM] Rotated ACTIVE_PROFILE_INDEX from {current_idx} to {new_idx} in runtime state.")
-    send_telegram_notification(f"⚠️ [Alert] Account {current_idx} failed/blocked. Rotated to Account {new_idx} successfully.")
+    logger.warning(
+        f"[FAILOVER SYSTEM] Rotated ACTIVE_PROFILE_INDEX from {current_idx} to {new_idx} in runtime state."
+    )
+    send_telegram_notification(
+        f"⚠️ [Alert] Account {current_idx} failed/blocked. Rotated to Account {new_idx} successfully."
+    )
     return new_idx
+
 
 def _dispatch_telegram(bot_token, chat_id, message):
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     data = json.dumps({"chat_id": chat_id, "text": message}).encode("utf-8")
     try:
-        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=4):
             pass
     except Exception as e:
         logger.warning(f"[WARNING] Async Telegram notification failed: {e}")
+
 
 def send_telegram_notification(message):
     """Sends a non-blocking push notification to Telegram in a background worker thread."""

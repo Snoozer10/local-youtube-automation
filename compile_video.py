@@ -19,6 +19,7 @@ winget_links_path = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links")
 if os.path.exists(winget_links_path):
     os.environ["PATH"] = winget_links_path + os.pathsep + os.environ["PATH"]
 
+
 def load_video_config(config_path="video_config.txt") -> dict:
     """
     Parse video_config.txt into typed dict.
@@ -113,22 +114,22 @@ def load_video_config(config_path="video_config.txt") -> dict:
         return DEFAULTS.copy()
 
     config = DEFAULTS.copy()
-    with open(config_path, encoding='utf-8') as f:
+    with open(config_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 continue
-            if '=' in line:
-                key, value = line.split('=', 1)
+            if "=" in line:
+                key, value = line.split("=", 1)
                 key = key.strip()
                 value = value.strip()
-                if '#' in value:
-                    value = value.split('#', 1)[0].strip()
+                if "#" in value:
+                    value = value.split("#", 1)[0].strip()
 
                 if key in DEFAULTS:
                     default_val = DEFAULTS[key]
                     if isinstance(default_val, bool):
-                        config[key] = value.lower() in ('true', '1', 'yes', 'on')
+                        config[key] = value.lower() in ("true", "1", "yes", "on")
                     elif isinstance(default_val, int):
                         try:
                             config[key] = int(float(value))
@@ -147,10 +148,20 @@ def load_video_config(config_path="video_config.txt") -> dict:
 def _probe_encoder(encoder_name: str) -> bool:
     try:
         test_cmd = [
-            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-            "-f", "lavfi", "-i", "color=s=64x64:d=0.04",
-            "-c:v", encoder_name,
-            "-f", "null", "-"
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=s=64x64:d=0.04",
+            "-c:v",
+            encoder_name,
+            "-f",
+            "null",
+            "-",
         ]
         result = subprocess.run(test_cmd, capture_output=True, timeout=5)
         return result.returncode == 0
@@ -168,58 +179,101 @@ def _build_encoder_config(encoder: str, config: dict) -> dict:
 
     if encoder == "h264_qsv":
         base["encoder_args"] = [
-            "-preset", config["QSV_PRESET"],
-            "-global_quality", str(config["QSV_GLOBAL_QUALITY"]),
-            "-look_ahead", str(config["QSV_LOOKAHEAD"]),
-            "-look_ahead_depth", str(config["QSV_LOOKAHEAD_DEPTH"]),
+            "-preset",
+            config["QSV_PRESET"],
+            "-global_quality",
+            str(config["QSV_GLOBAL_QUALITY"]),
+            "-look_ahead",
+            str(config["QSV_LOOKAHEAD"]),
+            "-look_ahead_depth",
+            str(config["QSV_LOOKAHEAD_DEPTH"]),
         ]
         if config["ENABLE_VBV"]:
-            base["encoder_args"].extend(["-maxrate", config["VBV_MAXRATE"], "-bufsize", config["VBV_BUFSIZE"]])
+            base["encoder_args"].extend(
+                ["-maxrate", config["VBV_MAXRATE"], "-bufsize", config["VBV_BUFSIZE"]]
+            )
 
     elif encoder == "h264_nvenc":
         base["encoder_args"] = [
-            "-preset", config["NVENC_PRESET"],
-            "-cq", str(config["NVENC_CQ"]),
-            "-rc", config["NVENC_RC"],
-            "-multipass", config["NVENC_MULTIPASS"],
-            "-spatial_aq", str(config["NVENC_SPATIAL_AQ"]),
-            "-temporal_aq", str(config["NVENC_TEMPORAL_AQ"]),
+            "-preset",
+            config["NVENC_PRESET"],
+            "-cq",
+            str(config["NVENC_CQ"]),
+            "-rc",
+            config["NVENC_RC"],
+            "-multipass",
+            config["NVENC_MULTIPASS"],
+            "-spatial_aq",
+            str(config["NVENC_SPATIAL_AQ"]),
+            "-temporal_aq",
+            str(config["NVENC_TEMPORAL_AQ"]),
         ]
         if config["ENABLE_VBV"]:
-            base["encoder_args"].extend(["-maxrate", config["VBV_MAXRATE"], "-bufsize", config["VBV_BUFSIZE"]])
+            base["encoder_args"].extend(
+                ["-maxrate", config["VBV_MAXRATE"], "-bufsize", config["VBV_BUFSIZE"]]
+            )
 
     else:  # libx264 CPU (Master 2D Animation Profile)
-        target_level = "5.1" if int(config.get("OUTPUT_HEIGHT", 1080)) >= 1440 else config.get("OUTPUT_LEVEL", "4.1")
+        target_level = (
+            "5.1"
+            if int(config.get("OUTPUT_HEIGHT", 1080)) >= 1440
+            else config.get("OUTPUT_LEVEL", "4.1")
+        )
         base["encoder_args"] = [
-            "-preset", config.get("CPU_PRESET", "veryfast"),
-            "-crf", str(config.get("CPU_CRF", 17)),
-            "-tune", "animation",  # Crucial: Preserves flat color planes and crisp vector lines
-            "-profile:v", "high",
-            "-level", target_level,
-            "-x264-params", "bframes=4:b-adapt=2:ref=4:aq-mode=3",  # Eliminates flat-color banding
+            "-preset",
+            config.get("CPU_PRESET", "veryfast"),
+            "-crf",
+            str(config.get("CPU_CRF", 17)),
+            "-tune",
+            "animation",  # Crucial: Preserves flat color planes and crisp vector lines
+            "-profile:v",
+            "high",
+            "-level",
+            target_level,
+            "-x264-params",
+            "bframes=4:b-adapt=2:ref=4:aq-mode=3",  # Eliminates flat-color banding
         ]
         if config["ENABLE_VBV"]:
-            base["encoder_args"].extend(["-maxrate", config["VBV_MAXRATE"], "-bufsize", config["VBV_BUFSIZE"]])
+            base["encoder_args"].extend(
+                ["-maxrate", config["VBV_MAXRATE"], "-bufsize", config["VBV_BUFSIZE"]]
+            )
 
     fps = int(config["OUTPUT_FPS"])
     target_pix_fmt = "nv12" if "qsv" in encoder else config.get("OUTPUT_PIX_FMT", "yuv420p")
-    base["encoder_args"].extend([
-        "-pix_fmt", target_pix_fmt,
-        "-colorspace", "bt709",
-        "-color_primaries", "bt709",
-        "-color_trc", "bt709",
-        "-color_range", "tv",
-        "-r", str(fps),
-        "-fps_mode", "cfr",
-        "-video_track_timescale", str(fps * 1000),
-        "-g", str(fps * 2),
-        "-keyint_min", str(fps),
-        "-flags", "+cgop",
-        "-avoid_negative_ts", "make_zero",
-        "-fflags", "+genpts",
-        "-movflags", "+faststart",
-        "-threads", str(config["FFMPEG_THREADS"]),
-    ])
+    base["encoder_args"].extend(
+        [
+            "-pix_fmt",
+            target_pix_fmt,
+            "-colorspace",
+            "bt709",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-color_range",
+            "tv",
+            "-r",
+            str(fps),
+            "-fps_mode",
+            "cfr",
+            "-video_track_timescale",
+            str(fps * 1000),
+            "-g",
+            str(fps * 2),
+            "-keyint_min",
+            str(fps),
+            "-flags",
+            "+cgop",
+            "-avoid_negative_ts",
+            "make_zero",
+            "-fflags",
+            "+genpts",
+            "-movflags",
+            "+faststart",
+            "-threads",
+            str(config["FFMPEG_THREADS"]),
+        ]
+    )
 
     return base
 
@@ -228,7 +282,10 @@ def detect_hardware_encoder(config: dict) -> dict:
     if config.get("ENCODER_FORCE"):
         return _build_encoder_config(config["ENCODER_FORCE"], config)
 
-    is_high_res = int(config.get("OUTPUT_HEIGHT", 1080)) > 1080 or int(config.get("OUTPUT_WIDTH", 1920)) > 1920
+    is_high_res = (
+        int(config.get("OUTPUT_HEIGHT", 1080)) > 1080
+        or int(config.get("OUTPUT_WIDTH", 1920)) > 1920
+    )
 
     if config.get("ENABLE_HARDWARE_ENCODER"):
         if _probe_encoder("h264_nvenc"):
@@ -251,7 +308,7 @@ class CheckpointManager:
         if not os.path.exists(self.checkpoint_path):
             return None
         try:
-            with open(self.checkpoint_path, encoding='utf-8') as f:
+            with open(self.checkpoint_path, encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError):
             return None
@@ -259,12 +316,18 @@ class CheckpointManager:
     def save(self):
         self.data["updated_at"] = datetime.now(timezone.utc).isoformat()
         tmp_path = self.checkpoint_path + ".tmp"
-        with open(tmp_path, 'w', encoding='utf-8') as f:
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(self.data, f, ensure_ascii=False, indent=2)
         os.replace(tmp_path, self.checkpoint_path)
 
-    def initialize(self, total_clips: int, encoder_config: dict, audio_path: str,
-                   audio_duration: float, subtitle_path: str = None):
+    def initialize(
+        self,
+        total_clips: int,
+        encoder_config: dict,
+        audio_path: str,
+        audio_duration: float,
+        subtitle_path: str = None,
+    ):
         now_str = datetime.now(timezone.utc).isoformat()
         # Save render spec signature to detect config changes across runs
         render_signature = f"{self.config.get('OUTPUT_WIDTH')}x{self.config.get('OUTPUT_HEIGHT')}@{self.config.get('OUTPUT_FPS')}"
@@ -344,7 +407,9 @@ class CheckpointManager:
                 pass
 
 
-def build_ken_burns_filter(config: dict, frame_count: int, camera_action: str, pix_fmt: str = "yuv420p") -> str:
+def build_ken_burns_filter(
+    config: dict, frame_count: int, camera_action: str, pix_fmt: str = "yuv420p"
+) -> str:
     """Builds high-precision, sub-pixel stabilized Ken Burns camera motion with BT.709 color accuracy."""
     zoom_min = float(config.get("KEN_BURNS_ZOOM_MIN", 1.0))
     zoom_max = float(config.get("KEN_BURNS_ZOOM_MAX", 1.08))
@@ -366,9 +431,6 @@ def build_ken_burns_filter(config: dict, frame_count: int, camera_action: str, p
     den = max(1, frames - 1)
     t = f"((on-1)/{den})"
     ease = f"({t}*{t}*(3-2*{t}))"
-
-    center_x = "(iw-iw/zoom)/2"
-    center_y = "(ih-ih/zoom)/2"
 
     # Bounded expressions prevent floating-point edge flashes & sub-pixel aliasing
     safe_center_x = "trunc((iw-iw/zoom)*0.5)"
@@ -403,14 +465,25 @@ def build_ken_burns_filter(config: dict, frame_count: int, camera_action: str, p
         x_expr = safe_center_x
         y_expr = safe_center_y
 
-    return (f"scale={upscale_w}:{upscale_h}:force_original_aspect_ratio=increase:{scale_flags},"
-            f"crop={upscale_w}:{upscale_h},"
-            f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d={frames}:s={w}x{h}:fps={fps},"
-            f"trim=start_frame=0:end_frame={frames},setpts=PTS-STARTPTS" + norm)
+    return (
+        f"scale={upscale_w}:{upscale_h}:force_original_aspect_ratio=increase:{scale_flags},"
+        f"crop={upscale_w}:{upscale_h},"
+        f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d={frames}:s={w}x{h}:fps={fps},"
+        f"trim=start_frame=0:end_frame={frames},setpts=PTS-STARTPTS" + norm
+    )
 
 
 def get_audio_duration(audio_path, timeout: float = 60.0) -> float:
-    cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', audio_path]
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        audio_path,
+    ]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         if res.returncode != 0:
@@ -430,7 +503,11 @@ def get_latest_run_folder(runs_path="youtube_runs"):
     elif not os.path.exists(resolved_path):
         return None
 
-    subdirs = [os.path.join(resolved_path, name) for name in os.listdir(resolved_path) if os.path.isdir(os.path.join(resolved_path, name))]
+    subdirs = [
+        os.path.join(resolved_path, name)
+        for name in os.listdir(resolved_path)
+        if os.path.isdir(os.path.join(resolved_path, name))
+    ]
     return max(subdirs, key=os.path.getmtime) if subdirs else None
 
 
@@ -440,15 +517,15 @@ def _parse_pre_planned_prompts_txt(txt_path: str) -> dict:
         return camera_map
 
     try:
-        with open(txt_path, encoding='utf-8') as f:
+        with open(txt_path, encoding="utf-8") as f:
             content = f.read()
 
-        entries = re.split(r'\bIndex:\s*\d+', content)
+        entries = re.split(r"\bIndex:\s*\d+", content)
         for entry in entries:
             if not entry.strip():
                 continue
 
-            ts_match = re.search(r'\[(?:(\d+):)?(\d+):(\d+)\]', entry)
+            ts_match = re.search(r"\[(?:(\d+):)?(\d+):(\d+)\]", entry)
             if not ts_match:
                 continue
 
@@ -468,12 +545,18 @@ def _parse_pre_planned_prompts_txt(txt_path: str) -> dict:
 
             cam_spec = entry.lower()
             cam = "static"
-            if any(k in cam_spec for k in ["push-in", "zoom in", "push in", "zoom_in"]): cam = "zoom_in"
-            elif any(k in cam_spec for k in ["pull-out", "zoom out", "pull out", "zoom_out"]): cam = "zoom_out"
-            elif any(k in cam_spec for k in ["pan left", "tracking left", "pan_left"]): cam = "pan_left"
-            elif any(k in cam_spec for k in ["pan right", "tracking right", "pan_right"]): cam = "pan_right"
-            elif "tilt up" in cam_spec or "upward" in cam_spec or "tilt_up" in cam_spec: cam = "tilt_up"
-            elif "tilt down" in cam_spec or "downward" in cam_spec or "tilt_down" in cam_spec: cam = "tilt_down"
+            if any(k in cam_spec for k in ["push-in", "zoom in", "push in", "zoom_in"]):
+                cam = "zoom_in"
+            elif any(k in cam_spec for k in ["pull-out", "zoom out", "pull out", "zoom_out"]):
+                cam = "zoom_out"
+            elif any(k in cam_spec for k in ["pan left", "tracking left", "pan_left"]):
+                cam = "pan_left"
+            elif any(k in cam_spec for k in ["pan right", "tracking right", "pan_right"]):
+                cam = "pan_right"
+            elif "tilt up" in cam_spec or "upward" in cam_spec or "tilt_up" in cam_spec:
+                cam = "tilt_up"
+            elif "tilt down" in cam_spec or "downward" in cam_spec or "tilt_down" in cam_spec:
+                cam = "tilt_down"
 
             for key in ts_keys:
                 camera_map[key] = cam
@@ -487,12 +570,14 @@ def _parse_pre_planned_prompts_txt(txt_path: str) -> dict:
 def _parse_flow_prompts_cameras(json_path: str, camera_map: dict) -> None:
     """Parses camera decisions from flow_prompts.json, mutating camera_map in place."""
     try:
-        with open(json_path, encoding='utf-8') as f:
+        with open(json_path, encoding="utf-8") as f:
             content = f.read().strip()
 
-        cleaned_content = re.sub(r'\]\s*\[', ',', content)
-        if not cleaned_content.startswith('['): cleaned_content = '[' + cleaned_content
-        if not cleaned_content.endswith(']'): cleaned_content += ']'
+        cleaned_content = re.sub(r"\]\s*\[", ",", content)
+        if not cleaned_content.startswith("["):
+            cleaned_content = "[" + cleaned_content
+        if not cleaned_content.endswith("]"):
+            cleaned_content += "]"
 
         data = json.loads(cleaned_content)
         for item in data:
@@ -512,16 +597,24 @@ def _parse_flow_prompts_cameras(json_path: str, camera_map: dict) -> None:
             vp = item.get("visual_prompt", {})
             cam_spec = ""
             if isinstance(vp, dict):
-                cam_spec = (vp.get("composition_layout", "") + " " +
-                            vp.get("camera_specifications", "") + " " +
-                            vp.get("subject_action_increment", "")).lower()
+                cam_spec = (
+                    vp.get("composition_layout", "")
+                    + " "
+                    + vp.get("camera_specifications", "")
+                    + " "
+                    + vp.get("subject_action_increment", "")
+                ).lower()
             elif isinstance(vp, str):
                 cam_spec = vp.lower()
 
             # Prioritize explicit camera motion specs over generic sequence types
-            if any(k in cam_spec for k in ["zoom_out", "zoom out", "pull out", "pull-out", "pull_out"]):
+            if any(
+                k in cam_spec for k in ["zoom_out", "zoom out", "pull out", "pull-out", "pull_out"]
+            ):
                 cam = "zoom_out"
-            elif any(k in cam_spec for k in ["zoom_in", "zoom in", "push in", "push-in", "push_in"]):
+            elif any(
+                k in cam_spec for k in ["zoom_in", "zoom in", "push in", "push-in", "push_in"]
+            ):
                 cam = "zoom_in"
             elif any(k in cam_spec for k in ["pan_left", "pan left", "tracking left"]):
                 cam = "pan_left"
@@ -546,7 +639,9 @@ def _parse_flow_prompts_cameras(json_path: str, camera_map: dict) -> None:
                 camera_map[key] = cam
                 camera_map[f"{key}_{occ_idx}"] = cam
         if camera_map:
-            print(f"  [CAMERA] Loaded {len(camera_map)} AI camera decisions from 'flow_prompts.json'")
+            print(
+                f"  [CAMERA] Loaded {len(camera_map)} AI camera decisions from 'flow_prompts.json'"
+            )
     except Exception as e:
         print(f"  [WARN] Failed to parse camera decisions from {json_path}: {e}")
 
@@ -554,8 +649,14 @@ def _parse_flow_prompts_cameras(json_path: str, camera_map: dict) -> None:
 def load_ai_camera_decisions(run_folder: str) -> dict:
     camera_map = {}
 
-    json_path = os.path.join(run_folder, "flow_prompts.json") if os.path.isdir(run_folder) else run_folder
-    txt_path = os.path.join(run_folder, "pre_planned_prompts.txt") if os.path.isdir(run_folder) else os.path.join(os.path.dirname(run_folder), "pre_planned_prompts.txt")
+    json_path = (
+        os.path.join(run_folder, "flow_prompts.json") if os.path.isdir(run_folder) else run_folder
+    )
+    txt_path = (
+        os.path.join(run_folder, "pre_planned_prompts.txt")
+        if os.path.isdir(run_folder)
+        else os.path.join(os.path.dirname(run_folder), "pre_planned_prompts.txt")
+    )
 
     # 1. Primary: Try flow_prompts.json
     if os.path.exists(json_path) and os.path.isfile(json_path):
@@ -565,7 +666,9 @@ def load_ai_camera_decisions(run_folder: str) -> dict:
     if not camera_map and os.path.exists(txt_path):
         camera_map = _parse_pre_planned_prompts_txt(txt_path)
         if camera_map:
-            print(f"  [CAMERA] Loaded {len(camera_map)} AI camera decisions from 'pre_planned_prompts.txt'")
+            print(
+                f"  [CAMERA] Loaded {len(camera_map)} AI camera decisions from 'pre_planned_prompts.txt'"
+            )
 
     return camera_map
 
@@ -575,10 +678,10 @@ def load_manual_overrides(txt_path="manual_animations.txt"):
     if not os.path.exists(txt_path):
         return overrides
     try:
-        with open(txt_path, encoding='utf-8') as f:
+        with open(txt_path, encoding="utf-8") as f:
             for line in f:
-                if '=' in line:
-                    k, v = line.split('=', 1)
+                if "=" in line:
+                    k, v = line.split("=", 1)
                     overrides[k.strip()] = v.strip().lower()
     except OSError:
         pass
@@ -595,7 +698,7 @@ def parse_image_timeline(run_folder: str) -> list:
     if not os.path.exists(txt_path):
         return blocks
 
-    with open(txt_path, encoding='utf-8') as f:
+    with open(txt_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -613,14 +716,11 @@ def parse_image_timeline(run_folder: str) -> list:
                 else:
                     timestamp_key = f"{minutes:02d}_{seconds_int:02d}"
 
-                blocks.append({
-                    "sec": total_sec,
-                    "name": timestamp_key,
-                    "raw_sec": seconds_float
-                })
+                blocks.append({"sec": total_sec, "name": timestamp_key, "raw_sec": seconds_float})
 
     blocks.sort(key=lambda x: x["sec"])
     return blocks
+
 
 # -------------------------------------------------------------
 # ACOUSTIC AUDIO-VISUAL SYNC ENGINE (Zero-Dependency Waveform VAD)
@@ -629,6 +729,7 @@ def parse_image_timeline(run_folder: str) -> list:
 
 class AudioSyncAligner:
     """Scans audio waveform energy to snap visual cuts to natural silence/breath boundaries."""
+
     def __init__(self, wav_path: str, window_ms: int = 20):
         self.wav_path = wav_path
         self.window_ms = window_ms
@@ -669,7 +770,7 @@ class AudioSyncAligner:
 
                     # Detect initial speech onset (threshold ~400 amplitude)
                     if not found_voice and rms > 400:
-                        self.leading_silence_sec = (w_idx / float(self.sample_rate))
+                        self.leading_silence_sec = w_idx / float(self.sample_rate)
                         found_voice = True
         except Exception as e:
             print(f"  [WARN] Waveform analysis bypassed: {e}")
@@ -700,7 +801,10 @@ class AudioSyncAligner:
         snapped_sec = (best_step * self.window_ms) / 1000.0
         return snapped_sec
 
-def prepare_synchronized_timeline(image_blocks: list, audio_duration: float, fps: int, audio_path: str = None) -> list:
+
+def prepare_synchronized_timeline(
+    image_blocks: list, audio_duration: float, fps: int, audio_path: str = None
+) -> list:
     """
     ACOUSTICALLY SNAPPED ZERO-DRIFT TIMELINE:
     Snaps cutpoints to natural speech silence troughs using AudioSyncAligner,
@@ -709,7 +813,7 @@ def prepare_synchronized_timeline(image_blocks: list, audio_duration: float, fps
     if not image_blocks:
         return []
     # Anchors the first image to 0.0s to cover intro music/silence before speech
-    image_blocks[0]['sec'] = 0.0
+    image_blocks[0]["sec"] = 0.0
     # 1. Initialize Acoustic Snapper
     aligner = AudioSyncAligner(audio_path) if audio_path and os.path.exists(audio_path) else None
 
@@ -718,18 +822,26 @@ def prepare_synchronized_timeline(image_blocks: list, audio_duration: float, fps
     n = len(image_blocks)
 
     while i < n:
-        raw_sec = image_blocks[i]['sec']
+        raw_sec = image_blocks[i]["sec"]
         # Snap cut point to nearest speech silence pause (within ±200ms)
-        current_sec = aligner.snap_to_nearest_silence(raw_sec, search_radius_sec=0.20) if (aligner and i > 0) else raw_sec
+        current_sec = (
+            aligner.snap_to_nearest_silence(raw_sec, search_radius_sec=0.20)
+            if (aligner and i > 0)
+            else raw_sec
+        )
 
         group = [image_blocks[i]]
         j = i + 1
-        while j < n and abs(image_blocks[j]['sec'] - raw_sec) < 0.15:
+        while j < n and abs(image_blocks[j]["sec"] - raw_sec) < 0.15:
             group.append(image_blocks[j])
             j += 1
 
-        next_raw_sec = image_blocks[j]['sec'] if j < n else audio_duration
-        next_sec = aligner.snap_to_nearest_silence(next_raw_sec, search_radius_sec=0.20) if (aligner and j < n) else next_raw_sec
+        next_raw_sec = image_blocks[j]["sec"] if j < n else audio_duration
+        next_sec = (
+            aligner.snap_to_nearest_silence(next_raw_sec, search_radius_sec=0.20)
+            if (aligner and j < n)
+            else next_raw_sec
+        )
 
         group_duration = max(0.1, next_sec - current_sec)
         group_len = len(group)
@@ -746,12 +858,14 @@ def prepare_synchronized_timeline(image_blocks: list, audio_duration: float, fps
         for sub_idx, item in enumerate(group):
             slice_dur = group_duration * weights[sub_idx]
             sub_end = running_start + slice_dur
-            processed.append({
-                "sec": running_start,
-                "end_sec": sub_end,
-                "name": item["name"],
-                "occurrence": sub_idx + 1
-            })
+            processed.append(
+                {
+                    "sec": running_start,
+                    "end_sec": sub_end,
+                    "name": item["name"],
+                    "occurrence": sub_idx + 1,
+                }
+            )
             running_start = sub_end
         i = j
 
@@ -776,54 +890,67 @@ def prepare_synchronized_timeline(image_blocks: list, audio_duration: float, fps
             ideal_end_frame = int(round(block["end_sec"] * fps))
             remaining_clips = num_clips - 1 - idx
             # Strictly enforce 1-frame minimum while never overflowing total frame budget
-            end_frame = max(start_frame + 1, min(ideal_end_frame, total_audio_frames - remaining_clips))
+            end_frame = max(
+                start_frame + 1, min(ideal_end_frame, total_audio_frames - remaining_clips)
+            )
 
         frame_count = max(1, end_frame - start_frame)
         current_frame = end_frame
 
-        final_timeline.append({
-            "name": block["name"],
-            "sec": start_frame / float(fps),
-            "end_sec": end_frame / float(fps),
-            "start_frame": start_frame,
-            "end_frame": end_frame,
-            "frame_count": frame_count,
-            "duration": frame_count / float(fps),
-            "occurrence": block["occurrence"]
-        })
+        final_timeline.append(
+            {
+                "name": block["name"],
+                "sec": start_frame / float(fps),
+                "end_sec": end_frame / float(fps),
+                "start_frame": start_frame,
+                "end_frame": end_frame,
+                "frame_count": frame_count,
+                "duration": frame_count / float(fps),
+                "occurrence": block["occurrence"],
+            }
+        )
 
     return final_timeline
 
 
 def fix_arabic_srt(input_path, output_path):
-    with open(input_path, encoding="utf-8-sig") as f: content = f.read()
-    with open(output_path, "w", encoding="utf-8") as f: f.write(content)
+    with open(input_path, encoding="utf-8-sig") as f:
+        content = f.read()
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(content)
 
 
 def build_subtitle_style_string(config: dict) -> str:
-    return (f"Fontname={config['SUB_FONT_NAME']},"
-            f"Fontsize={config['SUB_FONT_SIZE']},"
-            f"PrimaryColour={config['SUB_PRIMARY_COLOR']},"
-            f"OutlineColour={config['SUB_OUTLINE_COLOR']},"
-            f"BorderStyle={config['SUB_BORDER_STYLE']},"
-            f"Outline={config['SUB_OUTLINE']},"
-            f"Shadow={config['SUB_SHADOW']},"
-            f"Alignment={config['SUB_ALIGNMENT']},"
-            f"MarginV={config['SUB_MARGIN_V']},"
-            f"Bold={config['SUB_BOLD']}")
+    return (
+        f"Fontname={config['SUB_FONT_NAME']},"
+        f"Fontsize={config['SUB_FONT_SIZE']},"
+        f"PrimaryColour={config['SUB_PRIMARY_COLOR']},"
+        f"OutlineColour={config['SUB_OUTLINE_COLOR']},"
+        f"BorderStyle={config['SUB_BORDER_STYLE']},"
+        f"Outline={config['SUB_OUTLINE']},"
+        f"Shadow={config['SUB_SHADOW']},"
+        f"Alignment={config['SUB_ALIGNMENT']},"
+        f"MarginV={config['SUB_MARGIN_V']},"
+        f"Bold={config['SUB_BOLD']}"
+    )
 
 
 def get_sorted_images(images_dir):
-    if not os.path.exists(images_dir): return []
-    images = [f for f in os.listdir(images_dir) if f.endswith('.png')]
+    if not os.path.exists(images_dir):
+        return []
+    images = [f for f in os.listdir(images_dir) if f.endswith(".png")]
+
     def natural_sort_key(s):
-        return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+        return [int(text) if text.isdigit() else text.lower() for text in re.split(r"(\d+)", s)]
+
     return sorted(images, key=natural_sort_key)
 
 
-def _resolve_image_path(block_name, idx, images_dir, available_images, last_valid_image, occurrence=1):
+def _resolve_image_path(
+    block_name, idx, images_dir, available_images, last_valid_image, occurrence=1
+):
     """
-    Searches both primary 'generated_images' and 'generated_images_duplicates' folders 
+    Searches both primary 'generated_images' and 'generated_images_duplicates' folders
     to resolve standalone images and multi-frame set duplicates.
     """
     ts_name = block_name
@@ -845,21 +972,25 @@ def _resolve_image_path(block_name, idx, images_dir, available_images, last_vali
 
     for tv in ts_variants:
         if occurrence == 1:
-            possible_names.extend([
-                f"{tv}.png",
-                f"{tv}_1.png",
-                f"{tv}_frame1.png",
-                f"{tv}_duplicate_0.png",
-                f"sentence_{idx+1}.png"
-            ])
+            possible_names.extend(
+                [
+                    f"{tv}.png",
+                    f"{tv}_1.png",
+                    f"{tv}_frame1.png",
+                    f"{tv}_duplicate_0.png",
+                    f"sentence_{idx + 1}.png",
+                ]
+            )
         else:
-            possible_names.extend([
-                f"{tv}_{occurrence}.png",
-                f"{tv}_frame{occurrence}.png",
-                f"{tv}_duplicate_{occurrence-1}.png",
-                f"{tv}_duplicate_{occurrence}.png",
-                f"sentence_{idx+1}.png"
-            ])
+            possible_names.extend(
+                [
+                    f"{tv}_{occurrence}.png",
+                    f"{tv}_frame{occurrence}.png",
+                    f"{tv}_duplicate_{occurrence - 1}.png",
+                    f"{tv}_duplicate_{occurrence}.png",
+                    f"sentence_{idx + 1}.png",
+                ]
+            )
 
     # 1. Direct candidate match in search directories
     for s_dir in search_dirs:
@@ -870,14 +1001,14 @@ def _resolve_image_path(block_name, idx, images_dir, available_images, last_vali
 
     # Helper for natural sorting (e.g. 00_15_2.png before 00_15_10.png)
     def natural_sort_key(s):
-        return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+        return [int(text) if text.isdigit() else text.lower() for text in re.split(r"(\d+)", s)]
 
     # 2. Prefix match inside search directories with natural numeric ordering
     for s_dir in search_dirs:
         if os.path.exists(s_dir):
             all_files = os.listdir(s_dir)
             for tv in ts_variants:
-                matching = [f for f in all_files if f.startswith(tv) and f.endswith('.png')]
+                matching = [f for f in all_files if f.startswith(tv) and f.endswith(".png")]
                 matching.sort(key=natural_sort_key)
                 if matching:
                     chosen = matching[min(occurrence - 1, len(matching) - 1)]
@@ -900,15 +1031,25 @@ def _resolve_image_path(block_name, idx, images_dir, available_images, last_vali
 
 def validate_assets(sync_timeline: list, images_dir: str) -> list:
     invalid = []
-    if not sync_timeline: return invalid
+    if not sync_timeline:
+        return invalid
     available_images = get_sorted_images(images_dir)
     last_valid_image = None
 
     for idx, block in enumerate(sync_timeline):
         abs_image_path, _ = _resolve_image_path(
-            block['name'], idx, images_dir, available_images, last_valid_image, occurrence=block['occurrence']
+            block["name"],
+            idx,
+            images_dir,
+            available_images,
+            last_valid_image,
+            occurrence=block["occurrence"],
         )
-        if abs_image_path is None or not os.path.exists(abs_image_path) or os.path.getsize(abs_image_path) == 0:
+        if (
+            abs_image_path is None
+            or not os.path.exists(abs_image_path)
+            or os.path.getsize(abs_image_path) == 0
+        ):
             invalid.append((idx, block.get("name", "unknown")))
         else:
             last_valid_image = abs_image_path
@@ -928,52 +1069,84 @@ def _extract_loudnorm_measured(stderr: str, config: dict, run_folder: str) -> di
             data = None
     if isinstance(data, dict) and "input_i" in data:
         measured["LOUDNORM_MEASURED_I"] = float(data.get("input_i", config["LOUDNORM_MEASURED_I"]))
-        measured["LOUDNORM_MEASURED_TP"] = float(data.get("input_tp", config["LOUDNORM_MEASURED_TP"]))
-        measured["LOUDNORM_MEASURED_LRA"] = float(data.get("input_lra", config["LOUDNORM_MEASURED_LRA"]))
-        measured["LOUDNORM_MEASURED_THRESH"] = float(data.get("input_thresh", config["LOUDNORM_MEASURED_THRESH"]))
+        measured["LOUDNORM_MEASURED_TP"] = float(
+            data.get("input_tp", config["LOUDNORM_MEASURED_TP"])
+        )
+        measured["LOUDNORM_MEASURED_LRA"] = float(
+            data.get("input_lra", config["LOUDNORM_MEASURED_LRA"])
+        )
+        measured["LOUDNORM_MEASURED_THRESH"] = float(
+            data.get("input_thresh", config["LOUDNORM_MEASURED_THRESH"])
+        )
         measured["LOUDNORM_OFFSET"] = float(data.get("target_offset", config["LOUDNORM_OFFSET"]))
     if measured:
         config.update(measured)
         local_config = os.path.join(run_folder, "video_config.local.txt")
         try:
-            with open(local_config, 'w', encoding='utf-8') as f:
-                for k, v in config.items(): f.write(f"{k}={v}\n")
-        except OSError: pass
+            with open(local_config, "w", encoding="utf-8") as f:
+                for k, v in config.items():
+                    f.write(f"{k}={v}\n")
+        except OSError:
+            pass
     return measured
 
 
 def _measure_loudnorm(audio_path: str, config: dict) -> str:
     measure_cmd = [
-        "ffmpeg", "-y", "-nostdin", "-hide_banner", "-loglevel", "info",
-        "-i", audio_path,
-        "-af", (f"loudnorm=I={config['LOUDNORM_I']}:TP={config['LOUDNORM_TP']}:"
-                f"LRA={config['LOUDNORM_LRA']}:print_format=json"),
-        "-f", "null", os.devnull
+        "ffmpeg",
+        "-y",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "info",
+        "-i",
+        audio_path,
+        "-af",
+        (
+            f"loudnorm=I={config['LOUDNORM_I']}:TP={config['LOUDNORM_TP']}:"
+            f"LRA={config['LOUDNORM_LRA']}:print_format=json"
+        ),
+        "-f",
+        "null",
+        os.devnull,
     ]
     try:
-        res = subprocess.run(measure_cmd, capture_output=True, text=True,
-                             encoding='utf-8', errors='ignore', timeout=120)
+        res = subprocess.run(
+            measure_cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            timeout=120,
+        )
         measured = _extract_loudnorm_measured(res.stderr, config, os.path.dirname(audio_path))
         if measured:
-            return (f"loudnorm=I={config['LOUDNORM_I']}:TP={config['LOUDNORM_TP']}:"
-                    f"LRA={config['LOUDNORM_LRA']}:"
-                    f"measured_I={measured['LOUDNORM_MEASURED_I']}:"
-                    f"measured_TP={measured['LOUDNORM_MEASURED_TP']}:"
-                    f"measured_LRA={measured['LOUDNORM_MEASURED_LRA']}:"
-                    f"measured_thresh={measured['LOUDNORM_MEASURED_THRESH']}:"
-                    f"offset={measured['LOUDNORM_OFFSET']}:linear=true:print_format=summary")
+            return (
+                f"loudnorm=I={config['LOUDNORM_I']}:TP={config['LOUDNORM_TP']}:"
+                f"LRA={config['LOUDNORM_LRA']}:"
+                f"measured_I={measured['LOUDNORM_MEASURED_I']}:"
+                f"measured_TP={measured['LOUDNORM_MEASURED_TP']}:"
+                f"measured_LRA={measured['LOUDNORM_MEASURED_LRA']}:"
+                f"measured_thresh={measured['LOUDNORM_MEASURED_THRESH']}:"
+                f"offset={measured['LOUDNORM_OFFSET']}:linear=true:print_format=summary"
+            )
     except Exception as e:
         print(f"  [WARN] Loudnorm measurement failed ({e}), single-pass mode")
-    return (f"loudnorm=I={config['LOUDNORM_I']}:TP={config['LOUDNORM_TP']}:LRA={config['LOUDNORM_LRA']}")
+    return (
+        f"loudnorm=I={config['LOUDNORM_I']}:TP={config['LOUDNORM_TP']}:LRA={config['LOUDNORM_LRA']}"
+    )
 
 
-def build_chunk_filter_graph(config: dict, encoder_config: dict, chunk_timeline: list,
-                             images_dir: str, ai_cameras: dict, manual_cameras: dict,
-                             anim_enabled: bool, global_offset_idx: int = 0) -> tuple:
-    fps = config["OUTPUT_FPS"]
-    w = config["OUTPUT_WIDTH"]
-    h = config["OUTPUT_HEIGHT"]
-
+def build_chunk_filter_graph(
+    config: dict,
+    encoder_config: dict,
+    chunk_timeline: list,
+    images_dir: str,
+    ai_cameras: dict,
+    manual_cameras: dict,
+    anim_enabled: bool,
+    global_offset_idx: int = 0,
+) -> tuple:
     available_images = get_sorted_images(images_dir)
     last_valid_image = None
 
@@ -985,19 +1158,24 @@ def build_chunk_filter_graph(config: dict, encoder_config: dict, chunk_timeline:
     for i, block in enumerate(chunk_timeline):
         global_idx = global_offset_idx + i
         abs_image_path, _ = _resolve_image_path(
-            block['name'], global_idx, images_dir, available_images, last_valid_image, occurrence=block['occurrence']
+            block["name"],
+            global_idx,
+            images_dir,
+            available_images,
+            last_valid_image,
+            occurrence=block["occurrence"],
         )
         if abs_image_path is None:
             continue
         last_valid_image = abs_image_path
 
-        frame_count = block['frame_count']
+        frame_count = block["frame_count"]
 
         camera_action = "static"
         if anim_enabled:
-            camera_action = ai_cameras.get(block['name'], "static")
-            if block['name'] in manual_cameras:
-                camera_action = manual_cameras[block['name']]
+            camera_action = ai_cameras.get(block["name"], "static")
+            if block["name"] in manual_cameras:
+                camera_action = manual_cameras[block["name"]]
 
         kb = build_ken_burns_filter(config, frame_count, camera_action)
 
@@ -1013,7 +1191,9 @@ def build_chunk_filter_graph(config: dict, encoder_config: dict, chunk_timeline:
         raise ValueError("No image clips to render in chunk")
 
     final_format = "nv12" if encoder_config.get("video_codec") == "h264_qsv" else "yuv420p"
-    filter_parts.append(f"{''.join(clip_labels)}concat=n={n_clips}:v=1:a=0,format={final_format}[vout]")
+    filter_parts.append(
+        f"{''.join(clip_labels)}concat=n={n_clips}:v=1:a=0,format={final_format}[vout]"
+    )
 
     filter_complex = "".join(filter_parts)
     return input_args, filter_complex, "vout"
@@ -1090,14 +1270,16 @@ def _execute_chunk_ffmpeg(
             finally:
                 out_queue.put(None)  # EOF sentinel
 
-        pump_thread = threading.Thread(target=_pump_stderr, args=(process.stderr, stderr_queue), daemon=True)
+        pump_thread = threading.Thread(
+            target=_pump_stderr, args=(process.stderr, stderr_queue), daemon=True
+        )
         pump_thread.start()
 
         buffer = ""
         while True:
             if time.time() - start_time > timeout:
                 process.kill()
-                print(f"\n  [ERROR Chunk {chunk_idx+1}] FFmpeg timeout ({timeout}s)")
+                print(f"\n  [ERROR Chunk {chunk_idx + 1}] FFmpeg timeout ({timeout}s)")
                 return None
 
             try:
@@ -1121,51 +1303,77 @@ def _execute_chunk_ffmpeg(
                         h, m, s = map(float, match.groups())
                         current_sec = h * 3600 + m * 60 + s
                         pct = min(100.0, (current_sec / max(0.1, chunk_duration_sec)) * 100)
-                        print(f"\r  [Chunk {chunk_idx+1}] Progress: {pct:.1f}% ({int(current_sec)}s / {int(chunk_duration_sec)}s)", end="", flush=True)
+                        print(
+                            f"\r  [Chunk {chunk_idx + 1}] Progress: {pct:.1f}% ({int(current_sec)}s / {int(chunk_duration_sec)}s)",
+                            end="",
+                            flush=True,
+                        )
 
         process.wait()
 
         if process.returncode != 0:
             full_stderr = "".join(stderr_logs)
-            print(f"\n  [ERROR Chunk {chunk_idx+1}] FFmpeg failed:\n{full_stderr[-1500:]}")
+            print(f"\n  [ERROR Chunk {chunk_idx + 1}] FFmpeg failed:\n{full_stderr[-1500:]}")
             if os.path.exists(chunk_tmp_path):
-                try: os.remove(chunk_tmp_path)
-                except OSError: pass
+                try:
+                    os.remove(chunk_tmp_path)
+                except OSError:
+                    pass
             return None
 
         if os.path.exists(chunk_tmp_path):
             os.replace(chunk_tmp_path, chunk_output_path)
 
-        print(f"\r  [Chunk {chunk_idx+1}] Done! ({chunk_filename})                             ")
+        print(f"\r  [Chunk {chunk_idx + 1}] Done! ({chunk_filename})                             ")
         return chunk_output_path
 
     except Exception as e:
-        print(f"\n  [ERROR Chunk {chunk_idx+1}] Execution error: {e}")
+        print(f"\n  [ERROR Chunk {chunk_idx + 1}] Execution error: {e}")
         return None
 
 
-def render_chunk(config: dict, encoder_config: dict, chunk_timeline: list, images_dir: str,
-                 ai_cameras: dict, manual_cameras: dict, anim_enabled: bool,
-                 chunk_idx: int, temp_dir: str, run_folder: str, global_offset_idx: int) -> str | None:
+def render_chunk(
+    config: dict,
+    encoder_config: dict,
+    chunk_timeline: list,
+    images_dir: str,
+    ai_cameras: dict,
+    manual_cameras: dict,
+    anim_enabled: bool,
+    chunk_idx: int,
+    temp_dir: str,
+    run_folder: str,
+    global_offset_idx: int,
+) -> str | None:
     chunk_filename = f"chunk_{chunk_idx:04d}.mp4"
     chunk_output_path = os.path.abspath(os.path.join(temp_dir, chunk_filename))
 
-    chunk_duration_sec = sum(b['duration'] for b in chunk_timeline)
+    chunk_duration_sec = sum(b["duration"] for b in chunk_timeline)
 
     if os.path.exists(chunk_output_path) and os.path.getsize(chunk_output_path) > 1000:
-        print(f"  [CHUNK {chunk_idx+1}] Already rendered: {chunk_filename} ({chunk_duration_sec:.1f}s)")
+        print(
+            f"  [CHUNK {chunk_idx + 1}] Already rendered: {chunk_filename} ({chunk_duration_sec:.1f}s)"
+        )
         return chunk_output_path
 
     try:
         input_args, filter_complex, video_label = build_chunk_filter_graph(
-            config, encoder_config, chunk_timeline, images_dir, ai_cameras, manual_cameras,
-            anim_enabled, global_offset_idx
+            config,
+            encoder_config,
+            chunk_timeline,
+            images_dir,
+            ai_cameras,
+            manual_cameras,
+            anim_enabled,
+            global_offset_idx,
         )
     except ValueError as e:
-        print(f"  [ERROR Chunk {chunk_idx+1}] {e}")
+        print(f"  [ERROR Chunk {chunk_idx + 1}] {e}")
         return None
 
-    filter_script_path = os.path.abspath(os.path.join(temp_dir, f"filter_chunk_{chunk_idx:04d}.txt"))
+    filter_script_path = os.path.abspath(
+        os.path.join(temp_dir, f"filter_chunk_{chunk_idx:04d}.txt")
+    )
     with open(filter_script_path, "w", encoding="utf-8") as f:
         f.write(filter_complex)
 
@@ -1190,14 +1398,18 @@ def render_chunk(config: dict, encoder_config: dict, chunk_timeline: list, image
 # INSERTION POINT 1: Place directly above assemble_final_video
 # -------------------------------------------------------------
 
+
 class SFXEngine:
     """Selects and schedules contextual SFX based on frame metadata."""
+
     def __init__(self, sfx_root: str, default_volume: float = 0.22):
         self.sfx_root = sfx_root
         self.volume = default_volume
         self.last_heavy_sfx_time = -10.0
 
-    def get_sound_for_block(self, block_meta: dict, timestamp_sec: float) -> tuple[str, float] | None:
+    def get_sound_for_block(
+        self, block_meta: dict, timestamp_sec: float
+    ) -> tuple[str, float] | None:
         """Returns (sfx_file_path, delay_offset_ms) or None."""
         if not os.path.exists(self.sfx_root):
             return None
@@ -1213,7 +1425,9 @@ class SFXEngine:
         # 1. High-Priority Keyword Actions
         if any(k in action for k in ["stamp", "ختم", "stamped", "reject"]):
             category = "stamp"
-        elif any(k in action for k in ["scissors", "قص", "cut", "money", "cash", "دولار", "فاتورة"]):
+        elif any(
+            k in action for k in ["scissors", "قص", "cut", "money", "cash", "دولار", "فاتورة"]
+        ):
             category = "comedy_props"
 
         # 2. Semantic Sequence Type Triggers
@@ -1222,7 +1436,10 @@ class SFXEngine:
                 category = "punchline"
                 self.last_heavy_sfx_time = timestamp_sec
 
-        elif seq_type in ["ARCHIVAL_DOSSIER", "COMPARATIVE_DIAGRAM"] or layout in ["ARCHIVAL_DOSSIER", "COMPARATIVE_DIAGRAM_DESK"]:
+        elif seq_type in ["ARCHIVAL_DOSSIER", "COMPARATIVE_DIAGRAM"] or layout in [
+            "ARCHIVAL_DOSSIER",
+            "COMPARATIVE_DIAGRAM_DESK",
+        ]:
             category = "paper"
 
         elif seq_type == "SCIENTIFIC_BLUEPRINT" or layout == "RETRO_BLUEPRINT":
@@ -1239,14 +1456,21 @@ class SFXEngine:
         cat_dir = os.path.join(self.sfx_root, category)
         if os.path.exists(cat_dir):
             valid_exts = (".wav", ".mp3", ".ogg", ".m4a", ".flac", ".aac")
-            files = [os.path.join(cat_dir, f) for f in os.listdir(cat_dir) if f.lower().endswith(valid_exts)]
+            files = [
+                os.path.join(cat_dir, f)
+                for f in os.listdir(cat_dir)
+                if f.lower().endswith(valid_exts)
+            ]
             if files:
                 return random.choice(files), offset_ms
         return None
 
-def build_dynamic_ass_subtitles(raw_transcript_path: str, output_ass_path: str, config: dict, total_duration: float = 0.0):
+
+def build_dynamic_ass_subtitles(
+    raw_transcript_path: str, output_ass_path: str, config: dict, total_duration: float = 0.0
+):
     """
-    Generates broadcast-grade Advanced SubStation Alpha (.ass) subtitles with 
+    Generates broadcast-grade Advanced SubStation Alpha (.ass) subtitles with
     dynamic active-word color highlights and Arabic typography shaping.
     """
     if not os.path.exists(raw_transcript_path):
@@ -1255,15 +1479,15 @@ def build_dynamic_ass_subtitles(raw_transcript_path: str, output_ass_path: str, 
     font_name = config.get("SUB_FONT_NAME", "Arial")
     font_size = int(config.get("SUB_FONT_SIZE", 32))
     # ASS uses BGR hex format (&H00BBGGRR)
-    primary_color = "&H00FFFFFF"      # Crisp White
-    highlight_color = "&H003EB0FF"    # Warm Amber (#E09F3E in BGR)
-    outline_color = "&H00000000"      # Pure Black
+    primary_color = "&H00FFFFFF"  # Crisp White
+    highlight_color = "&H003EB0FF"  # Warm Amber (#E09F3E in BGR)
+    outline_color = "&H00000000"  # Pure Black
     margin_v = int(config.get("SUB_MARGIN_V", 65))
 
     ass_header = f"""[Script Info]
 ScriptType: v4.00+
-PlayResX: {config.get('OUTPUT_WIDTH', 2560)}
-PlayResY: {config.get('OUTPUT_HEIGHT', 1440)}
+PlayResX: {config.get("OUTPUT_WIDTH", 2560)}
+PlayResY: {config.get("OUTPUT_HEIGHT", 1440)}
 WrapStyle: 0
 ScaledBorderAndShadow: yes
 
@@ -1299,8 +1523,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     events = []
     for i, (start_sec, text) in enumerate(lines):
-        end_sec = lines[i + 1][0] if i < len(lines) - 1 else (total_duration if total_duration > start_sec else start_sec + 3.5)
-        duration = max(0.5, end_sec - start_sec)
+        end_sec = (
+            lines[i + 1][0]
+            if i < len(lines) - 1
+            else (total_duration if total_duration > start_sec else start_sec + 3.5)
+        )
 
         words = text.split()
         if not words:
@@ -1310,8 +1537,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         end_str = format_ass_time(end_sec)
 
         # Build dynamic word-by-word timing tags
-        word_dur_cs = int((duration * 100) / max(1, len(words)))  # Centiseconds per word
-        highlighted_body = "".join([f"{{\\c{highlight_color}\\t(0,200,\\fscx105\\fscy105)}}{w}{{\\c{primary_color}\\fscx100\\fscy100}} " for w in words])
+        highlighted_body = "".join(
+            [
+                f"{{\\c{highlight_color}\\t(0,200,\\fscx105\\fscy105)}}{w}{{\\c{primary_color}\\fscx100\\fscy100}} "
+                for w in words
+            ]
+        )
 
         event_line = f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{highlighted_body.strip()}"
         events.append(event_line)
@@ -1320,6 +1551,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         f.write(ass_header + "\n".join(events) + "\n")
 
     return output_ass_path
+
 
 def _build_audio_filter_chain(
     config: dict,
@@ -1336,7 +1568,9 @@ def _build_audio_filter_chain(
 
     # 1. Build Sample-Exact SFX Stems from sync_timeline
     raw_sfx_dir = config.get("SFX_DIR", "assets/sfx")
-    sfx_resolved_path = raw_sfx_dir if os.path.isabs(raw_sfx_dir) else os.path.join(script_dir, raw_sfx_dir)
+    sfx_resolved_path = (
+        raw_sfx_dir if os.path.isabs(raw_sfx_dir) else os.path.join(script_dir, raw_sfx_dir)
+    )
 
     if config.get("ENABLE_SFX") and os.path.exists(sfx_resolved_path) and sync_timeline:
         sfx_engine = SFXEngine(sfx_resolved_path, float(config.get("SFX_DEFAULT_VOLUME", 0.22)))
@@ -1372,7 +1606,9 @@ def _build_audio_filter_chain(
     has_bgm = config.get("ENABLE_BGM", False) and os.path.exists(bgm_path)
     if has_bgm:
         bgm_idx = len(audio_inputs) // 2 + 1
-        audio_inputs.extend(["-stream_loop", "-1", "-i", os.path.abspath(bgm_path).replace("\\", "/")])
+        audio_inputs.extend(
+            ["-stream_loop", "-1", "-i", os.path.abspath(bgm_path).replace("\\", "/")]
+        )
         # Lowers music volume under voice automatically
         filter_parts.append(
             f"[{bgm_idx}:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=0.15[bgm_raw];"
@@ -1440,7 +1676,11 @@ def _execute_final_assembly(
                         h, m, s = map(float, match.groups())
                         current_sec = h * 3600 + m * 60 + s
                         pct = min(100.0, (current_sec / max(0.1, total_duration)) * 100)
-                        print(f"\r  [Assembly] Progress: {pct:.1f}% ({int(current_sec)}s / {int(total_duration)}s)", end="", flush=True)
+                        print(
+                            f"\r  [Assembly] Progress: {pct:.1f}% ({int(current_sec)}s / {int(total_duration)}s)",
+                            end="",
+                            flush=True,
+                        )
 
         process.wait()
         print("\n")
@@ -1458,9 +1698,15 @@ def _execute_final_assembly(
         return False
 
 
-def assemble_final_video(config: dict, encoder_config: dict, chunk_files: list[str],
-                         audio_path: str, subtitle_path: str | None, run_folder: str,
-                         sync_timeline: list = None) -> bool:
+def assemble_final_video(
+    config: dict,
+    encoder_config: dict,
+    chunk_files: list[str],
+    audio_path: str,
+    subtitle_path: str | None,
+    run_folder: str,
+    sync_timeline: list = None,
+) -> bool:
     output_path = os.path.abspath(os.path.join(run_folder, "youtube_ready_video.mp4"))
     temp_dir = os.path.abspath(os.path.join(run_folder, "temp_clips"))
     concat_txt_path = os.path.join(temp_dir, "concat_chunks.txt")
@@ -1481,21 +1727,28 @@ def assemble_final_video(config: dict, encoder_config: dict, chunk_files: list[s
     video_codec_args = ["-c:v", "copy"]
 
     if subtitle_path and os.path.exists(subtitle_path):
-        safe_sub = os.path.abspath(subtitle_path).replace("\\", "/").replace(":", "\\:").replace("'", "'\\\\''")
+        safe_sub = (
+            os.path.abspath(subtitle_path)
+            .replace("\\", "/")
+            .replace(":", "\\:")
+            .replace("'", "'\\\\''")
+        )
 
         # Auto-detect local project fonts directory (assets/fonts)
         fonts_dir = os.path.join(script_dir, "assets", "fonts")
         font_arg = ""
         if os.path.exists(fonts_dir):
-            safe_fonts = os.path.abspath(fonts_dir).replace("\\", "/").replace(":", "\\:").replace("'", "'\\\\''")
+            safe_fonts = (
+                os.path.abspath(fonts_dir)
+                .replace("\\", "/")
+                .replace(":", "\\:")
+                .replace("'", "'\\\\''")
+            )
             font_arg = f":fontsdir='{safe_fonts}'"
 
         filter_parts.append(f"[0:v]subtitles='{safe_sub}'{font_arg}[vout]")
         video_label = "[vout]"
-        video_codec_args = [
-            "-c:v", encoder_config["video_codec"],
-            *encoder_config["encoder_args"]
-        ]
+        video_codec_args = ["-c:v", encoder_config["video_codec"], *encoder_config["encoder_args"]]
 
     filter_complex = "".join(filter_parts)
     filter_script_path = os.path.join(temp_dir, "filter_final_assembly.txt")
@@ -1503,18 +1756,33 @@ def assemble_final_video(config: dict, encoder_config: dict, chunk_files: list[s
         f.write(filter_complex)
 
     cmd = [
-        "ffmpeg", "-y", "-hide_banner", "-loglevel", config["FFMPEG_LOGLEVEL"],
-        "-f", "concat", "-safe", "0", "-i", concat_txt_path,
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        config["FFMPEG_LOGLEVEL"],
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        concat_txt_path,
         *audio_inputs,
-        "-filter_complex_script", filter_script_path,
-        "-map", video_label,
-        "-map", "[aout]",
+        "-filter_complex_script",
+        filter_script_path,
+        "-map",
+        video_label,
+        "-map",
+        "[aout]",
         *video_codec_args,
-        "-c:a", config["AUDIO_CODEC"],
-        "-b:a", config["AUDIO_BITRATE"],
-        "-ar", str(config["AUDIO_SAMPLE_RATE"]),
+        "-c:a",
+        config["AUDIO_CODEC"],
+        "-b:a",
+        config["AUDIO_BITRATE"],
+        "-ar",
+        str(config["AUDIO_SAMPLE_RATE"]),
         "-shortest",
-        output_path
+        output_path,
     ]
 
     print("\n[Final Assembly] Combining chunk videos + audio track...")
@@ -1525,7 +1793,9 @@ def assemble_final_video(config: dict, encoder_config: dict, chunk_files: list[s
 
 
 def _signature_drift_reason(data: dict, config: dict, expected_codec: str) -> str:
-    current_sig = f"{config.get('OUTPUT_WIDTH')}x{config.get('OUTPUT_HEIGHT')}@{config.get('OUTPUT_FPS')}"
+    current_sig = (
+        f"{config.get('OUTPUT_WIDTH')}x{config.get('OUTPUT_HEIGHT')}@{config.get('OUTPUT_FPS')}"
+    )
     if data.get("render_signature") != current_sig:
         return "dimensions/FPS"
     stored_duration = data.get("audio_duration")
@@ -1555,7 +1825,9 @@ def _checkpoint_resume_gate(
             checkpoint.data = None
 
     if config["ENABLE_CHECKPOINT_RESUME"] and checkpoint and checkpoint.data is not None:
-        if checkpoint.data.get("completed_clips") == checkpoint.data.get("total_clips") and os.path.exists(output_path):
+        if checkpoint.data.get("completed_clips") == checkpoint.data.get(
+            "total_clips"
+        ) and os.path.exists(output_path):
             print("  [RESUME] Video render already complete. Skipping.")
             return True
 
@@ -1577,7 +1849,11 @@ def _render_all_chunks_parallel(
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     num_chunks = len(chunks)
-    max_workers = min(2, num_chunks) if "qsv" in encoder_config.get("video_codec", "") else min(2, max(1, os.cpu_count() // 2))
+    max_workers = (
+        min(2, num_chunks)
+        if "qsv" in encoder_config.get("video_codec", "")
+        else min(2, max(1, os.cpu_count() // 2))
+    )
     print(f"  [RENDER ENGINE] Parallel rendering across {max_workers} worker threads...")
 
     rendered_map = {}
@@ -1585,10 +1861,20 @@ def _render_all_chunks_parallel(
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
             executor.submit(
-                render_chunk, config, encoder_config, chunk_timeline, images_dir,
-                ai_cameras, manual_cameras, config["ENABLE_ANIMATIONS"],
-                chunk_idx, temp_dir, run_folder, chunk_idx * chunk_size
-            ): chunk_idx for chunk_idx, chunk_timeline in enumerate(chunks)
+                render_chunk,
+                config,
+                encoder_config,
+                chunk_timeline,
+                images_dir,
+                ai_cameras,
+                manual_cameras,
+                config["ENABLE_ANIMATIONS"],
+                chunk_idx,
+                temp_dir,
+                run_folder,
+                chunk_idx * chunk_size,
+            ): chunk_idx
+            for chunk_idx, chunk_timeline in enumerate(chunks)
         }
 
         for future in as_completed(futures):
@@ -1600,14 +1886,21 @@ def _render_all_chunks_parallel(
                 else:
                     failed = True
             except Exception as e:
-                print(f"  [ERROR] Chunk {c_idx+1} raised exception: {e}")
+                print(f"  [ERROR] Chunk {c_idx + 1} raised exception: {e}")
                 failed = True
 
     return rendered_map, failed
 
 
-def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list, images_dir: str,
-                        audio_path: str, run_folder: str, checkpoint: CheckpointManager = None) -> bool:
+def run_chunked_compile(
+    config: dict,
+    encoder_config: dict,
+    sync_timeline: list,
+    images_dir: str,
+    audio_path: str,
+    run_folder: str,
+    checkpoint: CheckpointManager = None,
+) -> bool:
     output_path = os.path.abspath(os.path.join(run_folder, "youtube_ready_video.mp4"))
 
     if _checkpoint_resume_gate(config, checkpoint, output_path, encoder_config["video_codec"]):
@@ -1622,11 +1915,15 @@ def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list,
         if os.path.exists(transcript_source):
             ass_path = os.path.join(run_folder, "dynamic_subtitles.ass")
             audio_duration = config.get("_audio_duration", 0.0)
-            subtitle_path = build_dynamic_ass_subtitles(transcript_source, ass_path, config, total_duration=audio_duration)
+            subtitle_path = build_dynamic_ass_subtitles(
+                transcript_source, ass_path, config, total_duration=audio_duration
+            )
 
     if config["ENABLE_CHECKPOINT_RESUME"] and checkpoint and checkpoint.data is None:
         audio_duration = config.get("_audio_duration", 0.0)
-        checkpoint.initialize(len(sync_timeline), encoder_config, audio_path, audio_duration, subtitle_path)
+        checkpoint.initialize(
+            len(sync_timeline), encoder_config, audio_path, audio_duration, subtitle_path
+        )
 
     ai_cameras = load_ai_camera_decisions(run_folder)
     manual_cameras = load_manual_overrides("manual_animations.txt")
@@ -1639,13 +1936,15 @@ def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list,
     chunk_size = config.get("CHUNK_SIZE", 40)
     total_clips = len(sync_timeline)
 
-    chunks = [sync_timeline[i:i + chunk_size] for i in range(0, total_clips, chunk_size)]
+    chunks = [sync_timeline[i : i + chunk_size] for i in range(0, total_clips, chunk_size)]
     num_chunks = len(chunks)
 
     current_encoder = encoder_config
 
     while True:
-        print(f"\n[Chunked Render] Processing {total_clips} synchronized clips in {num_chunks} chunk(s) (batch size: {chunk_size}) using {current_encoder['video_codec']}...")
+        print(
+            f"\n[Chunked Render] Processing {total_clips} synchronized clips in {num_chunks} chunk(s) (batch size: {chunk_size}) using {current_encoder['video_codec']}..."
+        )
 
         rendered_map, failed = _render_all_chunks_parallel(
             config,
@@ -1662,7 +1961,15 @@ def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list,
         chunk_files = [rendered_map[i] for i in range(num_chunks) if i in rendered_map]
 
         if not failed and len(chunk_files) == num_chunks:
-            ok = assemble_final_video(config, current_encoder, chunk_files, audio_path, subtitle_path, run_folder, sync_timeline=sync_timeline)
+            ok = assemble_final_video(
+                config,
+                current_encoder,
+                chunk_files,
+                audio_path,
+                subtitle_path,
+                run_folder,
+                sync_timeline=sync_timeline,
+            )
             if ok:
                 return True
             else:
@@ -1671,12 +1978,16 @@ def run_chunked_compile(config: dict, encoder_config: dict, sync_timeline: list,
         if failed:
             if current_encoder["video_codec"] == "libx264":
                 return False
-            print("\n  [FALLBACK] Hardware encoder failed. Purging incompatible chunks & retrying with libx264...")
+            print(
+                "\n  [FALLBACK] Hardware encoder failed. Purging incompatible chunks & retrying with libx264..."
+            )
             # Purge partial or mismatched chunks so all chunks are uniformly rendered with libx264
             for fname in os.listdir(temp_dir):
                 if fname.startswith("chunk_") and fname.endswith(".mp4"):
-                    try: os.remove(os.path.join(temp_dir, fname))
-                    except OSError: pass
+                    try:
+                        os.remove(os.path.join(temp_dir, fname))
+                    except OSError:
+                        pass
             current_encoder = _build_encoder_config("libx264", config)
 
 
@@ -1691,8 +2002,14 @@ def verify_master_video(output_path: str, expected_duration: float) -> bool:
         return False
     try:
         cmd = [
-            "ffprobe", "-v", "error", "-show_entries",
-            "format=duration:stream=codec_type", "-of", "json", output_path
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration:stream=codec_type",
+            "-of",
+            "json",
+            output_path,
         ]
         # Increased timeout from 10s to 60s for large 1440p files
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
@@ -1705,7 +2022,9 @@ def verify_master_video(output_path: str, expected_duration: float) -> bool:
         file_dur = float(data.get("format", {}).get("duration", 0.0))
         dur_diff = abs(file_dur - expected_duration)
 
-        print(f"  [VERIFY] Video Duration: {file_dur:.2f}s | Audio Expected: {expected_duration:.2f}s (Diff: {dur_diff:.2f}s)")
+        print(
+            f"  [VERIFY] Video Duration: {file_dur:.2f}s | Audio Expected: {expected_duration:.2f}s (Diff: {dur_diff:.2f}s)"
+        )
         print(f"  [VERIFY] Streams Detected: Video={has_video}, Audio={has_audio}")
 
         # Ensure both streams are present and duration is within a 2.0s tolerance
@@ -1745,7 +2064,9 @@ def main(run_folder: str = None):
         audio_path = raw_audio
         print(f"  [AUDIO] Audacity track missing. Fallback to Raw Voice Track ('{audio_path}')")
     else:
-        print(f"[FATAL ERROR] No voice track found in '{latest_run}'. Expected 'full_episode_voice.wav'.")
+        print(
+            f"[FATAL ERROR] No voice track found in '{latest_run}'. Expected 'full_episode_voice.wav'."
+        )
         sys.exit(1)
 
     audio_duration = get_audio_duration(audio_path, timeout=config.get("FFPROBE_TIMEOUT", 60))
@@ -1757,7 +2078,9 @@ def main(run_folder: str = None):
     raw_image_blocks = parse_image_timeline(latest_run)
 
     # 2. Build ZERO-DRIFT synchronized timeline with Acoustic Waveform Snapping
-    sync_timeline = prepare_synchronized_timeline(raw_image_blocks, audio_duration, config["OUTPUT_FPS"], audio_path=audio_path)
+    sync_timeline = prepare_synchronized_timeline(
+        raw_image_blocks, audio_duration, config["OUTPUT_FPS"], audio_path=audio_path
+    )
     if not sync_timeline:
         print(f"[FATAL ERROR] Timeline is empty. No valid timestamps found in '{latest_run}'.")
         sys.exit(1)
@@ -1765,7 +2088,9 @@ def main(run_folder: str = None):
     print("Validating image assets...")
     invalid_assets = validate_assets(sync_timeline, images_dir)
     if invalid_assets:
-        print(f"[FATAL ERROR] Image validation failed. Found {len(invalid_assets)} missing image assets:")
+        print(
+            f"[FATAL ERROR] Image validation failed. Found {len(invalid_assets)} missing image assets:"
+        )
         for idx, name in invalid_assets:
             print(f"  - Clip {idx}: {name}")
         sys.exit(1)
@@ -1776,7 +2101,9 @@ def main(run_folder: str = None):
     checkpoint = CheckpointManager(latest_run, config)
 
     # 3. Execute Chunked Zero-Drift Render & Health Verification
-    ok = run_chunked_compile(config, encoder_config, sync_timeline, images_dir, audio_path, latest_run, checkpoint)
+    ok = run_chunked_compile(
+        config, encoder_config, sync_timeline, images_dir, audio_path, latest_run, checkpoint
+    )
     output_mp4 = os.path.join(latest_run, "youtube_ready_video.mp4")
 
     if ok and verify_master_video(output_mp4, audio_duration):

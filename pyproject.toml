@@ -88,6 +88,16 @@ extend-exclude = [
     "venv",
     ".git",
     "__pycache__",
+    "legacy_and_utilities",
+    ".docs",
+    ".tests",
+    ".superpowers",
+    ".gemini",
+    "Implementation plans",
+    "Security Division Analysis",
+    "graphify-out",
+    "docs",
+    "*.md",
 ]
 
 [tool.mypy]

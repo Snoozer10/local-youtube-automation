@@ -2,16 +2,22 @@ import os
 import re
 import sys
 import time
-import subprocess
-import base64
+
 from playwright.sync_api import sync_playwright
-from utils import atomic_write_json, get_config_value, launch_browser_with_profile, rotate_profile_index, kill_cdp_chrome
+
+from utils import (
+    atomic_write_json,
+    get_config_value,
+    kill_cdp_chrome,
+    launch_browser_with_profile,
+    rotate_profile_index,
+)
 
 # Force standard streams to use UTF-8 to prevent Windows terminal encoding errors with Arabic text
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')
-if hasattr(sys.stderr, 'reconfigure'):
-    sys.stderr.reconfigure(encoding='utf-8')
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 
 # 1. Parse Pre-Planned Storyboard Prompts
@@ -19,17 +25,17 @@ def parse_pre_planned_prompts_string(content):
     # Clean up common markdown bold markers, system BOMs, and brackets
     content = content.replace("\ufeff", "").replace("*", "")
     lines = content.splitlines()
-    
+
     prompts = []
     current_idx = None
     current_prompt = []
     is_reading_prompt = False
-    
+
     for line in lines:
         line_str = line.strip()
         if not line_str:
             continue
-            
+
         index_match = re.search(r"\bIndex:\s*(\d+)", line_str, re.IGNORECASE)
         if index_match:
             # Save the accumulated prompt before moving to the next index
@@ -39,7 +45,7 @@ def parse_pre_planned_prompts_string(content):
             current_prompt = []
             is_reading_prompt = False
             continue
-            
+
         prompt_match = re.search(r"\bVisual\s+Prompt:\s*(.*)", line_str, re.IGNORECASE)
         if prompt_match:
             is_reading_prompt = True
@@ -47,23 +53,27 @@ def parse_pre_planned_prompts_string(content):
             if prompt_content:
                 current_prompt.append(prompt_content)
             continue
-            
+
         if is_reading_prompt:
-            if line_str.startswith("===") or "gemini said" in line_str.lower() or "creating your image" in line_str.lower():
+            if (
+                line_str.startswith("===")
+                or "gemini said" in line_str.lower()
+                or "creating your image" in line_str.lower()
+            ):
                 continue
             current_prompt.append(line_str)
-            
+
     # Append the final parsed prompt
     if current_idx is not None and current_prompt:
         prompts.append((current_idx, " ".join(current_prompt).strip()))
-        
+
     return prompts
 
 
 def parse_pre_planned_prompts(file_path):
     if not os.path.exists(file_path):
         return []
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         content = f.read()
     return parse_pre_planned_prompts_string(content)
 
@@ -73,7 +83,7 @@ def find_input_box(page):
     selectors = [
         "rich-textarea div[contenteditable='true']",
         "rich-textarea [contenteditable='true']",
-        "div[contenteditable='true'][role='textbox']"
+        "div[contenteditable='true'][role='textbox']",
     ]
     for sel in selectors:
         try:
@@ -98,7 +108,7 @@ def find_send_button(page):
         "div[class*='send-button-container'] button",
         "button[id*='send']",
         "button:has(svg)",
-        "rich-textarea + div button"
+        "rich-textarea + div button",
     ]
     for sel in selectors:
         try:
@@ -108,19 +118,24 @@ def find_send_button(page):
                 aria_label = loc.get_attribute("aria-label") or ""
                 btn_text = loc.evaluate("el => el.innerText") or ""
                 combined_check = (aria_label + btn_text).lower()
-                if "stop" in combined_check or "cancel" in combined_check or "interrupt" in combined_check:
+                if (
+                    "stop" in combined_check
+                    or "cancel" in combined_check
+                    or "interrupt" in combined_check
+                ):
                     continue
                 return loc
         except Exception:
             continue
     return None
 
+
 def is_gemini_generating(page):
     """Returns True if Gemini is actively generating text (Stop/Interrupt button is visible)."""
     stop_selectors = [
         "button[aria-label*='Stop' i]",
         "button[aria-label*='Cancel' i]",
-        "button[aria-label*='Interrupt' i]"
+        "button[aria-label*='Interrupt' i]",
     ]
     for sel in stop_selectors:
         try:
@@ -153,7 +168,7 @@ def fill_textbox(page, textbox, text):
 
 def select_gemini_model(page, target_model="Flash-Lite"):
     print(f"[SYSTEM] Attempting to select Gemini model: {target_model}")
-    
+
     # 1. Find the model selector trigger button (now embedded in the chat bar)
     trigger_selectors = [
         "button[aria-haspopup='menu']:has-text('Flash')",
@@ -164,7 +179,7 @@ def select_gemini_model(page, target_model="Flash-Lite"):
         "button[aria-label*='model' i]",
         "button[aria-label*='Model' i]",
     ]
-    
+
     btn = None
     for sel in trigger_selectors:
         try:
@@ -177,30 +192,35 @@ def select_gemini_model(page, target_model="Flash-Lite"):
                 break
         except Exception:
             continue
-            
+
     if not btn:
         print("[WARNING] Could not find Gemini model dropdown trigger button in UI.")
         return False
-        
+
     try:
         # 2. Check if desired model is already active
         current_text = btn.inner_text().strip() if btn.inner_text() else ""
         if target_model.lower() in current_text.lower():
             print(f"[SYSTEM] Model '{target_model}' is already active.")
             return True
-            
+
         # 3. Click to open the menu
         btn.click()
-        time.sleep(1.5) # Wait for Material UI menu animation to render
-        
+        time.sleep(1.5)  # Wait for Material UI menu animation to render
+
         # 4. Find the option in the dropdown using a flexible regex filter
         import re
-        opt = page.locator("[role='menuitem'], [role='option'], li").filter(has_text=re.compile(target_model, re.IGNORECASE)).first
-        
+
+        opt = (
+            page.locator("[role='menuitem'], [role='option'], li")
+            .filter(has_text=re.compile(target_model, re.IGNORECASE))
+            .first
+        )
+
         if not opt.is_visible():
             # Fallback to any visible element containing the text
             opt = page.locator(f'text="{target_model}"').filter(visible=True).last
-            
+
         if opt.is_visible():
             opt.click()
             print(f"[SYSTEM] Successfully switched model to {target_model}")
@@ -208,17 +228,17 @@ def select_gemini_model(page, target_model="Flash-Lite"):
             return True
         else:
             print(f"[WARNING] Target model '{target_model}' not visible in dropdown menu.")
-            
+
     except Exception as e:
         print(f"[WARNING] Model selection process failed: {e}")
-        
+
     return False
 
 
 def wait_for_gemini_response(page, initial_count, timeout_seconds=90):
     start_time = time.time()
     new_response_found = False
-    
+
     while time.time() - start_time < 30:
         try:
             if page.locator("model-response").count() > initial_count:
@@ -227,22 +247,24 @@ def wait_for_gemini_response(page, initial_count, timeout_seconds=90):
         except Exception:
             pass
         time.sleep(0.5)
-        
+
     if not new_response_found:
         print("Warning: Timeout waiting for response to start.")
         return None
-        
+
     print("Waiting for response text to settle...")
     last_text = ""
     stable_count = 0
     last_log_time = time.time()
-    
+
     while time.time() - start_time < timeout_seconds:
         elapsed = time.time() - start_time
         if time.time() - last_log_time >= 15:
-            print(f"Still waiting for text stability... (elapsed: {elapsed:.1f}s / {timeout_seconds}s)")
+            print(
+                f"Still waiting for text stability... (elapsed: {elapsed:.1f}s / {timeout_seconds}s)"
+            )
             last_log_time = time.time()
-            
+
         try:
             # Periodically bring page to front to prevent background throttling
             if int(elapsed) % 10 == 0:
@@ -250,17 +272,17 @@ def wait_for_gemini_response(page, initial_count, timeout_seconds=90):
                     page.bring_to_front()
                 except Exception:
                     pass
-            
+
             last_response = page.locator("model-response").last
             current_text = last_response.evaluate("el => el.innerText", timeout=5000).strip()
-            
+
             if current_text and current_text == last_text:
                 if is_gemini_generating(page):
                     # Gemini is still active (generating slowly) — do not stabilize yet
                     stable_count = 0
                 else:
                     stable_count += 1
-                    
+
                 if stable_count >= 4:  # Stable for 4 consecutive seconds
                     # === ISSUE 3: ONE-TIME SMOOTH SCROLL EXECUTION ===
                     page.evaluate("""
@@ -268,7 +290,7 @@ def wait_for_gemini_response(page, initial_count, timeout_seconds=90):
                             // 1. Locate and scroll the main chat container
                             const mainContainer = Array.from(document.querySelectorAll('*')).find(el => {
                                 const rect = el.getBoundingClientRect();
-                                return rect.left > 200 && el.scrollHeight > el.clientHeight && 
+                                return rect.left > 200 && el.scrollHeight > el.clientHeight &&
                                        getComputedStyle(el).overflowY !== 'hidden';
                             });
                             if (mainContainer) {
@@ -282,7 +304,7 @@ def wait_for_gemini_response(page, initial_count, timeout_seconds=90):
                             const leftSidebar = Array.from(document.querySelectorAll('*')).find(el => {
                                 const rect = el.getBoundingClientRect();
                                 return rect.left >= 0 && rect.left < 200 && rect.width > 50 &&
-                                       el.scrollHeight > el.clientHeight && 
+                                       el.scrollHeight > el.clientHeight &&
                                        getComputedStyle(el).overflowY !== 'hidden';
                             });
                             if (leftSidebar) {
@@ -290,10 +312,12 @@ def wait_for_gemini_response(page, initial_count, timeout_seconds=90):
                             }
                         })()
                     """)
-                    time.sleep(1) # Allow 1 second for the smooth scroll animation to finish visually
-                    
+                    time.sleep(
+                        1
+                    )  # Allow 1 second for the smooth scroll animation to finish visually
+
                     if current_text.startswith("Gemini said"):
-                        current_text = current_text[len("Gemini said"):].strip()
+                        current_text = current_text[len("Gemini said") :].strip()
                     return current_text
             else:
                 last_text = current_text
@@ -301,14 +325,14 @@ def wait_for_gemini_response(page, initial_count, timeout_seconds=90):
         except Exception:
             pass
         time.sleep(1)
-        
+
     print(f"Warning: Response timed out after {timeout_seconds} seconds.")
     return None
 
 
 def send_handover_alignment(page, visual_style, visuals_plan, carryover_anchor=""):
     print("\n[ALIGNMENT] Aligning style system configuration...")
-    
+
     payload = (
         "We are generating a series of consecutive images for a continuous animation sequence. "
         "STRICT CONTINUITY RULE: Character design, face details, hoodie fit, background environment, "
@@ -345,7 +369,7 @@ def send_handover_alignment(page, visual_style, visuals_plan, carryover_anchor="
 def get_chrome_path():
     chrome_paths = [
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
     ]
     for path in chrome_paths:
         if os.path.exists(path):
@@ -360,14 +384,14 @@ def scan_batch_folders():
     if not os.path.exists(runs_dir):
         print(f"Error: '{runs_dir}' folder not found in workspace.")
         sys.exit(1)
-        
+
     for item in os.listdir(runs_dir):
         subfolder = os.path.join(runs_dir, item)
         if os.path.isdir(subfolder):
             script_file = os.path.join(subfolder, "timestamped_transcript.txt")
             if os.path.exists(script_file) and os.path.getsize(script_file) > 0:
                 batch_queue.append(subfolder)
-                
+
     return batch_queue
 
 
@@ -384,13 +408,13 @@ def load_local_or_global_config(subfolder, config_filename, default_text=""):
         local_path = os.path.join(subfolder, fname)
         if os.path.exists(local_path):
             print(f"  Using local config: {local_path}")
-            with open(local_path, "r", encoding="utf-8") as f:
+            with open(local_path, encoding="utf-8") as f:
                 return f.read().strip()
-                
+
     for fname in filenames_to_try:
         if os.path.exists(fname):
             print(f"  Using global config: {fname}")
-            with open(fname, "r", encoding="utf-8") as f:
+            with open(fname, encoding="utf-8") as f:
                 return f.read().strip()
 
     # Prompts directory fallback (visual_style / visuals_plan live under prompts/)
@@ -399,28 +423,36 @@ def load_local_or_global_config(subfolder, config_filename, default_text=""):
         prompts_path = os.path.join(prompts_dir, fname)
         if os.path.exists(prompts_path):
             print(f"  Using global config: {prompts_path}")
-            with open(prompts_path, "r", encoding="utf-8") as f:
+            with open(prompts_path, encoding="utf-8") as f:
                 return f.read().strip()
 
     print(f"  Warning: '{config_filename}' not found. Utilizing default fallback.")
     return default_text
 
 
-def run_storyboard_planning_phase(page, script_path, prompts_file, sentences, timestamps, visual_style, visuals_plan, target_model="Flash-Lite"):
-    print("\n" + "="*50)
+def run_storyboard_planning_phase(
+    page,
+    script_path,
+    prompts_file,
+    sentences,
+    timestamps,
+    visual_style,
+    visuals_plan,
+    target_model="Flash-Lite",
+):
+    print("\n" + "=" * 50)
     print("PHASE 1: STORYBOARD PLANNING PHASE")
-    print("="*50)
-    
+    print("=" * 50)
+
     total_sentences = len(sentences)
     print(f"Storyboard planning for {total_sentences} sentences...")
 
     chunk_size = int(get_config_value("SCRIPT_IMAGE_CHUNK_SIZE", "5"))
     planning_timeout = int(get_config_value("SCRIPT_IMAGE_PLANNING_TIMEOUT", "240"))
-    alignment_timeout = int(get_config_value("SCRIPT_IMAGE_ALIGNMENT_TIMEOUT", "60"))
     reset_interval = int(get_config_value("SCRIPT_IMAGE_PLANNING_RESET_INTERVAL", "8"))
 
-    chunks = [sentences[i:i + chunk_size] for i in range(0, len(sentences), chunk_size)]
-    
+    chunks = [sentences[i : i + chunk_size] for i in range(0, len(sentences), chunk_size)]
+
     # Checkpoint Configuration
     planning_checkpoint = os.path.join(os.path.dirname(prompts_file), "planning_checkpoint.json")
     completed_chunks = 0
@@ -429,9 +461,10 @@ def run_storyboard_planning_phase(page, script_path, prompts_file, sentences, ti
 
     # Load existing checkpoint if available
     import json
+
     if os.path.exists(planning_checkpoint):
         try:
-            with open(planning_checkpoint, "r", encoding="utf-8") as cp:
+            with open(planning_checkpoint, encoding="utf-8") as cp:
                 data = json.load(cp)
                 completed_chunks = data.get("completed_chunks", 0)
                 chunk_responses = data.get("chunk_responses", [])
@@ -446,10 +479,10 @@ def run_storyboard_planning_phase(page, script_path, prompts_file, sentences, ti
         new_chat_btn = page.locator("a[aria-label='New chat']").first
         new_chat_btn.click()
         time.sleep(3)
-        
+
         # Verify and set target model
         select_gemini_model(page, target_model)
-        
+
         style_payload = f"""You are the lead visual director for a YouTube animation.
 We are using the following style guidelines:
 
@@ -464,7 +497,7 @@ Do not generate any images yet. Simply respond with: "SYSTEM READY. Awaiting scr
         textbox = find_input_box(page)
         fill_textbox(page, textbox, style_payload)
         time.sleep(1)
-        
+
         send_btn = find_send_button(page)
         if send_btn:
             try:
@@ -473,7 +506,7 @@ Do not generate any images yet. Simply respond with: "SYSTEM READY. Awaiting scr
                 textbox.press("Control+Enter")
         else:
             textbox.press("Control+Enter")
-            
+
         wait_for_gemini_response(page, initial_count, timeout_seconds=60)
         print("Style parameters successfully aligned in new planning session.")
 
@@ -491,14 +524,14 @@ Do not generate any images yet. Simply respond with: "SYSTEM READY. Awaiting scr
                 f"- Index {last_two[1][0]}: {last_two[1][1]}\n"
             )
         initialize_clean_planning_chat(carryover_anchor=continuity_anchor)
-    
+
     for chunk_idx, chunk in enumerate(chunks, 1):
         # Skip chunks completed in previous runs
         if chunk_idx <= completed_chunks:
             continue
-            
+
         print(f"\nPlanning Chunk {chunk_idx} of {len(chunks)}...")
-        
+
         # Reset standard UI and carry over the last 2 frames based on reset_interval
         if chunk_idx > 1 and (chunk_idx - 1) % reset_interval == 0:
             continuity_anchor = ""
@@ -510,9 +543,9 @@ Do not generate any images yet. Simply respond with: "SYSTEM READY. Awaiting scr
                     f"- Index {last_two[0][0]}: {last_two[0][1]}\n"
                     f"- Index {last_two[1][0]}: {last_two[1][1]}\n"
                 )
-            
+
             initialize_clean_planning_chat(carryover_anchor=continuity_anchor)
-        
+
         start_idx = (chunk_idx - 1) * chunk_size + 1
         chunk_text_list = []
         for i, s in enumerate(chunk):
@@ -520,7 +553,7 @@ Do not generate any images yet. Simply respond with: "SYSTEM READY. Awaiting scr
             timestamp = timestamps[idx - 1]
             chunk_text_list.append(f"Index {idx} ({timestamp}): {s}")
         chunk_text = "\n".join(chunk_text_list)
-        
+
         # Comprehensive visual framing guidelines focusing on keyframing & timestamp prepending
         prompt_template = """# SYSTEM PROMPT: MASTER 2D ANIMATED STORYBOARD GENERATOR
 
@@ -563,13 +596,13 @@ Sentence: [Original Sentence]
 Calculated Timestamp: [Timestamp]
 Visual Prompt: [Timestamp] 2D vector webcomic style, [Camera Angle]. Subject: [2D character description, white circle head, expressive facial features, clothing, action]. Layout: [Layout type]. Environment: [Vector background environment]. Lighting/Mood: [Lighting and mood]. SUPPRESSION: [no unwanted text, no letters, no watermarks, no gibberish]. Style Anchor: 2D vector animation style, clean solid black line art, smooth flat colors, featureless white-head comic characters with expressive facial vector strokes, detailed thematic vector background, dramatic high-contrast cinematic lighting, 16:9 aspect ratio.
 """
-        
+
         prompt = prompt_template.format(chunk_text=chunk_text)
         initial_count = page.locator("model-response").count()
         textbox = find_input_box(page)
         fill_textbox(page, textbox, prompt)
         time.sleep(1)
-        
+
         send_btn = find_send_button(page)
         if send_btn:
             try:
@@ -578,20 +611,20 @@ Visual Prompt: [Timestamp] 2D vector webcomic style, [Camera Angle]. Subject: [2
                 textbox.press("Control+Enter")
         else:
             textbox.press("Control+Enter")
-            
+
         resp = wait_for_gemini_response(page, initial_count, timeout_seconds=planning_timeout)
         if not resp:
             print("Error: Storyboard response failed to return.")
             sys.exit(1)
-            
+
         if f"Index: {start_idx}" not in resp:
-            followup = f"Please output the storyboard prompts for Chunk {chunk_idx} (Index {start_idx}-{start_idx+len(chunk)-1}) that I just sent. Follow the output format exactly. No conversational filler."
+            followup = f"Please output the storyboard prompts for Chunk {chunk_idx} (Index {start_idx}-{start_idx + len(chunk) - 1}) that I just sent. Follow the output format exactly. No conversational filler."
             print("Sending follow-up query to force translation...")
             initial_count = page.locator("model-response").count()
             textbox = find_input_box(page)
             fill_textbox(page, textbox, followup)
             time.sleep(1)
-            
+
             send_btn = find_send_button(page)
             if send_btn:
                 try:
@@ -600,17 +633,17 @@ Visual Prompt: [Timestamp] 2D vector webcomic style, [Camera Angle]. Subject: [2
                     textbox.press("Control+Enter")
             else:
                 textbox.press("Control+Enter")
-                
+
             resp = wait_for_gemini_response(page, initial_count, timeout_seconds=planning_timeout)
             if not resp:
                 print("Error: Storyboard response failed to return on retry.")
                 sys.exit(1)
-                
+
         chunk_responses.append(resp)
-        
+
         parsed_chunk = parse_pre_planned_prompts_string(resp)
         all_parsed_prompts.extend(parsed_chunk)
-        
+
         # Save planning checkpoint progress
         try:
             atomic_write_json(
@@ -625,29 +658,31 @@ Visual Prompt: [Timestamp] 2D vector webcomic style, [Camera Angle]. Subject: [2
             )
         except Exception as ec:
             print(f"Warning: Failed to save planning checkpoint ({ec})")
-            
+
         print(f"Successfully planned Chunk {chunk_idx}!")
-        
+
     final_storyboard = "\n\n=== CHUNK PLAN ===\n\n".join(chunk_responses)
     with open(prompts_file, "w", encoding="utf-8") as f:
         f.write(final_storyboard)
-        
+
     # Clear planning checkpoint on full success
     if os.path.exists(planning_checkpoint):
         try:
             os.remove(planning_checkpoint)
         except Exception as ec:
             print(f"Warning: Failed to clear planning checkpoint file ({ec})")
-            
+
     print(f"\nStoryboard planning phase complete! Storyboard saved to: {prompts_file}")
 
 
 def main():
     batch_queue = scan_batch_folders()
     if not batch_queue:
-        print("No active topic directories with 'timestamped_transcript.txt' scripts detected in 'youtube_runs/'.")
+        print(
+            "No active topic directories with 'timestamped_transcript.txt' scripts detected in 'youtube_runs/'."
+        )
         return
-        
+
     print(f"Detected {len(batch_queue)} batch folder(s) to process:")
     for subfolder in batch_queue:
         print(f" - {subfolder}")
@@ -655,14 +690,16 @@ def main():
     # NEW: The Outer Recovery Loop
     while True:
         failover_triggered = False
-        
+
         try:
             with sync_playwright() as p:
                 # Issue 6/7: Multi-Profile & Multi-Browser Framework
-                switch_enabled_str = get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").strip().lower()
-                accounts_enabled = switch_enabled_str in ('true', '1', 'yes')
+                switch_enabled_str = (
+                    get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").strip().lower()
+                )
+                accounts_enabled = switch_enabled_str in ("true", "1", "yes")
                 current_profile_idx = get_config_value("ACTIVE_PROFILE_INDEX", "1")
-                
+
                 # NEW: Fetch browser type dynamically from config
                 browser_type = get_config_value("BROWSER_TYPE", "chrome")
                 cdp_port = int(get_config_value("CDP_PORT", "9222"))
@@ -670,9 +707,11 @@ def main():
                 try:
                     # Attempt to connect to an existing running session
                     browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
-                    print(f"Successfully connected to existing {browser_type.capitalize()} session.")
+                    print(
+                        f"Successfully connected to existing {browser_type.capitalize()} session."
+                    )
                 except Exception:
-                    print(f"Debugging browser is closed or unreachable. Launching framework...")
+                    print("Debugging browser is closed or unreachable. Launching framework...")
                     # Call the unified launcher
                     if not launch_browser_with_profile(browser_type, current_profile_idx):
                         sys.exit(1)
@@ -691,40 +730,48 @@ def main():
                     print("Navigating to Gemini Web App...")
                     try:
                         # Wait only for DOM ready state, increase timeout, and handle slow loads gracefully
-                        gemini_page.goto("https://gemini.google.com/app", wait_until="domcontentloaded", timeout=60000)
+                        gemini_page.goto(
+                            "https://gemini.google.com/app",
+                            wait_until="domcontentloaded",
+                            timeout=60000,
+                        )
                     except Exception as e:
-                        print(f"Warning: Gemini initial load timed out or had a slow resource warning, proceeding: {e}")
+                        print(
+                            f"Warning: Gemini initial load timed out or had a slow resource warning, proceeding: {e}"
+                        )
                     time.sleep(3)
 
                 gemini_page.bring_to_front()
 
                 # Batch process each folder
                 for folder_idx, subfolder in enumerate(batch_queue, 1):
-                    print("\n" + "="*70)
+                    print("\n" + "=" * 70)
                     print(f"PROCESSING TOPIC FOLDER {folder_idx} OF {len(batch_queue)}")
                     print(f"Target: {subfolder}")
-                    print("="*70)
-                    
+                    print("=" * 70)
+
                     script_path = os.path.join(subfolder, "timestamped_transcript.txt")
                     prompts_file = os.path.join(subfolder, "pre_planned_prompts.txt")
                     image_dir = os.path.join(subfolder, "generated_images")
                     os.makedirs(image_dir, exist_ok=True)
-                    
+
                     # Load local or global configurations
                     print("Loading style directives...")
                     visuals_plan = load_local_or_global_config(subfolder, "visuals_plan.txt")
-                    visual_style = load_local_or_global_config(subfolder, "visual_style.txt", "2D digital webcomic style.")
+                    visual_style = load_local_or_global_config(
+                        subfolder, "visual_style.txt", "2D digital webcomic style."
+                    )
                     target_model = get_config_value("IMAGE_PLANNER_MODEL", "Pro")
 
                     # Parse lines from timestamped_transcript.txt
                     sentences = []
                     timestamps = []
-                    
+
                     if not os.path.exists(script_path):
                         print(f"Warning: '{script_path}' not found in subfolder. Skipping.")
                         continue
 
-                    with open(script_path, "r", encoding="utf-8") as f:
+                    with open(script_path, encoding="utf-8") as f:
                         for line in f:
                             line_str = line.strip()
                             if not line_str:
@@ -749,7 +796,7 @@ def main():
                                     # Fallback if no timestamp prefix is found
                                     timestamps.append("[00:00]")
                                     sentences.append(line_str)
-                    
+
                     # Check storyboard caching
                     storyboard_prompts = []
                     if os.path.exists(prompts_file):
@@ -757,26 +804,39 @@ def main():
                             storyboard_prompts = parse_pre_planned_prompts(prompts_file)
                         except Exception:
                             pass
-                    
+
                     # ---> THIS RESTORES THE MISSING VARIABLE <---
                     skip_planning = len(storyboard_prompts) == len(sentences)
-                        
-                        # PHASE 1: STORYBOARD PLANNING
+
+                    # PHASE 1: STORYBOARD PLANNING
                     if not skip_planning:
-                        run_storyboard_planning_phase(gemini_page, script_path, prompts_file, sentences, timestamps, visual_style, visuals_plan, target_model)
+                        run_storyboard_planning_phase(
+                            gemini_page,
+                            script_path,
+                            prompts_file,
+                            sentences,
+                            timestamps,
+                            visual_style,
+                            visuals_plan,
+                            target_model,
+                        )
                         storyboard_prompts = parse_pre_planned_prompts(prompts_file)
                     else:
-                        print(f"[SKIP] Detected valid cached storyboard file '{prompts_file}' ({len(storyboard_prompts)} prompts). Skipping Storyboard Planning Phase.")
+                        print(
+                            f"[SKIP] Detected valid cached storyboard file '{prompts_file}' ({len(storyboard_prompts)} prompts). Skipping Storyboard Planning Phase."
+                        )
 
                     total_frames = len(storyboard_prompts)
                     if total_frames == 0:
-                        print(f"Warning: Storyboard prompts empty for {subfolder}. Skipping to next directory.")
+                        print(
+                            f"Warning: Storyboard prompts empty for {subfolder}. Skipping to next directory."
+                        )
                         continue
 
                     # PHASE 2: IMAGE RENDERING
-                    print("\n" + "="*50)
+                    print("\n" + "=" * 50)
                     print("PHASE 2: IMAGE RENDERING PHASE")
-                    print("="*50)
+                    print("=" * 50)
                     print(f"Loaded {total_frames} pre-planned prompts for image rendering.")
 
                     # NEW: Dynamic Runtime Session Reset fetching
@@ -789,8 +849,12 @@ def main():
 
                     render_timeout = int(get_config_value("SCRIPT_IMAGE_RENDER_TIMEOUT", "90"))
                     frame_retries = int(get_config_value("SCRIPT_IMAGE_FRAME_RETRIES", "3"))
-                    element_wait_ms = int(get_config_value("SCRIPT_IMAGE_ELEMENT_WAIT_TIMEOUT", "15")) * 1000
-                    download_wait_ms = int(get_config_value("SCRIPT_IMAGE_DOWNLOAD_TIMEOUT", "30")) * 1000
+                    element_wait_ms = (
+                        int(get_config_value("SCRIPT_IMAGE_ELEMENT_WAIT_TIMEOUT", "15")) * 1000
+                    )
+                    download_wait_ms = (
+                        int(get_config_value("SCRIPT_IMAGE_DOWNLOAD_TIMEOUT", "30")) * 1000
+                    )
 
                     print("\nClicking New Chat to start clean rendering tab...")
                     new_chat_btn = gemini_page.locator("a[aria-label='New chat']").first
@@ -808,7 +872,9 @@ def main():
                         # 1. Pre-calculate targets to check if file already exists
                         if 0 <= (idx - 1) < len(timestamps):
                             timestamp_raw = timestamps[idx - 1]
-                            timestamp_clean = timestamp_raw.replace("[", "").replace("]", "").replace(":", "_")
+                            timestamp_clean = (
+                                timestamp_raw.replace("[", "").replace("]", "").replace(":", "_")
+                            )
                             image_name = f"{timestamp_clean}.png"
                         else:
                             image_name = f"sentence_{idx}.png"
@@ -817,18 +883,29 @@ def main():
 
                         # Skip generation if valid output file exists on disk, but store prompt for continuity
                         if os.path.exists(save_path) and os.path.getsize(save_path) > 100:
-                            print(f"[SKIP] Frame {current_run} of {total_frames} ({image_name}) already exists. Skipping.")
+                            print(
+                                f"[SKIP] Frame {current_run} of {total_frames} ({image_name}) already exists. Skipping."
+                            )
                             prev_prompt_text = prompt_text
                             prev_idx = idx
                             continue
 
                         # Run window optimization reset block based on config limit
                         executed_generations_count += 1
-                        if executed_generations_count > 1 and (executed_generations_count - 1) % reset_loop_limit == 0:
-                            print(f"\n[RESET] Running window optimization block (Frame Index {idx} / Limit: {reset_loop_limit})...")
+                        if (
+                            executed_generations_count > 1
+                            and (executed_generations_count - 1) % reset_loop_limit == 0
+                        ):
+                            print(
+                                f"\n[RESET] Running window optimization block (Frame Index {idx} / Limit: {reset_loop_limit})..."
+                            )
                             gemini_page.bring_to_front()
                             try:
-                                gemini_page.goto("https://gemini.google.com/app", wait_until="domcontentloaded", timeout=30000)
+                                gemini_page.goto(
+                                    "https://gemini.google.com/app",
+                                    wait_until="domcontentloaded",
+                                    timeout=30000,
+                                )
                             except Exception:
                                 try:
                                     gemini_page.keyboard.press("Control+Shift+O")
@@ -836,15 +913,22 @@ def main():
                                     pass
                             time.sleep(5)
                             select_gemini_model(gemini_page, target_model)
-                            
+
                             # Carry forward the last frame anchor into the newly reloaded session
                             carryover_anchor = ""
                             if prev_prompt_text and prev_idx is not None:
                                 carryover_anchor = f"\nCURRENT VISUAL BASELINE (Frame Index {prev_idx}):\n{prev_prompt_text}\n"
-                            send_handover_alignment(gemini_page, visual_style, visuals_plan, carryover_anchor=carryover_anchor)
+                            send_handover_alignment(
+                                gemini_page,
+                                visual_style,
+                                visuals_plan,
+                                carryover_anchor=carryover_anchor,
+                            )
 
-                        print(f"\nProcessing Frame {current_run} of {total_frames} (Target Index: {idx})")
-                        
+                        print(
+                            f"\nProcessing Frame {current_run} of {total_frames} (Target Index: {idx})"
+                        )
+
                         # CONTINUITY CHAINING ENGINE
                         if prev_prompt_text and prev_idx is not None:
                             full_command = (
@@ -886,35 +970,44 @@ def main():
                                 textbox.press("Control+Enter")
 
                             time.sleep(2)
-                            
+
                             # Wait for response text to settle
-                            if wait_for_gemini_response(gemini_page, initial_count, timeout_seconds=render_timeout) is not None:
+                            if (
+                                wait_for_gemini_response(
+                                    gemini_page, initial_count, timeout_seconds=render_timeout
+                                )
+                                is not None
+                            ):
                                 # Locate and download image using UI Hover Automation
                                 download_attempt_success = False
                                 last_response = gemini_page.locator("model-response").last
-                                
+
                                 # 1. Locate the generated image
                                 img_locator = last_response.locator("img").first
-                                
+
                                 try:
                                     # Wait for image to actually be attached and visible
                                     img_locator.wait_for(state="visible", timeout=element_wait_ms)
-                                    
+
                                     # Force scroll into view to ensure the hover action is not blocked
                                     img_locator.scroll_into_view_if_needed()
                                     time.sleep(1)
-                                    
+
                                     # 2. Leverage Playwright's Relative Hover (Forced Center)
                                     box = img_locator.bounding_box()
                                     if box:
                                         # Hover the exact dead-center of the image to trigger the UI overlay safely
                                         hover_x = box["width"] / 2
                                         hover_y = box["height"] / 2
-                                        
+
                                         # force=True bypasses the "subtree intercepts pointer events" error from hidden Google UI layers
-                                        img_locator.hover(position={"x": hover_x, "y": hover_y}, force=True)
-                                        time.sleep(1.5) # Wait for the overlay animation to reveal the button
-                                        
+                                        img_locator.hover(
+                                            position={"x": hover_x, "y": hover_y}, force=True
+                                        )
+                                        time.sleep(
+                                            1.5
+                                        )  # Wait for the overlay animation to reveal the button
+
                                         # 3. Robust Selector for the Download Button
                                         dl_btn = last_response.locator(
                                             'button[aria-label*="Download full size" i], '
@@ -922,29 +1015,42 @@ def main():
                                             'button[aria-label*="تحميل" i], '
                                             'button[data-tooltip*="Download" i]'
                                         ).first
-                                        
+
                                         if dl_btn.is_visible():
                                             # 4. The Native expect_download Handler
-                                            with gemini_page.expect_download(timeout=download_wait_ms) as download_info:
+                                            with gemini_page.expect_download(
+                                                timeout=download_wait_ms
+                                            ) as download_info:
                                                 # Force the click just in case the UI overlay shifts
                                                 dl_btn.click(force=True)
-                                                
+
                                             download = download_info.value
-                                            
+
                                             # Blocking save operation ensures the file writes completely to disk
                                             download.save_as(save_path)
-                                            
+
                                             # 5. Post-Download Verification Guard
-                                            if os.path.exists(save_path) and os.path.getsize(save_path) > 0:
-                                                print(f"Successfully downloaded high-quality image: {save_path}")
+                                            if (
+                                                os.path.exists(save_path)
+                                                and os.path.getsize(save_path) > 0
+                                            ):
+                                                print(
+                                                    f"Successfully downloaded high-quality image: {save_path}"
+                                                )
                                                 download_attempt_success = True
                                             else:
-                                                print(f"Warning: Download completed but file is missing or 0 bytes: {save_path}")
+                                                print(
+                                                    f"Warning: Download completed but file is missing or 0 bytes: {save_path}"
+                                                )
                                         else:
-                                            print("Warning: Hover succeeded but Download button did not appear.")
+                                            print(
+                                                "Warning: Hover succeeded but Download button did not appear."
+                                            )
                                     else:
-                                        print("Warning: Could not calculate image bounding box for hover.")
-                                        
+                                        print(
+                                            "Warning: Could not calculate image bounding box for hover."
+                                        )
+
                                 except Exception as e:
                                     print(f"Warning: UI Hover/Download extraction failed: {e}")
 
@@ -952,10 +1058,12 @@ def main():
                                     success = True
                                     prev_prompt_text = prompt_text
                                     prev_idx = idx
-                                    break # Break out of attempt loop
-                                        
+                                    break  # Break out of attempt loop
+
                                 # If we get here, this attempt failed — reload and retry
-                                print(f"Warning: Frame {idx} attempt {attempt} failed or timed out. Reloading Gemini tab and retrying...")
+                                print(
+                                    f"Warning: Frame {idx} attempt {attempt} failed or timed out. Reloading Gemini tab and retrying..."
+                                )
                             try:
                                 gemini_page.reload(wait_until="domcontentloaded")
                             except Exception as e:
@@ -963,21 +1071,27 @@ def main():
                             time.sleep(10)
                             # Re-align style guidelines
                             send_handover_alignment(gemini_page, visual_style, visuals_plan)
-                            
+
                         if not success:
                             if accounts_enabled:
-                                print(f"\n[FAILOVER ALERT] Frame {idx} failed completely. Triggering Account Rotation...")
+                                print(
+                                    f"\n[FAILOVER ALERT] Frame {idx} failed completely. Triggering Account Rotation..."
+                                )
                                 rotate_profile_index()
                                 kill_cdp_chrome()
                                 failover_triggered = True
-                                break # Break out of the image generation loop
+                                break  # Break out of the image generation loop
                             else:
-                                print(f"Error: Frame {idx} failed completely after 3 attempts. Skipping to next frame.")
-                    
+                                print(
+                                    f"Error: Frame {idx} failed completely after 3 attempts. Skipping to next frame."
+                                )
+
                     if failover_triggered:
-                        break # Break out of the folder loop
-                    
-                    print(f"\nAll pre-planned images generated and saved successfully for: {subfolder}")
+                        break  # Break out of the folder loop
+
+                    print(
+                        f"\nAll pre-planned images generated and saved successfully for: {subfolder}"
+                    )
 
                 # If failover was triggered, we must break the folder loop to restart Playwright
                 if failover_triggered:
@@ -987,11 +1101,13 @@ def main():
             print(f"[RECOVERY] Playwright context closed or browser crashed: {e}")
 
         if failover_triggered:
-            print("\n[SYSTEM] Reinitializing Playwright environment with new profile. Fast-forwarding...\n")
+            print(
+                "\n[SYSTEM] Reinitializing Playwright environment with new profile. Fast-forwarding...\n"
+            )
             time.sleep(3)
-            continue # Restart the 'while True' outer loop
+            continue  # Restart the 'while True' outer loop
         else:
-            break # Exit loop
+            break  # Exit loop
 
 
 if __name__ == "__main__":

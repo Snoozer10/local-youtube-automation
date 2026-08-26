@@ -1,4 +1,4 @@
-﻿import json
+import json
 import os
 import re
 
@@ -11,6 +11,7 @@ if sys.platform.startswith("win"):
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
+
 
 def main():
     print("==================================================")
@@ -122,6 +123,7 @@ def main():
     print("\n==================================================")
     print(f"Finished processing {folders_processed} topic folders.")
     print("==================================================")
+
 
 if __name__ == "__main__":
     main()

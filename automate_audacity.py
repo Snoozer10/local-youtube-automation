@@ -1,11 +1,10 @@
-﻿import os
+import json
+import os
+import re
+import shutil
+import subprocess
 import sys
 import time
-import subprocess
-import shutil
-import re
-import glob
-import json
 
 # Windows console hardening: guarantee UTF-8 for Arabic output even when piped.
 if sys.platform.startswith("win"):
@@ -15,13 +14,18 @@ if sys.platform.startswith("win"):
     except Exception:
         pass
 
+
 def get_latest_run_folder(runs_path="youtube_runs"):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     rel_to_script = os.path.join(script_dir, runs_path)
     resolved_path = rel_to_script if os.path.exists(rel_to_script) else runs_path
     if not os.path.exists(resolved_path):
         return None
-    subdirs = [os.path.join(runs_path, d) for d in os.listdir(runs_path) if os.path.isdir(os.path.join(runs_path, d))]
+    subdirs = [
+        os.path.join(runs_path, d)
+        for d in os.listdir(runs_path)
+        if os.path.isdir(os.path.join(runs_path, d))
+    ]
     if not subdirs:
         return None
     return max(subdirs, key=os.path.getmtime)
@@ -32,17 +36,17 @@ def send_audacity_command(write_pipe, read_pipe, command):
     print(f"  [PIPE SEND] {command}")
     write_pipe.write(command + "\n")
     write_pipe.flush()
-    
+
     # Read response until an empty line is returned (Audacity command terminators)
     response = ""
     while True:
         line = read_pipe.readline()
-        if not line: # Audacity crashed or closed pipe
+        if not line:  # Audacity crashed or closed pipe
             break
         response += line
         if line.strip() == "":
             break
-            
+
     # Clean and log the response
     cleaned_response = response.strip().replace("\n", " | ")
     print(f"  [PIPE RESPONSE] {cleaned_response}")
@@ -54,7 +58,7 @@ def find_preset_file():
     candidates = [
         "YouTube_Voice_Optimizer.txt.txt",
         "YouTube_Voice_Optimizer.txt",
-        "YouTube_Voice_Optimizer"
+        "YouTube_Voice_Optimizer",
     ]
     for filename in candidates:
         if os.path.exists(filename):
@@ -66,18 +70,20 @@ def sync_macro_to_audacity(preset_path):
     """Copies the preset file into Audacity's AppData Macros folder before launch."""
     if not preset_path or not os.path.exists(preset_path):
         return
-    
-    appdata = os.getenv('APPDATA')
+
+    appdata = os.getenv("APPDATA")
     if not appdata:
         return
-        
-    macros_dir = os.path.join(appdata, 'audacity', 'macros')
+
+    macros_dir = os.path.join(appdata, "audacity", "macros")
     os.makedirs(macros_dir, exist_ok=True)
-    
+
     # Copy under both possible names so Audacity GUI always registers it
     try:
         shutil.copy(preset_path, os.path.join(macros_dir, "YouTube_Voice_Optimizer.txt"))
-        shutil.copy(preset_path, os.path.join(macros_dir, "Achird Gemini Voice cut and enhance.txt"))
+        shutil.copy(
+            preset_path, os.path.join(macros_dir, "Achird Gemini Voice cut and enhance.txt")
+        )
         print(f"[SYSTEM] Synced preset settings to Audacity Macros folder: {macros_dir}")
     except Exception as e:
         print(f"[WARNING] Could not sync macro file to AppData: {e}")
@@ -89,7 +95,7 @@ def apply_preset_file(write_pipe, read_pipe, preset_path):
         return False
 
     print(f"  Applying preset settings directly from '{preset_path}'...")
-    with open(preset_path, "r", encoding="utf-8") as f:
+    with open(preset_path, encoding="utf-8") as f:
         lines = f.readlines()
 
     executed_count = 0
@@ -97,13 +103,13 @@ def apply_preset_file(write_pipe, read_pipe, preset_path):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-            
+
         # Skip export commands inside preset file (export is handled explicitly by python)
         if line.startswith("Export") or line.startswith("ExportWav"):
             continue
 
         # Select all audio before applying each effect
-        send_audacity_command(write_pipe, read_pipe, 'SelectAll:')
+        send_audacity_command(write_pipe, read_pipe, "SelectAll:")
 
         # Ensure correct formatting (e.g. "NoiseGate:attack=..." instead of "NoiseGate: attack=...")
         if ":" in line:
@@ -123,7 +129,7 @@ def load_checkpoint(folder):
     path = os.path.join(folder, "audacity_checkpoint.json")
     if os.path.exists(path):
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
                 return data.get("polished_files", [])
         except Exception as e:
@@ -158,16 +164,17 @@ def delete_checkpoint(folder):
         except OSError as e:
             print(f"[WARNING] Could not delete audacity_checkpoint.json: {e}")
 
+
 def ensure_audacity_script_pipe_enabled():
     """Forces mod-script-pipe=1 in Audacity configuration file."""
-    appdata = os.getenv('APPDATA')
+    appdata = os.getenv("APPDATA")
     if not appdata:
         return
-    cfg_path = os.path.join(appdata, 'audacity', 'audacity.cfg')
+    cfg_path = os.path.join(appdata, "audacity", "audacity.cfg")
     try:
         content = ""
         if os.path.exists(cfg_path):
-            with open(cfg_path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(cfg_path, encoding="utf-8", errors="ignore") as f:
                 content = f.read()
 
         if "mod-script-pipe=1" not in content:
@@ -178,16 +185,17 @@ def ensure_audacity_script_pipe_enabled():
                 content += "\n[Modules]\nmod-script-pipe=1\n"
 
             os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
-            with open(cfg_path, 'w', encoding='utf-8') as f:
+            with open(cfg_path, "w", encoding="utf-8") as f:
                 f.write(content)
     except Exception as e:
         print(f"[WARNING] Could not update audacity.cfg: {e}")
 
+
 def clear_audacity_temp_data():
     """Wipes Audacity's temporary SessionData and AutoSave folders to prevent recovery popups."""
-    local_appdata = os.getenv('LOCALAPPDATA')
+    local_appdata = os.getenv("LOCALAPPDATA")
     if local_appdata:
-        session_data_dir = os.path.join(local_appdata, 'Audacity', 'SessionData')
+        session_data_dir = os.path.join(local_appdata, "Audacity", "SessionData")
         if os.path.exists(session_data_dir):
             for item in os.listdir(session_data_dir):
                 item_path = os.path.join(session_data_dir, item)
@@ -199,9 +207,9 @@ def clear_audacity_temp_data():
                 except Exception:
                     pass
 
-    roaming_appdata = os.getenv('APPDATA')
+    roaming_appdata = os.getenv("APPDATA")
     if roaming_appdata:
-        autosave_dir = os.path.join(roaming_appdata, 'audacity', 'AutoSave')
+        autosave_dir = os.path.join(roaming_appdata, "audacity", "AutoSave")
         if os.path.exists(autosave_dir):
             for item in os.listdir(autosave_dir):
                 item_path = os.path.join(autosave_dir, item)
@@ -221,7 +229,11 @@ def main():
 
     # Force kill any existing Audacity processes
     try:
-        subprocess.run(["taskkill", "/F", "/IM", "Audacity.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "Audacity.exe"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         time.sleep(1.0)
     except Exception as e:
         print(f"[WARNING] Audacity taskkill failed (may not be running): {e}")
@@ -245,11 +257,11 @@ def main():
         sys.exit(1)
 
     print(f"Target Video Folder: {latest_run}")
-    
+
     # 2. Determine Processing Target
     master_track_path = os.path.join(latest_run, "full_episode_voice.wav")
     files_to_process = []
-    
+
     if os.path.exists(master_track_path):
         print("[SYSTEM] Found 'full_episode_voice.wav'. Targeting the master voice track only.")
         output_dir = os.path.join(latest_run, "audacity_voice")
@@ -257,11 +269,13 @@ def main():
     else:
         print("[SYSTEM] Master voice track not found. Scanning 'voice_chapters' subfolder...")
         chapters_dir = os.path.join(latest_run, "voice_chapters")
-        
+
         if not os.path.exists(chapters_dir):
-            print(f"Error: Neither 'full_episode_voice.wav' nor the 'voice_chapters' folder exists in '{latest_run}'.")
+            print(
+                f"Error: Neither 'full_episode_voice.wav' nor the 'voice_chapters' folder exists in '{latest_run}'."
+            )
             sys.exit(1)
-            
+
         output_dir = os.path.join(latest_run, "polished_chapters")
         chapter_files = []
         for name in os.listdir(chapters_dir):
@@ -270,25 +284,29 @@ def main():
                 if match:
                     idx = int(match.group(1))
                     chapter_files.append((idx, name, chapters_dir, output_dir))
-                    
+
         chapter_files.sort(key=lambda x: x[0])
-        
+
         if not chapter_files:
             print(f"Error: No Chapter_*.wav files found in '{chapters_dir}'.")
             sys.exit(1)
-            
-        print(f"Found {len(chapter_files)} chapters to polish inside the 'voice_chapters' directory.")
+
+        print(
+            f"Found {len(chapter_files)} chapters to polish inside the 'voice_chapters' directory."
+        )
         files_to_process = chapter_files
 
     # Load checkpoint progress
     polished_files = load_checkpoint(latest_run)
     if polished_files:
-        print(f"[CHECKPOINT] Resuming. Already polished {len(polished_files)} of {len(files_to_process)} files.")
+        print(
+            f"[CHECKPOINT] Resuming. Already polished {len(polished_files)} of {len(files_to_process)} files."
+        )
 
     # 3. Find Audacity Executable Path
     audacity_paths = [
         r"C:\Program Files\Audacity\Audacity.exe",
-        r"C:\Program Files (x86)\Audacity\Audacity.exe"
+        r"C:\Program Files (x86)\Audacity\Audacity.exe",
     ]
     executable_path = next((p for p in audacity_paths if os.path.exists(p)), None)
     if not executable_path:
@@ -314,7 +332,11 @@ def main():
                 pass
 
         try:
-            subprocess.run(["taskkill", "/F", "/IM", "Audacity.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                ["taskkill", "/F", "/IM", "Audacity.exe"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
             time.sleep(0.5)
         except Exception:
             pass
@@ -332,17 +354,19 @@ def main():
             subprocess.Popen([executable_path])
 
             # Connect to Named Pipes
-            for attempt in range(20):
+            for _attempt in range(20):
                 try:
-                    write_pipe = open(r'\\.\pipe\ToSrvPipe', 'w', encoding='utf-8')
-                    read_pipe = open(r'\\.\pipe\FromSrvPipe', 'r', encoding='utf-8')
+                    write_pipe = open(r"\\.\pipe\ToSrvPipe", "w", encoding="utf-8")
+                    read_pipe = open(r"\\.\pipe\FromSrvPipe", encoding="utf-8")
                     break
                 except Exception:
                     time.sleep(0.5)
 
             if not write_pipe or not read_pipe:
                 print("  [ERROR] Could not connect to Audacity Named Pipes!")
-                print("  Please open Audacity manually -> Edit -> Preferences -> Modules -> Set 'mod-script-pipe' to 'Enabled', then restart Audacity.")
+                print(
+                    "  Please open Audacity manually -> Edit -> Preferences -> Modules -> Set 'mod-script-pipe' to 'Enabled', then restart Audacity."
+                )
                 continue
 
             print("  Waiting for Audacity GUI to initialize...")
@@ -360,12 +384,14 @@ def main():
             # Fallback if preset file was missing
             if not preset_success:
                 print("  Falling back to internal macro command...")
-                send_audacity_command(write_pipe, read_pipe, 'SelectAll:')
-                send_audacity_command(write_pipe, read_pipe, 'Macro_YouTube_Voice_Optimizer:')
+                send_audacity_command(write_pipe, read_pipe, "SelectAll:")
+                send_audacity_command(write_pipe, read_pipe, "Macro_YouTube_Voice_Optimizer:")
 
             # 3. Export polished track
-            send_audacity_command(write_pipe, read_pipe, 'SelectAll:')
-            send_audacity_command(write_pipe, read_pipe, f'Export2:Filename="{clean_export_path}" NumChannels=1')
+            send_audacity_command(write_pipe, read_pipe, "SelectAll:")
+            send_audacity_command(
+                write_pipe, read_pipe, f'Export2:Filename="{clean_export_path}" NumChannels=1'
+            )
 
             # 4. Wait for exported file to complete (bounded: a silent Export2
             # failure must skip the file instead of hanging the pipeline forever)
@@ -373,7 +399,9 @@ def main():
             wait_start = time.time()
             while not os.path.exists(polished_audio_path):
                 if time.time() - wait_start > EXPORT_WAIT_TIMEOUT_SEC:
-                    raise TimeoutError(f"Export never produced '{name}' within {EXPORT_WAIT_TIMEOUT_SEC}s")
+                    raise TimeoutError(
+                        f"Export never produced '{name}' within {EXPORT_WAIT_TIMEOUT_SEC}s"
+                    )
                 time.sleep(0.5)
 
             last_size = -1
@@ -387,7 +415,9 @@ def main():
                         last_size = current_size
                         size_stable_since = time.time()
                     elif time.time() - size_stable_since > EXPORT_WAIT_TIMEOUT_SEC:
-                        raise TimeoutError(f"'{name}' size never stabilized within {EXPORT_WAIT_TIMEOUT_SEC}s")
+                        raise TimeoutError(
+                            f"'{name}' size never stabilized within {EXPORT_WAIT_TIMEOUT_SEC}s"
+                        )
                 except OSError:
                     pass
                 time.sleep(0.5)
@@ -398,7 +428,9 @@ def main():
             if name == "full_episode_voice.wav" and os.path.exists(polished_audio_path):
                 try:
                     shutil.copy(polished_audio_path, master_track_path)
-                    print(f"  [SYNC] Synchronized polished voice track to root: '{master_track_path}'")
+                    print(
+                        f"  [SYNC] Synchronized polished voice track to root: '{master_track_path}'"
+                    )
                 except Exception as e:
                     print(f"  [WARNING] Sync copy failed: {e}")
 
@@ -422,7 +454,11 @@ def main():
 
             print("  Safely closing Audacity instance...")
             try:
-                subprocess.run(["taskkill", "/F", "/IM", "Audacity.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(
+                    ["taskkill", "/F", "/IM", "Audacity.exe"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
                 time.sleep(1.0)
             except Exception:
                 pass

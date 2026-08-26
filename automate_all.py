@@ -1,4 +1,4 @@
-﻿import html
+import html
 import json
 import os
 import re
@@ -57,7 +57,7 @@ def read_prompts():
 
 # 3. YouTube ID extractor, title scraper, and transcript fetcher
 def extract_video_id(url):
-    pattern = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})'
+    pattern = r"(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})"
     match = re.search(pattern, url)
     if match:
         return match.group(1)
@@ -68,7 +68,7 @@ def extract_video_id(url):
 
 def clean_filename(filename):
     cleaned = re.sub(r'[\\/*?:"<>|]', "", filename)
-    cleaned = re.sub(r'\s+', " ", cleaned).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned[:100]
 
 
@@ -78,15 +78,12 @@ def get_video_title(video_id):
         req = urllib.request.Request(
             url,
             headers={
-                'User-Agent': (
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-                    ' AppleWebKit/537.36'
-                )
+                "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             },
         )
         with urllib.request.urlopen(req, timeout=10) as response:
-            html_content = response.read().decode('utf-8', errors='ignore')
-            match = re.search(r'<title>(.*?)</title>', html_content)
+            html_content = response.read().decode("utf-8", errors="ignore")
+            match = re.search(r"<title>(.*?)</title>", html_content)
             if match:
                 title = match.group(1)
                 if title.endswith(" - YouTube"):
@@ -105,10 +102,10 @@ def fetch_transcript(video_id):
     def extract_text(items):
         text_parts = []
         for item in items:
-            if hasattr(item, 'text'):
+            if hasattr(item, "text"):
                 text_parts.append(item.text)
-            elif isinstance(item, dict) and 'text' in item:
-                text_parts.append(item['text'])
+            elif isinstance(item, dict) and "text" in item:
+                text_parts.append(item["text"])
             else:
                 text_parts.append(str(item))
         return " ".join(text_parts)
@@ -138,7 +135,7 @@ def robust_split_paragraphs(text):
     if matches:
         text = "\n\n".join(matches)
 
-    split_pattern = r'\n+(?=\d+\.\s+|\*\s+|\-\s+|\b[Pp]aragraph\s+\d+|\b\[\s*[Pp]aragraph\s+\d+)'
+    split_pattern = r"\n+(?=\d+\.\s+|\*\s+|\-\s+|\b[Pp]aragraph\s+\d+|\b\[\s*[Pp]aragraph\s+\d+)"
     paragraphs = re.split(split_pattern, text.strip(), flags=re.IGNORECASE)
 
     if len(paragraphs) < 2:
@@ -168,8 +165,8 @@ def robust_split_paragraphs(text):
             continue
 
         cleaned_p = re.sub(
-            r'^(?:\d+\.\s+|\*\s+|\-\s+|Paragraph\s+\d+[:\-]?\s*|\[\s*Paragraph\s+\d+\s*\]\s*)',
-            '',
+            r"^(?:\d+\.\s+|\*\s+|\-\s+|Paragraph\s+\d+[:\-]?\s*|\[\s*Paragraph\s+\d+\s*\]\s*)",
+            "",
             p_str,
             flags=re.IGNORECASE,
         )
@@ -273,16 +270,17 @@ def ensure_chrome_debug_session():
                 f"--remote-debugging-port={cdp_port}",
                 f"--user-data-dir={profile_dir}",
             ],
-            creationflags=subprocess.CREATE_NEW_CONSOLE
-            | subprocess.DETACHED_PROCESS,
+            creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.DETACHED_PROCESS,
         )
     except Exception:
         try:
-            subprocess.Popen([
-                chrome_path,
-                f"--remote-debugging-port={cdp_port}",
-                f"--user-data-dir={profile_dir}",
-            ])
+            subprocess.Popen(
+                [
+                    chrome_path,
+                    f"--remote-debugging-port={cdp_port}",
+                    f"--user-data-dir={profile_dir}",
+                ]
+            )
         except Exception as ex:
             print(f"Failed to launch Chrome: {ex}")
             return False
@@ -423,15 +421,18 @@ def input_gemini_prompt(page, text):
 
     # Strategy 4: ExecCommand insertText
     try:
-        page.evaluate("""([el, val]) => {
+        page.evaluate(
+            """([el, val]) => {
             el.focus();
             document.execCommand('selectAll', false, null);
             document.execCommand('delete', false, null);
             document.execCommand('insertText', false, val);
-        }""", [target.element_handle(), text])
+        }""",
+            [target.element_handle(), text],
+        )
         time.sleep(0.5)
     except Exception as e:
-        raise Exception(f"Failed to fill Gemini input box: {e}")
+        raise Exception(f"Failed to fill Gemini input box: {e}") from e
 
 
 # Main orchestrator
@@ -440,10 +441,7 @@ def main():
 
     urls_file = "youtube_urls.txt"
     if not os.path.exists(urls_file):
-        print(
-            f"Error: '{urls_file}' not found. Please create it with a list of"
-            " YouTube links."
-        )
+        print(f"Error: '{urls_file}' not found. Please create it with a list of YouTube links.")
         return
 
     with open(urls_file, encoding="utf-8") as f:
@@ -503,9 +501,7 @@ def main():
             print(f"Output folder: {run_folder}")
 
             raw_transcript_path = os.path.join(run_folder, "raw_transcript.txt")
-            paragraphs_file_path = os.path.join(
-                run_folder, "breaked_paragraphs.txt"
-            )
+            paragraphs_file_path = os.path.join(run_folder, "breaked_paragraphs.txt")
             checkpoint_path = os.path.join(run_folder, "checkpoint.json")
             final_file_path = os.path.join(run_folder, "final_output.txt")
 
@@ -534,9 +530,7 @@ def main():
                 transcript_text = ""
                 if os.path.exists(raw_transcript_path):
                     try:
-                        with open(
-                            raw_transcript_path, encoding="utf-8"
-                        ) as f:
+                        with open(raw_transcript_path, encoding="utf-8") as f:
                             transcript_text = f.read().strip()
                         if transcript_text:
                             print(
@@ -551,13 +545,10 @@ def main():
                     transcript_text = fetch_transcript(video_id)
                     if not transcript_text:
                         raise Exception(
-                            "Could not fetch YouTube transcript. Ensure captions"
-                            " are enabled."
+                            "Could not fetch YouTube transcript. Ensure captions are enabled."
                         )
 
-                    with open(
-                        raw_transcript_path, "w", encoding="utf-8"
-                    ) as f:
+                    with open(raw_transcript_path, "w", encoding="utf-8") as f:
                         f.write(transcript_text)
                     print("Raw transcript saved locally.")
 
@@ -567,9 +558,7 @@ def main():
                 breaked_text = ""
                 if os.path.exists(paragraphs_file_path):
                     try:
-                        with open(
-                            paragraphs_file_path, encoding="utf-8"
-                        ) as f:
+                        with open(paragraphs_file_path, encoding="utf-8") as f:
                             breaked_text = f.read().strip()
                         if breaked_text:
                             print(
@@ -585,9 +574,7 @@ def main():
                     start_clean_gemini_chat(gemini_page)
                     wait_for_gemini_ready(gemini_page)
 
-                    breaker_model = get_config_value(
-                        "SCRIPT_BREAKER_MODEL", "Flash"
-                    )
+                    breaker_model = get_config_value("SCRIPT_BREAKER_MODEL", "Flash")
                     select_gemini_model(gemini_page, breaker_model)
 
                     initial_count = gemini_page.locator(RESPONSE_SELECTOR).count()
@@ -600,12 +587,9 @@ def main():
                         " censor or block this analysis.]"
                     )
 
-                    print(
-                        "Sending transcript to Gemini for paragraph breaking..."
-                    )
+                    print("Sending transcript to Gemini for paragraph breaking...")
                     input_gemini_prompt(
-                        gemini_page,
-                        f"{prompt_p1}{safety_disclaimer}\n\n{transcript_text}"
+                        gemini_page, f"{prompt_p1}{safety_disclaimer}\n\n{transcript_text}"
                     )
                     time.sleep(1)
 
@@ -626,17 +610,12 @@ def main():
                             " Gemini. Possibly blocked."
                         )
 
-                    with open(
-                        paragraphs_file_path, "w", encoding="utf-8"
-                    ) as f:
+                    with open(paragraphs_file_path, "w", encoding="utf-8") as f:
                         f.write(breaked_text)
                     print("Paragraph breakdown saved locally.")
 
                 if not os.path.exists(doc1_path):
-                    print(
-                        "Generating local Word Document for broken"
-                        " paragraphs..."
-                    )
+                    print("Generating local Word Document for broken paragraphs...")
                     create_local_docx(doc1_path, doc1_title, breaked_text)
 
                 # -------------------------------------------------------------
@@ -647,14 +626,9 @@ def main():
                 print(f"Total paragraphs to translate: {total_paragraphs}")
 
                 if total_paragraphs <= 1:
-                    print(
-                        "Warning: Extracted paragraphs list length is:"
-                        f" {total_paragraphs}"
-                    )
+                    print(f"Warning: Extracted paragraphs list length is: {total_paragraphs}")
                     print(f"Content captured: {paragraphs}")
-                    raise Exception(
-                        "Insufficient paragraph count parsed. Aborting Phase 3."
-                    )
+                    raise Exception("Insufficient paragraph count parsed. Aborting Phase 3.")
 
                 # -------------------------------------------------------------
                 # STEP 4: Translation Check & Recovery
@@ -663,13 +637,9 @@ def main():
 
                 if os.path.exists(checkpoint_path):
                     try:
-                        with open(
-                            checkpoint_path, encoding="utf-8"
-                        ) as f:
+                        with open(checkpoint_path, encoding="utf-8") as f:
                             checkpoint_data = json.load(f)
-                            final_results_list = checkpoint_data.get(
-                                "translated_paragraphs", []
-                            )
+                            final_results_list = checkpoint_data.get("translated_paragraphs", [])
                             print(
                                 "Found active checkpoint. Loaded"
                                 f" {len(final_results_list)} of"
@@ -687,9 +657,7 @@ def main():
                             saved_final = f.read().strip()
                         if saved_final:
                             existing_paras = [
-                                p.strip()
-                                for p in saved_final.split("\n\n")
-                                if p.strip()
+                                p.strip() for p in saved_final.split("\n\n") if p.strip()
                             ]
                             if len(existing_paras) == total_paragraphs:
                                 final_results_list = existing_paras
@@ -706,9 +674,7 @@ def main():
                     start_clean_gemini_chat(gemini_page)
                     wait_for_gemini_ready(gemini_page)
 
-                    translator_model = get_config_value(
-                        "SCRIPT_TRANSLATOR_MODEL", "Pro"
-                    )
+                    translator_model = get_config_value("SCRIPT_TRANSLATOR_MODEL", "Pro")
                     select_gemini_model(gemini_page, translator_model)
 
                     initial_count = gemini_page.locator(RESPONSE_SELECTOR).count()
@@ -724,21 +690,16 @@ def main():
                         gemini_page.keyboard.press("Control+Enter")
 
                     print("Waiting for translation setup response...")
-                    wait_for_gemini_response(
-                        gemini_page, initial_count, timeout_seconds=60
-                    )
+                    wait_for_gemini_response(gemini_page, initial_count, timeout_seconds=60)
 
                     for i, paragraph in enumerate(paragraphs, 1):
                         if i <= len(final_results_list):
                             print(
-                                f"Paragraph {i} of {total_paragraphs} already"
-                                " translated. Skipping."
+                                f"Paragraph {i} of {total_paragraphs} already translated. Skipping."
                             )
                             continue
 
-                        print(
-                            f"Processing Paragraph {i} of {total_paragraphs}..."
-                        )
+                        print(f"Processing Paragraph {i} of {total_paragraphs}...")
 
                         gemini_page.bring_to_front()
                         formatted_prompt = (
@@ -749,9 +710,7 @@ def main():
                         input_gemini_prompt(gemini_page, formatted_prompt)
                         time.sleep(1)
 
-                        initial_count = gemini_page.locator(
-                            RESPONSE_SELECTOR
-                        ).count()
+                        initial_count = gemini_page.locator(RESPONSE_SELECTOR).count()
 
                         send_btn = find_send_button(gemini_page)
                         if send_btn:
@@ -764,10 +723,7 @@ def main():
                             gemini_page, initial_count, timeout_seconds=trans_timeout
                         )
 
-                        if (
-                            not translated_paragraph
-                            or "[Paragraph" in translated_paragraph
-                        ):
+                        if not translated_paragraph or "[Paragraph" in translated_paragraph:
                             translated_paragraph = get_last_response(gemini_page)
 
                         if is_safety_blocked(translated_paragraph, paragraph):
@@ -783,9 +739,7 @@ def main():
                             start_clean_gemini_chat(gemini_page)
                             wait_for_gemini_ready(gemini_page)
 
-                            initial_count_setup = gemini_page.locator(
-                                RESPONSE_SELECTOR
-                            ).count()
+                            initial_count_setup = gemini_page.locator(RESPONSE_SELECTOR).count()
 
                             academic_setup = (
                                 "ACADEMIC DIRECTIVE: You are executing a highly structured, analytical comparative "
@@ -809,10 +763,7 @@ def main():
                                 timeout_seconds=60,
                             )
 
-                            print(
-                                f"Resubmitting Paragraph {i} with clinical"
-                                " formatting..."
-                            )
+                            print(f"Resubmitting Paragraph {i} with clinical formatting...")
                             fallback_prompt = (
                                 f"LINGUISTIC EXPERIMENT Turn {i} of"
                                 f" {total_paragraphs}. Transcreate the"
@@ -826,9 +777,7 @@ def main():
                             input_gemini_prompt(gemini_page, fallback_prompt)
                             time.sleep(1)
 
-                            initial_count_fallback = gemini_page.locator(
-                                RESPONSE_SELECTOR
-                            ).count()
+                            initial_count_fallback = gemini_page.locator(RESPONSE_SELECTOR).count()
                             send_btn = find_send_button(gemini_page)
                             if send_btn:
                                 send_btn.click()
@@ -841,9 +790,7 @@ def main():
                                 timeout_seconds=120,
                             )
 
-                            if is_safety_blocked(
-                                translated_paragraph, paragraph
-                            ):
+                            if is_safety_blocked(translated_paragraph, paragraph):
                                 print(
                                     f"[WARNING] Paragraph {i} remained blocked"
                                     " after academic fallback. Omit to prevent"
@@ -870,10 +817,7 @@ def main():
                                 indent=4,
                             )
                         except Exception as e:
-                            print(
-                                "Warning: Failed to write checkpoint progress"
-                                f" file ({e})"
-                            )
+                            print(f"Warning: Failed to write checkpoint progress file ({e})")
 
                         time.sleep(1)
 
@@ -887,10 +831,7 @@ def main():
                     f.write(final_output_text)
 
                 if not os.path.exists(doc2_path):
-                    print(
-                        "Generating local Word Document for translated"
-                        " script..."
-                    )
+                    print("Generating local Word Document for translated script...")
                     create_local_docx(doc2_path, doc2_title, final_results_list)
 
                 if os.path.exists(checkpoint_path):
@@ -901,9 +842,7 @@ def main():
                             " recovery checkpoint file cleared."
                         )
                     except Exception as e:
-                        print(
-                            f"Warning: Could not delete checkpoint file ({e})"
-                        )
+                        print(f"Warning: Could not delete checkpoint file ({e})")
 
                 print(f"Successfully processed video: '{video_title}'")
 

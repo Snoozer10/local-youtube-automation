@@ -7,20 +7,28 @@ project_root = os.path.dirname(script_dir)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-import re
-import time
-import json
-import base64
-import glob
-from playwright.sync_api import sync_playwright
-from utils import get_config_value, launch_browser_with_profile, kill_cdp_chrome, rotate_profile_index, send_telegram_notification
-from gemini_utils import (
-    find_input_box, find_send_button,
-    start_clean_gemini_chat, select_gemini_model,
-    wait_for_gemini_response  # Re-imported standard text wait helper
+import base64  # noqa: E402
+import glob  # noqa: E402
+import json  # noqa: E402
+import re  # noqa: E402
+import time  # noqa: E402
+
+from playwright.sync_api import sync_playwright  # noqa: E402
+
+from gemini_utils import (  # noqa: E402
+    find_input_box,
+    find_send_button,
+    select_gemini_model,
+    start_clean_gemini_chat,
+    wait_for_gemini_response,  # Re-imported standard text wait helper
+)
+from utils import (  # noqa: E402
+    get_config_value,
+    launch_browser_with_profile,
+    send_telegram_notification,
 )
 
-sys.stdout.reconfigure(encoding='utf-8')
+sys.stdout.reconfigure(encoding="utf-8")
 
 THUMBNAIL_COUNT = 5
 TOP_N = 2
@@ -31,7 +39,7 @@ You are an elite YouTube thumbnail strategist specializing in high-CTR 2D animat
 ═══════════════════════════════════════════════════════════════
 GOLDEN RULES FOR HIGH CTR (TITLE + THUMBNAIL SYNERGY)
 ═══════════════════════════════════════════════════════════════
-1. SYNERGY > REPETITION: Thumbnail text (1-3 words MAX) must NEVER repeat words from the title. 
+1. SYNERGY > REPETITION: Thumbnail text (1-3 words MAX) must NEVER repeat words from the title.
    - Title = Driving Question / Premise.
    - Thumbnail Visual = Dramatic Reaction / Mysterious Catalyst / Missing Puzzle Piece.
    - Thumbnail Text = Emotional Trigger ("صدمة!", "السر", "احذر", "قبل/بعد").
@@ -124,9 +132,10 @@ Return ONLY this JSON object:
 #
 # Then format the setup prompt with niche/audience context before sending to LLM.
 
+
 def clean_title(title_text):
     """Removes parenthetical text like (تحليل عصبي) and extra spaces."""
-    cleaned = re.sub(r'\(.*?\)', '', title_text)
+    cleaned = re.sub(r"\(.*?\)", "", title_text)
     return cleaned.strip()
 
 
@@ -135,18 +144,18 @@ def read_titles(folder):
     titles_path = os.path.join(folder, "titles.txt")
     if not os.path.exists(titles_path):
         return []
-    
-    with open(titles_path, "r", encoding="utf-8") as f:
+
+    with open(titles_path, encoding="utf-8") as f:
         content = f.read()
-        
+
     # Match lines starting with "1.", "2.", "1-", etc.
-    raw_matches = re.findall(r'^(\d+)[\.\-]\s*(.+)$', content, re.MULTILINE)
+    raw_matches = re.findall(r"^(\d+)[\.\-]\s*(.+)$", content, re.MULTILINE)
     cleaned_titles = []
     for idx, text in raw_matches:
         cleaned_text = clean_title(text)
         if cleaned_text:
             cleaned_titles.append({"index": int(idx), "text": cleaned_text})
-            
+
     return cleaned_titles
 
 
@@ -155,7 +164,7 @@ def get_latest_run_folder(runs_path="youtube_runs"):
     # Try resolving relative to generate_thumbnail.py's own directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
     rel_to_script = os.path.join(script_dir, runs_path)
-    
+
     resolved_path = runs_path
     if os.path.exists(rel_to_script):
         resolved_path = rel_to_script
@@ -175,11 +184,12 @@ def read_script(folder):
 
     for path in [refined_path, final_path]:
         if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 return f.read().strip()
 
     print("Error: No script found (refined_script.txt or final_output.txt).")
     sys.exit(1)
+
 
 def send_and_wait(page, message, timeout=180):
     """Generic send-message-wait-for-response helper using standard text selectors."""
@@ -201,14 +211,16 @@ def send_and_wait(page, message, timeout=180):
 
     # Import and use RESPONSE_SELECTOR to track text responses safely
     from gemini_utils import RESPONSE_SELECTOR
+
     initial_count = page.locator(RESPONSE_SELECTOR).count()
     return wait_for_gemini_response(page, initial_count, timeout_seconds=timeout)
+
 
 def wait_for_gemini_image_response(page, initial_count, timeout_seconds=120):
     """Wait specifically for Gemini to render a visible image inside the last model-response."""
     start_time = time.time()
     new_response_found = False
-    
+
     while time.time() - start_time < 30:
         try:
             if page.locator("model-response").count() > initial_count:
@@ -217,20 +229,22 @@ def wait_for_gemini_image_response(page, initial_count, timeout_seconds=120):
         except Exception:
             pass
         time.sleep(0.5)
-        
+
     if not new_response_found:
         print("Warning: Timeout waiting for response to start.")
         return None
-        
+
     print("Waiting for image to generate and render in DOM...")
     last_log_time = time.time()
-    
+
     while time.time() - start_time < timeout_seconds:
         elapsed = time.time() - start_time
         if time.time() - last_log_time >= 15:
-            print(f"Still waiting for image generation... (elapsed: {elapsed:.1f}s / {timeout_seconds}s)")
+            print(
+                f"Still waiting for image generation... (elapsed: {elapsed:.1f}s / {timeout_seconds}s)"
+            )
             last_log_time = time.time()
-            
+
         try:
             # Periodically prevent background tab throttling
             if int(elapsed) % 10 == 0:
@@ -238,25 +252,25 @@ def wait_for_gemini_image_response(page, initial_count, timeout_seconds=120):
                     page.bring_to_front()
                 except Exception:
                     pass
-                    
+
             last_response = page.locator("model-response").last
-            
+
             # Automatically scroll the active response block into view to trigger instant rendering
             try:
                 last_response.scroll_into_view_if_needed(timeout=2000)
             except Exception:
                 pass
-                
+
             # Check if the generated image is attached and visible
             img_locator = last_response.locator("img").first
             if img_locator.is_visible():
                 time.sleep(2)  # Soft buffer to ensure the image fully loads its source
                 return "image_ready"
-                
+
         except Exception:
             pass
         time.sleep(1)
-        
+
     print(f"Warning: Image response timed out after {timeout_seconds} seconds.")
     return None
 
@@ -302,9 +316,11 @@ def build_webcomic_thumbnail_prompt(concept, index):
     scene = concept.get("scene", "dramatic scene")
     text_overlay = concept.get("text_overlay", "")
     visual_recipe = concept.get("visual_recipe", {})
-    
+
     lighting = visual_recipe.get("lighting", "cinematic accent lighting")
-    palette = visual_recipe.get("color_palette", "dark desaturated slate with vivid glowing accents")
+    palette = visual_recipe.get(
+        "color_palette", "dark desaturated slate with vivid glowing accents"
+    )
     composition = visual_recipe.get("composition", "dynamic focal point with clean negative space")
 
     character_casting = (
@@ -313,12 +329,12 @@ def build_webcomic_thumbnail_prompt(concept, index):
         "Wears an unbranded charcoal-grey hoodie (with a visible hood resting on the shoulders) and dark sweatpants. "
         "Arms and legs are simple, uniform black line art."
     )
-    
+
     style_anchor = (
         "Visual Art Style: 2D digital webcomic, pristine solid uniform black vector outlines, "
         "flat base colors with dramatic cinematic lighting effects, hyper-sharp focus, dynamic composition, 16:9 cinematic aspect ratio."
     )
-    
+
     prompt = (
         f"Generate a cinematic YouTube thumbnail image based on the following specifications:\n\n"
         f"Scene & Action: {scene}\n"
@@ -329,13 +345,13 @@ def build_webcomic_thumbnail_prompt(concept, index):
         f"Composition Strategy: {composition}\n"
         f"Art Style: {style_anchor}\n"
     )
-    
+
     if text_overlay:
         prompt += (
-            f"Typography Rule: Render the exact bold Arabic text \"{text_overlay}\" in large, clean Arabic typography "
+            f'Typography Rule: Render the exact bold Arabic text "{text_overlay}" in large, clean Arabic typography '
             f"integrated into an uncluttered high-contrast area of the image.\n"
         )
-        
+
     prompt += "NEGATIVE PROMPT: [no extra text, no random letters, no photorealism, no watermarks, no gibberish, no soft focus blur]"
     return prompt
 
@@ -365,25 +381,25 @@ def generate_images_via_gemini(page, items, output_dir):
         try:
             last_response = page.locator("model-response").last
             img_locator = last_response.locator("img").first
-            
+
             # Wait for image to actually be attached and visible
             img_locator.wait_for(state="visible", timeout=15000)
-            
+
             # Force scroll into view to ensure the hover action is not blocked
             img_locator.scroll_into_view_if_needed()
             time.sleep(1)
-            
+
             # Leverage Playwright's Relative Hover (Forced Center)
             box = img_locator.bounding_box()
             if box:
                 # Hover the exact dead-center of the image to trigger the UI overlay safely
                 hover_x = box["width"] / 2
                 hover_y = box["height"] / 2
-                
+
                 # force=True bypasses the "subtree intercepts pointer events" error from hidden Google UI layers
                 img_locator.hover(position={"x": hover_x, "y": hover_y}, force=True)
-                time.sleep(1.5) # Wait for the overlay animation to reveal the button
-                
+                time.sleep(1.5)  # Wait for the overlay animation to reveal the button
+
                 # Robust Selector for the Download Button from script_image_generator.py
                 dl_btn = last_response.locator(
                     'button[aria-label*="Download full size" i], '
@@ -391,28 +407,30 @@ def generate_images_via_gemini(page, items, output_dir):
                     'button[aria-label*="تحميل" i], '
                     'button[data-tooltip*="Download" i]'
                 ).first
-                
+
                 if dl_btn.is_visible():
                     # The Native expect_download Handler
                     with page.expect_download(timeout=30000) as download_info:
                         dl_btn.click(force=True)
-                        
+
                     download = download_info.value
                     download.save_as(filepath)
-                    
+
                     # Post-Download Verification Guard
                     if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
                         generated.append(filepath)
                         print(f"[OK] Saved variant {i + 1}: {filepath}")
                     else:
-                        print(f"[WARNING] Download completed but file is missing or 0 bytes: {filepath}")
+                        print(
+                            f"[WARNING] Download completed but file is missing or 0 bytes: {filepath}"
+                        )
                 else:
                     print("[WARNING] Hover succeeded but Download button did not appear.")
             else:
                 print("[WARNING] Could not calculate image bounding box for hover.")
         except Exception as e:
             # Fallback to base64 extract if UI interaction fails
-            b64_match = re.search(r'data:image/[^;]+;base64,([A-Za-z0-9+/=]+)', response)
+            b64_match = re.search(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", response)
             if b64_match:
                 try:
                     img_data = base64.b64decode(b64_match.group(1))
@@ -450,11 +468,6 @@ def main():
     script_excerpt = script_text[:6000]
 
     model_name = get_config_value("THUMBNAIL_MODEL", get_config_value("REFINE_MODEL", "Pro"))
-    max_retries = int(get_config_value("FAILOVER_RETRY_LIMIT", "4"))
-    switch_accounts = (
-        get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").strip().lower()
-        in ("true", "1", "yes")
-    )
     browser_type = get_config_value("BROWSER_TYPE", "chrome")
     profile_index = int(get_config_value("ACTIVE_PROFILE_INDEX", "1"))
     cdp_port = int(get_config_value("CDP_PORT", "9222"))
@@ -466,9 +479,13 @@ def main():
         try:
             # Attempt to connect to an existing running session on the IPv4 loopback
             browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
-            print(f"Successfully connected to existing {browser_type.capitalize()} session on port {cdp_port}.")
+            print(
+                f"Successfully connected to existing {browser_type.capitalize()} session on port {cdp_port}."
+            )
         except Exception:
-            print(f"Debugging browser is closed or unreachable on port {cdp_port}. Launching framework...")
+            print(
+                f"Debugging browser is closed or unreachable on port {cdp_port}. Launching framework..."
+            )
             # Automatically launch Chrome using your profile index config
             if not launch_browser_with_profile(browser_type, profile_index):
                 sys.exit(1)
@@ -496,7 +513,7 @@ def main():
             f"TITLES FROM titles.txt:\n{titles_formatted}\n\n"
             f"SCRIPT EXCERPT:\n{script_excerpt}"
         )
-        
+
         # Step 1: Send setup prompt
         concept_response = send_and_wait(page, concept_prompt, timeout=180)
         concepts = extract_json_from_response(concept_response)
@@ -531,7 +548,10 @@ def main():
             print(f"[OK] Critique saved to {critique_path}")
         else:
             print("[WARNING] Critique failed. Defaulting to first 2 title indices.")
-            critique = {"winners": [c.get("title_index", i + 1) for i, c in enumerate(concepts[:TOP_N])], "improvements": {}}
+            critique = {
+                "winners": [c.get("title_index", i + 1) for i, c in enumerate(concepts[:TOP_N])],
+                "improvements": {},
+            }
 
         winners = critique.get("winners", [1, 2])[:TOP_N]
         improvements = critique.get("improvements", {})
@@ -544,12 +564,14 @@ def main():
                 prompt_str = build_webcomic_thumbnail_prompt(concept, t_idx)
                 if str(t_idx) in improvements:
                     prompt_str += f"\nVisual Refinement: {improvements[str(t_idx)]}"
-                
-                winning_items.append({
-                    "title_index": t_idx,
-                    "filename": f"title_{t_idx}_thumbnail.png",
-                    "prompt": prompt_str
-                })
+
+                winning_items.append(
+                    {
+                        "title_index": t_idx,
+                        "filename": f"title_{t_idx}_thumbnail.png",
+                        "prompt": prompt_str,
+                    }
+                )
 
         print("\n[PHASE 4] Opening clean session for image generation...")
         start_clean_gemini_chat(page)
@@ -565,7 +587,9 @@ def main():
         print(f"\n{'=' * 60}")
         print(f" THUMBNAILS COMPLETE: {len(generated)} images for {video_title}")
         print(f"{'=' * 60}")
-        send_telegram_notification(f"✅ Thumbnails generated: {video_title} ({len(generated)} variants)")
+        send_telegram_notification(
+            f"✅ Thumbnails generated: {video_title} ({len(generated)} variants)"
+        )
     else:
         print("\n[WARNING] No thumbnails were generated.")
         send_telegram_notification(f"⚠️ Thumbnail generation failed: {video_title}")

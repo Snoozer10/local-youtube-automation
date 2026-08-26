@@ -1,7 +1,7 @@
 import os
+import re
 import sys
 import wave
-import re
 
 # Windows console hardening: guarantee UTF-8 for Arabic output even when piped.
 if sys.platform.startswith("win"):
@@ -108,9 +108,7 @@ def stitch_files(file_list, output_path):
         for path in file_list:
             with wave.open(path, "rb") as input_file:
                 # Write frames from each chapter directly — zero frames added or dropped.
-                output_file.writeframes(
-                    input_file.readframes(input_file.getnframes())
-                )
+                output_file.writeframes(input_file.readframes(input_file.getnframes()))
     return output_path
 
 
@@ -132,16 +130,12 @@ def main():
     voice_dir = os.path.join(latest_run, "voice_chapters")
 
     # Prioritize polished_chapters, fall back to voice_chapters
-    if os.path.exists(polished_dir) and os.path.exists(
-        os.path.join(polished_dir, "Chapter_1.wav")
-    ):
+    if os.path.exists(polished_dir) and os.path.exists(os.path.join(polished_dir, "Chapter_1.wav")):
         chapters_source_dir = polished_dir
         print(
             "[SYSTEM] Found polished chapters. Utilizing 'polished_chapters' as the audio source."
         )
-    elif os.path.exists(voice_dir) and os.path.exists(
-        os.path.join(voice_dir, "Chapter_1.wav")
-    ):
+    elif os.path.exists(voice_dir) and os.path.exists(os.path.join(voice_dir, "Chapter_1.wav")):
         chapters_source_dir = voice_dir
         print(
             "[SYSTEM] Polished chapters not found. Falling back to raw 'voice_chapters' as the audio source."

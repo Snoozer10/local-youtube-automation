@@ -36,6 +36,7 @@ from utils import (
 
 sys.stdout.reconfigure(encoding="utf-8")
 
+
 @dataclass
 class RefinedTurn:
     index: int
@@ -113,23 +114,30 @@ def load_checkpoint(folder):
                 turns = []
                 for item in raw:
                     if isinstance(item, str):
-                        turns.append(RefinedTurn(
-                            index=len(turns) + 1,
-                            original_text="",
-                            refined_text=item,
-                            word_count=len(item.split()),
-                            rhythm_variance=0.0,
-                            is_outro=False
-                        ))
+                        turns.append(
+                            RefinedTurn(
+                                index=len(turns) + 1,
+                                original_text="",
+                                refined_text=item,
+                                word_count=len(item.split()),
+                                rhythm_variance=0.0,
+                                is_outro=False,
+                            )
+                        )
                     elif isinstance(item, dict):
-                        turns.append(RefinedTurn(
-                            index=item.get("index", len(turns) + 1),
-                            original_text=item.get("original_text", ""),
-                            refined_text=item.get("refined_text", item.get("text", "")),
-                            word_count=item.get("word_count", len(item.get("refined_text", item.get("text", "")).split())),
-                            rhythm_variance=item.get("rhythm_variance", 0.0),
-                            is_outro=item.get("is_outro", False)
-                        ))
+                        turns.append(
+                            RefinedTurn(
+                                index=item.get("index", len(turns) + 1),
+                                original_text=item.get("original_text", ""),
+                                refined_text=item.get("refined_text", item.get("text", "")),
+                                word_count=item.get(
+                                    "word_count",
+                                    len(item.get("refined_text", item.get("text", "")).split()),
+                                ),
+                                rhythm_variance=item.get("rhythm_variance", 0.0),
+                                is_outro=item.get("is_outro", False),
+                            )
+                        )
                 return turns
         except Exception:
             pass
@@ -150,7 +158,7 @@ def save_checkpoint(folder: str, refined_paragraphs: list[RefinedTurn]) -> None:
             "refined_text": t.refined_text,
             "word_count": t.word_count,
             "rhythm_variance": t.rhythm_variance,
-            "is_outro": t.is_outro
+            "is_outro": t.is_outro,
         }
         for t in refined_paragraphs
     ]
@@ -176,6 +184,7 @@ def delete_checkpoint(folder):
     if os.path.exists(path):
         os.remove(path)
 
+
 # Module-Level Pre-compiled Technical Loanwords Transliteration Mapping
 LOANWORDS_MAP = {
     re.compile(r"\bPi\b", re.IGNORECASE): "باي",
@@ -190,11 +199,13 @@ LOANWORDS_MAP = {
     re.compile(r"\bEther\b", re.IGNORECASE): "أثير",
     re.compile(r"\bOctaves?\b", re.IGNORECASE): "أوكتاف",
     re.compile(r"\bFlash\b", re.IGNORECASE): "فلاش",
-    re.compile(r"\bFormula\b", re.IGNORECASE): "معادلة"
+    re.compile(r"\bFormula\b", re.IGNORECASE): "معادلة",
 }
+
 
 class DialectTashkeelEngine:
     """Pre-compiled singleton engine for O(M) single-pass Tashkeel substitution."""
+
     _instance = None
     _regex = None
     _lexicon = {}
@@ -234,12 +245,14 @@ class DialectTashkeelEngine:
         if not text:
             return ""
         if self._regex:
+
             def _replacer(m: re.Match) -> str:
                 lead = m.group(1) or ""
                 pref = m.group(2) or ""
                 word = m.group("word")
                 vocalized = self._lexicon.get(word, word)
                 return f"{lead}{pref}{vocalized}"
+
             text = self._regex.sub(_replacer, text)
 
         # Contextual Homograph Disambiguation
@@ -248,9 +261,11 @@ class DialectTashkeelEngine:
         text = re.sub(r"(^|\s)من\s+غير(?=[\s.,!?؛،]|$)", r"\1مِن غِير", text)
         return text
 
+
 def apply_tashkeel_from_config(text: str) -> str:
     """Delegates to cached single-pass engine."""
     return DialectTashkeelEngine.get_instance().transform(text)
+
 
 def clean_refined_paragraph(text):
     """
@@ -261,7 +276,9 @@ def clean_refined_paragraph(text):
         return ""
 
     # 1. Primary Strategy: Extract content inside <final_script> tags if present
-    script_match = re.search(r"<final_script>(.*?)</final_script>", text, flags=re.DOTALL | re.IGNORECASE)
+    script_match = re.search(
+        r"<final_script>(.*?)</final_script>", text, flags=re.DOTALL | re.IGNORECASE
+    )
     if script_match:
         text = script_match.group(1).strip()
     else:
@@ -269,7 +286,9 @@ def clean_refined_paragraph(text):
         # Orphan-open fallbacks catch truncated model output where the closing
         # tag never arrived; otherwise planning residue leaks into the script.
         text = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r"<slang_ledger>.*?</slang_ledger>", "", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(
+            r"<slang_ledger>.*?</slang_ledger>", "", text, flags=re.DOTALL | re.IGNORECASE
+        )
         # Orphan-open fallback: truncated output leaves an unclosed tag. Purge from
         # the orphan tag through its own line only (`.` stays newline-terminated),
         # so any clean paragraph lines that followed survive.
@@ -281,7 +300,7 @@ def clean_refined_paragraph(text):
     metadata_line_patterns = [
         r"(?i)^.*?\b(?:Applied diacritics to|Category [A-D]|Diacritics (?:applied|on)|Numbers phonetically|Zero robotic|Pure Cairene|Motif [\"'].*?[\"']|Targeted diacritics|Egyptian Amiya blended|All numbers spelled).*$",
         r"(?i)\b(?:Beat\s*\d|Sentence\s*\d|The\s*Short\s*Hit|Medium\s*Setup|Flowing\s*Data(?:\s*Density)?|Staccato\s*Punchline|Abo\s*Hmeed\s*Interjection)\s*[:\-]",
-        r"(?i)\b(?:CADENCE_CHECK|FUSHA_SHIELD_AUDIT|UPDATE_LEDGER|TASHKEEL_VERIFY|OUTRO_CHECK|SLANG_LEDGER_AUDIT)\s*[:\-].*?$"
+        r"(?i)\b(?:CADENCE_CHECK|FUSHA_SHIELD_AUDIT|UPDATE_LEDGER|TASHKEEL_VERIFY|OUTRO_CHECK|SLANG_LEDGER_AUDIT)\s*[:\-].*?$",
     ]
     for pat in metadata_line_patterns:
         text = re.sub(pat, "", text, flags=re.MULTILINE)
@@ -303,7 +322,12 @@ def clean_refined_paragraph(text):
 
     # 4. Strip leftover Markdown symbols and conversational lead-ins
     combined = re.sub(r"\*{1,3}(.*?)\*{1,3}", r"\1", combined)
-    combined = re.sub(r"^(?:الفقرة\s*\d*[:\-]?|إليك\s*(?:الفقرة|التعديل|النص)[:\-]?|\d+[\.\-\)]\s*)", "", combined.strip(), flags=re.IGNORECASE)
+    combined = re.sub(
+        r"^(?:الفقرة\s*\d*[:\-]?|إليك\s*(?:الفقرة|التعديل|النص)[:\-]?|\d+[\.\-\)]\s*)",
+        "",
+        combined.strip(),
+        flags=re.IGNORECASE,
+    )
     combined = re.sub(r"\([A-Za-z0-9\s\-_,\.\'&]+\)", "", combined)
     combined = re.sub(r"\s+", " ", combined).strip()
 
@@ -313,14 +337,14 @@ def clean_refined_paragraph(text):
     interjection_patterns = [
         r"(?:ثانية واحدة يا أبو حميد[!؟]*)",
         r"(?:أبو حميد،? أنت بتهبد[?!]*)",
-        r"(?:يا نهار أسود يا أبو حميد[!؟]*)"
+        r"(?:يا نهار أسود يا أبو حميد[!؟]*)",
     ]
     for pat in interjection_patterns:
         matches = list(re.finditer(pat, combined))
         if len(matches) > 1:
             # Remove earlier duplicated occurrences, retaining the surrounding paragraph text
             for m in matches[:-1]:
-                combined = combined[:m.start()] + combined[m.end():]
+                combined = combined[: m.start()] + combined[m.end() :]
             combined = re.sub(r"\s+", " ", combined).strip()
 
     # 6. Slice to the first valid Arabic character
@@ -335,6 +359,7 @@ def clean_refined_paragraph(text):
     # 8. Apply Tashkeel from config
     return apply_tashkeel_from_config(combined)
 
+
 def validate_refinement_quality(text, is_outro=False):
     """
     Validates cadence, length, dialect purity, and Gary Provost rhythm variance.
@@ -345,9 +370,15 @@ def validate_refinement_quality(text, is_outro=False):
 
     # 1. Check for forbidden formal Fusha connectors
     banned_fusha = [
-        "علاوة على ذلك", "وبالإضافة إلى ذلك", "من الجدير بالذكر",
-        "بناءً عليه", "مما لا شك فيه", "نستنتج مما سبق", "حيثما",
-        "في هذا الصدد", "وعلى النقيض"
+        "علاوة على ذلك",
+        "وبالإضافة إلى ذلك",
+        "من الجدير بالذكر",
+        "بناءً عليه",
+        "مما لا شك فيه",
+        "نستنتج مما سبق",
+        "حيثما",
+        "في هذا الصدد",
+        "وعلى النقيض",
     ]
     for banned in banned_fusha:
         if banned in text:
@@ -368,7 +399,10 @@ def validate_refinement_quality(text, is_outro=False):
         variance = statistics.stdev(word_counts)
         # Healthy Provost variation requires at least 1.8 word count standard deviation between beats
         if variance < 1.8 and len(text.split()) > 40:
-            return False, f"Monotonic cadence detected (Rhythm variance {variance:.2f} is too flat)."
+            return (
+                False,
+                f"Monotonic cadence detected (Rhythm variance {variance:.2f} is too flat).",
+            )
 
     # 4. Outro vs Main Pacing Markers
     if not is_outro and not any(p in text for p in ["...", "،", "!", "؟", " — "]):
@@ -391,12 +425,13 @@ def set_paragraph_rtl(paragraph):
     pPr = paragraph._p.get_or_add_pPr()
     # Remove any existing bidi elements to avoid duplicate XML tags
     for child in list(pPr):
-        if child.tag.endswith('bidi'):
+        if child.tag.endswith("bidi"):
             pPr.remove(child)
-    bidi = OxmlElement('w:bidi')
-    bidi.set(qn('w:val'), '1')
+    bidi = OxmlElement("w:bidi")
+    bidi.set(qn("w:val"), "1")
     pPr.append(bidi)
     paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
 
 def generate_diff_report(folder, original_paragraphs, refined_paragraphs):
     """Generates an elevated HTML side-by-side comparison report with cadence metrics."""
@@ -406,7 +441,9 @@ def generate_diff_report(folder, original_paragraphs, refined_paragraphs):
     total_orig_words = sum(len(p.split()) for p in original_paragraphs)
     total_ref_words = sum(len(p.split()) for p in refined_paragraphs)
 
-    for idx, (orig, refined) in enumerate(zip(original_paragraphs, refined_paragraphs, strict=True), 1):
+    for idx, (orig, refined) in enumerate(
+        zip(original_paragraphs, refined_paragraphs, strict=True), 1
+    ):
         o_words = len(orig.split())
         r_words = len(refined.split())
         delta = r_words - o_words
@@ -414,7 +451,9 @@ def generate_diff_report(folder, original_paragraphs, refined_paragraphs):
 
         # Calculate Provost variance for this refined turn
         beats = [s.strip() for s in re.split(r"[.!?؛،\n…]+", refined) if len(s.strip().split()) > 0]
-        variance_str = f"{statistics.stdev([len(b.split()) for b in beats]):.1f}" if len(beats) >= 2 else "N/A"
+        variance_str = (
+            f"{statistics.stdev([len(b.split()) for b in beats]):.1f}" if len(beats) >= 2 else "N/A"
+        )
 
         rows.append(f"""
         <tr>
@@ -428,7 +467,7 @@ def generate_diff_report(folder, original_paragraphs, refined_paragraphs):
             </td>
             <td dir="rtl" style="width:48%; padding:14px; background:#f0f9ff; border-left:1px solid #bae6fd; font-family: 'Segoe UI', Tahoma, sans-serif; font-size:15px; line-height:1.8; color:#0369a1;">
                 <div style="font-size:12px; color:#0284c7; margin-bottom:6px; direction:ltr; text-align:left;">
-                    Words: {r_words} (<span style="color:{delta_color}; font-weight:bold;">{delta:+d}</span>) | Read Time: ~{round(r_words/150, 1)}m
+                    Words: {r_words} (<span style="color:{delta_color}; font-weight:bold;">{delta:+d}</span>) | Read Time: ~{round(r_words / 150, 1)}m
                 </div>
                 {html.escape(refined)}
             </td>
@@ -457,7 +496,7 @@ def generate_diff_report(folder, original_paragraphs, refined_paragraphs):
             <div class="metrics">
                 <div class="metric-card">Original Words: <b>{total_orig_words}</b></div>
                 <div class="metric-card">Refined Words: <b>{total_ref_words}</b></div>
-                <div class="metric-card">Est. Audio: <b>~{round(total_ref_words/150, 1)} mins</b></div>
+                <div class="metric-card">Est. Audio: <b>~{round(total_ref_words / 150, 1)} mins</b></div>
             </div>
         </div>
         <table>
@@ -469,7 +508,7 @@ def generate_diff_report(folder, original_paragraphs, refined_paragraphs):
                 </tr>
             </thead>
             <tbody>
-                {''.join(rows)}
+                {"".join(rows)}
             </tbody>
         </table>
     </div>
@@ -479,6 +518,7 @@ def generate_diff_report(folder, original_paragraphs, refined_paragraphs):
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html_content)
     print(f"[REPORT] Visual QA comparison dashboard generated: {html_path}")
+
 
 def prepare_tts_acoustic_text(text: str) -> str:
     """
@@ -538,7 +578,7 @@ def save_refined_script(folder, refined_paragraphs):
             "total_words": total_words,
             "estimated_runtime_minutes": round(est_minutes, 2),
             "words_per_minute_reference": 135,
-            "voice_target": "Al-Daheeh (Cairene Arabic)"
+            "voice_target": "Al-Daheeh (Cairene Arabic)",
         },
         "paragraphs": [
             {
@@ -546,10 +586,10 @@ def save_refined_script(folder, refined_paragraphs):
                 "text": p,
                 "tts_text": prepare_tts_acoustic_text(p),
                 "word_count": len(p.split()),
-                "estimated_seconds": round((len(p.split()) / 135.0) * 60, 1)
+                "estimated_seconds": round((len(p.split()) / 135.0) * 60, 1),
             }
             for i, p in enumerate(refined_paragraphs, 1)
-        ]
+        ],
     }
 
     with open(tts_json_path, "w", encoding="utf-8") as f:
@@ -601,7 +641,9 @@ def ensure_chrome_debug_session(browser_type, profile_index, force_restart=True)
             pass
 
     # Kill old background session so the new profile index actually boots
-    print(f"[SYSTEM] Initializing Browser: {browser_type} | Profile Index: {profile_index} on Port {port}")
+    print(
+        f"[SYSTEM] Initializing Browser: {browser_type} | Profile Index: {profile_index} on Port {port}"
+    )
     kill_cdp_chrome(port)
     time.sleep(1)
 
@@ -634,6 +676,7 @@ def wait_for_gemini_ready(page, timeout_seconds=20):
         time.sleep(0.5)
     return False
 
+
 def input_gemini_prompt(page, text: str) -> None:
     """
     Injects text into Gemini's custom rich-textarea element using pure IME keyboard insertion.
@@ -663,6 +706,7 @@ def input_gemini_prompt(page, text: str) -> None:
     target.evaluate("el => el.dispatchEvent(new Event('input', { bubbles: true }))")
     time.sleep(0.3)
 
+
 def setup_refinement_session(page, model_name):
     """Turn 1: Send the refinement style guide and wait for acknowledgment."""
     print("[SETUP] Starting refinement session...")
@@ -691,9 +735,7 @@ def setup_refinement_session(page, model_name):
         page.keyboard.press("Control+Enter")
 
     print("[SETUP] Waiting for Gemini acknowledgment...")
-    response = wait_for_gemini_response(
-        page, initial_count, timeout_seconds=120
-    )
+    response = wait_for_gemini_response(page, initial_count, timeout_seconds=120)
 
     if not response:
         print("[SETUP ERROR] No response received from Gemini during setup.")
@@ -734,12 +776,21 @@ def send_prompt_to_gemini(page, text):
     return True, initial_count
 
 
-def refine_paragraph(page, paragraph_text, index, total, previous_tail="", global_motif="", banned_slang=None, lean_prompt=True):
+def refine_paragraph(
+    page,
+    paragraph_text,
+    index,
+    total,
+    previous_tail="",
+    global_motif="",
+    banned_slang=None,
+    lean_prompt=True,
+):
     """Sends a single paragraph with sliding-window narrative context, motif memory & active slang exclusions.
     If lean_prompt=True (default), sends only dynamic variables since system rules were established in setup.
     """
     persona = get_config_value("REFINE_PERSONA", "Al-Daheeh")
-    is_outro_zone = (index >= max(1, total - 1))
+    is_outro_zone = index >= max(1, total - 1)
 
     slang_restriction = ""
     if banned_slang and len(banned_slang) > 0 and not is_outro_zone:
@@ -772,7 +823,7 @@ def refine_paragraph(page, paragraph_text, index, total, previous_tail="", globa
 
     context_bridge = ""
     if previous_tail:
-        context_bridge = f"BRIDGE CONTEXT (The previous paragraph ended with):\n\"{previous_tail}\"\n(Ensure a smooth transition)\n\n"
+        context_bridge = f'BRIDGE CONTEXT (The previous paragraph ended with):\n"{previous_tail}"\n(Ensure a smooth transition)\n\n'
 
     if lean_prompt:
         # Lean prompt: system rules already established in setup_refinement_session.
@@ -868,9 +919,7 @@ def main():
         # Crash-window recovery: the last checkpoint save can precede the
         # deliverable write. Regenerate artifacts BEFORE discarding state,
         # otherwise a rerun deletes the only copy of the refined script.
-        if refined_paragraphs and not os.path.exists(
-            _safe_path(folder, "refined_script.txt")
-        ):
+        if refined_paragraphs and not os.path.exists(_safe_path(folder, "refined_script.txt")):
             print("[RECOVERY] refined_script.txt missing — regenerating from checkpoint...")
             save_refined_script(folder, [t.refined_text for t in refined_paragraphs])
         delete_checkpoint(folder)
@@ -890,7 +939,9 @@ def main():
             except Exception as e:
                 if attempt == 3:
                     raise
-                print(f"[RETRY] CDP connect attempt {attempt} failed ({type(e).__name__}); retrying...")
+                print(
+                    f"[RETRY] CDP connect attempt {attempt} failed ({type(e).__name__}); retrying..."
+                )
                 time.sleep(2 * attempt)
         context = browser.contexts[0]
         context.grant_permissions(["clipboard-read", "clipboard-write"])
@@ -914,12 +965,29 @@ def main():
 
         session_initialized = False
 
-# Egyptian Slang Catalog for automated rotational audit
+        # Egyptian Slang Catalog for automated rotational audit
         SLANG_DICTIONARY = [
-            "هوبا", "قوم إيه", "فـ ثانية", "على غفلة", "فجأة كدا",
-            "يا سيدي", "يا عبقري", "يا نبيه", "يا فنان", "야 닥터",
-            "سَحْلَة", "خازوق", "حوار", "دوشة", "دوامة", "متاهة",
-            "الزتونة", "سر الطبخة", "اللقطة", "الملعوب", "الخطة"
+            "هوبا",
+            "قوم إيه",
+            "فـ ثانية",
+            "على غفلة",
+            "فجأة كدا",
+            "يا سيدي",
+            "يا عبقري",
+            "يا نبيه",
+            "يا فنان",
+            "야 닥터",
+            "سَحْلَة",
+            "خازوق",
+            "حوار",
+            "دوشة",
+            "دوامة",
+            "متاهة",
+            "الزتونة",
+            "سر الطبخة",
+            "اللقطة",
+            "الملعوب",
+            "الخطة",
         ]
 
         def extract_recent_slang(history, count=2):
@@ -932,7 +1000,9 @@ def main():
         while current_index < len(paragraphs) and total_failures < FAILURE_BUDGET:
             # Context Window Refresh: Invalidate active session every 6 paragraphs to clear LLM context bloat
             if current_index > 0 and current_index % 6 == 0 and session_initialized:
-                print(f"\n[MAINTENANCE] Periodic context refresh at paragraph {current_index + 1}...")
+                print(
+                    f"\n[MAINTENANCE] Periodic context refresh at paragraph {current_index + 1}..."
+                )
                 session_initialized = False
 
             if not session_initialized:
@@ -944,9 +1014,7 @@ def main():
                 session_initialized = True
 
             paragraph = paragraphs[current_index]
-            print(
-                f"\n[REFINE] Paragraph {current_index + 1}/{len(paragraphs)}..."
-            )
+            print(f"\n[REFINE] Paragraph {current_index + 1}/{len(paragraphs)}...")
 
             # Extract narrative tail of previous paragraph for transition continuity
             prev_tail = ""
@@ -961,9 +1029,14 @@ def main():
             banned_slang_list = extract_recent_slang(refined_paragraphs, count=2)
 
             refined_text = refine_paragraph(
-                page, paragraph, current_index + 1, len(paragraphs),
-                previous_tail=prev_tail, global_motif=core_motif,
-                banned_slang=banned_slang_list, lean_prompt=True
+                page,
+                paragraph,
+                current_index + 1,
+                len(paragraphs),
+                previous_tail=prev_tail,
+                global_motif=core_motif,
+                banned_slang=banned_slang_list,
+                lean_prompt=True,
             )
 
             is_stale_duplicate = (
@@ -977,18 +1050,18 @@ def main():
                     refined_text=refined_text,
                     word_count=len(refined_text.split()),
                     rhythm_variance=calculate_rhythm_variance(refined_text),
-                    is_outro=(current_index >= len(paragraphs) - 2)
+                    is_outro=(current_index >= len(paragraphs) - 2),
                 )
                 refined_paragraphs.append(turn)
                 save_checkpoint(folder, refined_paragraphs)
-                print(
-                    f"[OK] Paragraph {current_index + 1} refined ({len(refined_text)} chars)."
-                )
+                print(f"[OK] Paragraph {current_index + 1} refined ({len(refined_text)} chars).")
                 current_index += 1
                 retries = 0
             else:
                 if is_stale_duplicate:
-                    print(f"[WARN] Detected stale duplicate response for paragraph {current_index + 1}.")
+                    print(
+                        f"[WARN] Detected stale duplicate response for paragraph {current_index + 1}."
+                    )
                 retries += 1
                 total_failures += 1
                 print(
@@ -1028,7 +1101,10 @@ def main():
 
                     context = browser.contexts[0]
                     try:
-                        context.grant_permissions(["clipboard-read", "clipboard-write"], origin="https://gemini.google.com")
+                        context.grant_permissions(
+                            ["clipboard-read", "clipboard-write"],
+                            origin="https://gemini.google.com",
+                        )
                     except Exception:
                         pass
                     page = context.new_page()
@@ -1041,7 +1117,7 @@ def main():
         if current_index >= len(paragraphs):
             refined_texts = [t.refined_text for t in refined_paragraphs]
             save_refined_script(folder, refined_texts)
-            generate_diff_report(folder, paragraphs[:len(refined_paragraphs)], refined_texts)
+            generate_diff_report(folder, paragraphs[: len(refined_paragraphs)], refined_texts)
 
             # Run the final Quality Audit Rubric while Playwright context is active
             full_refined_text = "\n\n".join(refined_texts)
@@ -1062,6 +1138,7 @@ def main():
             send_telegram_notification(
                 f"⚠️ Script refinement partial: {video_title} ({current_index}/{len(paragraphs)})"
             )
+
 
 def verify_script_with_rubric(page, script_text, folder=None):
     """Sends the refined script along with the audit rubric, records findings to audit_feedback.md, and checks PASS/FAIL status."""
@@ -1104,16 +1181,23 @@ def verify_script_with_rubric(page, script_text, folder=None):
             feedback_path = _safe_path(folder, "audit_feedback.md")
             with open(feedback_path, "w", encoding="utf-8") as f:
                 f.write("# Al-Daheeh Script Doctor: Quality Rubric Feedback\n\n")
-                f.write(f"**Status:** {'PASSED ✅' if 'PASS' in cleaned_response.upper() else 'FLAGGED ⚠️'}\n\n")
+                f.write(
+                    f"**Status:** {'PASSED ✅' if 'PASS' in cleaned_response.upper() else 'FLAGGED ⚠️'}\n\n"
+                )
                 f.write(f"## Doctor's Review Notes\n\n{cleaned_response}\n")
             print(f"[SAVED] Audit feedback report saved to: {feedback_path}")
 
         upper_resp = cleaned_response.upper()
         # Ensure 'PASS' is matched as a standalone affirmative token, not part of 'DOES NOT PASS' or 'FAIL'
-        has_fail_markers = any(neg in upper_resp for neg in ["NOT PASS", "DOES NOT PASS", "DID NOT PASS", "FAIL", "FAILED", "REJECT"])
+        has_fail_markers = any(
+            neg in upper_resp
+            for neg in ["NOT PASS", "DOES NOT PASS", "DID NOT PASS", "FAIL", "FAILED", "REJECT"]
+        )
         has_pass_marker = bool(re.search(r"\bPASS\b", upper_resp))
 
         return has_pass_marker and not has_fail_markers
     return False
+
+
 if __name__ == "__main__":
     main()

@@ -49,10 +49,11 @@ user32.SetClipboardData.restype = ctypes.c_void_p
 user32.GetClipboardData.argtypes = [ctypes.c_uint]
 user32.GetClipboardData.restype = ctypes.c_void_p
 
+
 def set_clipboard_text(text):
     """Sets Unicode text directly to the Windows system clipboard using native ctypes with retries."""
     opened = False
-    for i in range(10):
+    for _i in range(10):
         if user32.OpenClipboard(None):
             opened = True
             break
@@ -61,7 +62,7 @@ def set_clipboard_text(text):
         return False
     try:
         user32.EmptyClipboard()
-        encoded_text = text.encode('utf-16le') + b'\x00\x00'
+        encoded_text = text.encode("utf-16le") + b"\x00\x00"
         h_global_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(encoded_text))
         if not h_global_mem:
             return False
@@ -75,13 +76,14 @@ def set_clipboard_text(text):
         user32.CloseClipboard()
     return True
 
+
 # Preset Configuration File Parser
 def read_voice_options():
     preset_path = "voice_option_notes.txt"
     options = {
         "model": get_config_value("TTS_MODEL", "gemini-2.5-pro-preview-tts"),
         "temperature": get_config_value("TTS_TEMPERATURE", "1.1"),
-        "voice": get_config_value("TTS_VOICE_NAME", "Achird")
+        "voice": get_config_value("TTS_VOICE_NAME", "Achird"),
     }
     if os.path.exists(preset_path):
         try:
@@ -107,9 +109,11 @@ def read_voice_options():
             print(f"Warning: Could not create default preset file ({e})")
     return options
 
+
 # Manifest Checkpoint Persistence Helpers
 def get_manifest_path(latest_run):
     return os.path.join(latest_run, MANIFEST_FILE_NAME)
+
 
 def load_or_create_manifest(latest_run, voice_options):
     manifest_path = get_manifest_path(latest_run)
@@ -128,10 +132,11 @@ def load_or_create_manifest(latest_run, voice_options):
         "voice_config": voice_options,
         "archetype_plan": "",
         "gemini_completed": False,
-        "chapters": []
+        "chapters": [],
     }
     save_manifest(latest_run, initial_manifest)
     return initial_manifest
+
 
 def save_manifest(latest_run, manifest_data):
     manifest_path = get_manifest_path(latest_run)
@@ -151,6 +156,7 @@ def save_manifest(latest_run, manifest_data):
             except OSError:
                 pass
         print(f"[MANIFEST WARNING] Failed to write manifest checkpoint: {e}")
+
 
 def extract_total_blocks_count(text):
     """Extracts (current_idx, total_idx) from headers like 'TTS BLOCK 1 of 8'.
@@ -179,6 +185,7 @@ def extract_total_blocks_count(text):
         if best_curr is None or curr > best_curr:
             best_curr, best_total = curr, total
     return best_curr, best_total
+
 
 def check_is_gemini_complete(manifest, transcript_text, last_raw_response=""):
     """Determines if Gemini text generation is complete based on block headers.
@@ -216,10 +223,13 @@ def check_is_gemini_complete(manifest, transcript_text, last_raw_response=""):
     else:
         max_blocks = max(len(transcript_text or "") // 700 + 4, 8)
     if len(chapters) >= max_blocks:
-        print(f"[GUARDRAIL] Runaway block ceiling reached ({len(chapters)} >= {max_blocks}). Forcing Phase 1 completion.")
+        print(
+            f"[GUARDRAIL] Runaway block ceiling reached ({len(chapters)} >= {max_blocks}). Forcing Phase 1 completion."
+        )
         return True
 
     return False
+
 
 # Human-like Mouse Emulation functions
 def simulate_human_mouse_move(page, target_locator, steps=25):
@@ -230,8 +240,14 @@ def simulate_human_mouse_move(page, target_locator, steps=25):
         if not box:
             return
 
-        target_x = box['x'] + box['width'] / 2 + random.uniform(-box['width']*0.08, box['width']*0.08)
-        target_y = box['y'] + box['height'] / 2 + random.uniform(-box['height']*0.08, box['height']*0.08)
+        target_x = (
+            box["x"] + box["width"] / 2 + random.uniform(-box["width"] * 0.08, box["width"] * 0.08)
+        )
+        target_y = (
+            box["y"]
+            + box["height"] / 2
+            + random.uniform(-box["height"] * 0.08, box["height"] * 0.08)
+        )
     except Exception:
         return
 
@@ -242,14 +258,15 @@ def simulate_human_mouse_move(page, target_locator, steps=25):
 
     for i in range(steps + 1):
         t = i / steps
-        x = (1-t)**2 * start_x + 2*(1-t)*t * ctrl_x + t**2 * target_x
-        y = (1-t)**2 * start_y + 2*(1-t)*t * ctrl_y + t**2 * target_y
+        x = (1 - t) ** 2 * start_x + 2 * (1 - t) * t * ctrl_x + t**2 * target_x
+        y = (1 - t) ** 2 * start_y + 2 * (1 - t) * t * ctrl_y + t**2 * target_y
 
         page.mouse.move(x, y)
         time.sleep(random.uniform(0.004, 0.012))
 
     current_mouse_pos = [target_x, target_y]
     time.sleep(random.uniform(0.12, 0.28))
+
 
 def human_click(page, target_locator):
     """Performs an organic click containing scrolling, path curves, and down/up click pauses."""
@@ -283,6 +300,7 @@ def human_click(page, target_locator):
         except Exception:
             pass
 
+
 def human_hover_and_click(page, locator):
     """Simulates organic mouse movement, hovers, pauses, then clicks the element."""
     try:
@@ -301,6 +319,7 @@ def human_hover_and_click(page, locator):
             return True
         except Exception:
             return False
+
 
 def humanize_text_input(page, textbox, text):
     """Clicks, inputs the text, and triggers native event listeners with micro-edits."""
@@ -324,6 +343,7 @@ def humanize_text_input(page, textbox, text):
         except Exception:
             return False
 
+
 def sanitize_script_text(text):
     """
     Cleans up raw markdown code fences, strips control keywords, and enforces
@@ -338,7 +358,7 @@ def sanitize_script_text(text):
     def lowercase_tts_tags(match):
         return match.group(0).lower()
 
-    text = re.sub(r'\[(tone|pace|pause)\s*:[^\]]+\]', lowercase_tts_tags, text, flags=re.IGNORECASE)
+    text = re.sub(r"\[(tone|pace|pause)\s*:[^\]]+\]", lowercase_tts_tags, text, flags=re.IGNORECASE)
 
     # 3. Strip control triggers
     lines = text.split("\n")
@@ -352,6 +372,7 @@ def sanitize_script_text(text):
 
     return "\n".join(cleaned_lines).strip()
 
+
 def get_latest_run_folder(runs_path="youtube_runs"):
     if not os.path.exists(runs_path):
         print(f"Error: Directory '{runs_path}' does not exist.")
@@ -362,13 +383,14 @@ def get_latest_run_folder(runs_path="youtube_runs"):
     latest_folder = max(folders, key=os.path.getmtime)
     return latest_folder
 
+
 def find_input_box(page):
     selectors = [
         "rich-textarea div[contenteditable='true']",
         "rich-textarea [contenteditable='true']",
         "div[contenteditable='true'][role='textbox']",
         "[role='textbox']",
-        "rich-textarea"
+        "rich-textarea",
     ]
     for sel in selectors:
         try:
@@ -390,6 +412,7 @@ def find_input_box(page):
             continue
     return None
 
+
 def find_send_button(page):
     selectors = [
         "button.send-button",
@@ -399,7 +422,7 @@ def find_send_button(page):
         "div.send-button-container button",
         "div[class*='send-button-container'] button",
         "button:has(mat-icon[fonticon*='send'])",
-        "button[id*='send']"
+        "button[id*='send']",
     ]
     for sel in selectors:
         try:
@@ -412,6 +435,7 @@ def find_send_button(page):
         except Exception:
             continue
     return None
+
 
 def send_gemini_prompt(page, text):
     """Pastes text into the Gemini chat input, ensures DOM state sync, and guarantees dispatch.
@@ -465,7 +489,9 @@ def send_gemini_prompt(page, text):
             return False
 
     if _input_still_full():
-        print("[SEND GUARDRAIL] Text still in input box after first submit attempt. Forcing Enter...")
+        print(
+            "[SEND GUARDRAIL] Text still in input box after first submit attempt. Forcing Enter..."
+        )
         chat_box.focus()
         page.keyboard.press("Enter")
         time.sleep(1.5)
@@ -476,6 +502,7 @@ def send_gemini_prompt(page, text):
                 "after click + two Enter attempts. Triggering recovery."
             )
 
+
 def get_last_response(page):
     try:
         elements = page.locator(RESPONSE_SELECTOR)
@@ -484,11 +511,12 @@ def get_last_response(page):
             last_el = elements.nth(count - 1)
             text = last_el.evaluate("el => el.innerText").strip()
             if text.startswith("Gemini said"):
-                text = text[len("Gemini said"):].strip()
+                text = text[len("Gemini said") :].strip()
             return text
     except Exception as e:
         print(f"Error reading last response: {e}")
     return ""
+
 
 def start_clean_gemini_chat(page):
     print("Requesting a clean chat session...")
@@ -498,7 +526,7 @@ def start_clean_gemini_chat(page):
         "a[href='/app']",
         "a[href*='/app']",
         "div.new-chat-button",
-        "button:has-text('New chat')"
+        "button:has-text('New chat')",
     ]
 
     clicked_new_chat = False
@@ -514,7 +542,9 @@ def start_clean_gemini_chat(page):
             continue
 
     if not clicked_new_chat:
-        print("Direct click failed. Injecting keyboard shortcut Control+Shift+O for a clean chat...")
+        print(
+            "Direct click failed. Injecting keyboard shortcut Control+Shift+O for a clean chat..."
+        )
         try:
             page.locator("body").first.click(timeout=1000)
             page.keyboard.press("Control+Shift+O")
@@ -534,11 +564,14 @@ def start_clean_gemini_chat(page):
         time.sleep(0.5)
     time.sleep(2)
 
+
 def prepare_gemini_chat_session(page, manifest):
     """Resumes an ongoing chat session if present in DOM or sidebar, avoiding new chat generation when resuming."""
     try:
         last_resp = get_last_response(page)
-        if last_resp and ("Option A" in last_resp or "Chapter" in last_resp or "Rules Confirmation" in last_resp):
+        if last_resp and (
+            "Option A" in last_resp or "Chapter" in last_resp or "Rules Confirmation" in last_resp
+        ):
             print("[CHAT RESUME] Active Gemini chat session detected in current tab. Continuing...")
             return True
     except Exception:
@@ -558,13 +591,16 @@ def prepare_gemini_chat_session(page, manifest):
             if recent_btn.is_visible():
                 human_click(page, recent_btn)
                 time.sleep(2)
-                print(f"[CHAT RESUME] Successfully resumed existing chat session from sidebar ('{sel}').")
+                print(
+                    f"[CHAT RESUME] Successfully resumed existing chat session from sidebar ('{sel}')."
+                )
                 return True
     except Exception as e:
         print(f"[CHAT RESUME] Sidebar check note: {e}")
 
     start_clean_gemini_chat(page)
     return False
+
 
 def ensure_speech_playground_tab(context, target_tts_model="gemini-2.5-pro-preview-tts"):
     """Finds or opens the Google AI Studio Speech Playground tab and guarantees Playwright is on the correct UI."""
@@ -597,11 +633,14 @@ def ensure_speech_playground_tab(context, target_tts_model="gemini-2.5-pro-previ
 
     # 3. Guardrail: If AI Studio redirected away to /prompts/..., force direct navigation
     if "generate-speech" not in tab1_speech.url:
-        print("[WARNING] AI Studio redirected away from Speech Playground. Retrying direct navigation...")
+        print(
+            "[WARNING] AI Studio redirected away from Speech Playground. Retrying direct navigation..."
+        )
         tab1_speech.goto(clean_speech_url, wait_until="domcontentloaded")
         time.sleep(4)
 
     return tab1_speech
+
 
 def wait_for_gemini_response(page, step_name="AI Response", max_wait_sec=120):
     print(f"Waiting for {step_name} to generate and stabilize...")
@@ -633,10 +672,15 @@ def wait_for_gemini_response(page, step_name="AI Response", max_wait_sec=120):
                 last_el = page.locator(RESPONSE_SELECTOR).nth(current_count - 1)
                 current_text = last_el.evaluate("el => el.innerText").strip()
                 if current_text.startswith("Gemini said"):
-                    current_text = current_text[len("Gemini said"):].strip()
+                    current_text = current_text[len("Gemini said") :].strip()
 
-                if "something went wrong" in current_text.lower() or "try reloading" in current_text.lower():
-                    print("Warning: Gemini Web App reported an execution block or crash. Retrying...")
+                if (
+                    "something went wrong" in current_text.lower()
+                    or "try reloading" in current_text.lower()
+                ):
+                    print(
+                        "Warning: Gemini Web App reported an execution block or crash. Retrying..."
+                    )
                     time.sleep(2)
                     continue
 
@@ -653,6 +697,7 @@ def wait_for_gemini_response(page, step_name="AI Response", max_wait_sec=120):
         time.sleep(0.5)
 
     return get_last_response(page)
+
 
 def select_gemini_model(page, model_name):
     print(f"[SYSTEM] Attempting to select Gemini model: {model_name}")
@@ -692,7 +737,11 @@ def select_gemini_model(page, model_name):
         btn.click()
         time.sleep(1.5)
 
-        opt = page.locator("[role='menuitem'], [role='option'], li").filter(has_text=re.compile(model_name, re.IGNORECASE)).first
+        opt = (
+            page.locator("[role='menuitem'], [role='option'], li")
+            .filter(has_text=re.compile(model_name, re.IGNORECASE))
+            .first
+        )
 
         if not opt.is_visible():
             opt = page.locator(f'text="{model_name}"').filter(visible=True).last
@@ -710,6 +759,7 @@ def select_gemini_model(page, model_name):
 
     return False
 
+
 def select_ai_studio_tts_model(page, target_model):
     """Selects the target TTS model (e.g., gemini-2.5-pro-preview-tts) inside Google AI Studio Speech Playground UI."""
     if not target_model:
@@ -719,10 +769,14 @@ def select_ai_studio_tts_model(page, target_model):
 
     # 1. Check if active model card in sidebar already matches target model
     try:
-        model_card = page.locator("ms-run-settings .model-card, ms-run-settings mat-card, ms-run-settings div:has-text('TTS')").first
+        model_card = page.locator(
+            "ms-run-settings .model-card, ms-run-settings mat-card, ms-run-settings div:has-text('TTS')"
+        ).first
         if model_card.is_visible():
             card_text = model_card.inner_text().lower()
-            short_target = target_model.lower().replace("-preview-tts", "").replace("gemini-", "").strip()
+            short_target = (
+                target_model.lower().replace("-preview-tts", "").replace("gemini-", "").strip()
+            )
             if short_target in card_text or target_model.lower() in card_text:
                 print(f"[SYSTEM] TTS Model '{target_model}' is already active in UI.")
                 return True
@@ -738,7 +792,7 @@ def select_ai_studio_tts_model(page, target_model):
         "ms-run-settings mat-card",
         "ms-run-settings button:has-text('TTS')",
         "ms-run-settings [aria-label*='Model' i]",
-        "ms-run-settings div:has-text('Gemini')"
+        "ms-run-settings div:has-text('Gemini')",
     ]
     for sel in card_selectors:
         try:
@@ -757,13 +811,17 @@ def select_ai_studio_tts_model(page, target_model):
 
     # 3. Filter and select target model option in the modal dialog
     try:
-        audio_chip = page.locator("mat-dialog-container button:has-text('Audio'), [role='dialog'] button:has-text('Audio')").first
+        audio_chip = page.locator(
+            "mat-dialog-container button:has-text('Audio'), [role='dialog'] button:has-text('Audio')"
+        ).first
         if audio_chip.is_visible():
             human_click(page, audio_chip)
             time.sleep(0.8)
 
         # Flexible text matching for target TTS model
-        short_target = target_model.lower().replace("-preview-tts", "").replace("gemini-", "").strip()
+        short_target = (
+            target_model.lower().replace("-preview-tts", "").replace("gemini-", "").strip()
+        )
 
         target_option = None
         dialog_loc = page.locator("mat-dialog-container, [role='dialog']").first
@@ -783,13 +841,17 @@ def select_ai_studio_tts_model(page, target_model):
             print(f"[SYSTEM] Successfully assigned TTS Model to '{target_model}'")
             time.sleep(1.2)
 
-            close_btn = page.locator("mat-dialog-container button[aria-label*='Close' i], mat-dialog-container button:has-text('Close')").first
+            close_btn = page.locator(
+                "mat-dialog-container button[aria-label*='Close' i], mat-dialog-container button:has-text('Close')"
+            ).first
             if close_btn.is_visible():
                 human_click(page, close_btn)
                 time.sleep(0.8)
             return True
         else:
-            print(f"[WARNING] Target model option '{target_model}' not found in modal dialog. Escaping...")
+            print(
+                f"[WARNING] Target model option '{target_model}' not found in modal dialog. Escaping..."
+            )
             page.keyboard.press("Escape")
             return False
 
@@ -798,13 +860,16 @@ def select_ai_studio_tts_model(page, target_model):
         page.keyboard.press("Escape")
         return False
 
+
 def reapply_speech_settings(page, options):
     """Re-applies preset voice model settings from voice_option_notes.txt directly into the Speech Playground."""
     target_model = options.get("model", "gemini-2.5-pro-preview-tts")
     temp_val = options.get("temperature", "1.1")
     voice_name = options.get("voice", "Achird")
 
-    print(f"Re-applying Speech Playground settings (Model {target_model}, Temperature {temp_val}, speaker {voice_name})...")
+    print(
+        f"Re-applying Speech Playground settings (Model {target_model}, Temperature {temp_val}, speaker {voice_name})..."
+    )
 
     # 0. Bypass Splash screen
     splash_selector = "text='Turn text into natural-sounding speech...'"
@@ -843,7 +908,7 @@ def reapply_speech_settings(page, options):
             "ms-run-settings input[type='number']",
             "ms-run-settings input.slider-number-input",
             "input[type='number']",
-            "ms-run-settings input"
+            "ms-run-settings input",
         ]
         for sel in temp_selectors:
             loc = page.locator(sel).first
@@ -874,7 +939,7 @@ def reapply_speech_settings(page, options):
             "ms-run-settings mat-card",
             "ms-run-settings .voice-card",
             "ms-run-settings [aria-label*='Speaker' i]",
-            "ms-run-settings :text('Speaker 1')"
+            "ms-run-settings :text('Speaker 1')",
         ]
         for sel in card_selectors:
             loc = page.locator(sel).first
@@ -886,13 +951,17 @@ def reapply_speech_settings(page, options):
             human_click(page, speaker_card)
             time.sleep(2.0)
 
-            voice_option = page.locator(f"mat-dialog-container :text('{voice_name}'), mat-dialog-container button:has-text('{voice_name}'), :text('{voice_name}')").first
+            voice_option = page.locator(
+                f"mat-dialog-container :text('{voice_name}'), mat-dialog-container button:has-text('{voice_name}'), :text('{voice_name}')"
+            ).first
             if voice_option.is_visible():
                 human_click(page, voice_option)
                 print(f"Successfully assigned speaker to: {voice_name}")
                 time.sleep(1.2)
 
-                close_btn = page.locator("mat-dialog-container button:has-text('Close'), mat-dialog-container button:has-text('OK'), mat-dialog-container button[aria-label*='Close' i]").first
+                close_btn = page.locator(
+                    "mat-dialog-container button:has-text('Close'), mat-dialog-container button:has-text('OK'), mat-dialog-container button[aria-label*='Close' i]"
+                ).first
                 if close_btn.is_visible():
                     human_click(page, close_btn)
                     time.sleep(1.2)
@@ -913,6 +982,7 @@ def reapply_speech_settings(page, options):
     except Exception as e:
         print(f"Could not collapse sidebar setting: {e}")
 
+
 def get_file_md5(file_path):
     if not os.path.exists(file_path):
         return None
@@ -925,6 +995,7 @@ def get_file_md5(file_path):
     except Exception as e:
         print(f"Warning: Could not calculate MD5 for {file_path}: {e}")
         return None
+
 
 def is_valid_wav_file(file_path, min_frames=1000):
     """Verifies the file is a readable, non-truncated WAV containing actual audio frames.
@@ -941,6 +1012,7 @@ def is_valid_wav_file(file_path, min_frames=1000):
     except Exception:
         return False
 
+
 def check_ai_studio_errors(page):
     error_selectors = [
         "text='Http response'",
@@ -949,7 +1021,7 @@ def check_ai_studio_errors(page):
         "text='Quota Exceeded'",
         "text='quota exceeded'",
         "mat-snack-bar-container",
-        ".error-container"
+        ".error-container",
     ]
     for sel in error_selectors:
         try:
@@ -957,13 +1029,16 @@ def check_ai_studio_errors(page):
             if loc.is_visible():
                 error_text = loc.inner_text().strip()
                 print(f"[ALERT] Detected AI Studio Error Banner: '{error_text}'")
-                dismiss_btn = page.locator("button:has-text('Close'), mat-snack-bar-container button").first
+                dismiss_btn = page.locator(
+                    "button:has-text('Close'), mat-snack-bar-container button"
+                ).first
                 if dismiss_btn.is_visible():
                     dismiss_btn.click()
                 return True, error_text
         except Exception:
             continue
     return False, ""
+
 
 def main():
     print("=============================================")
@@ -994,9 +1069,13 @@ def main():
         print(f"[INPUT SOURCE] Active script file selected: '{transcript_path}'")
     elif os.path.exists(raw_final_output):
         transcript_path = raw_final_output
-        print(f"[INPUT SOURCE] Refined script not found. Falling back to raw transcript: '{transcript_path}'")
+        print(
+            f"[INPUT SOURCE] Refined script not found. Falling back to raw transcript: '{transcript_path}'"
+        )
     else:
-        print(f"Error: No valid script file ('refined_script.txt' or 'final_output.txt') found in '{latest_run}'")
+        print(
+            f"Error: No valid script file ('refined_script.txt' or 'final_output.txt') found in '{latest_run}'"
+        )
         sys.exit(1)
 
     # Dedicated folder for downloaded audio tracks
@@ -1035,15 +1114,19 @@ def main():
 
         try:
             with sync_playwright() as p:
-                switch_enabled_str = get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").strip().lower()
-                accounts_enabled = switch_enabled_str in ('true', '1', 'yes')
+                switch_enabled_str = (
+                    get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").strip().lower()
+                )
+                accounts_enabled = switch_enabled_str in ("true", "1", "yes")
                 current_profile_idx = get_config_value("ACTIVE_PROFILE_INDEX", "1")
                 browser_type = get_config_value("BROWSER_TYPE", "chrome")
                 cdp_port = int(get_config_value("CDP_PORT", "9222"))
 
                 try:
                     browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
-                    print(f"Successfully connected to existing {browser_type.capitalize()} session.")
+                    print(
+                        f"Successfully connected to existing {browser_type.capitalize()} session."
+                    )
                 except Exception:
                     print("Debugging browser is closed or unreachable. Launching framework...")
                     if not launch_browser_with_profile(browser_type, current_profile_idx):
@@ -1052,7 +1135,9 @@ def main():
 
                 context = browser.contexts[0]
                 context.grant_permissions(["clipboard-read", "clipboard-write"])
-                context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                context.add_init_script(
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+                )
 
                 # =========================================================
                 # PHASE 1: GEMINI APP SCRIPT ORCHESTRATION (ALL TEXT FIRST)
@@ -1075,7 +1160,9 @@ def main():
                     if not tab2_chat:
                         print("Opening Gemini Web App Tab...")
                         tab2_chat = context.new_page()
-                        tab2_chat.goto("https://gemini.google.com/app", wait_until="domcontentloaded")
+                        tab2_chat.goto(
+                            "https://gemini.google.com/app", wait_until="domcontentloaded"
+                        )
                         time.sleep(3)
 
                     tab2_chat.bring_to_front()
@@ -1090,25 +1177,38 @@ def main():
 
                         # 2. Upload transcript script to Chat
                         print("Submitting the raw transcript script to Gemini...")
-                        send_gemini_prompt(tab2_chat, f"This is My Transcript script:\n\n{transcript_text}")
+                        send_gemini_prompt(
+                            tab2_chat, f"This is My Transcript script:\n\n{transcript_text}"
+                        )
 
                         # Capture breakdown structure & voice recommendation options
-                        breakdown_response = wait_for_gemini_response(tab2_chat, step_name="Breakdown Structure & Voice Recommendations")
+                        breakdown_response = wait_for_gemini_response(
+                            tab2_chat, step_name="Breakdown Structure & Voice Recommendations"
+                        )
                         manifest["archetype_plan"] = breakdown_response
                         save_manifest(latest_run, manifest)
                         print("[MANIFEST] Saved voice recommendation options and breakdown plan.")
 
                         # 3. Trigger run flow with Option A selection
-                        print("Triggering run flow with 'Choose the Option A and proceed.' command...")
+                        print(
+                            "Triggering run flow with 'Choose the Option A and proceed.' command..."
+                        )
                         send_gemini_prompt(tab2_chat, "Choose the Option A and proceed.")
                         wait_for_gemini_response(tab2_chat, step_name="Chapter 1 Text Setup")
 
                         # 4. Confirmation check
                         confirmation_text = get_last_response(tab2_chat)
-                        if "confirm" in confirmation_text.lower() or "ready with the first" in confirmation_text.lower():
-                            print("Gemini is waiting for voice confirmation. Sending 'proceed' to trigger Section 1 script generation...")
+                        if (
+                            "confirm" in confirmation_text.lower()
+                            or "ready with the first" in confirmation_text.lower()
+                        ):
+                            print(
+                                "Gemini is waiting for voice confirmation. Sending 'proceed' to trigger Section 1 script generation..."
+                            )
                             send_gemini_prompt(tab2_chat, "proceed")
-                            wait_for_gemini_response(tab2_chat, step_name="Actual Section 1 Script Text")
+                            wait_for_gemini_response(
+                                tab2_chat, step_name="Actual Section 1 Script Text"
+                            )
 
                     # Harvest remaining script chapters from Gemini
                     existing_chapters_count = len(manifest.get("chapters", []))
@@ -1128,12 +1228,18 @@ def main():
                         """Rotates profile when account switching is on, else hard-stops."""
                         nonlocal failover_triggered
                         if switching_enabled:
-                            print(f"\n[FAILOVER ALERT] Text harvest stalled on Chapter {chap_idx}: {reason}. Rotating Account Profile...")
+                            print(
+                                f"\n[FAILOVER ALERT] Text harvest stalled on Chapter {chap_idx}: {reason}. Rotating Account Profile..."
+                            )
                             rotate_profile_index()
                             kill_cdp_chrome()
                             failover_triggered = True
-                            raise Exception(f"Text harvest failed for Chapter {chap_idx} ({reason}). Triggering profile rotation.")
-                        raise Exception(f"[FATAL ERROR] Text harvest failed for Chapter {chap_idx} after repeated attempts ({reason}). Halting.")
+                            raise Exception(
+                                f"Text harvest failed for Chapter {chap_idx} ({reason}). Triggering profile rotation."
+                            )
+                        raise Exception(
+                            f"[FATAL ERROR] Text harvest failed for Chapter {chap_idx} after repeated attempts ({reason}). Halting."
+                        )
 
                     while True:
                         print(f"\nHarvesting Chapter {current_chap_idx} script from Gemini...")
@@ -1141,13 +1247,23 @@ def main():
 
                         if not raw_content or len(raw_content.strip()) < 10:
                             harvest_attempts += 1
-                            print(f"[RETRY {harvest_attempts}/{max_harvest_retries}] Empty response for Chapter {current_chap_idx}. Waiting...")
+                            print(
+                                f"[RETRY {harvest_attempts}/{max_harvest_retries}] Empty response for Chapter {current_chap_idx}. Waiting..."
+                            )
                             if harvest_attempts >= max_harvest_retries:
                                 if nudges_sent >= max_nudges:
-                                    _escalate_harvest_failure(current_chap_idx, "persistent empty responses", accounts_enabled)
-                                print(f"[NUDGE {nudges_sent + 1}/{max_nudges}] Chat appears stalled. Sending recovery nudge...")
+                                    _escalate_harvest_failure(
+                                        current_chap_idx,
+                                        "persistent empty responses",
+                                        accounts_enabled,
+                                    )
+                                print(
+                                    f"[NUDGE {nudges_sent + 1}/{max_nudges}] Chat appears stalled. Sending recovery nudge..."
+                                )
                                 send_gemini_prompt(tab2_chat, "proceed")
-                                wait_for_gemini_response(tab2_chat, step_name=f"Chapter {current_chap_idx} Recovery")
+                                wait_for_gemini_response(
+                                    tab2_chat, step_name=f"Chapter {current_chap_idx} Recovery"
+                                )
                                 nudges_sent += 1
                                 harvest_attempts = 0
                             time.sleep(3)
@@ -1155,25 +1271,41 @@ def main():
 
                         # Check completion signal
                         has_arabic = bool(re.search(r"[\u0600-\u06FF]", raw_content))
-                        is_complete = check_is_gemini_complete(manifest, transcript_text, raw_content)
+                        is_complete = check_is_gemini_complete(
+                            manifest, transcript_text, raw_content
+                        )
 
                         if not has_arabic:
-                            print("[COMPLETED] Detected final non-Arabic/completion signal from Gemini.")
+                            print(
+                                "[COMPLETED] Detected final non-Arabic/completion signal from Gemini."
+                            )
                             manifest["gemini_completed"] = True
                             save_manifest(latest_run, manifest)
-                            print(f"[MANIFEST] Gemini script extraction complete. Total chapters saved: {len(manifest['chapters'])}")
+                            print(
+                                f"[MANIFEST] Gemini script extraction complete. Total chapters saved: {len(manifest['chapters'])}"
+                            )
                             break
 
                         markdown_content = sanitize_script_text(raw_content)
                         if not markdown_content:
                             harvest_attempts += 1
-                            print(f"[RETRY {harvest_attempts}/{max_harvest_retries}] Sanitized content empty. Retrying...")
+                            print(
+                                f"[RETRY {harvest_attempts}/{max_harvest_retries}] Sanitized content empty. Retrying..."
+                            )
                             if harvest_attempts >= max_harvest_retries:
                                 if nudges_sent >= max_nudges:
-                                    _escalate_harvest_failure(current_chap_idx, "sanitizer produced no usable text", accounts_enabled)
-                                print(f"[NUDGE {nudges_sent + 1}/{max_nudges}] Chat appears stalled. Sending recovery nudge...")
+                                    _escalate_harvest_failure(
+                                        current_chap_idx,
+                                        "sanitizer produced no usable text",
+                                        accounts_enabled,
+                                    )
+                                print(
+                                    f"[NUDGE {nudges_sent + 1}/{max_nudges}] Chat appears stalled. Sending recovery nudge..."
+                                )
                                 send_gemini_prompt(tab2_chat, "proceed")
-                                wait_for_gemini_response(tab2_chat, step_name=f"Chapter {current_chap_idx} Recovery")
+                                wait_for_gemini_response(
+                                    tab2_chat, step_name=f"Chapter {current_chap_idx} Recovery"
+                                )
                                 nudges_sent += 1
                                 harvest_attempts = 0
                             time.sleep(3)
@@ -1184,42 +1316,71 @@ def main():
                         # consecutive strikes (>0.90 similarity) => wrap up; a single
                         # strike just discards and re-requests (avoids false positives
                         # from shared outro boilerplate between legitimate chapters).
-                        prev_chapter_text = manifest["chapters"][-1].get("text", "") if manifest.get("chapters") else ""
+                        prev_chapter_text = (
+                            manifest["chapters"][-1].get("text", "")
+                            if manifest.get("chapters")
+                            else ""
+                        )
                         if prev_chapter_text:
-                            repetition_ratio = difflib.SequenceMatcher(None, markdown_content, prev_chapter_text).ratio()
+                            repetition_ratio = difflib.SequenceMatcher(
+                                None, markdown_content, prev_chapter_text
+                            ).ratio()
                             if repetition_ratio > 0.90:
                                 consecutive_repeats += 1
                                 if consecutive_repeats >= 2:
-                                    print(f"[COMPLETED] Repetition loop confirmed ({repetition_ratio:.0%} match, twice consecutively). Wrapping up.")
+                                    print(
+                                        f"[COMPLETED] Repetition loop confirmed ({repetition_ratio:.0%} match, twice consecutively). Wrapping up."
+                                    )
                                     manifest["gemini_completed"] = True
                                     save_manifest(latest_run, manifest)
                                     break
-                                print(f"[DRIFT GUARD] Chapter {current_chap_idx} repeats previous chapter ({repetition_ratio:.0%}). Strike {consecutive_repeats}/2. Re-requesting...")
+                                print(
+                                    f"[DRIFT GUARD] Chapter {current_chap_idx} repeats previous chapter ({repetition_ratio:.0%}). Strike {consecutive_repeats}/2. Re-requesting..."
+                                )
                                 send_gemini_prompt(tab2_chat, "proceed")
-                                wait_for_gemini_response(tab2_chat, step_name=f"Chapter {current_chap_idx} Drift Retry")
+                                wait_for_gemini_response(
+                                    tab2_chat, step_name=f"Chapter {current_chap_idx} Drift Retry"
+                                )
                                 continue
                         consecutive_repeats = 0
 
-                        audio_dest_path = os.path.join(voice_folder, f"Chapter_{current_chap_idx}.wav")
+                        audio_dest_path = os.path.join(
+                            voice_folder, f"Chapter_{current_chap_idx}.wav"
+                        )
 
-                        existing_chap_entry = next((c for c in manifest["chapters"] if c["chapter_num"] == current_chap_idx), None)
+                        existing_chap_entry = next(
+                            (
+                                c
+                                for c in manifest["chapters"]
+                                if c["chapter_num"] == current_chap_idx
+                            ),
+                            None,
+                        )
                         if existing_chap_entry:
                             existing_chap_entry["text"] = markdown_content
                             existing_chap_entry["audio_file"] = audio_dest_path
                         else:
-                            manifest["chapters"].append({
-                                "chapter_num": current_chap_idx,
-                                "text": markdown_content,
-                                "audio_file": audio_dest_path,
-                                "status": "PENDING"
-                            })
+                            manifest["chapters"].append(
+                                {
+                                    "chapter_num": current_chap_idx,
+                                    "text": markdown_content,
+                                    "audio_file": audio_dest_path,
+                                    "status": "PENDING",
+                                }
+                            )
 
                         save_manifest(latest_run, manifest)
-                        print(f"[MANIFEST] Saved Chapter {current_chap_idx} text ({len(markdown_content)} chars).")
+                        print(
+                            f"[MANIFEST] Saved Chapter {current_chap_idx} text ({len(markdown_content)} chars)."
+                        )
 
                         # Re-verify completeness after saving this chapter
-                        if is_complete or check_is_gemini_complete(manifest, transcript_text, raw_content):
-                            print("[COMPLETED] Manifest verification confirmed all blocks collected.")
+                        if is_complete or check_is_gemini_complete(
+                            manifest, transcript_text, raw_content
+                        ):
+                            print(
+                                "[COMPLETED] Manifest verification confirmed all blocks collected."
+                            )
                             manifest["gemini_completed"] = True
                             save_manifest(latest_run, manifest)
                             break
@@ -1227,7 +1388,9 @@ def main():
                         # Request next chapter from Gemini
                         print(f"Requesting Chapter {current_chap_idx + 1} script...")
                         send_gemini_prompt(tab2_chat, "proceed")
-                        wait_for_gemini_response(tab2_chat, step_name=f"Chapter {current_chap_idx + 1} Text")
+                        wait_for_gemini_response(
+                            tab2_chat, step_name=f"Chapter {current_chap_idx + 1} Text"
+                        )
                         current_chap_idx += 1
 
                 # =========================================================
@@ -1252,22 +1415,33 @@ def main():
 
                     # Check if audio file is already completed and verified
                     if chap_entry.get("status") == "COMPLETED" and is_valid_wav_file(target_dest):
-                        print(f"[SKIP] Chapter {chap_num} audio already generated and verified at '{target_dest}'.")
+                        print(
+                            f"[SKIP] Chapter {chap_num} audio already generated and verified at '{target_dest}'."
+                        )
                         continue
 
                     while True:
-                        print(f"\nSynthesizing Audio for Chapter {chap_num} (Attempt {getattr(main, 'attempt_count', 0) + 1})...")
+                        print(
+                            f"\nSynthesizing Audio for Chapter {chap_num} (Attempt {getattr(main, 'attempt_count', 0) + 1})..."
+                        )
 
                         # URL Guardrail check to prevent typing into standard AI Studio prompt tabs
                         if "generate-speech" not in tab1_speech.url:
-                            print("[SAFETY CHECK] Correcting tab navigation to Speech Playground...")
-                            tab1_speech.goto(f"https://aistudio.google.com/generate-speech?model={target_tts_model}", wait_until="domcontentloaded")
+                            print(
+                                "[SAFETY CHECK] Correcting tab navigation to Speech Playground..."
+                            )
+                            tab1_speech.goto(
+                                f"https://aistudio.google.com/generate-speech?model={target_tts_model}",
+                                wait_until="domcontentloaded",
+                            )
                             time.sleep(3)
                             reapply_speech_settings(tab1_speech, voice_config)
 
                         reload_limit = int(get_config_value("TTS_PROACTIVE_RELOAD_INTERVAL", "40"))
                         if chapters_since_reload >= reload_limit:
-                            print("\n[MAINTENANCE] Proactively refreshing Speech Playground session...")
+                            print(
+                                "\n[MAINTENANCE] Proactively refreshing Speech Playground session..."
+                            )
                             tab1_speech.bring_to_front()
                             try:
                                 tab1_speech.locator("body").first.click(timeout=1000)
@@ -1280,8 +1454,10 @@ def main():
                             chapters_since_reload = 0
 
                         # Recovery reload if prior attempt failed
-                        if getattr(main, 'attempt_count', 0) > 0:
-                            print("[RECOVER] Reloading Speech Playground Tab to refresh credentials...")
+                        if getattr(main, "attempt_count", 0) > 0:
+                            print(
+                                "[RECOVER] Reloading Speech Playground Tab to refresh credentials..."
+                            )
                             tab1_speech.bring_to_front()
                             try:
                                 tab1_speech.locator("body").first.click(timeout=1000)
@@ -1300,7 +1476,9 @@ def main():
                         except Exception:
                             pass
 
-                        speech_input = tab1_speech.locator("textarea[aria-label='Enter a prompt']").first
+                        speech_input = tab1_speech.locator(
+                            "textarea[aria-label='Enter a prompt']"
+                        ).first
                         if not speech_input.is_visible():
                             print("Speech Playground input box was hidden. Retrying context...")
                             time.sleep(2)
@@ -1315,11 +1493,15 @@ def main():
                         scaled_delay = (text_length / 500.0) * random.uniform(1.2, 2.8)
                         cooldown_time = base_delay + scaled_delay
 
-                        print(f"Applying dynamic safety cooldown of {cooldown_time:.2f}s for {text_length} characters...")
+                        print(
+                            f"Applying dynamic safety cooldown of {cooldown_time:.2f}s for {text_length} characters..."
+                        )
                         time.sleep(cooldown_time)
 
                         # Click Run to synthesize audio
-                        run_btn = tab1_speech.locator("button[type='submit'], button:has-text('Run')").first
+                        run_btn = tab1_speech.locator(
+                            "button[type='submit'], button:has-text('Run')"
+                        ).first
                         try:
                             human_hover_and_click(tab1_speech, run_btn)
                         except Exception:
@@ -1345,12 +1527,16 @@ def main():
                                     os.remove(target_dest)
                                 except Exception:
                                     pass
-                            main.attempt_count = getattr(main, 'attempt_count', 0) + 1
+                            main.attempt_count = getattr(main, "attempt_count", 0) + 1
                             continue
 
-                        synth_timeout_ms = int(get_config_value("TTS_SYNTHESIS_TIMEOUT", "300")) * 1000
+                        synth_timeout_ms = (
+                            int(get_config_value("TTS_SYNTHESIS_TIMEOUT", "300")) * 1000
+                        )
                         try:
-                            tab1_speech.wait_for_selector("button:has-text('Run')", timeout=synth_timeout_ms)
+                            tab1_speech.wait_for_selector(
+                                "button:has-text('Run')", timeout=synth_timeout_ms
+                            )
                             print("Audio synthesis complete!")
                         except Exception as e:
                             print(f"Warning: Timeout or error waiting for synthesis: {e}")
@@ -1358,7 +1544,9 @@ def main():
                         time.sleep(2.0)
 
                         # Download synthesized audio file
-                        download_btn = tab1_speech.locator("button[aria-label*='Download' i], button:has-text('Download')").first
+                        download_btn = tab1_speech.locator(
+                            "button[aria-label*='Download' i], button:has-text('Download')"
+                        ).first
                         try:
                             download_btn.wait_for(state="visible", timeout=10000)
                         except Exception:
@@ -1374,7 +1562,9 @@ def main():
                                 print(f"Audio file downloaded and saved: {target_dest}")
                                 download_success = True
                             except PlaywrightTimeoutError:
-                                print("\n[TIMEOUT] Playwright timed out waiting for download event.")
+                                print(
+                                    "\n[TIMEOUT] Playwright timed out waiting for download event."
+                                )
                             except Exception as e:
                                 print(f"\n[ERROR] Error downloading audio file: {e}")
 
@@ -1382,7 +1572,9 @@ def main():
                         # bare RIFF header or truncated stream (quota/500 failures).
                         # Treat invalid audio exactly like a failed download.
                         if download_success and not is_valid_wav_file(target_dest):
-                            print(f"[ALERT] Downloaded WAV for Chapter {chap_num} failed frame validation (corrupt/truncated). Treating as failure.")
+                            print(
+                                f"[ALERT] Downloaded WAV for Chapter {chap_num} failed frame validation (corrupt/truncated). Treating as failure."
+                            )
                             try:
                                 os.remove(target_dest)
                             except Exception:
@@ -1395,20 +1587,26 @@ def main():
                             # Global MD5 dedup: compare against every prior COMPLETED
                             # chapter's stored hash, with disk fallback for the immediate
                             # predecessor when legacy manifests lack the md5 field.
-                            prior_md5s = {c.get("md5") for c in manifest.get("chapters", []) if c.get("md5")}
+                            prior_md5s = {
+                                c.get("md5") for c in manifest.get("chapters", []) if c.get("md5")
+                            }
                             if chap_num > 1 and current_md5:
-                                previous_dest = os.path.join(voice_folder, f"Chapter_{chap_num - 1}.wav")
+                                previous_dest = os.path.join(
+                                    voice_folder, f"Chapter_{chap_num - 1}.wav"
+                                )
                                 if os.path.exists(previous_dest):
                                     prior_md5s.add(get_file_md5(previous_dest))
                             prior_md5s.discard(None)
 
                             if current_md5 and current_md5 in prior_md5s:
-                                print(f"\n[ALERT] Duplicate audio detected for Chapter {chap_num} (MD5 match with a prior chapter). Discarding stale file.")
+                                print(
+                                    f"\n[ALERT] Duplicate audio detected for Chapter {chap_num} (MD5 match with a prior chapter). Discarding stale file."
+                                )
                                 try:
                                     os.remove(target_dest)
                                 except Exception:
                                     pass
-                                main.attempt_count = getattr(main, 'attempt_count', 0) + 1
+                                main.attempt_count = getattr(main, "attempt_count", 0) + 1
                                 continue
 
                             # Update manifest chapter status to COMPLETED
@@ -1416,28 +1614,36 @@ def main():
                             if current_md5:
                                 chap_entry["md5"] = current_md5
                             save_manifest(latest_run, manifest)
-                            print(f"[MANIFEST] Chapter {chap_num} marked COMPLETED (MD5: {(current_md5 or 'n/a')[:8]}).")
+                            print(
+                                f"[MANIFEST] Chapter {chap_num} marked COMPLETED (MD5: {(current_md5 or 'n/a')[:8]})."
+                            )
 
                             chapters_since_reload += 1
                             main.attempt_count = 0
                             break
                         else:
-                            main.attempt_count = getattr(main, 'attempt_count', 0) + 1
+                            main.attempt_count = getattr(main, "attempt_count", 0) + 1
                             retry_limit = int(get_config_value("FAILOVER_RETRY_LIMIT", "3"))
 
-                            if getattr(main, 'attempt_count', 0) >= retry_limit:
+                            if getattr(main, "attempt_count", 0) >= retry_limit:
                                 if accounts_enabled:
-                                    print(f"\n[FAILOVER ALERT] Chapter {chap_num} failed {retry_limit} times. Rotating Account Profile...")
+                                    print(
+                                        f"\n[FAILOVER ALERT] Chapter {chap_num} failed {retry_limit} times. Rotating Account Profile..."
+                                    )
                                     rotate_profile_index()
                                     kill_cdp_chrome()
                                     failover_triggered = True
                                     break
                                 else:
-                                    print(f"\n[FATAL ERROR] Chapter {chap_num} failed after {retry_limit} attempts. Halting.")
+                                    print(
+                                        f"\n[FATAL ERROR] Chapter {chap_num} failed after {retry_limit} attempts. Halting."
+                                    )
                                     sys.exit(1)
 
-                            backoff_delay = 5.0 * (2.0 ** (getattr(main, 'attempt_count', 0) - 1))
-                            print(f"Applying exponential backoff of {backoff_delay:.2f}s before retry...")
+                            backoff_delay = 5.0 * (2.0 ** (getattr(main, "attempt_count", 0) - 1))
+                            print(
+                                f"Applying exponential backoff of {backoff_delay:.2f}s before retry..."
+                            )
                             time.sleep(backoff_delay)
 
                 if failover_triggered:
@@ -1446,7 +1652,9 @@ def main():
                     pass
                 else:
                     # Exit outer loop when all chapters are successfully synthesized
-                    all_done = all(c.get("status") == "COMPLETED" for c in manifest.get("chapters", []))
+                    all_done = all(
+                        c.get("status") == "COMPLETED" for c in manifest.get("chapters", [])
+                    )
                     if all_done:
                         print("\n=============================================")
                         print("ALL VOICE CHAPTERS SUCCESSFULLY GENERATED & SAVED!")
@@ -1457,16 +1665,21 @@ def main():
             print(f"[RECOVERY] Playwright context closed or browser crashed: {e}")
 
         if failover_triggered:
-            print("\n[SYSTEM] Reinitializing Playwright environment with new profile. Fast-forwarding...\n")
+            print(
+                "\n[SYSTEM] Reinitializing Playwright environment with new profile. Fast-forwarding...\n"
+            )
             main.attempt_count = 0
             time.sleep(3)
             continue
         else:
             break
 
+
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n[SYSTEM] Automation execution interrupted by user (Ctrl+C). Progress checkpoint saved.")
+        print(
+            "\n[SYSTEM] Automation execution interrupted by user (Ctrl+C). Progress checkpoint saved."
+        )
         sys.exit(0)

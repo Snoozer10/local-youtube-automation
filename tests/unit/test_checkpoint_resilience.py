@@ -107,9 +107,9 @@ class TestSignatureValidation:
 
         reloaded = compile_video.CheckpointManager(str(tmp_path), config)
         assert reloaded.data["encoder"] == "h264_qsv"
-        assert not reloaded.is_signature_valid(
-            expected_codec="libx264"
-        ), "codec mismatch must invalidate when expected_codec is supplied"
+        assert not reloaded.is_signature_valid(expected_codec="libx264"), (
+            "codec mismatch must invalidate when expected_codec is supplied"
+        )
         assert reloaded.is_signature_valid(), "no-arg call preserves legacy dims/FPS-only semantics"
 
     def test_legacy_minimal_checkpoint_without_duration_key_stays_valid(self, tmp_path, config):

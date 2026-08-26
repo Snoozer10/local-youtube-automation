@@ -571,7 +571,7 @@ def summon_asset_in_prompt(page, asset_name, category="Characters"):
 
         # 2. Click the '+' button directly to the left of 'Agent'
         modal_opened = False
-        for attempt in range(1, 4):
+        for _attempt in range(1, 4):
             # Check if modal is already open
             search_box = page.locator(
                 "input[placeholder*='Search assets' i], input[placeholder*='Search' i]"
@@ -766,7 +766,9 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
         "1",
         "yes",
     )
-    enable_characters = get_config_value("FLOW_ENABLE_CHARACTER_PRESETS", "true").strip().lower() in (
+    enable_characters = get_config_value(
+        "FLOW_ENABLE_CHARACTER_PRESETS", "true"
+    ).strip().lower() in (
         "true",
         "1",
         "yes",
@@ -810,7 +812,7 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
     # -------------------------------------------------------------
     try:
         char_presets = FLOW_ASSET_PRESETS.get("CHARACTERS", {}) if enable_characters else {}
-        for char_key, char_info in char_presets.items():
+        for _char_key, char_info in char_presets.items():
             char_name = char_info["name"]
 
             # Step 1: Ensure we are STRICTLY on the Characters tab. The sidebar
@@ -1100,7 +1102,6 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
                 "  ⏳ Generating Character Portrait (Waiting for image render and 'Create Body' unlock)..."
             )
             start_portrait_wait = time.time()
-            portrait_fully_ready = False
 
             while time.time() - start_portrait_wait < 90:
                 # 1. Check if 'Create Body' button is visible and UNLOCKED (enabled)
@@ -1126,7 +1127,6 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
                 )
 
                 if is_btn_unlocked and has_rendered_image and not is_spinner_active:
-                    portrait_fully_ready = True
                     print("  ✅ Character Portrait 100% rendered and 'Create Body' is unlocked!")
                     break
 
@@ -1230,7 +1230,6 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
                     # -------------------------------------------------------------
                     # Strict DOM Verification for 3-View Body Render
                     # -------------------------------------------------------------
-                    body_gen_started = False
                     start_body_wait = time.time()
                     stable_rendered_cycles = 0
 
@@ -1254,7 +1253,6 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
                             pass
 
                         if is_loading:
-                            body_gen_started = True
                             break
                         time.sleep(1)
 
@@ -1333,14 +1331,18 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
         scene_presets = FLOW_ASSET_PRESETS.get("SCENES", {}) if enable_scenes else {}
 
         # Guard: if a character editor page is still open, return to workspace
-        if scene_presets and re.search(r"/character/[a-zA-Z0-9_-]+", page.url) and "/characters" not in page.url:
+        if (
+            scene_presets
+            and re.search(r"/character/[a-zA-Z0-9_-]+", page.url)
+            and "/characters" not in page.url
+        ):
             log("  🧭 In Character Editor — navigating back to workspace root before scenes...")
             page.goto(
                 page.url.split("/character/")[0], wait_until="domcontentloaded", timeout=60000
             )
             time.sleep(3)
 
-        for scene_key, scene_info in scene_presets.items():
+        for _scene_key, scene_info in scene_presets.items():
             scene_name = scene_info["name"]
 
             # Check if unique scene name already exists in project assets (scoped to cards)
@@ -1574,7 +1576,7 @@ def _rename_workspace_image_card(page, img_element, new_name):
 
         rename_success = False
 
-        for attempt in range(1, 4):
+        for _attempt in range(1, 4):
             # 1. Hover specifically on the TOP-RIGHT corner of the card to reveal [Favorite, Reuse, ⋮] buttons
             box = img_element.bounding_box()
             if box:
@@ -1851,7 +1853,7 @@ def attach_previous_images_to_prompt(page, count_to_attach=1, batch_count=1):
 
         # 4. Attach each in chronological order
         attached_count = 0
-        for step_num, img_el in targets:
+        for _step_num, img_el in targets:
             if _click_add_to_prompt_on_image(page, img_el):
                 attached_count += 1
                 time.sleep(0.5)
@@ -2576,7 +2578,7 @@ def main():
                 gemini_page = context.new_page()
                 flow_page = context.new_page()
 
-                for folder_idx, subfolder in enumerate(batch_queue, 1):
+                for _folder_idx, subfolder in enumerate(batch_queue, 1):
                     print("\n==================================================")
                     print(f"PROCESSING TOPIC: {subfolder}")
                     print("==================================================")
@@ -2812,7 +2814,15 @@ def main():
                                     # Construct dynamic, character-aware continuity directive
                                     if attach_count > 0:
                                         # Detect active character entity to anchor correct visual biometrics
-                                        subj_lower = str(prompt_item.raw_payload.get("visual_prompt", {}).get("subject_details", "")).lower() if isinstance(prompt_item.raw_payload, dict) else ""
+                                        subj_lower = (
+                                            str(
+                                                prompt_item.raw_payload.get(
+                                                    "visual_prompt", {}
+                                                ).get("subject_details", "")
+                                            ).lower()
+                                            if isinstance(prompt_item.raw_payload, dict)
+                                            else ""
+                                        )
 
                                         if "clerk" in subj_lower or "bureaucrat" in subj_lower:
                                             char_lock = "the Science Bureaucrat (beige suit, receding hair, thick glasses)"
@@ -2891,9 +2901,14 @@ def main():
                                                     )
 
                                             # A. Summon Character ONLY if character toggle is active
-                                            is_absent_subject = subject_details.upper().startswith("ABSENT")
+                                            is_absent_subject = subject_details.upper().startswith(
+                                                "ABSENT"
+                                            )
                                             if chars_enabled and not is_absent_subject:
-                                                is_skeptic = "skeptic" in subject_details.lower() or "abo hmeed" in subject_details.lower()
+                                                is_skeptic = (
+                                                    "skeptic" in subject_details.lower()
+                                                    or "abo hmeed" in subject_details.lower()
+                                                )
 
                                                 for char_k, char_v in FLOW_ASSET_PRESETS.get(
                                                     "CHARACTERS", {}
@@ -3010,7 +3025,6 @@ def main():
                                             flow_page.keyboard.press("Enter")
                                             time.sleep(2)
 
-                                    render_success = False
                                     final_generated_locators = []
                                     start_gen_time = time.time()
                                     max_wait_seconds = 180
@@ -3128,7 +3142,6 @@ def main():
                                             )
                                             time.sleep(5)
                                             final_generated_locators = new_images
-                                            render_success = True
                                             break
 
                                         if not generation_has_started and (

@@ -351,9 +351,9 @@ class TestRunChunkedCompile:
 
         assert result is True
         ass_path = os.path.join(temp_run_folder, "dynamic_subtitles.ass")
-        assert os.path.exists(
-            ass_path
-        ), "dynamic_subtitles.ass should be generated regardless of dry run"
+        assert os.path.exists(ass_path), (
+            "dynamic_subtitles.ass should be generated regardless of dry run"
+        )
 
 
 class TestBuildChunkFilterGraph:

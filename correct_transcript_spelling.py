@@ -41,6 +41,7 @@ def get_target_directory():
     print("DEBUG: Falls back to current directory.", flush=True)
     return "."
 
+
 def align_and_correct_file(file_path, ref_words, file_type):
     """
     Aligns and spelling-corrects a target file against the reference words list.
@@ -53,7 +54,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
     with open(file_path, encoding=read_encoding) as f:
         lines = f.readlines()
 
-    trans_words = [] # List of (word, group_idx)
+    trans_words = []  # List of (word, group_idx)
 
     if file_type == "txt":
         line_timestamps = []
@@ -76,7 +77,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
         original_group_count = len(lines)
 
     elif file_type == "srt":
-        srt_headers = [] # List of (idx_str, time_str)
+        srt_headers = []  # List of (idx_str, time_str)
         blocks = []
         current_block = []
         for line in lines:
@@ -119,14 +120,14 @@ def align_and_correct_file(file_path, ref_words, file_type):
 
     # Distribute matching sequences safely
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == 'equal':
+        if tag == "equal":
             for offset in range(i2 - i1):
                 word_idx = i1 + offset
                 ref_word_idx = j1 + offset
                 group_idx = trans_words[word_idx][1]
                 corrected_groups_words[group_idx].append(ref_words[ref_word_idx])
 
-        elif tag == 'replace':
+        elif tag == "replace":
             ref_words_sub = ref_words[j1:j2]
             group_indices = [trans_words[k][1] for k in range(i1, i2)]
             if len(group_indices) > 0 and len(ref_words_sub) > 0:
@@ -135,7 +136,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
                     group_idx = group_indices[mapped_pos]
                     corrected_groups_words[group_idx].append(r_word)
 
-        elif tag == 'insert':
+        elif tag == "insert":
             if i1 > 0:
                 nearest_idx = trans_words[i1 - 1][1]
             elif i1 < len(trans_words):
@@ -145,7 +146,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
             for ref_word in ref_words[j1:j2]:
                 corrected_groups_words[nearest_idx].append(ref_word)
 
-        elif tag == 'delete':
+        elif tag == "delete":
             pass
 
     # Reconstruct lines based on file type layouts
@@ -177,6 +178,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
         f.writelines(new_lines)
     os.replace(tmp_path, file_path)
 
+
 def correct_transcript():
     print("DEBUG: [Checkpoint 3] Entering correct_transcript().", flush=True)
     target_dir = get_target_directory()
@@ -188,12 +190,21 @@ def correct_transcript():
 
     if os.path.exists(ref_refined):
         ref_path = ref_refined
-        print(f"[SYSTEM] Found refined script. Utilizing '{ref_refined}' as spelling reference.", flush=True)
+        print(
+            f"[SYSTEM] Found refined script. Utilizing '{ref_refined}' as spelling reference.",
+            flush=True,
+        )
     elif os.path.exists(ref_final):
         ref_path = ref_final
-        print(f"[SYSTEM] Refined script not found. Falling back to final output script '{ref_final}' as spelling reference.", flush=True)
+        print(
+            f"[SYSTEM] Refined script not found. Falling back to final output script '{ref_final}' as spelling reference.",
+            flush=True,
+        )
     else:
-        print(f"Error: Neither 'refined_script.txt' nor 'final_output.txt' found in '{target_dir}'.", flush=True)
+        print(
+            f"Error: Neither 'refined_script.txt' nor 'final_output.txt' found in '{target_dir}'.",
+            flush=True,
+        )
         return
 
     print("DEBUG: [Checkpoint 6] Target reference file exists. Reading contents...", flush=True)
@@ -209,7 +220,7 @@ def correct_transcript():
         ("timestamped_transcript.txt", "txt"),
         ("timestamped_transcript.srt", "srt"),
         ("image_timestamps.txt", "txt"),
-        ("subtitle_chunks.srt", "srt")
+        ("subtitle_chunks.srt", "srt"),
     ]
 
     for filename, f_type in files_to_correct:
@@ -228,6 +239,7 @@ def correct_transcript():
     print("Success! Spelling correction alignment sequence completed.")
     print("=============================================")
 
+
 if __name__ == "__main__":
     print("DEBUG: [Checkpoint 2] Entered main block.", flush=True)
 
@@ -244,6 +256,7 @@ if __name__ == "__main__":
         correct_transcript()
     except Exception as err:
         import traceback
+
         # Cast the error to ASCII representation to guarantee safe terminal rendering
         safe_err_msg = str(err).encode("ascii", "replace").decode("ascii")
         print(f"\n[CRITICAL ERROR OCCURRED]: {safe_err_msg}", flush=True)

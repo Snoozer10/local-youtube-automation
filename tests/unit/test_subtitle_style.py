@@ -2,7 +2,6 @@
 
 import os
 import tempfile
-import pytest
 
 import compile_video
 
@@ -85,15 +84,15 @@ class TestBuildSubtitleStyleString:
         """Int, float, and string config values all render correctly."""
         config = {
             "SUB_FONT_NAME": "Tahoma",
-            "SUB_FONT_SIZE": 22,        # int
+            "SUB_FONT_SIZE": 22,  # int
             "SUB_PRIMARY_COLOR": "&H00FFFFFF",  # string
             "SUB_OUTLINE_COLOR": "&H00000000",
-            "SUB_BORDER_STYLE": 1,      # int
-            "SUB_OUTLINE": 2.5,         # float
-            "SUB_SHADOW": 1,            # int
-            "SUB_ALIGNMENT": 2,         # int
-            "SUB_MARGIN_V": 50,         # int
-            "SUB_BOLD": 1,              # int
+            "SUB_BORDER_STYLE": 1,  # int
+            "SUB_OUTLINE": 2.5,  # float
+            "SUB_SHADOW": 1,  # int
+            "SUB_ALIGNMENT": 2,  # int
+            "SUB_MARGIN_V": 50,  # int
+            "SUB_BOLD": 1,  # int
         }
         style = compile_video.build_subtitle_style_string(config)
 
@@ -123,9 +122,10 @@ class TestFixArabicSrt:
             # No BOM
             assert not raw.startswith(b"\xef\xbb\xbf"), "Output must not contain BOM"
             # Content preserved
-            assert "مرحبا".encode("utf-8") in raw
+            assert "مرحبا".encode() in raw
         finally:
             import shutil
+
             shutil.rmtree(d, ignore_errors=True)
 
     def test_never_double_bom_on_rerun(self):
@@ -146,6 +146,7 @@ class TestFixArabicSrt:
             assert raw.count(b"\xef\xbb\xbf") == 0, "Double BOM must never appear"
         finally:
             import shutil
+
             shutil.rmtree(d, ignore_errors=True)
 
     def test_output_opens_in_ffmpeg(self):
@@ -164,21 +165,71 @@ class TestFixArabicSrt:
             a = os.path.join(d, "a.wav")
             o = os.path.join(d, "o.mp4")
             import subprocess
-            subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-                            "-f", "lavfi", "-i", "color=c=blue:s=320x180", "-frames:v", "1", "-update", "1", i],
-                           capture_output=True)
-            subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-                            "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-t", "1", a],
-                           capture_output=True)
+
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "color=c=blue:s=320x180",
+                    "-frames:v",
+                    "1",
+                    "-update",
+                    "1",
+                    i,
+                ],
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=1",
+                    "-t",
+                    "1",
+                    a,
+                ],
+                capture_output=True,
+            )
 
             fc = f"[0:v]null[vout];[vout]subtitles='{os.path.basename(out)}':force_style='Fontname=Tahoma,Fontsize=22'[s]"
-            cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-                   "-i", i, "-i", a, "-filter_complex", fc, "-map", "[s]", "-map", "1:a", o]
-            r = subprocess.run(cmd, cwd=d, capture_output=True, text=True, encoding="utf-8", errors="ignore")
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                i,
+                "-i",
+                a,
+                "-filter_complex",
+                fc,
+                "-map",
+                "[s]",
+                "-map",
+                "1:a",
+                o,
+            ]
+            r = subprocess.run(
+                cmd, cwd=d, capture_output=True, text=True, encoding="utf-8", errors="ignore"
+            )
 
             assert r.returncode == 0, f"ffmpeg could not open fixed srt: {r.stderr[-400:]}"
         finally:
             import shutil
+
             shutil.rmtree(d, ignore_errors=True)
 
     def test_plain_utf8_input_works(self):
@@ -196,7 +247,8 @@ class TestFixArabicSrt:
                 raw = f.read()
 
             assert not raw.startswith(b"\xef\xbb\xbf")
-            assert "مرحبا".encode("utf-8") in raw
+            assert "مرحبا".encode() in raw
         finally:
             import shutil
+
             shutil.rmtree(d, ignore_errors=True)

@@ -1,11 +1,10 @@
+import difflib
+import glob
 import os
+import re
 import sys
 import time
-import torch
-import wave
-import glob
-import re
-import difflib
+
 from faster_whisper import WhisperModel
 
 # Ensure WinGet binaries (ffmpeg / ffprobe) are accessible
@@ -48,22 +47,22 @@ def load_transcribe_config(config_path="transcribe_config.txt") -> dict:
         return DEFAULTS.copy()
 
     config = DEFAULTS.copy()
-    with open(config_path, 'r', encoding='utf-8') as f:
+    with open(config_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 continue
-            if '=' in line:
-                key, value = line.split('=', 1)
+            if "=" in line:
+                key, value = line.split("=", 1)
                 key = key.strip()
                 value = value.strip()
-                if '#' in value:
-                    value = value.split('#', 1)[0].strip()
+                if "#" in value:
+                    value = value.split("#", 1)[0].strip()
 
                 if key in DEFAULTS:
                     default_val = DEFAULTS[key]
                     if isinstance(default_val, bool):
-                        config[key] = value.lower() in ('true', '1', 'yes', 'on')
+                        config[key] = value.lower() in ("true", "1", "yes", "on")
                     elif isinstance(default_val, int):
                         try:
                             config[key] = int(float(value))
@@ -83,7 +82,7 @@ def get_latest_run_folder(runs_path="youtube_runs"):
     """Synchronized folder resolution matching compile_video.py."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     rel_to_script = os.path.join(script_dir, runs_path)
-    
+
     resolved_path = runs_path
     if os.path.exists(rel_to_script):
         resolved_path = rel_to_script
@@ -91,7 +90,11 @@ def get_latest_run_folder(runs_path="youtube_runs"):
         print(f"Error: Directory '{runs_path}' does not exist.")
         return None
 
-    subdirs = [os.path.join(resolved_path, name) for name in os.listdir(resolved_path) if os.path.isdir(os.path.join(resolved_path, name))]
+    subdirs = [
+        os.path.join(resolved_path, name)
+        for name in os.listdir(resolved_path)
+        if os.path.isdir(os.path.join(resolved_path, name))
+    ]
     return max(subdirs, key=os.path.getmtime) if subdirs else None
 
 
@@ -122,7 +125,7 @@ def read_whisper_preset_fallback(default_model="small"):
     model_size = default_model
     if os.path.exists(preset_path):
         try:
-            with open(preset_path, "r", encoding="utf-8") as f:
+            with open(preset_path, encoding="utf-8") as f:
                 for line in f:
                     if ":" in line:
                         key, val = line.split(":", 1)
@@ -145,15 +148,19 @@ def slice_initial_prompt(text, max_words=120):
 def read_initial_prompt(latest_run, config):
     locations = [
         os.path.join(latest_run, config["REFINED_SCRIPT_FILENAME"]),
-        os.path.join(latest_run, config["FINAL_OUTPUT_FILENAME"])
+        os.path.join(latest_run, config["FINAL_OUTPUT_FILENAME"]),
     ]
-    locations.extend(glob.glob(os.path.join(latest_run, "**", config["REFINED_SCRIPT_FILENAME"]), recursive=True))
-    locations.extend(glob.glob(os.path.join(latest_run, "**", config["FINAL_OUTPUT_FILENAME"]), recursive=True))
+    locations.extend(
+        glob.glob(os.path.join(latest_run, "**", config["REFINED_SCRIPT_FILENAME"]), recursive=True)
+    )
+    locations.extend(
+        glob.glob(os.path.join(latest_run, "**", config["FINAL_OUTPUT_FILENAME"]), recursive=True)
+    )
 
     for path in locations:
         if os.path.exists(path) and os.path.isfile(path):
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     text = f.read().strip()
                     if text:
                         print(f"[SYSTEM] Priming Whisper with script at '{path}'.")
@@ -164,19 +171,19 @@ def read_initial_prompt(latest_run, config):
 
 
 def clean_text_for_transcript_and_srt(text: str) -> str:
-    cleaned = re.sub(r'[\(\)\[\]\{\}\"\'«»“”‘’،,\.\!\?\؟\:\;\؛—\-\…]+', ' ', text)
-    return re.sub(r'\s+', ' ', cleaned).strip()
+    cleaned = re.sub(r"[\(\)\[\]\{\}\"\'«»“”‘’،,\.\!\?\؟\:\;\؛—\-\…]+", " ", text)
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def normalize_arabic_token(w: str) -> str:
     """Normalizes Arabic text variations, diacritics, and strips non-alphanumeric chars."""
     if not w:
         return ""
-    w = re.sub(r'[\u064B-\u065F\u0670]', '', w)  # Tashkeel
-    w = re.sub(r'[إأآٱ]', 'ا', w)
-    w = re.sub(r'ى', 'ي', w)
-    w = re.sub(r'ة', 'ه', w)
-    w = re.sub(r'[^\w\s]', '', w)
+    w = re.sub(r"[\u064B-\u065F\u0670]", "", w)  # Tashkeel
+    w = re.sub(r"[إأآٱ]", "ا", w)
+    w = re.sub(r"ى", "ي", w)
+    w = re.sub(r"ة", "ه", w)
+    w = re.sub(r"[^\w\s]", "", w)
     return w.strip().lower()
 
 
@@ -185,7 +192,7 @@ def normalize_arabic_token(w: str) -> str:
 # ============================================================
 def align_script_words_with_audio(script_text: str, whisper_words: list) -> list:
     """
-    Globally aligns full script words to Whisper audio word timestamps using 
+    Globally aligns full script words to Whisper audio word timestamps using
     sequence matching and time interpolation.
     GUARANTEES: Monotonically increasing time, zero audio drift, accurate sync.
     """
@@ -199,10 +206,10 @@ def align_script_words_with_audio(script_text: str, whisper_words: list) -> list
     def light_normalize(w: str) -> str:
         if not w:
             return ""
-        w = re.sub(r'[\u064B-\u065F\u0670]', '', w)  # Tashkeel only
-        w = re.sub(r'[إأآٱ]', 'ا', w)
-        w = re.sub(r'ى', 'ي', w)
-        w = re.sub(r'ة', 'ه', w)
+        w = re.sub(r"[\u064B-\u065F\u0670]", "", w)  # Tashkeel only
+        w = re.sub(r"[إأآٱ]", "ا", w)
+        w = re.sub(r"ى", "ي", w)
+        w = re.sub(r"ة", "ه", w)
         return w.strip().lower()
 
     script_norm = [light_normalize(w) for w in script_tokens_raw]
@@ -226,7 +233,7 @@ def align_script_words_with_audio(script_text: str, whisper_words: list) -> list
                 aligned[s_idx] = {
                     "text": script_tokens_raw[s_idx],
                     "start": w_item["start"],
-                    "end": w_item["end"]
+                    "end": w_item["end"],
                 }
 
     # 2. Interpolate with monotonic enforcement and minimum granularity
@@ -241,11 +248,7 @@ def align_script_words_with_audio(script_text: str, whisper_words: list) -> list
         # Distribute leading words evenly before first anchor
         step = max(MIN_STEP, first_t / (first_anchor_idx + 1))
         for i in range(first_anchor_idx):
-            aligned[i] = {
-                "text": script_tokens_raw[i],
-                "start": i * step,
-                "end": (i + 1) * step
-            }
+            aligned[i] = {"text": script_tokens_raw[i], "start": i * step, "end": (i + 1) * step}
 
     # Fill intermediate gaps between anchors
     i = 0
@@ -257,7 +260,11 @@ def align_script_words_with_audio(script_text: str, whisper_words: list) -> list
             gap_end = i  # first non-None anchor or end of list
 
             t_start = aligned[gap_start - 1]["end"] if gap_start > 0 else 0.0
-            t_end = aligned[gap_end]["start"] if gap_end < total_words else max(t_start + 1.0, audio_max_end)
+            t_end = (
+                aligned[gap_end]["start"]
+                if gap_end < total_words
+                else max(t_start + 1.0, audio_max_end)
+            )
 
             # Ensure minimum span for the gap
             span = max(MIN_STEP * (gap_end - gap_start), t_end - t_start)
@@ -268,7 +275,7 @@ def align_script_words_with_audio(script_text: str, whisper_words: list) -> list
                 aligned[g] = {
                     "text": script_tokens_raw[g],
                     "start": t_start + ((g - gap_start) * step),
-                    "end": t_start + ((g - gap_start + 1) * step)
+                    "end": t_start + ((g - gap_start + 1) * step),
                 }
         else:
             i += 1
@@ -308,8 +315,10 @@ def split_into_punctuated_sentences(aligned_words: list, config: dict) -> list:
     SILENCE_GAP = float(config.get("SILENCE_SPLIT_GAP_SEC", 0.55))
 
     # ALL punctuation = forced split for image timestamps (max granularity)
-    PUNCT_SPLIT_REGEX = re.compile(r'[\،\,\.\!\?\؟\:\;\؛\—\-\…]+$')
-    SPEAKER_TAG_REGEX = re.compile(r'^(أبو\s+\w+|طنط\s+\w+|الراوي|المذيع|المقدم)\s*:', re.IGNORECASE)
+    PUNCT_SPLIT_REGEX = re.compile(r"[\،\,\.\!\?\؟\:\;\؛\—\-\…]+$")
+    SPEAKER_TAG_REGEX = re.compile(
+        r"^(أبو\s+\w+|طنط\s+\w+|الراوي|المذيع|المقدم)\s*:", re.IGNORECASE
+    )
 
     sentences = []
     current_words = []
@@ -317,7 +326,6 @@ def split_into_punctuated_sentences(aligned_words: list, config: dict) -> list:
 
     for i, word_item in enumerate(aligned_words):
         w_text = word_item["text"]
-        w_start = word_item["start"]
         w_end = word_item["end"]
 
         # Speaker tag detection (e.g. 'أبو حميد:') -> Split before if clause has words
@@ -326,19 +334,21 @@ def split_into_punctuated_sentences(aligned_words: list, config: dict) -> list:
             clause_duration = current_words[-1]["end"] - current_words[0]["start"]
             if clause_duration >= MIN_DURATION or pending_merge:
                 clause_text = " ".join(w["text"] for w in current_words).strip()
-                sentences.append({
-                    "start": current_words[0]["start"],
-                    "end": current_words[-1]["end"],
-                    "raw_text": clause_text,
-                    "clean_text": clean_text_for_transcript_and_srt(clause_text)
-                })
+                sentences.append(
+                    {
+                        "start": current_words[0]["start"],
+                        "end": current_words[-1]["end"],
+                        "raw_text": clause_text,
+                        "clean_text": clean_text_for_transcript_and_srt(clause_text),
+                    }
+                )
                 current_words = []
                 pending_merge = False
             # else: keep current_words, let speaker tag be part of next clause
 
         current_words.append(word_item)
 
-        is_last = (i == len(aligned_words) - 1)
+        is_last = i == len(aligned_words) - 1
         has_punct = bool(PUNCT_SPLIT_REGEX.search(w_text))
 
         next_gap = 0.0
@@ -349,50 +359,63 @@ def split_into_punctuated_sentences(aligned_words: list, config: dict) -> list:
         split_type = None  # 'punct' or 'silence' or 'end'
         if is_last:
             should_split = True
-            split_type = 'end'
+            split_type = "end"
         elif has_punct:
             should_split = True
-            split_type = 'punct'
+            split_type = "punct"
         elif next_gap >= SILENCE_GAP:
             should_split = True
-            split_type = 'silence'
+            split_type = "silence"
 
         if should_split:
             clause_duration = current_words[-1]["end"] - current_words[0]["start"]
 
             # Micro-fragment handling: ONLY for silence-gap splits
             # Punctuation splits ALWAYS split (max granularity for image generation)
-            if split_type == 'silence' and not is_last and clause_duration < MIN_DURATION and not w_text.endswith(":"):
+            if (
+                split_type == "silence"
+                and not is_last
+                and clause_duration < MIN_DURATION
+                and not w_text.endswith(":")
+            ):
                 # Mark to merge with next clause - DON'T create sentence, DON'T clear current_words
                 pending_merge = True
                 continue
 
             # Normal split: create sentence from accumulated words
             clause_text = " ".join(w["text"] for w in current_words).strip()
-            sentences.append({
-                "start": current_words[0]["start"],
-                "end": current_words[-1]["end"],
-                "raw_text": clause_text,
-                "clean_text": clean_text_for_transcript_and_srt(clause_text)
-            })
+            sentences.append(
+                {
+                    "start": current_words[0]["start"],
+                    "end": current_words[-1]["end"],
+                    "raw_text": clause_text,
+                    "clean_text": clean_text_for_transcript_and_srt(clause_text),
+                }
+            )
             current_words = []
             pending_merge = False
 
     # Handle any remaining words
     if current_words:
         clause_text = " ".join(w["text"] for w in current_words).strip()
-        sentences.append({
-            "start": current_words[0]["start"],
-            "end": current_words[-1]["end"],
-            "raw_text": clause_text,
-            "clean_text": clean_text_for_transcript_and_srt(clause_text)
-        })
+        sentences.append(
+            {
+                "start": current_words[0]["start"],
+                "end": current_words[-1]["end"],
+                "raw_text": clause_text,
+                "clean_text": clean_text_for_transcript_and_srt(clause_text),
+            }
+        )
 
     # Post-process: merge only adjacent silence-gap fragments that are both too short
     # (punctuation splits already forced, so this only catches edge-case silence merges)
     merged = []
     for s in sentences:
-        if merged and (s["end"] - s["start"]) < MIN_DURATION and (merged[-1]["end"] - merged[-1]["start"]) < MIN_DURATION:
+        if (
+            merged
+            and (s["end"] - s["start"]) < MIN_DURATION
+            and (merged[-1]["end"] - merged[-1]["start"]) < MIN_DURATION
+        ):
             # Merge with previous
             merged[-1]["end"] = s["end"]
             merged[-1]["raw_text"] += " " + s["raw_text"]
@@ -432,7 +455,7 @@ def load_whisper_model(config):
 
 def main():
     try:
-        sys.stdout.reconfigure(encoding='utf-8', line_buffering=True, errors='replace')
+        sys.stdout.reconfigure(encoding="utf-8", line_buffering=True, errors="replace")
     except Exception:
         pass
 
@@ -449,7 +472,9 @@ def main():
 
     print(f"Target Video Folder: {latest_run}")
 
-    target_audio = os.path.join(latest_run, config["POLISHED_AUDIO_SUBDIR"], config["AUDIO_FILENAME"])
+    target_audio = os.path.join(
+        latest_run, config["POLISHED_AUDIO_SUBDIR"], config["AUDIO_FILENAME"]
+    )
     if os.path.exists(target_audio):
         print(f"[AUDIO] Target: Audacity Polished Voice Track ('{target_audio}')")
     else:
@@ -466,7 +491,11 @@ def main():
     start_time = time.time()
 
     raw_custom_prompt = read_initial_prompt(latest_run, config)
-    initial_prompt_sliced = slice_initial_prompt(raw_custom_prompt, config["INITIAL_PROMPT_MAX_WORDS"]) if raw_custom_prompt else config["DEFAULT_INITIAL_PROMPT"]
+    initial_prompt_sliced = (
+        slice_initial_prompt(raw_custom_prompt, config["INITIAL_PROMPT_MAX_WORDS"])
+        if raw_custom_prompt
+        else config["DEFAULT_INITIAL_PROMPT"]
+    )
 
     try:
         segments_gen, _ = model.transcribe(
@@ -476,24 +505,24 @@ def main():
             word_timestamps=True,
             beam_size=config["WHISPER_BEAM_SIZE"],
             vad_filter=config["WHISPER_VAD_FILTER"],
-            vad_parameters=dict(min_speech_duration_ms=config["WHISPER_MIN_SPEECH_DURATION_MS"])
+            vad_parameters={"min_speech_duration_ms": config["WHISPER_MIN_SPEECH_DURATION_MS"]},
         )
 
         whisper_words = []
         for segment in segments_gen:
             if segment.words:
                 for word in segment.words:
-                    whisper_words.append({
-                        "word": word.word.strip(),
-                        "start": word.start,
-                        "end": word.end
-                    })
+                    whisper_words.append(
+                        {"word": word.word.strip(), "start": word.start, "end": word.end}
+                    )
 
         if raw_custom_prompt and whisper_words:
             print("[ALIGNMENT] Performing monotonic time alignment with refined script...")
             aligned_words = align_script_words_with_audio(raw_custom_prompt, whisper_words)
         else:
-            aligned_words = [{"text": w["word"], "start": w["start"], "end": w["end"]} for w in whisper_words]
+            aligned_words = [
+                {"text": w["word"], "start": w["start"], "end": w["end"]} for w in whisper_words
+            ]
 
         # Generate accurate punctuated sentences / clauses
         punctuated_sentences = split_into_punctuated_sentences(aligned_words, config)
@@ -503,12 +532,18 @@ def main():
         sys.exit(1)
 
     elapsed_time = time.time() - start_time
-    avg_dur = sum(s['end'] - s['start'] for s in punctuated_sentences) / max(1, len(punctuated_sentences))
+    avg_dur = sum(s["end"] - s["start"] for s in punctuated_sentences) / max(
+        1, len(punctuated_sentences)
+    )
     print(f"\nTranscription completed in {elapsed_time:.2f} seconds.")
-    print(f"Generated {len(punctuated_sentences)} Accurate Punctuated Sentences (Average duration: {avg_dur:.2f}s).")
+    print(
+        f"Generated {len(punctuated_sentences)} Accurate Punctuated Sentences (Average duration: {avg_dur:.2f}s)."
+    )
 
     # 1. Save image_timestamps.txt (Exact punctuated sentences with accurate timing)
-    image_timestamp_lines = [f"{format_timestamp(s['start'])} {s['raw_text']}" for s in punctuated_sentences]
+    image_timestamp_lines = [
+        f"{format_timestamp(s['start'])} {s['raw_text']}" for s in punctuated_sentences
+    ]
     path_images = os.path.join(latest_run, "image_timestamps.txt")
     with open(path_images, "w", encoding="utf-8") as f:
         f.write("\n".join(image_timestamp_lines))
@@ -524,12 +559,14 @@ def main():
     if config["EXPORT_SRT"]:
         output_srt_lines = []
         for srt_idx, s in enumerate(punctuated_sentences, 1):
-            output_srt_lines.extend([
-                str(srt_idx),
-                f"{format_srt_timestamp(s['start'])} --> {format_srt_timestamp(s['end'])}",
-                s["clean_text"],
-                ""
-            ])
+            output_srt_lines.extend(
+                [
+                    str(srt_idx),
+                    f"{format_srt_timestamp(s['start'])} --> {format_srt_timestamp(s['end'])}",
+                    s["clean_text"],
+                    "",
+                ]
+            )
 
         for filename in ["timestamped_transcript.srt", "subtitle_chunks.srt"]:
             path_srt = os.path.join(latest_run, filename)

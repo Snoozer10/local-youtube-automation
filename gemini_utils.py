@@ -12,7 +12,7 @@ with no external API dependencies.
 import logging
 import re
 import time
-from typing import Any, Optional
+from typing import Any
 
 from playwright.sync_api import Page
 
@@ -22,7 +22,7 @@ logger = logging.getLogger("Pipeline")
 RESPONSE_SELECTOR = "model-response, .model-response, [data-test-id='model-response']"
 
 
-def find_input_box(page: Page) -> Optional[Any]:
+def find_input_box(page: Page) -> Any | None:
     """Locate the Gemini rich-text input box across English & Arabic UI variations.
 
     Scans from bottom-most element first to prioritize the active input
@@ -75,7 +75,7 @@ def find_input_box(page: Page) -> Optional[Any]:
     return None
 
 
-def find_send_button(page: Page) -> Optional[Any]:
+def find_send_button(page: Page) -> Any | None:
     """Locate the Gemini send/submit button.
 
     Safely ignores buttons when they are in an active Stop/Cancel/Interrupt
@@ -282,8 +282,7 @@ class GeminiSessionClient:
             self.page, initial_count=initial_count, timeout_seconds=120
         )
         return bool(
-            response
-            and any(kw in response.lower() for kw in ["understood", "جاهز", "مستعد"])
+            response and any(kw in response.lower() for kw in ["understood", "جاهز", "مستعد"])
         )
 
     def dispatch_prompt(self, text: str) -> tuple[bool, int]:
@@ -324,7 +323,7 @@ class GeminiSessionClient:
             logger.error("Failed to dispatch prompt: %s", exc)
             return False, initial_count
 
-    def refine_turn(self, prompt: str, timeout_seconds: int = 420) -> Optional[str]:
+    def refine_turn(self, prompt: str, timeout_seconds: int = 420) -> str | None:
         """Send a refinement prompt and wait for response.
 
         Args:
