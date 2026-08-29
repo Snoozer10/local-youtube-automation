@@ -14,6 +14,7 @@ import re
 import time
 from typing import Any
 
+from playwright._impl._errors import TargetClosedError
 from playwright.sync_api import Page
 
 logger = logging.getLogger("Pipeline")
@@ -476,15 +477,17 @@ def wait_for_gemini_response(
     return ""
 
 
-def select_gemini_model(page: Page, model_name: str = "Pro") -> bool:
+def select_gemini_model(page: Page, model_name: str = "Pro", timeout_seconds: float = 8.0) -> bool:
     """Select a specific Gemini model ('Pro', 'Flash', etc.).
 
     Compatible with Gemini 2.0/Advanced model selector dropdowns.
     Filters out upgrade/CTA buttons to avoid false positive clicks.
+    Polls up to timeout_seconds to allow the SPA UI to hydrate.
 
     Args:
         page: Playwright page object.
         model_name: Target model name.
+        timeout_seconds: Max seconds to wait for model selector to appear.
 
     Returns:
         True if model selected successfully, False otherwise.
@@ -495,6 +498,9 @@ def select_gemini_model(page: Page, model_name: str = "Pro") -> bool:
     # 1. Broad selector list covering top header, mode switcher, and input toolbar
     pill_selectors = [
         "button[data-test-id='model-switcher-button']",
+        "button[aria-haspopup='menu']:has-text('Flash')",
+        "button[aria-haspopup='menu']:has-text('Pro')",
+        "button[aria-haspopup='menu']:has-text('Gemini')",
         "button[aria-label*='model' i]",
         "button[aria-label*='Mode' i]",
         "button[aria-label*='Gemini' i]",
@@ -508,33 +514,44 @@ def select_gemini_model(page: Page, model_name: str = "Pro") -> bool:
         ".bard-mode-menu-button",
     ]
 
+    start_time = time.time()
     model_btn = None
-    # Iterate and check .last because active model picker sits in bottom toolbar
-    for sel in pill_selectors:
-        try:
-            locs = page.locator(sel)
-            count = locs.count()
-            for i in range(count - 1, -1, -1):
-                el = locs.nth(i)
-                if el.is_visible() and el.is_enabled():
-                    try:
-                        btn_text = (el.evaluate("e => e.innerText") or "").strip().lower()
-                    except Exception:
-                        continue
-                    # Ensure we are inspecting a mode switcher button, not an upgrade prompt
-                    if "upgrade" in btn_text or "اشتراك" in btn_text:
-                        continue
-                    # Check if already active (exact model badge match)
-                    if bool(re.search(rf"\b{re.escape(target_clean)}\b", btn_text)):
-                        logger.info("Model '%s' is already active.", model_name)
-                        return True
-                    if any(m in btn_text for m in ["pro", "flash", "lite", "model", "2.0", "2.5"]):
-                        model_btn = el
-                        break
-            if model_btn:
-                break
-        except Exception:
-            continue
+    while time.time() - start_time < timeout_seconds:
+        # Iterate and check .last because active model picker sits in bottom toolbar
+        for sel in pill_selectors:
+            try:
+                locs = page.locator(sel)
+                count = locs.count()
+                for i in range(count - 1, -1, -1):
+                    el = locs.nth(i)
+                    if el.is_visible() and el.is_enabled():
+                        try:
+                            btn_text = (el.evaluate("e => e.innerText") or "").strip().lower()
+                        except Exception:
+                            continue
+                        # Ensure we are inspecting a mode switcher button, not an upgrade prompt
+                        if "upgrade" in btn_text or "اشتراك" in btn_text:
+                            continue
+                        # Check if already active (exact model badge match)
+                        if bool(re.search(rf"\b{re.escape(target_clean)}\b", btn_text)):
+                            logger.info("Model '%s' is already active.", model_name)
+                            return True
+                        if any(
+                            m in btn_text for m in ["pro", "flash", "lite", "model", "2.0", "2.5"]
+                        ):
+                            model_btn = el
+                            break
+                if model_btn:
+                    break
+            except TargetClosedError:
+                logger.warning("Model selector poll aborted: page/target closed mid-iteration.")
+                return False
+            except Exception:
+                continue
+
+        if model_btn:
+            break
+        time.sleep(0.5)
 
     if not model_btn:
         logger.warning("Could not locate Gemini model selector button (assuming default).")
@@ -594,6 +611,9 @@ def select_gemini_model(page: Page, model_name: str = "Pro") -> bool:
         time.sleep(1)
         return option_clicked
 
+    except TargetClosedError:
+        logger.warning("Model selection aborted: page/target closed mid-dropdown interaction.")
+        return False
     except Exception as exc:
         logger.error("Exception during model selection: %s", exc)
         try:

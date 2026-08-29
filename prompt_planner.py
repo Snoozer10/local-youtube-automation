@@ -162,7 +162,7 @@ def build_chunk_payload(
     script_lines: list[tuple[int, str, str]],
 ) -> str:
     """Single-turn prompt: preamble + buffered roadmap table + script lines + span directive."""
-    lines: list[str] = [preamble, "", "ROADMAP CONTEXT (target span +/- buffer):"]
+    lines: list[str] = [preamble, "", "CRITICAL: timestamp field must be copied VERBATIM from SCRIPT LINES including brackets, e.g. [00:00] - never leave empty", "", "ROADMAP CONTEXT (target span +/- buffer):"]
     for row in slice_rows:
         cells = [
             _condense(str(row.index)),
@@ -242,7 +242,8 @@ def _validation_error_excerpt(exc: ValidationError) -> str:
 
 
 def _absorb_valid_items(
-    raw_response: str, start_idx: int, end_idx: int
+    raw_response: str, start_idx: int, end_idx: int,
+    timestamp_map: dict[int, str] | None = None,
 ) -> tuple[dict[int, dict[str, Any]], dict[int, str]]:
     try:
         items = clean_and_repair_json(raw_response)
@@ -255,12 +256,21 @@ def _absorb_valid_items(
         raw_index = item.get("index")
         if not _is_int(raw_index) or not start_idx <= raw_index <= end_idx:
             continue
+        # Auto-repair empty timestamp from expected map (fixes Gemini empty ts bug)
+        if item.get("timestamp") == "" and timestamp_map and raw_index in timestamp_map:
+            repaired_ts = timestamp_map[raw_index]
+            log(f"[planner] auto-repair empty timestamp for index {raw_index} -> {repaired_ts}")
+            item["timestamp"] = repaired_ts
         try:
             FrameItem.model_validate(item)
         except ValidationError as exc:
-            errors[raw_index] = _validation_error_excerpt(exc)
+            err_excerpt = _validation_error_excerpt(exc)
+            errors[raw_index] = err_excerpt
+            log(f"[planner] validation failed index {raw_index}: {err_excerpt} | raw_ts={repr(item.get('timestamp'))} | raw_item_keys={list(item.keys())}")
             continue
         valid[raw_index] = item
+    if errors:
+        log(f"[planner] _absorb summary: {len(valid)} valid, {len(errors)} errors, missing={[i for i in range(start_idx, end_idx+1) if i not in valid]}")
     return valid, errors
 
 
@@ -374,8 +384,12 @@ def _plan_single_chunk(
         attempts += 1
         response = wait_for_gemini_turn_completion(gemini_page)
 
-    valid, errors = _absorb_valid_items(response, start_idx, end_idx)
+    # Build timestamp map for auto-repair and debug
+    timestamp_map = {idx: ts for idx, ts, _ in script_lines}
+    valid, errors = _absorb_valid_items(response, start_idx, end_idx, timestamp_map)
     missing = [index for index in expected if index not in valid]
+    if missing:
+        log(f"[planner] initial missing after absorb: {missing} | errors={errors} | raw_len={len(response)}")
     repairs_used = 0
     last_raw = response
     while missing and repairs_used < max_repair_attempts:
@@ -387,10 +401,15 @@ def _plan_single_chunk(
             log(f"[planner] {chunk_id} repair injection failed; attempt consumed.")
             continue
         last_raw = wait_for_gemini_turn_completion(gemini_page)
-        repaired, repair_errors = _absorb_valid_items(last_raw, start_idx, end_idx)
+        repaired, repair_errors = _absorb_valid_items(last_raw, start_idx, end_idx, timestamp_map)
+        if repair_errors:
+            log(f"[planner] repair {repairs_used} errors: {repair_errors}")
         errors.update(repair_errors)
         valid.update(repaired)
         missing = [index for index in expected if index not in valid]
+        if missing:
+            log(f"[planner] after repair {repairs_used} still missing: {missing}")
+
 
     if missing:
         dump_path = _dump_debug(

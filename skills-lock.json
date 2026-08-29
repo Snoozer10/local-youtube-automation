@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "skills": {
+    "arabic-copywriting-dialects": {
+      "source": "arabagentskills/skills",
+      "sourceType": "github",
+      "skillPath": "skills/arabic-copywriting-dialects/SKILL.md",
+      "computedHash": "c0b77622455eed3f15ab4b098f8ea78b7d5571ad343a124a0066fe023ed846ce"
+    },
+    "arabic-presentations": {
+      "source": "sultanalsafran/agent-skills",
+      "sourceType": "github",
+      "skillPath": "arabic-presentations/SKILL.md",
+      "computedHash": "46cafae5b04e3461f56286103e349cf46bd4f69a5ff46458c0c84dc2a9f60221"
+    },
+    "audio-dsp": {
+      "source": "alemusica/golden-helix-studio",
+      "sourceType": "github",
+      "skillPath": ".github/skills/audio-dsp/SKILL.md",
+      "computedHash": "62c1f0427ff324a64ec8e61e1fc54be7f4b9b45711b32ddc08b534835088f787"
+    },
+    "audio-mixing-mastering": {
+      "source": "calesthio/generative-media-skills",
+      "sourceType": "github",
+      "skillPath": "skills/production/audio-craft/audio-mixing-mastering/SKILL.md",
+      "computedHash": "1ad04f46da3ec543efbe20987401d79a351652038e37db19eb6ef420c7d77cc7"
+    },
+    "audio-transcription": {
+      "source": "postplusai/postplus-skills",
+      "sourceType": "github",
+      "skillPath": "skills/40-creative/audio-transcription/SKILL.md",
+      "computedHash": "c526aa6bf4945da3605ff7643c1807977acc62856f3d41c481093266b52e8aa1"
+    },
+    "browser-automation": {
+      "source": "web-infra-dev/midscene-skills",
+      "sourceType": "github",
+      "skillPath": "skills/browser/SKILL.md",
+      "computedHash": "67752fb2fd0a741ec7e5b67d112bd3c7b9b0acd6a4bbc3fbda881fe7f398c774"
+    },
+    "browser-trace": {
+      "source": "browserbase/skills",
+      "sourceType": "github",
+      "skillPath": "skills/browser-trace/SKILL.md",
+      "computedHash": "a49568a18e931b3587a4cce9b234a44427fbe325578bd7124ad149010e1b70ca"
+    },
+    "ffmpeg-opencv-integration": {
+      "source": "josiahsiegel/claude-plugin-marketplace",
+      "sourceType": "github",
+      "skillPath": "plugins/ffmpeg-python/skills/ffmpeg-opencv-integration/SKILL.md",
+      "computedHash": "caf31f32b7d0ca0808700fc75e1bb452d57e902fdf4243304c541fefa435e790"
+    },
+    "hyperframes-video-composition": {
+      "source": "calesthio/generative-media-skills",
+      "sourceType": "github",
+      "skillPath": "skills/production/runtime-assembly/hyperframes-video-composition/SKILL.md",
+      "computedHash": "50d28c7396976f7372a59c9824b0e60b2629aab0805602281e3797fef73c6c76"
+    },
+    "nlp-natural-language-processing": {
+      "source": "mindrally/skills",
+      "sourceType": "github",
+      "skillPath": "nlp-natural-language-processing/SKILL.md",
+      "computedHash": "25e0d235d40ce8c5d8c4c12836b756768328b98541eac1fa3f5dc819814cadf9"
+    },
+    "photo-slideshow": {
+      "source": "iart-ai/ecommerce-video-skills",
+      "sourceType": "github",
+      "skillPath": "skills/photo-slideshow/SKILL.md",
+      "computedHash": "7d8289dd748bb571c5e1e2db88ca5f197881923ca06ac0bb703a90edfaf26b93"
+    },
+    "pytest-skill": {
+      "source": "lambdatest/agent-skills",
+      "sourceType": "github",
+      "skillPath": "pytest-skill/SKILL.md",
+      "computedHash": "69e4a43bf5a049aae3f387b4f03a08a457c0225b159cb01e91cfbbea2d90e28f"
+    },
+    "python-ffmpeg": {
+      "source": "josiahsiegel/claude-plugin-marketplace",
+      "sourceType": "github",
+      "skillPath": "plugins/python-master/skills/python-ffmpeg/SKILL.md",
+      "computedHash": "21c377b33542ffee2a508392d9a84263ffb2658ce7c1491a94344f330cae0a22"
+    },
+    "windows-desktop-e2e": {
+      "source": "affaan-m/ecc",
+      "sourceType": "github",
+      "skillPath": "skills/windows-desktop-e2e/SKILL.md",
+      "computedHash": "9a7dad552c7ddcc29e43b65f1c05516a1905f6962fdca56ed6b14f80dad974d9"
+    }
+  }
+}

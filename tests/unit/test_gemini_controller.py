@@ -318,3 +318,11 @@ def test_open_ephemeral_reset_failure_propagates(monkeypatch, fake_page):
     monkeypatch.setattr(gemini_controller, "select_gemini_model", lambda p, m: selected.append(m))
     assert open_ephemeral_session(fake_page, "Pro") is False
     assert selected == []
+
+
+def test_open_ephemeral_model_select_soft_fail(monkeypatch, fake_page):
+    monkeypatch.setattr(gemini_controller, "reset_chat_session", lambda p: True)
+    monkeypatch.setattr(gemini_controller, "select_gemini_model", lambda p, m: False)
+    _patch_box(monkeypatch, fake_page)
+    monkeypatch.setattr(gemini_controller, "time", NoSleepClock())
+    assert open_ephemeral_session(fake_page, "Flash") is True

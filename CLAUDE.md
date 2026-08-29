@@ -1,3 +1,4 @@
+﻿@AGENTS.md
 ````markdown
 # CLAUDE.md — YouTube Video Automation Pipeline (Al-Daheeh Engine)
 
@@ -423,3 +424,4 @@ Whenever editing or expanding this repository, verify these four questions:
 2. **Is it idempotent?** (Can the pipeline be killed mid-execution and safely resumed via checkpoints?).
 3. **Is audio/video synchronization sample-accurate?** (Integer frame allocations, zero drift over 10+ minutes).
 4. **Is the dialect authentic?** (30% Academic Fusha : 70% Cairene Amiya, Gary Provost 1-3-1 cadence, phonetic Tashkeel diacritics applied).
+

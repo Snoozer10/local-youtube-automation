@@ -241,6 +241,9 @@ class FrameItem(BaseModel):
     @field_validator("timestamp")
     @classmethod
     def _validate_timestamp_format(cls, value: str) -> str:
+        # Allow empty string for auto-repair upstream (prompt_planner will fill from script)
+        if value == "":
+            return value
         if not TIMESTAMP_PATTERN.match(value):
             raise ValueError(f"timestamp must match [MM:SS] or [HH:MM:SS], got {value!r}")
         return value

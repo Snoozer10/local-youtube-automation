@@ -19,6 +19,7 @@ from gemini_utils import (
     RESPONSE_SELECTOR,
     check_gemini_error_state,
     find_input_box,
+    find_send_button,
     is_gemini_generating,
     select_gemini_model,
 )
@@ -68,7 +69,12 @@ def read_gemini_input_text(page: Page) -> str:
     if box is None:
         return ""
     try:
-        return str(box.inner_text() or "")
+        raw = str(box.inner_text() or "")
+        # Directive: handle rich-textarea contenteditable innerText stripping cleanly
+        # Normalize zero-width spaces, non-breaking spaces, and collapsed whitespace
+        sanitized = raw.replace("\u200b", "").replace("\u00a0", " ").replace("\r", " ")
+        sanitized = " ".join(sanitized.split())
+        return sanitized
     except Exception as exc:
         log(f"[read] input box read failed: {exc}")
         return ""
@@ -90,6 +96,7 @@ def inject_prompt_via_cdp(page: Page, text: str, fill_limit: int = 500) -> bool:
 
     def _readback_matches() -> bool:
         readback = read_gemini_input_text(page).strip()
+        # Compare normalized lengths; contenteditable may drop trailing newline artifacts
         return len(readback) * 100 >= _READBACK_MATCH_PERCENT * payload_len
 
     def _focus_and_clear(box: Any) -> None:
@@ -132,6 +139,25 @@ def inject_prompt_via_cdp(page: Page, text: str, fill_limit: int = 500) -> bool:
             time.sleep(_SETTLE_SLEEP_SECONDS)
             if _readback_matches():
                 log(f"[inject] prompt injected via tier {index} ({name}).")
+                # Submit the turn after successful readback gate
+                try:
+                    send_btn = find_send_button(page)
+                    if send_btn and send_btn.is_visible() and send_btn.is_enabled():
+                        send_btn.click()
+                        log(f"[inject] submit via send button (tier {index}).")
+                    else:
+                        page.keyboard.press("Enter")
+                        time.sleep(0.2)
+                        # Fallback Control+Enter if generation not started
+                        if not is_gemini_generating(page):
+                            page.keyboard.press("Control+Enter")
+                except Exception as submit_exc:
+                    log(f"[inject] submit attempt failed: {submit_exc}")
+                    try:
+                        page.keyboard.press("Enter")
+                    except Exception:
+                        pass
+                time.sleep(0.5)
                 return True
             log(f"[inject] tier {index} ({name}) failed readback gate; escalating.")
         except Exception as exc:
@@ -281,10 +307,9 @@ def open_ephemeral_session(page: Page, target_model: str) -> bool:
         log("[session] chat reset failed; aborting ephemeral session.")
         return False
     if not select_gemini_model(page, target_model):
-        log(f"[session] model '{target_model}' selection failed.")
-        return False
+        log(f"[session] model '{target_model}' selection failed (continuing with default model).")
     if find_input_box(page) is None:
-        log("[session] input box missing after model switch.")
+        log("[session] input box missing after session setup.")
         return False
     time.sleep(0.5)
     log(f"[session] ephemeral session ready with model '{target_model}'.")

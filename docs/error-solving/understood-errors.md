@@ -7,6 +7,11 @@
 - **Solution**: Disable lookahead by setting `QSV_LOOKAHEAD=0` in the configuration.
 - **Prevention**: Ensure lookahead is deactivated when executing hybrid software-to-hardware transcode chains on this hardware/driver baseline.
 
+### Gemini Model Selector Hydration Timing
+- **Cause**: Immediately after a Gemini SPA chat reset (`reset_chat_session`), the model selector button may still be mounting in the DOM. An immediate single-pass scan fails to find the button and returns `False`. If `open_ephemeral_session` treats model selection failure as a hard error, the entire orchestration turn aborts with `RuntimeError: [roadmap] failed to deliver initial turn`.
+- **Solution**: (1) Add a polling deadline loop (up to 8s) in `select_gemini_model` to allow the SPA UI to hydrate. (2) Make `open_ephemeral_session` soft-fail if model selection still cannot locate the button, continuing with the session's default model as long as the prompt input box is live.
+- **Prevention**: Never assume newly navigated or SPA-reset DOM nodes mount instantaneously; poll with a reasonable timeout, and treat non-critical UI customizations (like model dropdown selection) as resilient soft-failures.
+
 ## Known Failure Modes
 
 ### QSV Software-to-Hardware Frame Upload

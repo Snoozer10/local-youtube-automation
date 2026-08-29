@@ -100,7 +100,7 @@ pre-commit run --all-files     # ruff, ruff-format, mypy --strict, trailing-whit
 | Audio Stitching          | `stitch_chapters.py`                 | lossless Wave frames, zero drop                                            |
 | ASR & Cadence Pacing     | `faster_whisper_transcribe_audio.py` | 3-6 words/chunk; VAD split `0.40-0.45s`; `transcribe_config.txt`           |
 | Lexical Spellcheck       | `correct_transcript_spelling.py`     | `difflib.SequenceMatcher` vs `refined_script.txt`, timestamps untouched    |
-| Roadmap Paging            | `roadmap_orchestrator.py`            | fixed 25-row pages; anchor = exact last row of K-1; atomic jsonl rewrite/page |
+| Roadmap Paging           | `roadmap_orchestrator.py`            | fixed 25-row pages; anchor = exact last row of K-1; atomic jsonl rewrite/page |
 | JSON Planning            | `prompt_planner.py`                  | slice ±1 buffer rows; single-turn ephemeral session; self-heal ≤2 same-session |
 | Visual Generation        | `flow_image_generator.py`            | `@asset` chip injection; native screenshot capture; multi-frame continuity |
 | Thumbnail                | `generate_thumbnail.py`              | self-critique scoring, 2 variants                                          |

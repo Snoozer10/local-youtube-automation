@@ -1,13 +1,16 @@
-- Goal (incl. success criteria): Complete zero-defect program for compile_video.py fixing B1-B4. Ensure 89+N tests green.
+- Goal (incl. success criteria): Scan, review, audit and fix bugs in `flow_image_generator.py` and Gemini planning layer (resolve model selector timing bug and ephemeral session resilience).
 - Constraints/Assumptions:
-  - CEO Agent role active.
-  - Caveman communication style.
-  - No internal mocks.
-  - Run full pytest on change.
-- Key decisions: CEO role adopted.
+  - Windows PowerShell env.
+  - Test suite green before and after changes.
+- Key decisions:
+  - Added polling deadline (up to 8s) in `select_gemini_model` to allow SPA UI to hydrate.
+  - Made `open_ephemeral_session` soft-fail if model selector button is not located, continuing with default model.
+  - Reused active CDP tabs and granted clipboard permissions.
+  - Fixed multi-frame prompt completion check to use index set comparison.
+  - Purged dead duplicate legacy Gemini polling functions.
 - State:
-  - Done: B1-B8 resolved. QSV lookahead silent corruption investigated and fixed by setting `QSV_LOOKAHEAD=0` in `video_config.txt`. Output video successfully re-rendered and verified (no NAL errors, correct pixel stats). Understood errors documented. Context engineering initialized with `.gemini/config.json` and `CLAUDE.md`.
-  - Now: Handoff.
-  - Next: Session complete.
+  - Done: Model selector hydration polling loop added in `gemini_utils.py`, `open_ephemeral_session` soft-fail resilience implemented in `gemini_controller.py`, new unit test added in `test_gemini_controller.py`, 304 unit tests passing, ruff check/format green, mypy strict green on core modules.
+  - Now: Ready for execution.
+  - Next: User can run `flow_image_generator.py`.
 - Open questions (UNCONFIRMED if needed): None.
-- Working set (files/ids/commands): compile_video.py, CEO_WORKFLOW.md, docs/short-term-plan/CONTINUITY.md
+- Working set (files/ids/commands): gemini_utils.py, gemini_controller.py, flow_image_generator.py, tests/unit/test_gemini_controller.py, walkthrough.md

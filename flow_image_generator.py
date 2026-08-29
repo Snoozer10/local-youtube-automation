@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urljoin
@@ -32,13 +33,13 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 
-def log(msg: str):
+def log(msg: str) -> None:
     """Outputs real-time timestamped logs with immediate buffer flushing."""
     timestamp = time.strftime("%H:%M:%S")
     print(f"[{timestamp}] {msg}", flush=True)
 
 
-def wait_for_flow_app_ready(page, timeout_seconds: int = 60) -> bool:
+def wait_for_flow_app_ready(page: Any, timeout_seconds: int = 60) -> bool:
     """Wait until the Flow SPA is fully interactive (sidebar + content rendered).
 
     Requires a 3s stability window so React has finished hydrating before any
@@ -74,7 +75,7 @@ def wait_for_flow_app_ready(page, timeout_seconds: int = 60) -> bool:
     return False
 
 
-def capture_debug_state(page, step_name: str, subfolder: str | None = None):
+def capture_debug_state(page: Any, step_name: str, subfolder: str | None = None) -> None:
     """Takes a debug screenshot and logs the current URL/title when a step stalls."""
     try:
         debug_dir = os.path.join(subfolder or ".", "debug_snapshots")
@@ -115,8 +116,16 @@ class StoryboardFrame:
 
 class GeminiSelectors:
     URL = "https://gemini.google.com/app"
-    INPUT_BOX = "rich-textarea div[contenteditable='true']"
-    RESPONSE_CONTAINER = "model-response"
+    INPUT_BOX = (
+        "div[contenteditable='true'], "
+        "div[role='textbox'], "
+        "rich-textarea div[contenteditable='true'], "
+        ".ql-editor, "
+        "p[data-placeholder*='Ask' i], "
+        "textarea[placeholder*='Ask' i], "
+        "textarea"
+    )
+    RESPONSE_CONTAINER = "model-response, .model-response-text, message-content"
     THINKING_INDICATORS = "mat-progress-spinner, .thinking-indicator, [aria-label*='Thinking' i]"
 
 
@@ -136,7 +145,7 @@ class FlowSelectors:
 
 
 def wait_for_predicate(
-    predicate_fn,
+    predicate_fn: Callable[[], bool],
     timeout: float = 15.0,
     interval: float = 0.5,
     error_msg: str = "Predicate timed out",
@@ -192,12 +201,13 @@ def validate_image_file(file_path: str, min_size_kb: int = 20) -> bool:
 
 
 def atomic_screenshot_and_verify(
-    locator, final_save_path: str, page, min_size_kb: int = 50
+    locator: Any, final_save_path: str, page: Any, min_size_kb: int = 50
 ) -> bool:
     """
     Executes a de-hovered screenshot to a temporary file, validates binary integrity,
     and atomically moves it to final_save_path to prevent corrupted partial files.
     """
+    os.makedirs(os.path.dirname(os.path.abspath(final_save_path)), exist_ok=True)
     temp_path = final_save_path + ".tmp"
     try:
         if os.path.exists(temp_path):
@@ -231,7 +241,9 @@ def atomic_screenshot_and_verify(
         return False
 
 
-def extract_high_res_image(page, img_locator, save_path: str, min_size_kb: int = 20) -> bool:
+def extract_high_res_image(
+    page: Any, img_locator: Any, save_path: str, min_size_kb: int = 20
+) -> bool:
     """
     Tiered full-resolution image extraction that avoids CORS canvas tainting.
 
@@ -241,6 +253,7 @@ def extract_high_res_image(page, img_locator, save_path: str, min_size_kb: int =
     Tier 2B: Local blob: URL fetched in-page (same-origin, no CORS issue).
     Tier 3: De-hovered atomic Playwright screenshot fallback.
     """
+    os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
     temp_path = save_path + ".tmp"
     if os.path.exists(temp_path):
         try:
@@ -266,22 +279,8 @@ def extract_high_res_image(page, img_locator, save_path: str, min_size_kb: int =
         except Exception as e:
             print(f"  ℹ️ Base64 extraction failed ({e}), falling back to network stream...")
 
-    # --- TIER 2: Remote HTTPS / CDN / Relative API URL (Bypasses Canvas CORS) ---
-    if src.startswith(("http://", "https://", "/")):
-        try:
-            absolute_src = urljoin(page.url, src)
-            response = page.request.get(absolute_src)
-            if response.ok:
-                with open(temp_path, "wb") as f:
-                    f.write(response.body())
-                if validate_image_file(temp_path, min_size_kb=min_size_kb):
-                    os.replace(temp_path, save_path)
-                    print(f"  ✅ Saved (Network Stream): {os.path.basename(save_path)}")
-                    return True
-        except Exception as e:
-            print(f"  ℹ️ Network stream extraction failed ({e}), falling back to blob fetch...")
-
-    # --- TIER 2B: Local Blob URL (fetchable in browser context without CORS) ---
+    # --- TIER 2: Local Blob URL (fetchable in browser context without CORS) ---
+    # Directive override: prioritize Blob/FileReader over page.request.get to bypass CDN cookie restrictions
     if src.startswith("blob:"):
         try:
             js_blob = """
@@ -307,11 +306,67 @@ def extract_high_res_image(page, img_locator, save_path: str, min_size_kb: int =
         except Exception as e:
             print(f"  ℹ️ Blob fetch extraction failed ({e}), falling back to screenshot...")
 
+        # --- TIER 2B: In-Page Canvas / Fetch Extraction (bypasses CDN cookie restrictions) ---
+    # For http/https images, prefer in-page fetch + FileReader (inherits browser auth) over page.request.get
+    if src.startswith(("http://", "https://", "/")):
+        try:
+            js_fetch = """
+            async (img) => {
+                try {
+                    const response = await fetch(img.src, {credentials: 'include'});
+                    if (!response.ok) throw new Error('fetch not ok');
+                    const blob = await response.blob();
+                    return await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.onerror = () => resolve(null);
+                        reader.readAsDataURL(blob);
+                    });
+                } catch (e) {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.naturalWidth || img.width;
+                        canvas.height = img.naturalHeight || img.height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0);
+                        return canvas.toDataURL('image/png');
+                    } catch (e2) {
+                        return null;
+                    }
+                }
+            }
+            """
+            data_url = img_locator.evaluate(js_fetch)
+            if data_url and isinstance(data_url, str) and "," in data_url:
+                base64_data = data_url.split(",", 1)[1]
+                with open(temp_path, "wb") as f:
+                    f.write(base64.b64decode(base64_data))
+                if validate_image_file(temp_path, min_size_kb=min_size_kb):
+                    os.replace(temp_path, save_path)
+                    print(f"  Saved (In-Page Fetch/Canvas): {os.path.basename(save_path)}")
+                    return True
+        except Exception as e:
+            print(f"  In-page fetch/canvas failed ({e}), falling back to network stream...")
+
+        # --- TIER 2C: Network Stream via Playwright (fallback, may lack CDN cookies) ---
+        try:
+            absolute_src = urljoin(page.url, src)
+            response = page.request.get(absolute_src)
+            if response.ok:
+                with open(temp_path, "wb") as f:
+                    f.write(response.body())
+                if validate_image_file(temp_path, min_size_kb=min_size_kb):
+                    os.replace(temp_path, save_path)
+                    print(f"  Saved (Network Stream): {os.path.basename(save_path)}")
+                    return True
+        except Exception as e:
+            print(f"  Network stream extraction failed ({e}), falling back to screenshot...")
+
     # --- TIER 3: Atomic De-Hovered Screenshot Fallback ---
     return atomic_screenshot_and_verify(img_locator, save_path, page, min_size_kb=min_size_kb)
 
 
-def safe_failover_teardown(browser, context):
+def safe_failover_teardown(browser: Any, context: Any) -> None:
     """
     Gracefully detaches Playwright CDP handles BEFORE killing the browser PID,
     preventing TargetClosedError / orphaned port bindings on 9222 during failover.
@@ -339,13 +394,16 @@ def safe_failover_teardown(browser, context):
 # ==========================================
 # NON-BLOCKING RUNTIME TELEMETRY
 # ==========================================
-def write_runtime_telemetry(subfolder: str, frame_num: int, total_frames: int, image_name: str):
+def write_runtime_telemetry(
+    subfolder: str, frame_num: int, total_frames: int, image_name: str
+) -> None:
     """
     Writes non-blocking progress telemetry to disk.
     Catches file-lock exceptions (e.g. Windows WinError 32) so log access
     by external watchers never crashes the rendering pipeline.
     """
     try:
+        os.makedirs(subfolder, exist_ok=True)
         log_path = os.path.join(subfolder, "flow_runtime_telemetry.log")
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         with open(log_path, "a", encoding="utf-8") as f:
@@ -495,7 +553,7 @@ FLOW_ASSET_PRESETS = {
 # ==========================================
 # HELPER FUNCTIONS
 # ==========================================
-def wait_for_flow_generation_handshake(page, timeout_seconds: int = 180) -> bool:
+def wait_for_flow_generation_handshake(page: Any, timeout_seconds: int = 180) -> bool:
     """
     2-Phase Handshake:
     Phase 1: Debounce wait (up to 5s) for progressbar/spinner/percentage to MOUNT in DOM.
@@ -547,12 +605,12 @@ def wait_for_flow_generation_handshake(page, timeout_seconds: int = 180) -> bool
     return False
 
 
-def wait_for_flow_generation_idle(page, timeout_seconds: int = 90) -> bool:
+def wait_for_flow_generation_idle(page: Any, timeout_seconds: int = 90) -> bool:
     """Backward-compatible wrapper redirecting to the 2-Phase Handshake."""
     return wait_for_flow_generation_handshake(page, timeout_seconds=timeout_seconds)
 
 
-def summon_asset_in_prompt(page, asset_name, category="Characters"):
+def summon_asset_in_prompt(page: Any, asset_name: str, category: str = "Characters") -> bool:
     """
     DOM Helper: Focuses the prompt bar, clicks '+', searches the unique character name,
     selects the character card, and clicks 'Add to Prompt'.
@@ -689,7 +747,8 @@ def is_profile_assets_initialized(subfolder: str, profile_index: str) -> bool:
     return False
 
 
-def mark_profile_assets_initialized(subfolder: str, profile_index: str, project_url: str):
+def mark_profile_assets_initialized(subfolder: str, profile_index: str, project_url: str) -> None:
+    os.makedirs(subfolder, exist_ok=True)
     manifest_path = get_profile_assets_manifest_path(subfolder, profile_index)
     payload = {
         "assets_initialized": True,
@@ -708,7 +767,9 @@ def mark_profile_assets_initialized(subfolder: str, profile_index: str, project_
         print(f"  ⚠️ Warning saving asset manifest: {e}")
 
 
-def wait_for_prompt_format_completion(page, input_locator, timeout_seconds=12):
+def wait_for_prompt_format_completion(
+    page: Any, input_locator: Any, timeout_seconds: int = 12
+) -> bool:
     """
     Waits for Google Flow's AI prompt format / rewrite operation to complete
     by detecting loading spinners and ensuring the input text has stabilized.
@@ -755,7 +816,7 @@ def wait_for_prompt_format_completion(page, input_locator, timeout_seconds=12):
     return False
 
 
-def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
+def setup_flow_characters_and_scenes(page: Any, subfolder: str, profile_index: str = "1") -> None:
     """
     Pre-flight Routine: Checks and creates registered Characters and Scenes
     in Google Flow before the main rendering loop begins.
@@ -1008,6 +1069,9 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
                     "textarea[placeholder*='Describe how your character acts' i]"
                 ).first
                 try:
+                    name_field = page.locator(
+                        "input[placeholder*='Character Name' i], input[value*='Character Name' i]"
+                    ).first
                     if (
                         (
                             re.search(r"/character/[a-zA-Z0-9_-]+", page.url)
@@ -1015,6 +1079,7 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
                         )
                         or done_btn.is_visible()
                         or acts_box.is_visible()
+                        or name_field.is_visible()
                     ):
                         editor_mounted = True
                         log("  ✅ Character Editor mounted.")
@@ -1103,7 +1168,7 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
             )
             start_portrait_wait = time.time()
 
-            while time.time() - start_portrait_wait < 90:
+            while time.time() - start_portrait_wait < 60:
                 # 1. Check if 'Create Body' button is visible and UNLOCKED (enabled)
                 create_body_btn = page.locator("button:has-text('Create Body')").first
                 is_btn_unlocked = False
@@ -1113,13 +1178,26 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
                     )
                     is_btn_unlocked = not is_disabled
 
-                # 2. Check if the center portrait image has loaded (naturalWidth > 180)
-                imgs = page.locator("img").all()
-                has_rendered_image = any(
-                    img.evaluate("el => el.complete && el.naturalWidth > 180")
-                    for img in imgs
-                    if img.is_visible()
-                )
+                # 2. Check if the center portrait image has loaded (dynamic pixel/naturalWidth stability up to 60s)
+                has_rendered_image = False
+                try:
+                    for img in page.locator("img").all():
+                        if not img.is_visible():
+                            continue
+                        box = img.bounding_box()
+                        # Dynamic pixel check: bounding_box width >180 and naturalWidth >180
+                        if box and box["width"] > 180 and box["height"] > 180:
+                            if img.evaluate(
+                                "el => el.complete && el.naturalWidth > 180 && el.naturalHeight > 100 && el.naturalWidth < 5000"
+                            ):
+                                has_rendered_image = True
+                                break
+                        elif img.evaluate("el => el.complete && el.naturalWidth > 180"):
+                            # Fallback without bounding box (older DOM)
+                            has_rendered_image = True
+                            break
+                except Exception:
+                    has_rendered_image = False
 
                 # 3. Check if bottom submit button spinner is finished
                 is_spinner_active = (
@@ -1256,8 +1334,8 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
                             break
                         time.sleep(1)
 
-                    # Phase 2: Wait until render finishes AND canvas image is fully visible
-                    while time.time() - start_body_wait < 180:
+                    # Phase 2: Wait until render finishes AND canvas image is fully visible (dynamic pixel/naturalWidth stability up to 60s)
+                    while time.time() - start_body_wait < 60:
                         is_loading = False
                         try:
                             if page.locator("[role='progressbar']").is_visible():
@@ -1295,7 +1373,9 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
 
                         if not is_loading and has_loaded_triptych:
                             stable_rendered_cycles += 1
-                            if stable_rendered_cycles >= 3:  # Stable for ~4.5 seconds
+                            if (
+                                stable_rendered_cycles >= 4
+                            ):  # Stable for ~6 seconds (dynamic naturalWidth/bounding_box stability up to 60s)
                                 print(
                                     "  ✅ Character Body Triptych 100% rendered and confirmed in DOM!"
                                 )
@@ -1524,7 +1604,7 @@ def setup_flow_characters_and_scenes(page, subfolder: str, profile_index="1"):
         )
 
 
-def count_attached_prompt_chips(page) -> int:
+def count_attached_prompt_chips(page: Any) -> int:
     """Returns the count of visible reference image chips strictly inside the prompt bar."""
     prompt_container = page.locator(
         "form:has(textarea), div:has(> div[contenteditable='true']), [role='region']:has(textarea)"
@@ -1548,7 +1628,7 @@ def count_attached_prompt_chips(page) -> int:
     return total
 
 
-def clear_attached_prompt_chips(page):
+def clear_attached_prompt_chips(page: Any) -> None:
     """DOM Helper: Clears any existing image chips/attachments with closed-loop verification."""
     try:
         for _ in range(3):
@@ -1568,7 +1648,7 @@ def clear_attached_prompt_chips(page):
         pass  # Tier 1 probe: chip removal is best-effort cleanup
 
 
-def _rename_workspace_image_card(page, img_element, new_name):
+def _rename_workspace_image_card(page: Any, img_element: Any, new_name: str) -> bool:
     """Internal Helper: Opens context menu via 3-dots on card, clicks 'Rename', and types the new name."""
     try:
         img_element.scroll_into_view_if_needed()
@@ -1727,7 +1807,7 @@ def _rename_workspace_image_card(page, img_element, new_name):
         return False
 
 
-def _click_add_to_prompt_on_image(page, img_element):
+def _click_add_to_prompt_on_image(page: Any, img_element: Any) -> bool:
     """Internal Helper: Opens context menu on a specific image and clicks 'Add to prompt'."""
     try:
         img_element.scroll_into_view_if_needed()
@@ -1801,7 +1881,9 @@ def _click_add_to_prompt_on_image(page, img_element):
         return False
 
 
-def attach_previous_images_to_prompt(page, count_to_attach=1, batch_count=1):
+def attach_previous_images_to_prompt(
+    page: Any, count_to_attach: int = 1, batch_count: int = 1
+) -> bool:
     """
     DOM Helper: Clears old chips, finds the target previous primary cards
     (sliding window max 3), and attaches them in CHRONOLOGICAL ORDER (oldest -> newest)
@@ -1883,7 +1965,7 @@ def attach_previous_images_to_prompt(page, count_to_attach=1, batch_count=1):
         return False
 
 
-def scan_batch_folders():
+def scan_batch_folders() -> list[str]:
     runs_dir = "youtube_runs"
     batch_queue = []
     if os.path.exists(runs_dir):
@@ -1900,7 +1982,7 @@ def scan_batch_folders():
     return batch_queue
 
 
-def parse_json_prompts(file_path) -> list:
+def parse_json_prompts(file_path: str) -> list[StoryboardFrame]:
     """Parses individual JSON objects from file, bypassing array/bracket tracking errors."""
     if not os.path.exists(file_path):
         return []
@@ -2043,13 +2125,15 @@ def parse_json_prompts(file_path) -> list:
     return sorted_prompts
 
 
-def save_sorted_prompts_file(prompts_list, file_path):
+def save_sorted_prompts_file(prompts_list: list[Any], file_path: str) -> None:
     """Overwrites flow_prompts.json with cleanly formatted, numerically ordered JSON items."""
     try:
         clean_items = []
         for p in prompts_list:
             if isinstance(p, StoryboardFrame) and p.raw_payload:
                 clean_items.append(p.raw_payload)
+            elif isinstance(p, dict):
+                clean_items.append(p)
             else:
                 try:
                     clean_items.append(json.loads(p.prompt_text))
@@ -2067,223 +2151,7 @@ def save_sorted_prompts_file(prompts_list, file_path):
         print(f"  ⚠️ Warning saving sorted prompts file: {e}")
 
 
-def is_gemini_generating(page):
-    """Detects if Gemini is actively thinking, analyzing, or streaming."""
-    stop_selectors = [
-        "button[aria-label*='Stop' i]",
-        "button[aria-label*='Cancel' i]",
-        "button[aria-label*='وقف' i]",
-        "button:has(svg path[d*='M6 6h12v12H6z'])",
-        "button:has(rect)",
-        "[data-test-id='stop-button']",
-    ]
-    for sel in stop_selectors:
-        try:
-            if page.locator(sel).first.is_visible():
-                return True
-        except Exception:
-            pass  # Tier 1 probe: optional stop selector not present
-
-    # Check for thinking/analyzing indicators or spinners
-    try:
-        if page.locator(
-            "mat-progress-spinner, .thinking-indicator, [aria-label*='Thinking' i]"
-        ).first.is_visible():
-            return True
-    except Exception:
-        pass  # Tier 1 probe: optional thinking indicator not present
-
-    return False
-
-
-def wait_until_gemini_idle(page, timeout_seconds=180):
-    """Ensures Gemini is completely idle before pasting a new prompt."""
-    start = time.time()
-    last_heartbeat = time.time()
-    while time.time() - start < timeout_seconds:
-        if not is_gemini_generating(page):
-            time.sleep(2)  # Extra buffer to let DOM settle
-            if not is_gemini_generating(page):
-                return True
-        if time.time() - last_heartbeat >= 5.0:
-            elapsed_idle = int(time.time() - start)
-            log(
-                f"  ⏳ Still waiting for Gemini to become idle ({elapsed_idle}s/{timeout_seconds}s)..."
-            )
-            last_heartbeat = time.time()
-        time.sleep(1)
-    log("  ⚠️ Gemini idle wait timed out. Capturing debug state...")
-    capture_debug_state(page, "gemini_idle_timeout")
-    return False
-
-
-def wait_for_gemini_response(page, initial_count, min_length=20, timeout_seconds=180):
-    """Waits for Gemini to finish generating a substantial response."""
-    start_time = time.time()
-
-    print("  ⏳ Waiting for Gemini to begin response stream...")
-    generation_started = False
-    start_stream_wait = time.time()
-    while time.time() - start_stream_wait < 35:
-        if is_gemini_generating(page) or page.locator("model-response").count() > initial_count:
-            generation_started = True
-            break
-        time.sleep(1)
-
-    if not generation_started:
-        log("  ⚠️ Gemini response stream did not trigger. Capturing debug state...")
-        capture_debug_state(page, "gemini_stream_no_trigger")
-        return None
-
-    print("  🟢 Response stream active. Monitoring progress until complete...")
-    time.sleep(3)  # Give Gemini time to pass initial "Analyzing" placeholder
-
-    last_text = ""
-    stable_count = 0
-    last_heartbeat = time.time()
-
-    while time.time() - start_time < timeout_seconds:
-        still_thinking = is_gemini_generating(page)
-
-        try:
-            last_response = page.locator("model-response").last
-            last_response.scroll_into_view_if_needed(timeout=1000)
-            current_text = last_response.evaluate("el => el.innerText", timeout=5000).strip()
-
-            if current_text.startswith("Gemini said"):
-                cleaned_text = current_text[len("Gemini said") :].strip()
-            else:
-                cleaned_text = current_text
-
-            # Reject transient status text
-            if cleaned_text.lower() in [
-                "analyzing",
-                "thinking",
-                "thinking...",
-                "visualizing the scenes",
-            ]:
-                still_thinking = True
-
-            # Must NOT be thinking AND must exceed minimum character length
-            if not still_thinking and len(cleaned_text) >= min_length:
-                if cleaned_text == last_text:
-                    stable_count += 1
-                    if stable_count >= 4:  # Must be stable for 4 consecutive cycles (~6 seconds)
-                        try:
-                            last_response.scroll_into_view_if_needed(timeout=1000)
-                        except Exception:
-                            pass  # Tier 1 probe: scroll is cosmetic, non-fatal
-                        print(f"  ✅ Complete response received ({len(cleaned_text)} characters).")
-                        return cleaned_text
-                else:
-                    last_text = cleaned_text
-                    stable_count = 0
-            else:
-                last_text = cleaned_text
-                stable_count = 0
-
-        except Exception:
-            pass  # Tier 1 probe: transient DOM state during polling loop
-
-        if time.time() - last_heartbeat >= 5.0:
-            elapsed_resp = int(time.time() - start_time)
-            log(f"  ⏳ Still waiting for Gemini response ({elapsed_resp}s/{timeout_seconds}s)...")
-            last_heartbeat = time.time()
-
-        time.sleep(1.5)
-
-    log("  ⚠️ Timed out waiting for complete response. Capturing debug state...")
-    capture_debug_state(page, "gemini_response_timeout")
-    return None
-
-
-def select_gemini_model(page, target_model="Pro"):
-    """Robust model selection for Google Gemini's updated UI."""
-    print(f"\n[MODEL] Verifying Gemini model selection (Target: {target_model})...")
-
-    # 1. Locate the model selector pill button near the prompt input box
-    model_btn = None
-    btn_candidates = [
-        page.locator(
-            "button:has-text('Flash'), button:has-text('Pro'), button:has-text('Lite')"
-        ).first,
-        page.locator("button[aria-label*='model' i], button[aria-label*='mode' i]").first,
-        page.locator("rich-textarea ~ * button").first,
-    ]
-
-    for loc in btn_candidates:
-        try:
-            if loc.is_visible() and loc.is_enabled():
-                model_btn = loc
-                break
-        except Exception:
-            pass
-
-    if not model_btn:
-        print("Warning: Could not locate Gemini model selector button.")
-        return False
-
-    try:
-        active_text = model_btn.inner_text().strip().lower()
-        target_clean = target_model.strip().lower()
-
-        # Check if target model (e.g. "pro") is already active
-        if target_clean in active_text:
-            print(f"Success: Correct model '{target_model}' is already active.")
-            return True
-
-        print(f"Switching Gemini model to '{target_model}'...")
-        model_btn.click(force=True)
-        time.sleep(1.5)
-
-        # 2. Regex search for the target model option inside the opened dropdown menu
-        # Matches "Pro", "3.1 Pro", "Flash", "3.6 Flash", "3.5 Flash-Lite", etc.
-        pattern = re.compile(
-            rf"(\b{re.escape(target_clean)}\b|\d+\.\d+\s*{re.escape(target_clean)})", re.IGNORECASE
-        )
-        option_clicked = False
-
-        try:
-            opts = page.get_by_text(pattern).all()
-            for opt in opts:
-                if opt.is_visible():
-                    opt.click(force=True)
-                    option_clicked = True
-                    print(f"Successfully selected model option: '{target_model}'")
-                    break
-        except Exception:
-            pass
-
-        if not option_clicked:
-            try:
-                opts = (
-                    page.locator("div, button, [role='option'], [role='menuitem'], span")
-                    .filter(has_text=pattern)
-                    .all()
-                )
-                for opt in reversed(opts):
-                    if opt.is_visible():
-                        opt.click(force=True)
-                        option_clicked = True
-                        print(f"Successfully selected model option: '{target_model}'")
-                        break
-            except Exception:
-                pass
-
-        if not option_clicked:
-            print(f"Warning: Could not find '{target_model}' inside Gemini dropdown.")
-            page.keyboard.press("Escape")
-
-        time.sleep(1.5)
-        return option_clicked
-
-    except Exception as e:
-        print(f"Warning: Model selection failed: {e}")
-        page.keyboard.press("Escape")
-        return False
-
-
-def is_flow_page_healthy(page) -> bool:
+def is_flow_page_healthy(page: Any) -> bool:
     """
     DOM Health Validator: Detects client-side React/Next.js crashes, blank screens,
     or 500 errors, and verifies that real workspace elements are rendered.
@@ -2297,28 +2165,50 @@ def is_flow_page_healthy(page) -> bool:
         if page.get_by_text(crash_patterns).count() > 0:
             return False
 
-        # 2. Check if main workspace UI components exist in DOM
-        ui_elements = [
+        # 2. Require the workspace prompt bar to be present AND interactive
+        prompt_bar = None
+        for sel in (
+            "textarea[placeholder*='What do you want' i]",
+            "input[placeholder*='What do you want' i]",
+        ):
+            loc = page.locator(sel).first
+            if loc.is_visible():
+                prompt_bar = loc
+                break
+        if prompt_bar is None and "project" in page.url:
+            # Fallback: contenteditable prompt bar (character body popups excluded)
+            for ce in page.locator("div[contenteditable='true']").all():
+                try:
+                    if ce.is_visible() and ce.bounding_box() is not None:
+                        box = ce.bounding_box()
+                        if box and box["width"] > 300:
+                            prompt_bar = ce
+                            break
+                except Exception:
+                    continue
+
+        # 3. Workspace must also expose supporting UI (sidebar / toolbar / feed)
+        supporting_ui = [
             "button:has-text('All Media')",
             "button:has-text('Characters')",
             "button:has-text('Scenes')",
-            "div[contenteditable='true']",
-            "textarea",
             "[role='feed']",
             "[role='toolbar']",
         ]
-        for sel in ui_elements:
-            if page.locator(sel).first.is_visible():
-                return True
-        return False
+        has_support = any(page.locator(sel).first.is_visible() for sel in supporting_ui)
+
+        return prompt_bar is not None and has_support
     except Exception:
         return False
 
 
 def setup_flow_ui(
-    page, target_flow_model="Nano Banana Pro", target_flow_count="1x", project_url=None
-):
-    def wake_up_page():
+    page: Any,
+    target_flow_model: str = "Nano Banana Pro",
+    target_flow_count: str = "1x",
+    project_url: str | None = None,
+) -> str:
+    def wake_up_page() -> None:
         try:
             page.mouse.move(100, 100)
             time.sleep(0.2)
@@ -2539,13 +2429,44 @@ def setup_flow_ui(
     except Exception:
         pass
 
-    return current_workspace_url
+    return str(current_workspace_url)
 
 
 # ==========================================
 # MAIN ORCHESTRATOR
 # ==========================================
-def main():
+def _retry_gemini_call(
+    gemini_page: Any, fn: Callable[..., Any], label: str, retries: int = 3
+) -> Any:
+    """Run a Gemini planning operation with bounded retries.
+
+    Retries recover a lost browser turn (e.g. TargetClosedError during planning)
+    without reconnecting the whole CDP browser: reload the Gemini page, wake it,
+    and re-invoke the callable. Keeps planning idempotent via the manifest.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            return fn()
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:
+            last_exc = e
+            print(
+                f"  ⚠️ {label} failed (attempt {attempt}/{retries}): {e}. "
+                "Reloading Gemini page and retrying..."
+            )
+            try:
+                gemini_page.bring_to_front()
+                gemini_page.reload(wait_until="domcontentloaded", timeout=45000)
+                gemini_page.bring_to_front()
+                time.sleep(3)
+            except Exception as reload_err:
+                print(f"  ⚠️ Gemini page reload during retry failed: {reload_err}")
+    raise RuntimeError(f"{label} failed after {retries} attempts: {last_exc}")
+
+
+def main() -> None:
     batch_queue = scan_batch_folders()
     if not batch_queue:
         print("No active folders found.")
@@ -2554,8 +2475,18 @@ def main():
     # Define retry counters HERE at the top of main()
     consecutive_failures = 0
     max_retries_no_switch = 3
+    browser_handle = None
+    outer_loops = 0
+    max_outer_loops = 10
 
     while True:
+        outer_loops += 1
+        if outer_loops > max_outer_loops:
+            print(
+                f"[FATAL ERROR] Outer recovery loop exceeded {max_outer_loops} "
+                "iterations (likely unrecoverable browser state). Exiting."
+            )
+            sys.exit(1)
         failover_triggered = False
 
         switch_enabled_str = get_config_value("SWITCH_ACCOUNTS_ENABLED", "false").strip().lower()
@@ -2573,10 +2504,42 @@ def main():
                     if not launch_browser_with_profile(browser_type, current_profile_idx):
                         sys.exit(1)
                     browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
+                browser_handle = browser
 
                 context = browser.contexts[0]
-                gemini_page = context.new_page()
-                flow_page = context.new_page()
+                context.grant_permissions(["clipboard-read", "clipboard-write"])
+
+                for existing_p in list(context.pages):
+                    if existing_p.url in ("about:blank", ""):
+                        try:
+                            existing_p.close()
+                        except Exception:
+                            pass
+
+                gemini_page = None
+                flow_page = None
+                for page in context.pages:
+                    if "gemini.google.com" in page.url:
+                        gemini_page = page
+                    elif "labs.google" in page.url or "fx/tools/flow" in page.url:
+                        flow_page = page
+
+                if not gemini_page:
+                    gemini_page = context.new_page()
+                    log("Navigating to Gemini Web App...")
+                    try:
+                        gemini_page.goto(
+                            GeminiSelectors.URL,
+                            wait_until="domcontentloaded",
+                            timeout=60000,
+                        )
+                    except Exception as e:
+                        log(f"Warning: Gemini initial load: {e}")
+
+                if not flow_page:
+                    flow_page = context.new_page()
+
+                gemini_page.bring_to_front()
 
                 for _folder_idx, subfolder in enumerate(batch_queue, 1):
                     print("\n==================================================")
@@ -2645,13 +2608,20 @@ def main():
                         chunk_size = int(get_config_value("FLOW_CHUNK_SIZE", "15"))
                         roadmap_rows = load_or_migrate_roadmap(subfolder, sentences, manifest)
                         if roadmap_rows is None:
-                            roadmap_rows = generate_master_roadmap(
+                            gemini_page.bring_to_front()
+                            roadmap_rows = _retry_gemini_call(
                                 gemini_page,
-                                sentences,
-                                subfolder,
-                                manifest,
-                                window_size=window_size,
-                                planner_model=target_planner_model,
+                                lambda gp=gemini_page, s=sentences, sub=subfolder, m=manifest, ws=window_size, pm=target_planner_model: (
+                                    generate_master_roadmap(
+                                        gp,
+                                        s,
+                                        sub,
+                                        m,
+                                        window_size=ws,
+                                        planner_model=pm,
+                                    )
+                                ),
+                                label="Master roadmap generation",
                             )
                         expected_total = len(sentences)
                         prompts_complete = False
@@ -2662,22 +2632,31 @@ def main():
                                         existing = json.load(f)
                                 else:
                                     existing = []
-                                prompts_complete = sorted(
-                                    int(p["index"]) for p in existing
-                                ) == list(range(1, expected_total + 1))
+                                prompts_complete = {
+                                    int(p["index"])
+                                    for p in existing
+                                    if isinstance(p, dict) and "index" in p
+                                } == set(range(1, expected_total + 1))
                             except Exception:
                                 prompts_complete = False
                         if not prompts_complete:
-                            plan_all_chunks(
+                            gemini_page.bring_to_front()
+                            _retry_gemini_call(
                                 gemini_page,
-                                sentences,
-                                timestamps,
-                                roadmap_rows,
-                                subfolder,
-                                manifest,
-                                chunk_size=chunk_size,
-                                planner_model=target_planner_model,
-                                presets=FLOW_ASSET_PRESETS,
+                                lambda gp=gemini_page, s=sentences, ts=timestamps, rr=roadmap_rows, sub=subfolder, m=manifest, cs=chunk_size, pm=target_planner_model: (
+                                    plan_all_chunks(
+                                        gp,
+                                        s,
+                                        ts,
+                                        rr,
+                                        sub,
+                                        m,
+                                        chunk_size=cs,
+                                        planner_model=pm,
+                                        presets=FLOW_ASSET_PRESETS,
+                                    )
+                                ),
+                                label="Chunk planning",
                             )
                         storyboard_prompts = parse_json_prompts(prompts_file)
                         verify_pipeline_integrity(
@@ -2702,7 +2681,7 @@ def main():
                     )
                     saved_project_url = None
                     if os.path.exists(url_checkpoint_file):
-                        with open(url_checkpoint_file) as f:
+                        with open(url_checkpoint_file, encoding="utf-8") as f:
                             saved_project_url = f.read().strip()
 
                     active_project_url = setup_flow_ui(
@@ -2710,18 +2689,38 @@ def main():
                     )
 
                     if "project" in active_project_url:
-                        with open(url_checkpoint_file, "w") as f:
+                        with open(url_checkpoint_file, "w", encoding="utf-8") as f:
                             f.write(active_project_url)
 
                     # --- RUN PRE-FLIGHT CHARACTER & SCENE BUILDER (Saved per Subfolder) ---
-                    setup_flow_characters_and_scenes(
-                        flow_page, subfolder=subfolder, profile_index=str(current_profile_idx)
-                    )
+                    # Non-fatal: a character/scene setup failure must not kill the whole
+                    # topic batch. Asset presets simply go unused for this subfolder.
+                    try:
+                        setup_flow_characters_and_scenes(
+                            flow_page,
+                            subfolder=subfolder,
+                            profile_index=str(current_profile_idx),
+                        )
+                    except Exception as preset_err:
+                        print(
+                            f"  ⚠️ Character/Scene preset setup failed (continuing without "
+                            f"presets): {preset_err}"
+                        )
+                        try:
+                            capture_debug_state(flow_page, "char_preset_setup_fail", subfolder)
+                        except Exception:
+                            pass
+                        try:
+                            flow_page.goto(active_project_url, wait_until="domcontentloaded")
+                        except Exception:
+                            pass
 
                     executed_generations_count = 0
                     prev_prompt_text = ""
                     prev_idx = None
-                    ts_counts = {}  # Tracks occurrence count for duplicate multi-frame timestamps
+                    ts_counts: dict[
+                        str, int
+                    ] = {}  # Tracks occurrence count for duplicate multi-frame timestamps
 
                     for current_run, prompt_item in enumerate(storyboard_prompts, 1):
                         idx = prompt_item.index
@@ -2799,7 +2798,7 @@ def main():
                                         if cumulative_chaining_enabled:
                                             # Cumulative sliding window mode (e.g. up to 3 images)
                                             num_prev = frame_idx - 1 if frame_idx > 1 else occ - 1
-                                            attach_count = min(max(1, num_prev), max_chain_limit)
+                                            attach_count = min(max(0, num_prev), max_chain_limit)
                                         else:
                                             # Standard single-frame fallback mode (always 1 image)
                                             attach_count = 1
@@ -2945,14 +2944,31 @@ def main():
                                     selectors = [
                                         "textarea[placeholder*='What do you want' i]",
                                         "input[placeholder*='What do you want' i]",
-                                        "div[contenteditable='true']",
-                                        "textarea",
                                     ]
                                     for sel in selectors:
                                         loc = flow_page.locator(sel).first
                                         if loc.is_visible():
                                             input_box = loc
                                             break
+
+                                    if not input_box:
+                                        # Pick the widest visible contenteditable as the workspace
+                                        # prompt bar; excludes small character-body popups.
+                                        best_ce = None
+                                        best_w = -1.0
+                                        for ce in flow_page.locator(
+                                            "div[contenteditable='true']"
+                                        ).all():
+                                            try:
+                                                if ce.is_visible():
+                                                    box = ce.bounding_box()
+                                                    if box and box["width"] > best_w:
+                                                        best_w = box["width"]
+                                                        best_ce = ce
+                                            except Exception:
+                                                continue
+                                        if best_ce is not None:
+                                            input_box = best_ce
 
                                     if not input_box:
                                         input_box = flow_page.get_by_placeholder(
@@ -3164,7 +3180,8 @@ def main():
 
                                         time.sleep(2)
 
-                                    expected_new = int(re.sub(r"\D", "", target_flow_count))
+                                    raw_exp_str = re.sub(r"\D", "", str(target_flow_count))
+                                    expected_new = int(raw_exp_str) if raw_exp_str else 1
                                     if expected_new < 1:
                                         expected_new = 1
 
@@ -3177,12 +3194,13 @@ def main():
 
                                     download_attempt_success = False
 
+                                    current_image_stem = os.path.splitext(image_name)[0]
                                     for i in range(images_to_extract):
                                         img_locator = final_generated_locators[i]
                                         is_duplicate = i > 0
                                         if is_duplicate:
                                             current_save_path = os.path.join(
-                                                dup_dir, f"{clean_ts}_duplicate_{i}.png"
+                                                dup_dir, f"{current_image_stem}_duplicate_{i}.png"
                                             )
                                         else:
                                             current_save_path = save_path
@@ -3269,10 +3287,28 @@ def main():
                     print("\n✅ All topics processed successfully. Exiting.")
                     break
 
+        except KeyboardInterrupt:
+            print("\n[MAIN] Interrupted by user. Shutting down gracefully...")
+            sys.exit(130)
         except Exception as e:
             print(f"[MAIN] Fatal orchestration error: {e}")
+            consecutive_failures += 1
+            if not accounts_enabled and consecutive_failures >= max_retries_no_switch:
+                print(
+                    f"[FATAL ERROR] Reached maximum retries ({max_retries_no_switch}) without account switching. Terminating."
+                )
+                sys.exit(1)
             time.sleep(5)
             continue
+        finally:
+            # Gracefully detach the CDP browser handle so no in-flight Playwright
+            # tasks are left orphaned (avoids "Future exception was never retrieved").
+            if browser_handle is not None:
+                try:
+                    browser_handle.close()
+                except Exception:
+                    pass
+                browser_handle = None
 
 
 if __name__ == "__main__":
