@@ -1,0 +1,34 @@
+{
+  "project_id": "live_smoke",
+  "script_hash": "cef354c20cefdf3beea364cf45febdd41c571ab9995323ed8db27eff92fd946f",
+  "roadmap_phase": {
+    "status": "COMPLETED",
+    "total_lines": 2,
+    "completed_pages": [
+      1
+    ],
+    "last_processed_index": 2
+  },
+  "planning_phase": {
+    "status": "PENDING",
+    "chunk_size": 10,
+    "total_chunks": 1,
+    "chunks": {
+      "chunk_1": {
+        "indices": [
+          1,
+          2
+        ],
+        "status": "VERIFIED",
+        "attempts": 1
+      }
+    }
+  },
+  "rendering_phase": {
+    "completed_indices": [
+      1,
+      2
+    ]
+  },
+  "last_updated": "2026-08-29 05:25:21"
+}

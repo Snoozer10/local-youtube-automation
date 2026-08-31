@@ -157,4 +157,4 @@ class PipelineManifest:
         indices.sort()
 
     def to_dict(self) -> dict[str, Any]:
-        return cast(dict[str, Any], json.loads(json.dumps(self._data)))
+        return cast(dict[str, Any], json.loads(json.dumps(self._data, ensure_ascii=False)))

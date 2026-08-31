@@ -362,7 +362,7 @@ def set_runtime_state(key: str, value: str) -> None:
     target_dir = os.path.dirname(os.path.abspath(STATE_FILE)) or "."
     tf = tempfile.NamedTemporaryFile("w", dir=target_dir, delete=False, encoding="utf-8")
     try:
-        json.dump(data, tf, indent=2)
+        json.dump(data, tf, ensure_ascii=False, indent=2)
         tf.flush()
         os.fsync(tf.fileno())
         temp_name = tf.name
@@ -388,7 +388,7 @@ def rotate_profile_index() -> int:
 
 def _dispatch_telegram(bot_token, chat_id, message):
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    data = json.dumps({"chat_id": chat_id, "text": message}).encode("utf-8")
+    data = json.dumps({"chat_id": chat_id, "text": message}, ensure_ascii=False).encode("utf-8")
     try:
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=4):

@@ -1,0 +1,46 @@
+[
+  {
+    "index": 1,
+    "timestamp": "[00:00]",
+    "sequence_type": "STANDALONE",
+    "layout_classification": "AHWA_STUDIO",
+    "sequence_metadata": {
+      "set_id": "SET_01",
+      "frame_index": 1,
+      "total_frames_in_set": 1
+    },
+    "visual_density": "MEDIUM_ACTION",
+    "visual_prompt": {
+      "subject_details": "Al-Daheeh character, wire glasses, curly afro hair, charcoal hoodie",
+      "subject_action_increment": "holding ancient papyrus with comedic expression",
+      "environment_coordinates": "AHWA_STUDIO wooden desk with warm lighting",
+      "composition_layout": "Balanced 16:9 widescreen framing, sharp central subject focus",
+      "camera_specifications": "static",
+      "text_overlay_arabic": "NONE",
+      "accent_color_hook": "warm amber #E09F3E",
+      "style_anchor": "2D graphic vector animation explainer style, crisp 3px black vector outlines, flat 2-step cel-shading, 16:9 widescreen"
+    }
+  },
+  {
+    "index": 2,
+    "timestamp": "[00:04]",
+    "sequence_type": "STANDALONE",
+    "layout_classification": "AHWA_STUDIO",
+    "sequence_metadata": {
+      "set_id": "SET_01",
+      "frame_index": 1,
+      "total_frames_in_set": 1
+    },
+    "visual_density": "MEDIUM_ACTION",
+    "visual_prompt": {
+      "subject_details": "Al-Daheeh character, wire glasses, curly afro hair, charcoal hoodie",
+      "subject_action_increment": "holding ancient papyrus with comedic expression",
+      "environment_coordinates": "AHWA_STUDIO wooden desk with warm lighting",
+      "composition_layout": "Balanced 16:9 widescreen framing, sharp central subject focus",
+      "camera_specifications": "static",
+      "text_overlay_arabic": "NONE",
+      "accent_color_hook": "warm amber #E09F3E",
+      "style_anchor": "2D graphic vector animation explainer style, crisp 3px black vector outlines, flat 2-step cel-shading, 16:9 widescreen"
+    }
+  }
+]

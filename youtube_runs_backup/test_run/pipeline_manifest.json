@@ -1,0 +1,20 @@
+{
+  "project_id": "test_run",
+  "script_hash": "e7629fb158ed6a0a8cb0403aa78a114c8e3a9780ffdf75ba5ca48f662b71ffbe",
+  "roadmap_phase": {
+    "status": "COMPLETED",
+    "total_lines": 0,
+    "completed_pages": [],
+    "last_processed_index": 0
+  },
+  "planning_phase": {
+    "status": "PENDING",
+    "chunk_size": 15,
+    "total_chunks": 0,
+    "chunks": {}
+  },
+  "rendering_phase": {
+    "completed_indices": []
+  },
+  "last_updated": "2026-08-29 02:02:30"
+}

@@ -761,7 +761,7 @@ def mark_profile_assets_initialized(subfolder: str, profile_index: str, project_
         # misread as initialized on the next resume.
         tmp_path = manifest_path + ".tmp"
         with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
+            json.dump(payload, f, ensure_ascii=False, indent=2)
         os.replace(tmp_path, manifest_path)
     except Exception as e:
         print(f"  ⚠️ Warning saving asset manifest: {e}")
@@ -2071,7 +2071,7 @@ def parse_json_prompts(file_path: str) -> list[StoryboardFrame]:
                 vp = item.get("visual_prompt", "")
 
                 if isinstance(vp, dict):
-                    prompt = json.dumps(vp, indent=2)
+                    prompt = json.dumps(vp, ensure_ascii=False, indent=2)
                 else:
                     prompt = str(vp).strip()
 
@@ -2443,6 +2443,8 @@ def _retry_gemini_call(
     Retries recover a lost browser turn (e.g. TargetClosedError during planning)
     without reconnecting the whole CDP browser: reload the Gemini page, wake it,
     and re-invoke the callable. Keeps planning idempotent via the manifest.
+    For validation/parsing errors (missing indices, schema violations), retry in same chat
+    to preserve context and avoid duplicate Control+Shift+O chats.
     """
     last_exc: Exception | None = None
     for attempt in range(1, retries + 1):
@@ -2452,17 +2454,30 @@ def _retry_gemini_call(
             raise
         except Exception as e:
             last_exc = e
-            print(
-                f"  ⚠️ {label} failed (attempt {attempt}/{retries}): {e}. "
-                "Reloading Gemini page and retrying..."
-            )
-            try:
-                gemini_page.bring_to_front()
-                gemini_page.reload(wait_until="domcontentloaded", timeout=45000)
-                gemini_page.bring_to_front()
-                time.sleep(3)
-            except Exception as reload_err:
-                print(f"  ⚠️ Gemini page reload during retry failed: {reload_err}")
+            err_msg = str(e).lower()
+            is_validation = any(k in err_msg for k in ["missing", "exhausted", "validation", "schema violation", "forbidden term", "chunkplanningerror"])
+            if is_validation:
+                print(
+                    f"  [RETRY VALIDATION] {label} failed (attempt {attempt}/{retries}): {e}. "
+                    "Retrying in same chat (no new chat, preserves context)..."
+                )
+                try:
+                    gemini_page.bring_to_front()
+                    time.sleep(2)
+                except Exception:
+                    pass
+            else:
+                print(
+                    f"  [RETRY BROWSER] {label} failed (attempt {attempt}/{retries}): {e}. "
+                    "Reloading Gemini page and retrying..."
+                )
+                try:
+                    gemini_page.bring_to_front()
+                    gemini_page.reload(wait_until="domcontentloaded", timeout=45000)
+                    gemini_page.bring_to_front()
+                    time.sleep(3)
+                except Exception as reload_err:
+                    print(f"  Gemini page reload during retry failed: {reload_err}")
     raise RuntimeError(f"{label} failed after {retries} attempts: {last_exc}")
 
 

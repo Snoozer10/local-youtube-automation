@@ -81,7 +81,7 @@ def load_video_config(config_path="video_config.txt") -> dict:
         "VBV_MAXRATE": "8000k",
         "VBV_BUFSIZE": "16000k",
         "FFMPEG_THREADS": 4,
-        "FFMPEG_CLIP_TIMEOUT": 300,
+        "FFMPEG_CLIP_TIMEOUT": 600,
         "FFMPEG_FINAL_TIMEOUT": 5400,
         "FFMPEG_LOGLEVEL": "warning",
         "FFPROBE_TIMEOUT": 60,
@@ -1228,6 +1228,50 @@ def _build_chunk_ffmpeg_cmd(
     ]
 
 
+def _effective_clip_timeout(
+    config: dict, encoder_config: dict, chunk_duration_sec: float
+) -> int:
+    """Duration-aware timeout: max(configured, duration*factor+overhead).
+
+    Fixes 1440p CPU starvation (bug compile-video-output): 20-clip 1440p chunk
+    ≈ 60-120 s of video needs ~4× wall-time on i7-5600U libx264 CRF17.
+    Test override: base < 60 is honored verbatim so test `FFMPEG_CLIP_TIMEOUT=1`
+    stays fast.
+    """
+    base = int(config.get("FFMPEG_CLIP_TIMEOUT", 600))
+    if base < 60:
+        return base
+    is_high_res = int(config.get("OUTPUT_HEIGHT", 1080)) >= 1440
+    codec = encoder_config.get("video_codec", "") if isinstance(encoder_config, dict) else ""
+    if codec == "libx264":
+        factor = 4.0 if is_high_res else 3.0
+    elif "qsv" in codec or "nvenc" in codec:
+        factor = 1.8
+    else:
+        factor = 2.0
+    overhead = 90
+    scaled = int(chunk_duration_sec * factor + overhead)
+    # Enforce 300 s floor for real runs (>=60) to avoid too-small scaled values
+    if scaled < 300:
+        scaled = 300
+    return max(base, scaled)
+
+
+def _resolve_chunk_workers(encoder_config: dict, num_chunks: int) -> int:
+    """Fix oversubscription on 2C/4T hosts: libx264 on <=4 cores uses 1 worker.
+
+    Prevents 2× `ffmpeg -threads 4` (8 threads) thrashing that caused all 6
+    chunks to hit FFMPEG_CLIP_TIMEOUT simultaneously (compile-video-output).
+    """
+    cpu = os.cpu_count() or 4
+    codec = encoder_config.get("video_codec", "") if isinstance(encoder_config, dict) else ""
+    if "qsv" in codec:
+        return min(2, num_chunks)
+    if codec == "libx264" and cpu <= 4:
+        return min(1, num_chunks)
+    return min(2, max(1, cpu // 2))
+
+
 def _execute_chunk_ffmpeg(
     cmd: list,
     config: dict,
@@ -1237,9 +1281,23 @@ def _execute_chunk_ffmpeg(
     chunk_filename: str,
     chunk_tmp_path: str,
     chunk_output_path: str,
+    *,
+    effective_timeout: int | None = None,
+    encoder_config: dict | None = None,
 ) -> str | None:
     start_time = time.time()
-    timeout = config.get("FFMPEG_CLIP_TIMEOUT", 300)
+    if effective_timeout is not None:
+        timeout = int(effective_timeout)
+    elif encoder_config is not None:
+        timeout = _effective_clip_timeout(config, encoder_config, chunk_duration_sec)
+    else:
+        timeout = int(config.get("FFMPEG_CLIP_TIMEOUT", 600))
+        # Apply scaling when encoder context is missing but duration is large
+        if timeout >= 60:
+            scaled = int(chunk_duration_sec * 3.0 + 90)
+            if scaled < 300:
+                scaled = 300
+            timeout = max(timeout, scaled)
 
     try:
         process = subprocess.Popen(
@@ -1255,16 +1313,35 @@ def _execute_chunk_ffmpeg(
         # Pump FFmpeg stderr on a background thread: a blocking read on the
         # main thread would stall forever when a hardware encoder hangs
         # silently, making FFMPEG_CLIP_TIMEOUT unreachable.
+        # Use read1 to avoid fixed-size blocking (warning loglevel emits <256B).
         stderr_logs = []
         stderr_queue = queue.Queue()
 
         def _pump_stderr(stream, out_queue):
             try:
+                # stream is TextIOWrapper; use buffer.read1 for non-blocking chunk
                 while True:
-                    chunk = stream.read(256)
+                    chunk = stream.buffer.read1(4096)
                     if not chunk:
+                        # EOF - check if text wrapper has more
+                        remaining = stream.read()
+                        if remaining:
+                            out_queue.put(remaining)
                         break
-                    out_queue.put(chunk)
+                    try:
+                        text = chunk.decode("utf-8", errors="ignore")
+                    except Exception:
+                        text = ""
+                    if text:
+                        out_queue.put(text)
+                    # Also drain any buffered text
+                    try:
+                        # Try to read any available decoded text without blocking
+                        extra = stream.read(0)
+                        if extra:
+                            out_queue.put(extra)
+                    except Exception:
+                        pass
             except Exception:
                 pass
             finally:
@@ -1276,15 +1353,45 @@ def _execute_chunk_ffmpeg(
         pump_thread.start()
 
         buffer = ""
+        last_progress_sec = 0.0
         while True:
             if time.time() - start_time > timeout:
                 process.kill()
-                print(f"\n  [ERROR Chunk {chunk_idx + 1}] FFmpeg timeout ({timeout}s)")
+                # Capture last progress and filter graph size for diagnosability
+                try:
+                    filter_idx = next(
+                        (i for i, a in enumerate(cmd) if a == "-filter_complex_script"),
+                        -1,
+                    )
+                    filter_path = cmd[filter_idx + 1] if 0 <= filter_idx < len(cmd) - 1 else ""
+                    filter_size = os.path.getsize(filter_path) if filter_path else -1
+                except OSError:
+                    filter_size = -1
+                base_cfg = config.get("FFMPEG_CLIP_TIMEOUT", 600)
+                print(
+                    f"\n  [ERROR Chunk {chunk_idx + 1}] FFmpeg timeout ({timeout}s)"
+                    f" | chunk_duration={chunk_duration_sec:.1f}s base={base_cfg}s"
+                    f" progress={last_progress_sec:.1f}s filter_script={filter_size} bytes"
+                )
                 return None
 
             try:
                 chunk = stderr_queue.get(timeout=1.0)
             except queue.Empty:
+                # If process already exited, drain any remaining and break
+                if process.poll() is not None:
+                    # Give pump a moment to flush
+                    time.sleep(0.1)
+                    try:
+                        while True:
+                            extra = stderr_queue.get_nowait()
+                            if extra is None:
+                                break
+                            if extra:
+                                stderr_logs.append(extra)
+                    except queue.Empty:
+                        pass
+                    break
                 continue
 
             if chunk is None and process.poll() is not None:
@@ -1302,6 +1409,7 @@ def _execute_chunk_ffmpeg(
                     if match:
                         h, m, s = map(float, match.groups())
                         current_sec = h * 3600 + m * 60 + s
+                        last_progress_sec = current_sec
                         pct = min(100.0, (current_sec / max(0.1, chunk_duration_sec)) * 100)
                         print(
                             f"\r  [Chunk {chunk_idx + 1}] Progress: {pct:.1f}% ({int(current_sec)}s / {int(chunk_duration_sec)}s)",
@@ -1309,6 +1417,8 @@ def _execute_chunk_ffmpeg(
                             flush=True,
                         )
 
+        # Ensure pump thread has finished
+        pump_thread.join(timeout=2.0)
         process.wait()
 
         if process.returncode != 0:
@@ -1382,6 +1492,14 @@ def render_chunk(
         config, encoder_config, input_args, video_label, filter_script_path, chunk_tmp_path
     )
 
+    effective = _effective_clip_timeout(config, encoder_config, chunk_duration_sec)
+    if effective != int(config.get("FFMPEG_CLIP_TIMEOUT", 600)):
+        print(
+            f"  [CHUNK {chunk_idx + 1}] Duration {chunk_duration_sec:.1f}s"
+            f" | timeout scaled {config.get('FFMPEG_CLIP_TIMEOUT', 600)}s → {effective}s"
+            f" ({encoder_config.get('video_codec','')} {config.get('OUTPUT_WIDTH')}x{config.get('OUTPUT_HEIGHT')})"
+        )
+
     return _execute_chunk_ffmpeg(
         cmd,
         config,
@@ -1391,6 +1509,8 @@ def render_chunk(
         chunk_filename,
         chunk_tmp_path,
         chunk_output_path,
+        effective_timeout=effective,
+        encoder_config=encoder_config,
     )
 
 
@@ -1849,12 +1969,16 @@ def _render_all_chunks_parallel(
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     num_chunks = len(chunks)
-    max_workers = (
-        min(2, num_chunks)
-        if "qsv" in encoder_config.get("video_codec", "")
-        else min(2, max(1, os.cpu_count() // 2))
-    )
-    print(f"  [RENDER ENGINE] Parallel rendering across {max_workers} worker threads...")
+    max_workers = _resolve_chunk_workers(encoder_config, num_chunks)
+    cpu = os.cpu_count() or 4
+    codec = encoder_config.get("video_codec", "")
+    if codec == "libx264" and cpu <= 4 and max_workers == 1 and num_chunks > 1:
+        print(
+            f"  [RENDER ENGINE] Parallel rendering capped to 1 worker (libx264 on {cpu} cores)"
+            f" — avoiding 2× ffmpeg -threads {config.get('FFMPEG_THREADS',4)} thrash (bug compile-video-output)"
+        )
+    else:
+        print(f"  [RENDER ENGINE] Parallel rendering across {max_workers} worker threads...")
 
     rendered_map = {}
     failed = False

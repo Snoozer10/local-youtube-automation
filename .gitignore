@@ -88,3 +88,6 @@ dmypy.json
 *.local.txt
 *.local.json
 local_settings.py
+
+# APM dependencies
+apm_modules/

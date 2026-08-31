@@ -83,8 +83,9 @@ VBV_MAXRATE=35000k
 VBV_BUFSIZE=70000k
 
 # --- FFmpeg Execution (4 Threads for 2-Core i7) ---
+# 600s default prevents 1440p CPU timeouts (libx264 CRF17); scaled per-chunk via duration-aware helper
 FFMPEG_THREADS=4
-FFMPEG_CLIP_TIMEOUT=300
+FFMPEG_CLIP_TIMEOUT=600
 FFMPEG_FINAL_TIMEOUT=5400
 FFMPEG_LOGLEVEL=warning
 FFPROBE_TIMEOUT=60

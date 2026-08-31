@@ -1,0 +1,46 @@
+[
+  {
+    "index": 1,
+    "timestamp": "[00:00]",
+    "sequence_type": "STANDALONE",
+    "layout_classification": "AHWA_STUDIO",
+    "sequence_metadata": {
+      "set_id": "SET_01",
+      "frame_index": 1,
+      "total_frames_in_set": 1
+    },
+    "visual_density": "MEDIUM_ACTION",
+    "visual_prompt": {
+      "subject_details": "CHARACTER_HOST_MAIN. Character Visual DNA: Ahmed El-Ghandour (Al-Daheeh). Anatomy: Voluminous dark curly afro hair, thin round wire-rim glasses, animated hazel eyes, expressive comedic eyebrows, light stubble. Outfit: Matte charcoal-grey pullover hoodie (#2B2D42), black relaxed joggers, clean white minimal sneakers. Rendering Invariant: 2D graphic vector animation style, uniform 3px black contour outlines, flat 2-step cel-shading.",
+      "subject_action_increment": "Standing centrally behind the wooden desk, leaning forward with wide animated hazel eyes and open expressive arms, introducing the episode topic with high energy.",
+      "environment_coordinates": "SCENE_AHWA_STUDIO_ENV. 2D animation layout background plate of a cozy Cairo studio. Wooden desk, stacked encyclopedias, retro CRT monitor, Egyptian glass teacup with mint, warm 3200K tungsten lighting. Crisp 3px black vector outlines, flat cel-shading, open central staging area, 16:9 widescreen. Visual rule: Empty background plate only. Zero characters, zero 3D CGI.",
+      "composition_layout": "Medium wide shot, character centered behind desk, balanced staging with golden tungsten ambient fill.",
+      "camera_specifications": "static",
+      "text_overlay_arabic": "سر التحنيط",
+      "accent_color_hook": "#2B2D42",
+      "style_anchor": "2D graphic vector animation explainer style, crisp 3px black vector outlines, flat 2-step cel-shading, 16:9 widescreen"
+    }
+  },
+  {
+    "index": 2,
+    "timestamp": "[00:04]",
+    "sequence_type": "PROGRESSIVE_BUILD_SET",
+    "layout_classification": "HISTORICAL_MUSEUM",
+    "sequence_metadata": {
+      "set_id": "SET_02",
+      "frame_index": 1,
+      "total_frames_in_set": 1
+    },
+    "visual_density": "MEDIUM_ACTION",
+    "visual_prompt": {
+      "subject_details": "CHARACTER_HOST_MAIN. Character Visual DNA: Ahmed El-Ghandour (Al-Daheeh). Anatomy: Voluminous dark curly afro hair, thin round wire-rim glasses, animated hazel eyes, expressive comedic eyebrows, light stubble. Outfit: Matte charcoal-grey pullover hoodie (#2B2D42), black relaxed joggers, clean white minimal sneakers. Rendering Invariant: 2D graphic vector animation style, uniform 3px black contour outlines, flat 2-step cel-shading.",
+      "subject_action_increment": "Positioned on the right side of the frame, tilting head with exaggerated skeptical eyebrows while gesturing towards an illuminated glass display case containing ancient Egyptian canopic jars and labeled resin vessels.",
+      "environment_coordinates": "SCENE_HISTORICAL_MUSEUM_ENV. 2D animation layout background plate of a grand Baroque museum gallery. Deep crimson damask wallpaper (#540B0E), carved gold gilded picture frames, parquet floor, top-down spotlighting. Rich 2D cel-shaded animation art, sharp black vector contours, 16:9 widescreen. Visual rule: Museum gallery background plate only. Zero characters, zero 3D CGI.",
+      "composition_layout": "Medium shot, character framed right, museum display case illuminated on the left, high-contrast overhead spotlighting.",
+      "camera_specifications": "zoom_in",
+      "text_overlay_arabic": "مواد غريبة",
+      "accent_color_hook": "#540B0E",
+      "style_anchor": "2D graphic vector animation explainer style, crisp 3px black vector outlines, flat 2-step cel-shading, 16:9 widescreen"
+    }
+  }
+]

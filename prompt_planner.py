@@ -20,6 +20,7 @@ from typing import Any, TypeGuard
 from pydantic import ValidationError
 
 from gemini_controller import (
+    ensure_persistent_gemini_session,
     inject_prompt_via_cdp,
     jitter_delay,
     log,
@@ -346,13 +347,12 @@ def _plan_single_chunk(
     attempts = 0
 
     jitter_delay()
-    if not open_ephemeral_session(gemini_page, planner_model):
-        raise RuntimeError(f"[planner] failed to open ephemeral session for {chunk_id}.")
+    # Session persistence: reuse chat within threshold (every 100 lines by default)
+    if not ensure_persistent_gemini_session(gemini_page, start_idx, planner_model):
+        raise RuntimeError(f"[planner] failed to ensure persistent session for {chunk_id}.")
     if not inject_prompt_via_cdp(gemini_page, payload):
-        log(f"[planner] {chunk_id} injection failed; retrying once with a fresh session.")
+        log(f"[planner] {chunk_id} injection failed; retrying once in same session.")
         jitter_delay()
-        if not open_ephemeral_session(gemini_page, planner_model):
-            raise RuntimeError(f"[planner] session reopen failed for {chunk_id}.")
         if not inject_prompt_via_cdp(gemini_page, payload):
             dump_path = _dump_debug(
                 folder,
@@ -360,7 +360,7 @@ def _plan_single_chunk(
                 {"chunk_id": chunk_id, "error": "prompt_injection_failed", "payload": payload},
             )
             raise ChunkPlanningError(
-                f"[planner] prompt injection failed twice for {chunk_id}.",
+                f"[planner] prompt injection failed twice for {chunk_id} (same session).",
                 chunk_id,
                 [],
                 dump_path,
@@ -368,10 +368,8 @@ def _plan_single_chunk(
     attempts += 1
     response = wait_for_gemini_turn_completion(gemini_page)
     if not response:
-        log(f"[planner] {chunk_id} empty turn; resending once with a fresh session.")
+        log(f"[planner] {chunk_id} empty turn; resending once in same session (no new chat).")
         jitter_delay()
-        if not open_ephemeral_session(gemini_page, planner_model):
-            raise RuntimeError(f"[planner] session reopen failed for empty turn on {chunk_id}.")
         if not inject_prompt_via_cdp(gemini_page, payload):
             dump_path = _dump_debug(
                 folder,
@@ -379,7 +377,7 @@ def _plan_single_chunk(
                 {"chunk_id": chunk_id, "error": "prompt_injection_failed", "payload": payload},
             )
             raise ChunkPlanningError(
-                f"[planner] redelivery injection failed for {chunk_id}.", chunk_id, [], dump_path
+                f"[planner] redelivery injection failed for {chunk_id} (same session).", chunk_id, [], dump_path
             )
         attempts += 1
         response = wait_for_gemini_turn_completion(gemini_page)

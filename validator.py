@@ -277,7 +277,15 @@ def _auto_clean_item(item: dict[str, Any]) -> None:
         return
     for key, value in list(visual_prompt.items()):
         if isinstance(value, str):
-            visual_prompt[key] = purge_subtitle_phrases(value)
+            # Purge subtitle/margin safe-area phrases, but preserve legitimate marginalia/margins
+            cleaned = purge_subtitle_phrases(value)
+            # Only strip generic margin if it's part of safe-area phrase, not grid/marginalia
+            if "marginalia" not in cleaned.lower() and "margins of the" not in cleaned.lower():
+                # Remove stray safe-margin remnants that purge didn't catch
+                import re as _re2
+                cleaned = _re2.sub(r"(?i)\b\d+%\s*bottom\s*safe\s*margin\b[^.]*", "", cleaned)
+                cleaned = _re2.sub(r"(?i)\bsafe\s*margin\b", "", cleaned)
+            visual_prompt[key] = " ".join(cleaned.split()).strip(" ,.-")
     overlay = visual_prompt.get("text_overlay_arabic", "NONE")
     if isinstance(overlay, str):
         if overlay != "NONE" and _LATIN_LETTER_PATTERN.search(overlay):
@@ -315,9 +323,12 @@ def _collect_schema_and_content_violations(
             violations.append(f"{label}: schema violation ({_schema_error_summary(exc)})")
 
         dump = json.dumps(item, ensure_ascii=False, default=str).lower()
-        if "subtitle" in dump:
+        import re as _re
+        # Flag subtitle (including plural subtitles) as forbidden - used for subtitle overlays
+        if _re.search(r"\bsubtitles?\b", dump):
             violations.append(f"{label}: forbidden term 'subtitle' detected in payload.")
-        if "margin" in dump:
+        # Flag margin as separate word (left margin band) but allow marginalia/margins (legitimate blueprint terms)
+        if _re.search(r"\bmargin\b", dump):
             violations.append(f"{label}: forbidden term 'margin' detected in payload.")
 
         visual_prompt = item.get("visual_prompt")

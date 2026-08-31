@@ -1,427 +1,310 @@
-﻿@AGENTS.md
-````markdown
-# CLAUDE.md — YouTube Video Automation Pipeline (Al-Daheeh Engine)
+# AGENTS.md
 
-Autonomous end-to-end media pipeline transcreating YouTube videos into broadcast-ready 1440p Arabic documentaries in the **Al-Daheeh (الدحيح)** dialect and 2D visual style. Operates entirely on browser automation (Playwright CDP), Win32 Named Pipes, Faster-Whisper ASR, and hardware-accelerated FFmpeg without external paid API keys.
+Drop-in operating instructions for coding agents. Read this file before every task.
 
----
+**Working code only. Finish the job. Plausibility is not correctness.**
 
-## 🛠️ 1. Tech Stack & Runtime Environment
+This file follows the [AGENTS.md](https://agents.md) open standard (Linux Foundation / Agentic AI Foundation). Claude Code, Codex, Cursor, Windsurf, Copilot, Aider, Devin, Amp read it natively. For tools that look elsewhere, symlink:
 
-- **OS / Platform**: Windows 10 / 11 x64 only (relies on Win32 Named Pipes, `ctypes.windll.user32`, and detached process flags).
-- **Language**: Python 3.10+
-- **Browser Automation**: Playwright Sync API over Chrome DevTools Protocol (`127.0.0.1:9222`).
-- **ASR & Audio Sync**: Faster-Whisper (CTranslate2 CUDA/CPU with VAD) + `difflib.SequenceMatcher` spelling correction.
-- **Audio DSP**: Headless Audacity 3.x via Win32 Named Pipes (`\\.\pipe\ToSrvPipe`).
-- **Visuals & Diffusion**: Google Flow (Nano Banana 2 / Imagen 3) with DOM continuity chaining.
-- **Video Compositing**: FFmpeg 5+ subprocesses (Intel QSV `h264_qsv`, NVIDIA `h264_nvenc`, CPU `libx264` fallback).
-- **Testing & Quality**: pytest, black (100-col), ruff, mypy.
+```bash
+ln -s AGENTS.md CLAUDE.md
+ln -s AGENTS.md GEMINI.md
+```
 
 ---
 
-## ⚡ 2. Core CLI Commands
+## 0. Non-negotiables
 
-### Full Pipeline & Batch Operations
+These rules override everything else in this file when in conflict:
+
+1. **No flattery, no filler.** Skip openers like "Great question", "You're absolutely right", "Excellent idea", "I'd be happy to". Start with the answer or the action.
+2. **Disagree when you disagree.** If the user's premise is wrong, say so before doing the work. Agreeing with false premises to be polite is the single worst failure mode in coding agents.
+3. **Never fabricate.** Not file paths, not commit hashes, not API names, not test results, not library functions. If you don't know, read the file, run the command, or say "I don't know, let me check."
+4. **Stop when confused.** If the task has two plausible interpretations, ask. Do not pick silently and proceed.
+5. **Touch only what you must.** Every changed line must trace directly to the user's request. No drive-by refactors, reformatting, or "while I was in there" cleanups.
+
+---
+
+## 1. Before writing code
+
+**Goal: understand the problem and the codebase before producing a diff.**
+
+- State your plan in one or two sentences before editing. For anything non-trivial, produce a numbered list of steps with a verification check for each.
+- Read the files you will touch. Read the files that call the files you will touch. Claude Code: use subagents for exploration so the main context stays clean.
+- Match existing patterns in the codebase. If the project uses pattern X, use pattern X, even if you'd do it differently in a greenfield repo.
+- Surface assumptions out loud: "I'm assuming you want X, Y, Z. If that's wrong, say so." Do not bury assumptions inside the implementation.
+- If two approaches exist, present both with tradeoffs. Do not pick one silently. Exception: trivial tasks (typo, rename, log line) where the diff fits in one sentence.
+
+---
+
+## 2. Writing code: simplicity first
+
+**Goal: the minimum code that solves the stated problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code. No configurability, flexibility, or hooks that were not requested.
+- No error handling for impossible scenarios. Handle the failures that can actually happen.
+- If the solution runs 200 lines and could be 50, rewrite it before showing it.
+- If you find yourself adding "for future extensibility", stop. Future extensibility is a future decision.
+- Bias toward deleting code over adding code. Shipping less is almost always better.
+
+The test: would a senior engineer reading the diff call this overcomplicated? If yes, simplify.
+
+---
+
+## 3. Surgical changes
+
+**Goal: clean, reviewable diffs. Change only what the request requires.**
+
+- Do not "improve" adjacent code, comments, formatting, or imports that are not part of the task.
+- Do not refactor code that works just because you are in the file.
+- Do not delete pre-existing dead code unless asked. If you notice it, mention it in the summary.
+- Do clean up orphans created by your own changes (unused imports, variables, functions your edit made obsolete).
+- Match the project's existing style exactly: indentation, quotes, naming, file layout.
+
+The test: every changed line traces directly to the user's request. If a line fails that test, revert it.
+
+---
+
+## 4. Goal-driven execution
+
+**Goal: define success as something you can verify, then loop until verified.**
+
+Rewrite vague asks into verifiable goals before starting:
+
+- "Add validation" becomes "Write tests for invalid inputs (empty, malformed, oversized), then make them pass."
+- "Fix the bug" becomes "Write a failing test that reproduces the reported symptom, then make it pass."
+- "Refactor X" becomes "Ensure the existing test suite passes before and after, and no public API changes."
+- "Make it faster" becomes "Benchmark the current hot path, identify the bottleneck with profiling, change it, show the benchmark is faster."
+
+For every task:
+
+1. State the success criteria before writing code.
+2. Write the verification (test, script, benchmark, screenshot diff) where practical.
+3. Run the verification. Read the output. Do not claim success without checking.
+4. If the verification fails, fix the cause, not the test.
+
+---
+
+## 5. Tool use and verification
+
+- Prefer running the code to guessing about the code. If a test suite exists, run it. If a linter exists, run it. If a type checker exists, run it.
+- Never report "done" based on a plausible-looking diff alone. Plausibility is not correctness.
+- When debugging, address root causes, not symptoms. Suppressing the error is not fixing the error.
+- For UI changes, verify visually: screenshot before, screenshot after, describe the diff.
+- Use CLI tools (gh, aws, gcloud, kubectl) when they exist. They are more context-efficient than reading docs or hitting APIs unauthenticated.
+- When reading logs, errors, or stack traces, read the whole thing. Half-read traces produce wrong fixes.
+
+---
+
+## 6. Session hygiene
+
+- Context is the constraint. Long sessions with accumulated failed attempts perform worse than fresh sessions with a better prompt.
+- After two failed corrections on the same issue, stop. Summarize what you learned and ask the user to reset the session with a sharper prompt.
+- Use subagents (Claude Code: "use subagents to investigate X") for exploration tasks that would otherwise pollute the main context with dozens of file reads.
+- When committing, write descriptive commit messages (subject under 72 chars, body explains the why). No "update file" or "fix bug" commits. No "Co-Authored-By: Claude" attribution unless the project explicitly wants it.
+
+---
+
+## 7. Communication style
+
+- Direct, not diplomatic. "This won't scale because X" beats "That's an interesting approach, but have you considered...".
+- Concise by default. Two or three short paragraphs unless the user asks for depth. No padding, no restating the question, no ceremonial closings.
+- When a question has a clear answer, give it. When it does not, say so and give your best read on the tradeoffs.
+- Celebrate only what matters: shipping, solving genuinely hard problems, metrics that moved. Not feature ideas, not scope creep, not "wouldn't it be cool if".
+- No excessive bullet points, no unprompted headers, no emoji. Prose is usually clearer than structure for short answers.
+
+---
+
+## 8. When to ask, when to proceed
+
+**Ask before proceeding when:**
+- The request has two plausible interpretations and the choice materially affects the output.
+- The change touches something you've been told is load-bearing, versioned, or has a migration path.
+- You need a credential, a secret, or a production resource you don't have access to.
+- The user's stated goal and the literal request appear to conflict.
+
+**Proceed without asking when:**
+- The task is trivial and reversible (typo, rename a local variable, add a log line).
+- The ambiguity can be resolved by reading the code or running a command.
+- The user has already answered the question once in this session.
+
+---
+
+## 9. Self-improvement loop
+
+**This file is living. Keep it short by keeping it honest.**
+
+After every session where the agent did something wrong:
+
+1. Ask: was the mistake because this file lacks a rule, or because the agent ignored a rule?
+2. If lacking: add the rule under "Project Learnings" below, written as concretely as possible ("Always use X for Y" not "be careful with Y").
+3. If ignored: the rule may be too long, too vague, or buried. Tighten it or move it up.
+4. Every few weeks, prune. For each line, ask: "Would removing this cause the agent to make a mistake?" If no, delete. Bloated AGENTS.md files get ignored wholesale.
+
+Boris Cherny (creator of Claude Code) keeps his team's file around 100 lines. Under 300 is a good ceiling. Over 500 and you are fighting your own config.
+
+---
+
+## 10. Project context
+
+**Fill this in per project. Keep it specific. Delete sections that don't apply.**
+
+### Stack
+- Language and version: Python >=3.10 (pyproject.toml:11) — project `youtube-automation-pipeline` 4.0.0, setuptools backend, Windows-only target.
+- Framework(s) / key deps: playwright>=1.40, youtube-transcript-api, python-docx, faster-whisper, openai-whisper, torch>=2.0, tqdm. Runtime deps in `venv\`; ruff/black/mypy/pytest global.
+- Package manager: pip + venv (no uv/poetry/Makefile/package.json — verified absent).
+- Runtime / deployment target: Windows-only desktop/browser-automation pipeline (CDP, named pipes, hardware FFmpeg).
+
+### Commands
+- Install: `python -m venv venv; .\venv\Scripts\Activate.ps1; pip install -r requirements.txt; pip install -r requirements-dev.txt; python -m playwright install --with-deps`. NOTE: requirements-dev.txt currently has TODO literal ``` fence lines (rows 1, 44) that break pip — flag but do not fix.
+- Build: none (no build step; setuptools package).
+- Test (all): `python -m pytest tests/ -v` (full) / `python -m pytest tests/unit -v` (CI scope); must run from repo root.
+- Test (single file): `python -m pytest tests/unit/test_timeline.py -v`
+- Lint: `ruff check . --fix` ; `ruff format --check .`
+- Typecheck: `mypy .` (strict + ignore_missing_imports)
+- Run locally: `python run_agency.py` (supervisor) or per-phase entrypoints.
+- Also: `pre-commit run --all-files`
+
+Prefer single-file or single-test runs during iteration. Full suites are for the final verification pass.
+
+### Layout
+- Source lives in: root-entrypoint `.py` scripts (run_agency.py supervisor + per-phase: automate_all.py, refine_script.py, generate_voice.py, stitch_chapters.py, automate_audacity.py, faster_whisper_transcribe_audio.py, correct_transcript_spelling.py, flow_image_generator.py, script_image_generator.py, fix_timestamps.py, compile_video.py, generate_thumbnail.py) + planning layer modules (pipeline_manifest.py, json_sanitizer.py, validator.py, gemini_controller.py, roadmap_orchestrator.py, prompt_planner.py, gemini_utils.py, utils.py).
+- Tests live in: `tests/` (unit/, integration/, mocks/, conftest.py root).
+- Do not modify: youtube_runs/, venv/, .git, __pycache__, legacy_and_utilities/, Implementation plans/, Security Division Analysis/, .agents/, .gemini/, .opencode/, .specify/, .superpowers/, graphify-out/, docs/, .env, *.json checkpoints, *.log, browser profiles (gitignored / ruff-excluded).
+
+### Conventions specific to this repo
+- Naming: snake_case modules, single-package flat layout at root.
+- Import style: strict DAG — planning layer flow_image_generator → pipeline_manifest → json_sanitizer → validator → gemini_controller → roadmap_orchestrator → prompt_planner; never import upward.
+- Error handling pattern: subprocess list args + shell=False; all JSON/text encoding="utf-8" ensure_ascii=False; atomic config writes NamedTemporaryFile+os.replace+fsync; never bare pytest.
+- Testing pattern and framework: pytest, testpaths=tests, markers unit/integration, addopts -v --strict-markers --tb=short; conftest.py adds repo root to sys.path.
+
+### Forbidden
+- Never add cloud SDKs google-generativeai/openai/anthropic; all AI via Playwright CDP 127.0.0.1:9222.
+- Never taskkill /IM chrome.exe (kill only PID on port).
+- Never input_value() on contenteditable; follow Flow selector rules.
+- Never destructive-overwrite checkpoints; schema changes need backward-compatible migration.
+- QSV_LOOKAHEAD=0 mandatory.
+- Never commit .env, runtime_state.json, *_checkpoint.json, pipeline.json, video/WAVs.
+
+
+### This project: YouTube Al-Daheeh Automation Pipeline
+
+
+> Scope: `image_generation/` — `youtube-transcript-api` → Gemini CDP → AI Studio TTS → Audacity Named Pipes → Faster-Whisper → Google Flow → FFmpeg QSV/NVENC. Windows-only (`ctypes.windll`, `\\.\pipe\ToSrvPipe`, `CREATE_NEW_CONSOLE`). Python 3.10+ (`pyproject.toml:11`). No cloud SDKs — never add `google-generativeai`/`openai`/`anthropic`; all AI via Playwright CDP `127.0.0.1:9222`.
+
+## Stack & repo boundaries
+
+- **Single-package monorepo.** Entrypoints: `run_agency.py` (supervisor) or single-phase: `automate_all.py` → `refine_script.py` → `generate_voice.py` → `stitch_chapters.py`/`automate_audacity.py` → `faster_whisper_transcribe_audio.py` → `correct_transcript_spelling.py` → `flow_image_generator.py` (or `script_image_generator.py`) → `fix_timestamps.py` → `compile_video.py` → `generate_thumbnail.py`. See `README.md:207` + `Project-workflow.md:5`.
+- **State in `youtube_runs/<Title>/` (gitignored).** Never commit `.env`, `runtime_state.json`, `*.json` checkpoints (`pipeline.json`, `*_checkpoint.json`, `voice_generation_manifest.json`, `compile_checkpoint.json`, `planning_checkpoint.json`). Batch: `run_agency.py` scans for `final_output.txt` and drives `pipeline.json` (`translate, refine, voice, audacity, stitch, transcribe, images, fixtimes, video, thumbnail` in `run_agency.py:66`).
+- **Planning layer DAG (2026-08):** `flow_image_generator.py` → `pipeline_manifest.py` → `json_sanitizer.py` → `validator.py` → `gemini_controller.py` → `roadmap_orchestrator.py` → `prompt_planner.py`. Strictly acyclic — never import upward. `validator.py` owns pure utils `flatten_visual_prompt_to_diffusion_text`/`enforce_arabic_in_prompt`/`purge_subtitle_phrases`.
+
+## Setup — Windows PowerShell, order matters
 
 ```powershell
-# Run the full autonomous supervisor across all folders in youtube_runs/
-python run_agency.py
-
-# Run parallel multi-browser sessions across isolated ports
-python run_agency.py --port 9222 --folder youtube_runs/Video_Topic_A
-python run_agency.py --port 9223 --folder youtube_runs/Video_Topic_B
+python -m venv venv; .\venv\Scripts\Activate.ps1   # repo uses venv\, not .venv
+pip install -r requirements.txt
+pip install -r requirements-dev.txt   # ruff, black, mypy, pytest-cov (pyproject.toml:34)
+python -m playwright install --with-deps
+# Externals: FFmpeg/FFprobe on PATH (winget install Gyan.FFmpeg), Audacity 3.x → Preferences→Modules mod-script-pipe=Enabled, Chrome/Opera --remote-debugging-port=9222 --user-data-dir=C:\ChromeDebugProfile
+copy .env.example .env   # fill TELEGRAM_*, CDP_PORT, model routing; ACTIVE_PROFILE_INDEX in runtime_state.json (utils.py:269)
 ```
-````
 
-### Individual Step Execution (Idempotent / State-Resuming)
+- Runtime deps in `venv\`; `ruff/black/mypy/pytest` in global python. `pydantic>=2.0` required both places (2026-08).
+
+## Verify — run before concluding any refactor
 
 ```powershell
-python automate_all.py                 # Step 1: Caption fetch & 30/70 transcreation
-python refine_script.py                # Step 2: Cadence, humor, and Tashkeel polish
-python generate_voice.py               # Step 3: AI Studio TTS synthesis (Achird)
-python stitch_chapters.py              # Step 4: Lossless WAV chapter concatenation
-python automate_audacity.py            # Step 5: Audacity Named-Pipe DSP mastering
-python faster_whisper_transcribe_audio.py # Step 6: Faster-Whisper ASR & VAD alignment
-python correct_transcript_spelling.py  # Step 7: SequenceMatcher spelling correction
-python flow_image_generator.py         # Step 8: Google Flow visual generation
-python fix_timestamps.py               # Step 9: Validate & inject prompt timestamps
-python generate_thumbnail.py           # Step 10: 2D webcomic CTR thumbnail generator
-python compile_video.py                # Step 11: Hardware-accelerated Ken Burns compositor
-```
-
-### Testing & Code Quality
-
-```powershell
-# Run all tests
-python -m pytest tests/ -v
-
-# Run single unit test
-python -m pytest tests/unit/test_timeline.py -v
-
-# Lint, format, and type check
-black --line-length 100 .
-ruff check . --fix
-mypy .
-```
-
----
-
-## 🏗️ 3. Architecture & Pipeline Flow
-
-```
-youtube_urls.txt
-  └─► automate_all.py (Phase 1: 30/70 Fusha/Amiya Transcreation)
-        └─► refine_script.py (Phase 2: 1-3-1 Cadence, Humor, Tashkeel)
-              └─► generate_voice.py (Phase 3: AI Studio Speech Synthesis)
-                    └─► stitch_chapters.py & automate_audacity.py (Phase 4 & 5: Named Pipes DSP)
-                          └─► faster_whisper_transcribe_audio.py (Phase 6: Word Timestamps)
-                                └─► correct_transcript_spelling.py (Phase 7: Sequence Alignment)
-                                      └─► flow_image_generator.py (Phase 8: Google Flow Visuals)
-                                            └─► fix_timestamps.py (Phase 9: Timestamp Validation)
-                                                  └─► generate_thumbnail.py (Phase 10: Thumbnails)
-                                                        └─► compile_video.py (Phase 11: 1440p Render)
-```
-
-Every project directory under `youtube_runs/<Title>/` maintains stateful JSON checkpoints (`pipeline.json`, `checkpoint.json`, `refine_checkpoint.json`, `voice_generation_manifest.json`, `compile_checkpoint.json`). Interruptions safely resume from the last completed chunk or frame.
-
----
-
-## ⚠️ 4. Critical Rules & Architectural Invariants
-
-### 1. Zero-API Browser Automation (Playwright CDP)
-
-- **Never introduce official paid API SDKs**. All LLM, Speech, and Image operations automate authenticated web sessions over `localhost:9222`.
-- Use cascading selector lists and text-stability polling (`wait_for_gemini_response` in `gemini_utils.py`) rather than fixed `time.sleep` calls.
-
-### 2. Al-Daheeh Linguistic & Stylistic Constraints
-
-- **The 30/70 Rule**: 30% Academic Fusha (jargon, institutions, dates) : 70% Cairene Amiya (verbs, connectors, street analogies).
-- **The 1-3-1 Cadence**: Strict variation of sentence lengths (Short punch $\rightarrow$ Explanatory flow $\rightarrow$ Slang punchline).
-- **Phonetic Tashkeel**: Ambiguous slang words (`كِدَه`, `بِيُقول`, `هُوبَّا`, `قِسط`) must be vocalized via `daheeh_config.json`.
-- **Anti-Translatese**: Strictly eliminate literal translation artifacts (`علاوة على ذلك`, `نستنتج مما سبق`).
-
-### 3. Audacity Named Pipes (`mod-script-pipe`)
-
-- Always execute `SelectAll:` prior to applying effects (`NoiseGate:`, `Compressor:`, `Normalize:`).
-- Always auto-sync presets from `YouTube_Voice_Optimizer.txt.txt` into `%APPDATA%\audacity\macros\` before spawning `Audacity.exe`.
-- Wipe `SessionData` and `AutoSave` temporary directories before opening pipe handles to prevent modal recovery popups.
-
-### 4. Faster-Whisper & Subtitle Pacing
-
-- Enforce 3–6 words per visual chunk (`MAX_WORDS_PER_CHUNK=6`, `SUB_SPLIT_TARGET_WORDS=3`).
-- When correcting ASR misspellings in `correct_transcript_spelling.py`, use `difflib.SequenceMatcher` to replace text tokens without altering millisecond timing boundaries.
-
-### 5. Google Flow Multi-Frame Continuity
-
-- For multi-frame sequence sets (`PROGRESSIVE_BUILD_SET`, `HISTORICAL_PARODY`, `CAMERA_ZOOM_SEQUENCE`), locate the previous image card in the DOM and click **"Add to prompt"** to inject delta-motion directives.
-- Always extract images using native Playwright viewport screenshots (`img_locator.screenshot(path=...)`) to avoid tainted-canvas CORS locks, with Base64 fetch as fallback.
-
-### 6. FFmpeg Hardware Acceleration & Zero-Drift Video
-
-- **Intel QSV Lookahead**: Always keep `QSV_LOOKAHEAD=0`. Enabling lookahead with software-decoded input streams causes hardware frame pool starvation and silent bitstream corruption.
-- **Pixel Formatting**: Append `format=nv12` for QSV encoders (`h264_qsv`) and `format=yuv420p` for CPU (`libx264`) or NVENC (`h264_nvenc`).
-- **Hardware Fallback**: All video compiling loops must automatically fall back to CPU `libx264` if hardware acceleration fails.
-- **Windows CLI Command Limits**: Filter graphs exceeding ~32 KB must be written to disk and loaded via `-filter_complex_script`.
-- **Zero-Drift Frame Math**: Allocate exact integer frame counts (`frame_count = audio_duration * fps`) and force clip 0 to start at frame 0.
-
-### 7. UTF-8 & Windows Console Safety
-
-- Always reconfigure standard streams at the top of every script:
-  ```python
-  import sys
-  if hasattr(sys.stdout, 'reconfigure'):
-      sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-  ```
-- All JSON read/writes must use `encoding="utf-8"` and `ensure_ascii=False`.
-
----
-
-## 🔄 5. Multi-Profile Rotation & Supervisor Logic
-
-`run_agency.py` acts as the master supervisor and manages browser failure states:
-
-1. **State Machine (`pipeline.json`)**:
-   - Each video folder maintains a `pipeline.json` mapping each phase to a boolean (`translate`, `refine`, `voice`, `audacity`, `stitch`, `transcribe`, `images`, `fixtimes`, `video`, `thumbnail`).
-   - If a phase crashes, the supervisor catches the error, sends a Telegram alert, and leaves the state flag `false` for automatic restart.
-2. **Account Rotation Engine (`rotate_profile_index()` in `utils.py`)**:
-   - When a phase hits `FAILOVER_RETRY_LIMIT` (e.g. 3 consecutive failures or quota limits):
-     1. Increments `ACTIVE_PROFILE_INDEX` in `.env` (cycles `1` $\rightarrow$ `2` $\rightarrow$ `3` $\rightarrow$ `1`).
-     2. Calls `kill_cdp_chrome()` to surgically terminate only the Chrome process listening on `CDP_PORT` using `netstat -ano` and `taskkill /PID`.
-     3. Calls `launch_browser_with_profile()` with the new profile directory (`Default`, `Profile 1`, `Profile 2`).
-     4. Dispatches a Telegram notification regarding the rotation.
-3. **Browser Tab Sanitation (`clean_browser_tabs()` in `run_agency.py`)**:
-   - Opens a blank tab and closes all stale tabs between phases to prevent RAM bloat and memory leaks across long batch runs.
-
----
-
-## 📖 6. Configuration Variable Dictionary
-
-### Environment Config (`.env` / `gemini_model.txt`)
-
-| Key                        | Default                      | Purpose                                                                         |
-| :------------------------- | :--------------------------- | :------------------------------------------------------------------------------ |
-| `VOICE_GENERATOR_MODEL`    | `Flash-Lite`                 | Gemini Chat model orchestrating TTS markup in Phase 3.                          |
-| `IMAGE_PLANNER_MODEL`      | `Pro`                        | Model used to generate master visual roadmaps and storyboards.                  |
-| `SCRIPT_BREAKER_MODEL`     | `Flash`                      | Model for splitting YouTube transcripts into narrative paragraphs.              |
-| `SCRIPT_TRANSLATOR_MODEL`  | `Pro`                        | Model for initial 30/70 Fusha/Amiya transcreation.                              |
-| `REFINE_MODEL`             | `Pro`                        | Model for Phase 2 cadence, humor, and Tashkeel polish.                          |
-| `THUMBNAIL_MODEL`          | `Nano Banana Pro`            | Model generating 2D webcomic thumbnail prompts and critiques.                   |
-| `TTS_MODEL`                | `gemini-2.5-pro-preview-tts` | Model selected in Google AI Studio Speech Playground.                           |
-| `TTS_VOICE_NAME`           | `Achird`                     | Voice actor persona in Speech Playground.                                       |
-| `TTS_TEMPERATURE`          | `0.8`                        | Generation temperature for voice prosody.                                       |
-| `WHISPER_ENGINE`           | `faster_whisper`             | ASR engine (`faster_whisper` or `hard_whisper`).                                |
-| `IMAGE_GENERATOR_TYPE`     | `flow`                       | Visual generator backend (`flow` for Google Flow, `script` for Gemini UI).      |
-| `FLOW_IMAGE_MODEL`         | `Nano Banana 2`              | Image model inside Google Flow UI.                                              |
-| `FLOW_IMAGE_COUNT`         | `1x`                         | Output count per prompt in Google Flow (`1x`, `x2`, `x4`).                      |
-| `FLOW_DISABLE_AGENT`       | `true`                       | Disables Google Flow autonomous agent to prevent unprompted edits.              |
-| `ACTIVE_PROFILE_INDEX`     | `1`                          | Active Chrome/Opera profile index (1, 2, or 3).                                 |
-| `SWITCH_ACCOUNTS_ENABLED`  | `true`                       | Enables automated failover account rotation.                                    |
-| `FAILOVER_RETRY_LIMIT`     | `3`                          | Number of retries before triggering account rotation.                           |
-| `CDP_PORT`                 | `9222`                       | Remote debugging port for Playwright connection.                                |
-| `BROWSER_TYPE`             | `chrome`                     | Target browser (`chrome` or `opera`).                                           |
-| `ENABLE_REFINE_SCRIPT`     | `true`                       | Feature flag to enable/disable Phase 2 refinement.                              |
-| `FLIP_AUDACITY_ORDER`      | `false`                      | Sets mastering order (`true`: stitch then polish; `false`: polish then stitch). |
-| `TELEGRAM_NOTIFY_PER_STEP` | `true`                       | Dispatches Telegram message on every completed pipeline phase.                  |
-| `TELEGRAM_BOT_TOKEN`       | `""`                         | Telegram Bot API token for alert webhooks.                                      |
-| `TELEGRAM_CHAT_ID`         | `""`                         | Telegram destination Chat ID.                                                   |
-
-### Video Compiler Config (`video_config.txt`)
-
-| Key                              | Default               | Purpose                                                         |
-| :------------------------------- | :-------------------- | :-------------------------------------------------------------- |
-| `OUTPUT_WIDTH` / `OUTPUT_HEIGHT` | `2560` / `1440`       | Master video dimensions (1440p 2K widescreen).                  |
-| `OUTPUT_FPS`                     | `30`                  | Master video framerate.                                         |
-| `ENABLE_HARDWARE_ENCODER`        | `true`                | Enables auto-detection of QSV and NVENC encoders.               |
-| `ENCODER_FORCE`                  | `""`                  | Optional manual override (`h264_qsv`, `h264_nvenc`, `libx264`). |
-| `QSV_LOOKAHEAD`                  | `0`                   | Lookahead depth (must remain `0` to prevent QSV starvation).    |
-| `KEN_BURNS_ZOOM_MIN` / `MAX`     | `1.0` / `1.10`        | Zoom boundaries for camera animations.                          |
-| `KEN_BURNS_EASING`               | `smoothstep`          | Camera movement easing curve (`smoothstep` or `linear`).        |
-| `CHUNK_SIZE`                     | `40`                  | Number of image clips per temporary MP4 chunk render.           |
-| `ENABLE_LOUDNORM_TWOPASS`        | `true`                | Executes EBU R128 two-pass audio loudness normalization.        |
-| `LOUDNORM_I` / `TP` / `LRA`      | `-14` / `-1.0` / `11` | Integrated loudness, true peak, and loudness range targets.     |
-
----
-
-## 📁 7. Run Folder State Invariants
-
-Every run folder under `youtube_runs/<Title>/` must conform to these naming conventions:
-
-```
-youtube_runs/<Cleaned_Title>/
-├── raw_transcript.txt               # Raw YouTube caption dump
-├── breaked_paragraphs.txt           # Structured paragraphs from Phase 1
-├── final_output.txt                 # 30/70 Transcreated Arabic text
-├── refined_script.txt               # Polished Al-Daheeh script (ground truth)
-├── refined_script.docx              # Word doc formatted script
-├── master_roadmap.txt               # Visual scene continuity roadmap
-├── flow_prompts.json                # JSON keyframe array for Google Flow
-├── voice_generation_manifest.json   # Chapter audio synthesis manifest
-├── full_episode_voice.wav           # Stitched master WAV track
-├── timestamped_transcript.txt       # Sentence-level timestamp timeline
-├── timestamped_transcript.srt       # Standard SRT subtitle file
-├── image_timestamps.txt             # Image sync timeline [MM:SS] text
-├── subtitle_chunks.srt              # 3-word fast subtitle clips
-├── audacity_voice/                  # DSP-mastered audio output
-│   └── full_episode_voice.wav
-├── voice_chapters/                  # Chapter WAV files from AI Studio
-│   ├── Chapter_1.wav
-│   └── Chapter_2.wav
-├── generated_images/                # Final visual assets (e.g. 00_00.png, 00_05.png)
-├── generated_images_duplicates/     # Multi-frame duplicate/continuation sets
-├── thumbnails/                      # Top CTR 2D webcomic thumbnail variants
-│   ├── title_1_thumbnail.png
-│   └── title_2_thumbnail.png
-├── pipeline.json                    # Supervisor completion state flags
-└── youtube_ready_video.mp4          # Final 1440p Master Video
-```
-
----
-
-## 🤖 8. Directives for AI Agents Modifying This Codebase
-
-When writing code or refactoring modules in this repository, you must strictly obey the following rules:
-
-1. **No External Paid APIs**: Never import `google-generativeai`, `openai`, or `anthropic` client SDKs. All AI interactions must use the Playwright CDP session.
-2. **Preserve Checkpoint Compatibility**: Never alter checkpoint JSON schemas (`checkpoint.json`, `refine_checkpoint.json`, `voice_generation_manifest.json`, `pipeline.json`) without adding backwards-compatible migration logic.
-3. **Maintain Subprocess Safety**: Always pass subprocess arguments as lists (never raw strings with `shell=True`). Always write FFmpeg filter graphs exceeding 1,000 characters to a temporary script file using `-filter_complex_script`.
-4. **Preserve 100% Arabic Character Integrity**: Always use UTF-8 encodings when reading or writing text files (`encoding="utf-8"`, `ensure_ascii=False`). Always call `sys.stdout.reconfigure(encoding='utf-8')` on Windows consoles.
-5. **Enforce Clean Exits**: Before submitting changes, ensure `ruff check .`, `black --check .`, and `mypy .` pass with zero errors.
-6. **Strict Named-Pipe IPC Formatting**: Always append a trailing newline `\n` to Audacity commands and read until an empty line terminator (`\n`) is received from `\\.\pipe\FromSrvPipe`.
-7. **Zero Dynamic FPS Modifications**: The pipeline is calibrated strictly for integer frame math at `OUTPUT_FPS=30`. Never introduce fractional or variable framerate calculations.
-
----
-
-## 🔍 9. Edge-Case Triage & Playwright DOM Recovery Matrix
-
-When automating web sessions with Playwright, Google Web UIs often mutate or exhibit transient states. AI agents must apply these verified recovery strategies:
-
-### A. Google Gemini Web App (`gemini.google.com`)
-
-- **Thinking & Analyzing Indicator Trap**:
-  - _Symptom_: Gemini returns intermediate text like `"Analyzing"`, `"Thinking..."`, or `"Visualizing the scenes"`, which tricks naive length checks into capturing incomplete output.
-  - _Remediation_: Check `is_gemini_generating(page)` for visible stop buttons (`button[aria-label*='Stop' i]`, `button:has(rect)`) and ensure output text remains stable for at least 4 consecutive polling intervals (~5–6 seconds) after transient keywords disappear.
-- **"Gemini said" Prefix Leakage**:
-  - _Remediation_: Always strip the accessibility prefix:
-    ```python
-    if text.startswith("Gemini said"):
-        text = text[len("Gemini said"):].strip()
-    ```
-- **Rich-Text Area Input Locking**:
-  - _Remediation_: If `locator.fill()` fails on `rich-textarea div[contenteditable='true']`, fall back to:
-    ```python
-    textbox.focus()
-    page.keyboard.press("Control+a")
-    page.keyboard.press("Backspace")
-    page.keyboard.insert_text(payload)
-    ```
-
-### B. Google AI Studio Speech Playground (`aistudio.google.com/generate-speech`)
-
-- **Splash Screen Overlay**:
-  - _Remediation_: Query `text="Turn text into natural-sounding speech..."` and click it to dismiss the intro modal before attempting to focus the prompt textarea.
-- **Proactive Context Maintenance**:
-  - _Symptom_: After 40+ consecutive audio generations, AI Studio's WebSocket connection degrades or runs into client-side token expiration.
-  - _Remediation_: Proactively reload the tab every $N$ chapters (`TTS_PROACTIVE_RELOAD_INTERVAL=40`), re-apply voice settings, and re-focus the generation pane.
-- **Stale Audio Detection (MD5 Verification)**:
-  - _Remediation_: Calculate the MD5 checksum of `Chapter_{N}.wav` and compare it to `Chapter_{N-1}.wav`. If identical, AI Studio served a cached audio buffer. Delete the file, reload the playground tab, and re-synthesize.
-
-### C. Google Flow (`labs.google/fx/tools/flow`)
-
-- **Splash Modal Bypass**:
-  - _Remediation_: Check for `button:has-text('Create with Google Flow')` on load and click with `force=True`.
-- **Media Loading Container Failures**:
-  - _Symptom_: Card displays `"Something went wrong loading your media"`.
-  - _Remediation_: Click the card's native retry button (`button:has-text('Retry')`). If failed after 3 attempts, force a workspace reload using the stored project URL from `flow_workspace_url_profile_*.txt`.
-- **CORS / Tainted Canvas Canvas-Lock**:
-  - _Remediation_: Do not use HTML5 `<canvas>` extraction or JavaScript blob conversion as primary capture. Use native Playwright element screenshots (`img_locator.screenshot(path=save_path, type="png")`), which capture pixels directly from the Chromium compositor.
-
----
-
-## 🎛️ 10. Audacity Named Pipe Command Protocol
-
-Audacity receives scripting commands over `\\.\pipe\ToSrvPipe` and returns status messages over `\\.\pipe\FromSrvPipe`. Every command must follow this exact sequence:
-
-```
-[Script / Python]                                       [Audacity mod-script-pipe]
-       │                                                            │
-       ├─────── SelectAll:\n ──────────────────────────────────────►│
-       │◄────── BatchCommand finished: OK\n\n ──────────────────────┤
-       │                                                            │
-       ├─────── NoiseGate:attack=10 decay=100 threshold=-30\n ─────►│
-       │◄────── BatchCommand finished: OK\n\n ──────────────────────┤
-       │                                                            │
-       ├─────── Compressor:attackMs=0.1 thresholdDb=-30\n ─────────►│
-       │◄────── BatchCommand finished: OK\n\n ──────────────────────┤
-       │                                                            │
-       ├─────── Normalize:ApplyVolume=1 PeakLevel=-1\n ────────────►│
-       │◄────── BatchCommand finished: OK\n\n ──────────────────────┤
-       │                                                            │
-       ├─────── Export2:Filename="C:\\output.wav" NumChannels=1\n ─►│
-       │◄────── Export2 finished: OK\n\n ───────────────────────────┤
-```
-
-### Protocol Rules:
-
-1. **Double-Quote Escaping**: When passing file paths to `Import2:` or `Export2:`, absolute paths must use double backslashes (`C:\\path\\to\\file.wav`) wrapped in escaped quotes: `Export2:Filename="C:\\path\\to\\file.wav" NumChannels=1`.
-2. **Preset Macro Synchronization**: Before spawning `Audacity.exe`, `automate_audacity.py` copies `YouTube_Voice_Optimizer.txt.txt` to `%APPDATA%\audacity\macros\YouTube_Voice_Optimizer.txt` and `%APPDATA%\audacity\macros\Achird Gemini Voice cut and enhance.txt`.
-3. **Pipe Response Terminator**: Always read lines from `read_pipe` until an empty line `line.strip() == ""` is encountered.
-
----
-
-## 📐 11. Ken Burns Motion Mathematics & FFmpeg Filter Specs
-
-In `compile_video.py`, camera motions are mathematically generated based on exact integer frames ($N = \text{duration} \times \text{FPS}$).
-
-### 1. Smoothstep Easing Function
-
-To prevent jarring linear camera starts and stops, all camera animations use cubic Hermite polynomial smoothstep easing:
-
-$$t = \frac{\text{on} - 1}{\max(1, N - 1)}$$
-
-$$\text{ease}(t) = t^2 \times (3 - 2t) \quad \text{where } t \in [0, 1]$$
-
-### 2. Camera Motion Coordinate Matrix
-
-| Camera Action   | Zoom Expression (`z`)            | X Expression (`x`)            | Y Expression (`y`)            |
-| :-------------- | :------------------------------- | :---------------------------- | :---------------------------- |
-| **`zoom_in`**   | `z_min + (z_max - z_min) * ease` | `(iw - iw/zoom)/2`            | `(ih - ih/zoom)/2`            |
-| **`zoom_out`**  | `z_max - (z_max - z_min) * ease` | `(iw - iw/zoom)/2`            | `(ih - ih/zoom)/2`            |
-| **`pan_left`**  | `z_max`                          | `(iw - iw/zoom) * (1 - ease)` | `(ih - ih/zoom)/2`            |
-| **`pan_right`** | `z_max`                          | `(iw - iw/zoom) * ease`       | `(ih - ih/zoom)/2`            |
-| **`tilt_up`**   | `z_max`                          | `(iw - iw/zoom)/2`            | `(ih - ih/zoom) * (1 - ease)` |
-| **`tilt_down`** | `z_max`                          | `(iw - iw/zoom)/2`            | `(ih - ih/zoom) * ease`       |
-| **`static`**    | Scaled & padded to canvas        | Centered (`(ow-iw)/2`)        | Centered (`(oh-ih)/2`)        |
-
-### 3. Filter Graph Script Generation Rule
-
-When concatenating $K$ clips in a chunk, FFmpeg command strings exceed Windows 32 KB argument limits. **Never execute the filter string directly via CLI arguments**. Always write the filter graph to `temp_clips/filter_chunk_{N}.txt` and invoke:
-
-```powershell
-ffmpeg -y -hide_banner -loglevel warning `
-  -loop 1 -t 5.500 -framerate 30 -i "img1.png" `
-  -loop 1 -t 3.200 -framerate 30 -i "img2.png" `
-  -filter_complex_script "temp_clips/filter_chunk_0001.txt" `
-  -map "[vout]" -c:v h264_qsv -preset fast -global_quality 20 `
-  -look_ahead 0 -pix_fmt nv12 -an "temp_clips/chunk_0001.mp4"
-```
-
----
-
-## 🔧 12. Troubleshooting & Immediate Remediation Table
-
-| Symptom                              | Root Cause                                                       | Exact Remediation Command / Fix                                                                                          |
-| :----------------------------------- | :--------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------- |
-| `Cannot connect to CDP port 9222`    | Chrome is not running or listening on port 9222.                 | Run `python -c "from utils import launch_browser_with_profile; launch_browser_with_profile('chrome', 1)"`                |
-| `Audacity pipe connection timeout`   | `mod-script-pipe` is disabled in `audacity.cfg`.                 | Open `%APPDATA%\audacity\audacity.cfg` and add `[Modules]\nmod-script-pipe=1`. Kill and relaunch Audacity.               |
-| `QSV frame pool starvation`          | `QSV_LOOKAHEAD` is set to $>0$ on software-decoded streams.      | Set `QSV_LOOKAHEAD=0` in `video_config.txt`.                                                                             |
-| `Whisper CUDA Out of Memory`         | Model size too large for available GPU VRAM.                     | Set `WHISPER_MODEL_SIZE=small` or `base` in `transcribe_config.txt`.                                                     |
-| `Arabic text renders as ??? in CLI`  | Windows console codepage is set to standard OEM (CP437/CP1252).  | Run `chcp 65001` in PowerShell before executing scripts.                                                                 |
-| `Google Flow queue stalled >120s`    | Active project workspace stalled on cloud render.                | Delete `flow_workspace_url_profile_*.txt` in the active run folder to force initialization of a clean project workspace. |
-| `FFmpeg: Argument list too long`     | Filter complex passed as command line argument rather than file. | Ensure `-filter_complex_script` is used instead of `-filter_complex`.                                                    |
-| `Stale audio generated in chapter N` | AI Studio served cached TTS audio identical to chapter N-1.      | `generate_voice.py` MD5 check auto-deletes duplicate track and reloads tab context.                                      |
-
----
-
-## 🧪 13. Test Suite & Verification Matrix
-
-All unit and integration tests live in `tests/`:
-
-```
-tests/
-├── unit/
-│   ├── test_timeline.py             # Verifies zero-drift integer frame allocation math
-│   ├── test_daheeh_config.py        # Verifies Tashkeel replacement & dialect dictionary integrity
-│   ├── test_prompts_parsing.py      # Verifies JSON & pre-planned prompt parsing engines
-│   └── test_loudnorm_parser.py      # Verifies EBU R128 stderr JSON metric extraction
-├── integration/
-│   ├── test_audacity_pipe.py        # Tests non-blocking pipe ping to Audacity
-│   └── test_cdp_connection.py       # Tests Chromium CDP port 9222 handshake
-└── fixtures/
-    ├── sample_transcript.txt        # Mock raw transcript input
-    └── sample_flow_prompts.json     # Mock Google Flow keyframe array
-```
-
-### Running Targeted Test Assertions:
-
-```powershell
-# Verify zero-drift frame timeline calculations
-python -m pytest tests/unit/test_timeline.py -v
-
-# Verify Tashkeel diacritic injection engine
-python -m pytest tests/unit/test_daheeh_config.py -v
-
-# Run full test suite with coverage
+python -m pytest tests/unit -v                         # CI scope; full = python -m pytest tests/ -v
+python -m pytest tests/unit/test_timeline.py -v        # single-file example
 python -m pytest tests/ --cov=. --cov-report=term-missing
+ruff check . --fix
+ruff format --check .          # pre-commit uses ruff-format, not black directly
+black --check --line-length 100 .  # pyproject.toml:55 line-length 100, exclude youtube_runs/venv
+mypy .                         # strict + ignore_missing_imports (pyproject.toml:93)
+pre-commit run --all-files
 ```
+
+- Always `python -m pytest` from repo root — bare `pytest` fails (`tests/conftest.py` needs cwd on `sys.path`). Baseline 2026-08-26: unit 170 / integration 17 passed; integration needs real `ffmpeg lavfi`.
+
+## Pipeline execution & idempotency
+
+- **Supervisor:** skips completed `pipeline.json` flags, `clean_browser_tabs()` between phases, Telegram on crash/timeout. `compile_video.py` chunk 300s / final 3600s; `video`+`thumbnail` done → skip folder (`run_agency.py:154`).
+- **Never destructive-overwrite** checkpoints without confirmation; schema changes need backward-compatible migration (`CLAUDE.md:242`).
+- **Toggles (`.env`):** `ENABLE_REFINE_SCRIPT`, `FLIP_AUDACITY_ORDER`, `IMAGE_GENERATOR_TYPE=flow|script`, `WHISPER_ENGINE=faster_whisper|hard_whisper` (`run_agency.py:164`).
+- **Images state machine:** `pipeline_manifest.json` gates resume. `script_hash=SHA256(transcript+template+presets)` mismatch invalidates caches. Chunk `{PENDING, VERIFIED, REPAIRED, FAILED}` — `FAILED` dumps `debug/malformed_chunk_N.json` then `ChunkPlanningError`. `master_roadmap.jsonl` source of truth (migrates `master_roadmap.txt`); paging `ROADMAP_WINDOW_SIZE=25`, planning `FLOW_CHUNK_SIZE=15`.
+
+## Config sources of truth (executable > prose)
+
+- **`.env` + `.env.example`:** `SCRIPT_BREAKER_MODEL=Flash` `SCRIPT_TRANSLATOR_MODEL=Pro` `VOICE_GENERATOR_MODEL=Flash` `IMAGE_PLANNER_MODEL=Flash` `REFINE_MODEL=Flash` `THUMBNAIL_MODEL=Pro`; `TTS_MODEL=gemini-2.5-pro-preview-tts` `TTS_VOICE_NAME=Achird` `TTS_TEMPERATURE=1.1` `TTS_PROACTIVE_RELOAD_INTERVAL=40`; Flow `FLOW_IMAGE_MODEL=Nano Banana 2 Lite` `FLOW_IMAGE_COUNT=1x` `FLOW_ASPECT_RATIO=16:9` `FLOW_DISABLE_AGENT=true` `FLOW_CHUNK_SIZE=15` `GEMINI_SESSION_RESET_THRESHOLD=100`; `CDP_PORT=9222` `BROWSER_TYPE=chrome` `FAILOVER_RETRY_LIMIT=3`; `ACTIVE_PROFILE_INDEX` in `runtime_state.json` via `utils.rotate_profile_index()` (`utils.py:303`).
+- **`video_config.txt`:** `2560x1440@30` `yuv420p` `high@5.1`, `CHUNK_SIZE=20`, `QSV_LOOKAHEAD=0`, Ken Burns `1.0-1.08 smoothstep upscale 1.12` VBV `35000k/70000k` `FFMPEG_THREADS=4` `AUDIO 320k/48k I-14 TP-1 LRA11`. CPU fallback `libx264 veryfast crf17 tune animation`.
+- **`transcribe_config.txt`:** `WHISPER_MODEL_SIZE=small` `WHISPER_LANGUAGE=ar` `VAD true`, `IMAGE 2.2s/3.5s/4.8s 5-12 words`, `SUB 4/2 words gap 0.35s`, `IMAGE_PAUSE_SPLIT 0.40s` (`transcribe_config.txt:26`), `image_timestamps.txt` is sync anchor.
+- **`daheeh_config.json:8` + `audit_rubric.md`:** 30/70 Fusha/Amiya, 1-3-1 Provost cadence, Tashkeel `كِدَه, بِيُقول, هُوبَّا, قِسط`, 10-point audit. `refine_script.py` strips `<thinking>`/`<slang_ledger>`.
+
+## Gotchas — would miss without help
+
+- **QSV:** `QSV_LOOKAHEAD=0` mandatory (`compile_video.py:46`, `video_config.txt:41`) — `>0` starves pool on sw-decoded inputs. `format=nv12` for QSV else `yuv420p`; fallback `h264_qsv → h264_nvenc → libx264` via `ffmpeg -encoders` (`compile_video.py:227`).
+- **FFmpeg 32KB limit:** graphs >1K chars → `temp_clips/filter_chunk_*.txt` + `-filter_complex_script` (`compile_video.py:1000`). Zero-drift `frame_count=round(duration*30)`, clip 0 at frame 0, CFR `fps_mode cfr` (`compile_video.py:726`). WinGet FFmpeg via `%LOCALAPPDATA%\Microsoft\WinGet\Links` (`compile_video.py:15`).
+- **CDP:** `127.0.0.1:9222` not `localhost` (IPv6 fails). Kill only PID on port via `kill_cdp_chrome(port)` (`netstat -ano` + `taskkill /F /T /PID>100`, poll 4s) — never `taskkill /IM chrome.exe` (`utils.py:123`). `launch_browser_with_profile` wipes `SingletonLock` and verifies `http://127.0.0.1:{port}/json/version` (`utils.py:255`).
+- **Gemini injection/completion:** via `gemini_controller.inject_prompt_via_cdp` ladder (`insert_text`→clipboard Ctrl+V→`execCommand`→`fill()` only <500 chars) + ≥95% `inner_text()` gate before submit; never `input_value()` on contenteditable. Completion = tri-factor `wait_for_gemini_turn_completion`: stop-absent + 3× stability@500ms HARD, action-bar SOFT. Ephemeral chat per roadmap page + per chunk (+jitter 1.5-3s). Pages fixed 25 lines — never tail-merge. Validator WEAK `TS[i]≤TS[i+1]`; equal TS ⇒ strict `index`+`frame_index`.
+- **Gemini polling:** never `time.sleep`. `gemini_utils.wait_for_gemini_response` stop absent + 5× stable reads (~5-6s) + last `model-response` `len>=1`; fast-fail on error card (`gemini_utils.py:372`). Strip `Gemini said`/`قال Gemini`, handle `Analyzing/Thinking/Visualizing`.
+- **Audacity:** `\\.\pipe\ToSrvPipe`/`FromSrvPipe`, every cmd ends `\n`, read until empty line. Always `SelectAll:` before DSP. Sync presets `YouTube_Voice_Optimizer.txt`→`%APPDATA%\audacity\macros\`; wipe `SessionData`/`AutoSave` before open (`CLAUDE.md:105`).
+- **Flow selectors (validated 2026-08-20):** cascade only. `wait_for_flow_app_ready` 3s post-hydration. Submit `button:has(i.google-symbols:text-is('arrow_forward'))` (+ Enter fallback). `Describe your character` = `textarea[placeholder*='Describe your character']` or contenteditable `innerText`; `+ New Character` only empty-gallery. Body popup = LAST `contenteditable` floating card. Never fill workspace bar `What do you want to create?`. Mount verified via `/character/<id>` + `Done`. Assets memoized `flow_assets_profile_*.json` + `flow_workspace_url_profile_*.txt`; `SUMMON_ASSET` via `Search assets`→`Add to Prompt`.
+- **Images:** tiered `base64 data: → page.request.get() → blob fetch in-page → de-hovered screenshot` (`flow_image_generator.py:226`). Never `<canvas>` primary (CORS-tainted); use `img_locator.screenshot(type="png")` after `mouse.move(100,15)`. Validate `>20KB`, PIL verify, `>100px`, PNG `89 50 4E 47`/JPEG `FF D8`.
+- **Voice:** Bezier mouse, MD5 dedup across `Chapter_N.wav` (delete+reload if `N==N-1`), proactive reload every `TTS_PROACTIVE_RELOAD_INTERVAL=40` (`generate_voice.py`).
+- **Subprocess & UTF-8:** list args + `shell=False`; all JSON/text `encoding="utf-8"` `ensure_ascii=False`; `sys.stdout.reconfigure(encoding='utf-8')` + `chcp 65001`.
+- **Config writes:** atomic `NamedTemporaryFile`+`os.replace`+`fsync` (`utils.py:282`).
+
+## Subagent task matrix
+
+| Task | Script | Checklist |
+| --- | --- | --- |
+| Linguistic Transcreation | `automate_all.py` | 30/70 ratio + academic fallback on safety block |
+| Script Doctor Polish | `refine_script.py` | `daheeh_config.json` Tashkeel; strip `<thinking>`/`<slang_ledger>` |
+| Voice Synthesis | `generate_voice.py` | Bezier mouse; MD5 dedup; `voice_generation_manifest.json` |
+| DSP Mastering | `automate_audacity.py` | Named Pipes alive; `SelectAll:` before effects |
+| Audio Stitching | `stitch_chapters.py` | lossless Wave frames, zero drop |
+| ASR & Cadence Pacing | `faster_whisper_transcribe_audio.py` | 3-6 words/chunk; VAD `0.40s`; `transcribe_config.txt` |
+| Lexical Spellcheck | `correct_transcript_spelling.py` | `difflib.SequenceMatcher` vs `refined_script.txt`, timestamps untouched |
+| Roadmap Paging | `roadmap_orchestrator.py` | fixed 25-row pages; anchor = last row K-1; atomic jsonl rewrite/page |
+| JSON Planning | `prompt_planner.py` | slice ±1 buffer; ephemeral session; self-heal ≤2 same-session |
+| Visual Generation | `flow_image_generator.py` | `@asset` chip injection; native screenshot; continuity |
+| Thumbnail | `generate_thumbnail.py` | self-critique scoring, 2 variants |
+| Video Compositing | `compile_video.py` | zero-drift frames; `filter_complex_script`; QSV→NVENC→CPU |
+
+## Style & workflow
+
+- **Formatter/linter/type:** `black --line-length 100` (exclude `youtube_runs,venv,.git,__pycache__` — `pyproject.toml:54`), `ruff` `E,W,F,I,B,C4,UP` (`pyproject.toml:72`), `mypy --strict --ignore-missing-imports` (`pyproject.toml:93`). Fix `ruff check --fix` + `ruff format`.
+- **OpenCode:** `opencode.json` → `default_agent: AGENTS-PROJECT`; lean-ctx shadow mode; `AGENTS.md` via `instructions`. Caveman mode for agent comms; code/commits normal.
+- **Git:** `youtube_runs/`, `Implementation plans/`, `Security Division Analysis/`, `.agents/`, `.opencode/`, `graphify-out/` gitignored. Never auto-commit video/WAVs.
+
+## References
+
+- `CLAUDE.md` — 425-line architecture, DOM recovery matrix, Ken Burns math, Audacity protocol
+- `README.md` — quickstart, pipeline flow, output hierarchy
+- `Project-workflow.md` — ADRs, IPC diagram, fault-tolerance table
+- `audit_rubric.md` — 10-point broadcast quality gate
 
 ---
 
-## 🏁 14. Summary of Developer Invariants
+## 11. Project Learnings
 
-Whenever editing or expanding this repository, verify these four questions:
+**Accumulated corrections. This section is for the agent to maintain, not just the human.**
 
-1. **Did I preserve Zero-API automation?** (No paid cloud SDKs introduced).
-2. **Is it idempotent?** (Can the pipeline be killed mid-execution and safely resumed via checkpoints?).
-3. **Is audio/video synchronization sample-accurate?** (Integer frame allocations, zero drift over 10+ minutes).
-4. **Is the dialect authentic?** (30% Academic Fusha : 70% Cairene Amiya, Gary Provost 1-3-1 cadence, phonetic Tashkeel diacritics applied).
+When the user corrects your approach, append a one-line rule here before ending the session. Write it concretely ("Always use X for Y"), never abstractly ("be careful with Y"). If an existing line already covers the correction, tighten it instead of adding a new one. Remove lines when the underlying issue goes away (model upgrades, refactors, process changes).
 
+- (empty)
+
+---
+
+## 12. How this file was built
+
+This boilerplate synthesizes:
+- Sean Donahoe's IJFW ("It Just F\*cking Works") principles: one install, working code, no ceremony.
+- Andrej Karpathy's observations on LLM coding pitfalls (the four principles: think-first, simplicity, surgical changes, goal-driven execution).
+- Boris Cherny's public Claude Code workflow (reactive pruning, keep it ~100 lines, only rules that fix real mistakes).
+- Anthropic's official Claude Code best practices (explore-plan-code-commit, verification loops, context as the scarce resource).
+- Community anti-sycophancy patterns (explicit banned phrases, direct-not-diplomatic).
+- The AGENTS.md open standard (cross-tool portability via symlinks).
+
+Read once. Edit sections 10 and 11 for your project. Prune the rest over time. This file gets better the more you use it.
