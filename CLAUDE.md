@@ -287,6 +287,22 @@ pre-commit run --all-files
 
 ---
 
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues in Snoozer10/local-youtube-automation. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context (one `CONTEXT.md` + `docs/adr/` at repo root). See `docs/agents/domain.md`.
+
+---
+
 ## 11. Project Learnings
 
 **Accumulated corrections. This section is for the agent to maintain, not just the human.**
