@@ -47,3 +47,7 @@ _Avoid_: LLM-generated negative, prompt-level ban only
 **continuity_id**:
 Stable handle in 8-part visual_prompt for subject tracking across chunk; built per chunk from prior `subject` fields with embedding similarity fallback (`multilingual-e5`/`bge-m3` local, cosine ≥0.78); if nearest prior match within same chunk ≥ threshold emit `SUMMON_ASSET` with `@asset` chip, else fresh; `±2` spans is soft hint, not hard cutoff.
 _Avoid_: literal name match only, fresh every span
+
+**text_gate**:
+Three-layer guard on `flow_image_generator.py` only: (1) deterministic `negative_prompt` ban, (2) validator `purge_subtitle_phrases` regex, (3) post-generation local OCR (`pytesseract` or MSER fallback) reject if `confidence>=60` and `len>=2` and `bbox_area>=1%` of image; one retry with strengthened negative then `FAILED` with `debug/malformed_chunk_N.json` + `ocr_boxes`.
+_Avoid_: cloud Vision, single-layer ban
