@@ -23,3 +23,15 @@ _Avoid_: align, waveform snap
 **shim**:
 A read-only legacy file generated atomically from `timeline.json` (NamedTemporaryFile + os.replace + fsync) with a `.sha256` sidecar for staleness detection; `compile_video.py:648` must refuse a stale shim. Read-only; deleted in v2.X (2 releases after introduction). Covers `image_timestamps.txt`, `timestamped_transcript.txt/srt`, `subtitle_chunks.srt`. Aliases `IMAGE_PAUSE_SPLIT` and `SILENCE_SPLIT_GAP` are deprecated shims mapping to `VAD_SNAP_THRESHOLD`.
 _Avoid_: source file, manual copy
+
+**master**:
+Archival rendition `2560x1440@30` `yuv420p` (nv12 for QSV) `high@5.1` `VBV 35000k/70000k` `QSV_LOOKAHEAD=0` CFR `fps_mode cfr`, fallback `h264_qsv → h264_nvenc → libx264 veryfast crf17 tune animation` verified via `ffmpeg -encoders`.
+_Avoid_: 4K, source resolution
+
+**proxy**:
+Scaled rendition (`1080p`/`720p`) derived from same `filter_complex_script` via `split→scale` (lanczos), shares Ken Burns and `frame_count == round(duration*30)` with master; `FFMPEG_THREADS 2` each.
+_Avoid_: separate encode, transcode
+
+**ladder**:
+Ordered set `[1440p master, 1080p proxy, 720p proxy]` rendered in one ffmpeg invocation; `CHUNK_SIZE 20` locked, `FFMPEG_THREADS 4` master / `2` per proxy, atomically written.
+_Avoid_: single-rendition, per-file config
