@@ -35,3 +35,15 @@ _Avoid_: separate encode, transcode
 **ladder**:
 Ordered set `[1440p master, 1080p proxy, 720p proxy]` rendered in one ffmpeg invocation; `CHUNK_SIZE 20` locked, `FFMPEG_THREADS 4` master / `2` per proxy, atomically written.
 _Avoid_: single-rendition, per-file config
+
+**visual_prompt**:
+Structured 8-part JSON per span (`subject, action, setting, mood, lighting, composition, style, negative_prompt`) plus `continuity_id` handle, derived from 3-span window (current ±1 with `pause_before`/`pause_after` padding at chunk boundaries); LLM fills only fields with signal, missing fields fallback to `visual_style.txt` preset at `flatten` time, not invented.
+_Avoid_: freeform diffusion text, forced hallucination
+
+**negative_prompt**:
+Deterministic ban injected by validator `purge_subtitle_phrases` + `flatten`: `no text, no subtitles, no letters, no watermark, no signature, no caption, no typography, no calligraphy, no vector, no cel-shading, no 3px, no burned-in subtitles, no lower thirds, no on-screen text` (poster/chart excluded).
+_Avoid_: LLM-generated negative, prompt-level ban only
+
+**continuity_id**:
+Stable handle in 8-part visual_prompt for subject tracking across chunk; built per chunk from prior `subject` fields with embedding similarity fallback (`multilingual-e5`/`bge-m3` local, cosine ≥0.78); if nearest prior match within same chunk ≥ threshold emit `SUMMON_ASSET` with `@asset` chip, else fresh; `±2` spans is soft hint, not hard cutoff.
+_Avoid_: literal name match only, fresh every span
