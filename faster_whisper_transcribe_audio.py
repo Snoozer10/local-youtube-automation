@@ -7,6 +7,13 @@ import time
 
 from faster_whisper import WhisperModel
 
+from timeline_engine import (
+    build_timeline,
+    build_words_from_whisper,
+    resolve_vad_snap_threshold,
+    save_timeline_and_shims,
+)
+
 # Ensure WinGet binaries (ffmpeg / ffprobe) are accessible
 winget_links_path = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links")
 if os.path.exists(winget_links_path):
@@ -524,55 +531,40 @@ def main():
                 {"text": w["word"], "start": w["start"], "end": w["end"]} for w in whisper_words
             ]
 
-        # Generate accurate punctuated sentences / clauses
-        punctuated_sentences = split_into_punctuated_sentences(aligned_words, config)
-
     except Exception as e:
         print(f"Error transcribing master audio: {e}")
         sys.exit(1)
 
     elapsed_time = time.time() - start_time
-    avg_dur = sum(s["end"] - s["start"] for s in punctuated_sentences) / max(
-        1, len(punctuated_sentences)
-    )
     print(f"\nTranscription completed in {elapsed_time:.2f} seconds.")
-    print(
-        f"Generated {len(punctuated_sentences)} Accurate Punctuated Sentences (Average duration: {avg_dur:.2f}s)."
+
+    # Calculate audio duration
+    audio_duration = 0.0
+    if whisper_words:
+        audio_duration = max(w["end"] for w in whisper_words)
+    if aligned_words:
+        audio_duration = max(audio_duration, max(w["end"] for w in aligned_words))
+
+    vad_threshold = resolve_vad_snap_threshold(config)
+    words_for_timeline = build_words_from_whisper(aligned_words, audio_duration=audio_duration)
+    timeline = build_timeline(
+        words_for_timeline,
+        audio_duration=audio_duration,
+        audio_file=os.path.basename(target_audio),
+        fps=int(config.get("OUTPUT_FPS", 30)),
+        vad_snap_threshold=vad_threshold,
     )
-
-    # 1. Save image_timestamps.txt (Exact punctuated sentences with accurate timing)
-    image_timestamp_lines = [
-        f"{format_timestamp(s['start'])} {s['raw_text']}" for s in punctuated_sentences
-    ]
-    path_images = os.path.join(latest_run, "image_timestamps.txt")
-    with open(path_images, "w", encoding="utf-8") as f:
-        f.write("\n".join(image_timestamp_lines))
-    print(f"Image timeline saved: '{path_images}'")
-
-    # 2. Save timestamped_transcript.txt
-    path_transcript = os.path.join(latest_run, "timestamped_transcript.txt")
-    with open(path_transcript, "w", encoding="utf-8") as f:
-        f.write("\n".join(image_timestamp_lines))
-    print(f"Clean transcript saved: '{path_transcript}'")
-
-    # 3. Save SRT Subtitles
-    if config["EXPORT_SRT"]:
-        output_srt_lines = []
-        for srt_idx, s in enumerate(punctuated_sentences, 1):
-            output_srt_lines.extend(
-                [
-                    str(srt_idx),
-                    f"{format_srt_timestamp(s['start'])} --> {format_srt_timestamp(s['end'])}",
-                    s["clean_text"],
-                    "",
-                ]
-            )
-
-        for filename in ["timestamped_transcript.srt", "subtitle_chunks.srt"]:
-            path_srt = os.path.join(latest_run, filename)
-            with open(path_srt, "w", encoding="utf-8-sig") as f:
-                f.write("\n".join(output_srt_lines))
-            print(f"Subtitle SRT saved: '{path_srt}'")
+    timeline_path, created_shims = save_timeline_and_shims(
+        timeline,
+        latest_run,
+        export_srt=bool(config.get("EXPORT_SRT", True)),
+    )
+    print(
+        f"Generated {len(timeline['spans'])} Zero-Drift Timeline Spans across {timeline['total_frames']} frames."
+    )
+    print(f"Canonical timeline saved: '{timeline_path}'")
+    for shim in created_shims:
+        print(f"  -> Shim saved: '{shim}' (+ .sha256 sidecar)")
 
     print("=============================================")
 

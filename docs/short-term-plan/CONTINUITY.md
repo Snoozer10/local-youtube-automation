@@ -1,16 +1,18 @@
-- Goal (incl. success criteria): Scan, review, audit and fix bugs in `flow_image_generator.py` and Gemini planning layer (resolve model selector timing bug and ephemeral session resilience).
+- Goal (incl. success criteria): Implement Robust Dynamic Harmonious Video Pipeline (Spec #12 / Map #4) - Ticket 1 (#14) Canonical timeline.json & Zero-Drift Span Derivation.
 - Constraints/Assumptions:
-  - Windows PowerShell env.
-  - Test suite green before and after changes.
+  - Windows 11 PowerShell environment.
+  - All unit/integration test suites must pass before and after changes.
+  - Strict ADR adherence (ADR 0001 - 0005) and Spec #12.
+  - TDD vertical slice methodology: red -> green -> verify.
 - Key decisions:
-  - Added polling deadline (up to 8s) in `select_gemini_model` to allow SPA UI to hydrate.
-  - Made `open_ephemeral_session` soft-fail if model selector button is not located, continuing with default model.
-  - Reused active CDP tabs and granted clipboard permissions.
-  - Fixed multi-frame prompt completion check to use index set comparison.
-  - Purged dead duplicate legacy Gemini polling functions.
+  - Spec #12 decomposed into 6 tracer-bullet GitHub issues (#14 - #19).
+  - timeline.json schema: version, audio_file, audio_duration, fps, total_frames, checksums, words[], spans[].
+  - Nearest-snap to VAD pauses >= 0.35s (VAD_SNAP_THRESHOLD=0.35s), hard-capped 2.5s-4.5s.
+  - Backward-compatible shims (image_timestamps.txt, timestamped_transcript.txt, srt) with .sha256 sidecars.
+  - Deprecated config keys (IMAGE_PAUSE_SPLIT, SILENCE_SPLIT_GAP) alias to VAD_SNAP_THRESHOLD with one-time warning.
 - State:
-  - Done: Model selector hydration polling loop added in `gemini_utils.py`, `open_ephemeral_session` soft-fail resilience implemented in `gemini_controller.py`, new unit test added in `test_gemini_controller.py`, 304 unit tests passing, ruff check/format green, mypy strict green on core modules.
-  - Now: Ready for execution.
-  - Next: User can run `flow_image_generator.py`.
+  - Done: GitHub Issues #14-#19 published with blocking dependency links and parent #12 tracking table.
+  - Now: Implementing Ticket 1 (#14) via timeline_engine.py with TDD test suite.
+  - Next: Complete Ticket 1 verification, review, and commit; unblock Tickets 2 (#15), 3 (#16), and 4b (#17).
 - Open questions (UNCONFIRMED if needed): None.
-- Working set (files/ids/commands): gemini_utils.py, gemini_controller.py, flow_image_generator.py, tests/unit/test_gemini_controller.py, walkthrough.md
+- Working set (files/ids/commands): timeline_engine.py, faster_whisper_transcribe_audio.py, compile_video.py, tests/unit/test_timeline_engine.py, docs/adr/0001-timeline-unification.md, spec.md

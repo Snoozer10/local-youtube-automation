@@ -689,7 +689,17 @@ def load_manual_overrides(txt_path="manual_animations.txt"):
 
 
 def parse_image_timeline(run_folder: str) -> list:
-    """Parses transcript timestamps with sub-second float precision and normalized timecode keys."""
+    """Parses transcript timestamps with sub-second float precision, preferring canonical timeline.json."""
+    timeline_path = os.path.join(run_folder, "timeline.json")
+    if os.path.exists(timeline_path):
+        try:
+            from timeline_engine import load_timeline_or_shim
+            blocks = load_timeline_or_shim(run_folder)
+            if blocks:
+                return blocks
+        except Exception:
+            pass
+
     txt_path = os.path.join(run_folder, "image_timestamps.txt")
     if not os.path.exists(txt_path):
         txt_path = os.path.join(run_folder, "timestamped_transcript.txt")
@@ -697,6 +707,17 @@ def parse_image_timeline(run_folder: str) -> list:
     blocks = []
     if not os.path.exists(txt_path):
         return blocks
+
+    # Verify sidecar if timeline.json exists
+    if os.path.exists(timeline_path):
+        try:
+            from timeline_engine import verify_shim
+            if not verify_shim(txt_path, timeline_path):
+                raise ValueError(
+                    f"Stale timeline shim detected at '{txt_path}'. Sidecar does not match '{timeline_path}'."
+                )
+        except ImportError:
+            pass
 
     with open(txt_path, encoding="utf-8") as f:
         for line in f:
