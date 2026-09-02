@@ -282,17 +282,12 @@ def detect_hardware_encoder(config: dict) -> dict:
     if config.get("ENCODER_FORCE"):
         return _build_encoder_config(config["ENCODER_FORCE"], config)
 
-    is_high_res = (
-        int(config.get("OUTPUT_HEIGHT", 1080)) > 1080
-        or int(config.get("OUTPUT_WIDTH", 1920)) > 1920
-    )
-
-    if config.get("ENABLE_HARDWARE_ENCODER"):
+    if config.get("ENABLE_HARDWARE_ENCODER", True):
+        # ADR 0002: Prioritize Intel QuickSync (h264_qsv) including 1440p master via format=nv12
+        if _probe_encoder("h264_qsv"):
+            return _build_encoder_config("h264_qsv", config)
         if _probe_encoder("h264_nvenc"):
             return _build_encoder_config("h264_nvenc", config)
-        # Broadwell Intel HD 5500 QSV is unreliable above 1080p
-        if not is_high_res and _probe_encoder("h264_qsv"):
-            return _build_encoder_config("h264_qsv", config)
 
     return _build_encoder_config("libx264", config)
 
@@ -411,12 +406,21 @@ def build_ken_burns_filter(
     config: dict, frame_count: int, camera_action: str, pix_fmt: str = "yuv420p"
 ) -> str:
     """Builds high-precision, sub-pixel stabilized Ken Burns camera motion with BT.709 color accuracy."""
-    zoom_min = float(config.get("KEN_BURNS_ZOOM_MIN", 1.0))
-    zoom_max = float(config.get("KEN_BURNS_ZOOM_MAX", 1.08))
-    upscale = float(config.get("KEN_BURNS_UPSCALE_FACTOR", 1.12))
     fps = int(config["OUTPUT_FPS"])
     w = int(config["OUTPUT_WIDTH"])
     h = int(config["OUTPUT_HEIGHT"])
+    frames = max(1, int(frame_count))
+    duration = frames / float(fps)
+
+    zoom_min = float(config.get("KEN_BURNS_ZOOM_MIN", 1.0))
+    if "KEN_BURNS_ZOOM_MAX" in config and not config.get("KEN_BURNS_DYNAMIC_SCALE", False):
+        zoom_max = float(config["KEN_BURNS_ZOOM_MAX"])
+    else:
+        # Dynamic duration-based scale clamping per spec.md:85
+        # scale = clamp(1.06 + (duration - 2.5)/2.0 * 0.04, 1.06, 1.10)
+        zoom_max = round(max(1.06, min(1.10, 1.06 + (duration - 2.5) / 2.0 * 0.04)), 3)
+
+    upscale = float(config.get("KEN_BURNS_UPSCALE_FACTOR", 1.12))
 
     upscale_w = int(w * upscale)
     upscale_h = int(h * upscale)
@@ -1194,9 +1198,14 @@ def build_chunk_filter_graph(
 
         camera_action = "static"
         if anim_enabled:
-            camera_action = ai_cameras.get(block["name"], "static")
+            ai_action = ai_cameras.get(block["name"], "")
+            if ai_action:
+                camera_action = str(ai_action)
+            else:
+                pool = ["zoom_in", "zoom_out", "pan_left", "pan_right"]
+                camera_action = pool[global_idx % len(pool)]
             if block["name"] in manual_cameras:
-                camera_action = manual_cameras[block["name"]]
+                camera_action = str(manual_cameras[block["name"]])
 
         kb = build_ken_burns_filter(config, frame_count, camera_action)
 
@@ -1933,6 +1942,79 @@ def assemble_final_video(
     )
 
 
+def export_proxy_ladder(
+    master_path: str,
+    run_folder: str,
+    config: dict,
+    encoder_config: dict,
+    execute: bool = True,
+) -> list[dict]:
+    """
+    Exports 1080p and 720p proxy renditions from 1440p master video (ADR 0002).
+    Uses Lanczos scaling for high visual fidelity.
+    """
+    if not os.path.exists(master_path) and execute:
+        return []
+
+    proxies = [
+        {
+            "resolution": "1080p",
+            "width": 1920,
+            "height": 1080,
+            "scale_filter": "scale=-2:1080:flags=lanczos",
+            "crf": 20,
+            "output_path": os.path.abspath(os.path.join(run_folder, "youtube_ready_video_1080p.mp4")),
+        },
+        {
+            "resolution": "720p",
+            "width": 1280,
+            "height": 720,
+            "scale_filter": "scale=-2:720:flags=lanczos",
+            "crf": 22,
+            "output_path": os.path.abspath(os.path.join(run_folder, "youtube_ready_video_720p.mp4")),
+        },
+    ]
+
+    if not execute:
+        return proxies
+
+    print(f"\n[Proxy Ladder] Generating 1080p and 720p renditions from '{os.path.basename(master_path)}'...")
+    for p in proxies:
+        out_file = p["output_path"]
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            config.get("FFMPEG_LOGLEVEL", "warning"),
+            "-i",
+            master_path,
+            "-vf",
+            p["scale_filter"],
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            str(p["crf"]),
+            "-c:a",
+            "copy",
+            "-movflags",
+            "+faststart",
+            out_file,
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, timeout=1200)
+            if res.returncode == 0:
+                print(f"  [Proxy Created] {p['resolution']} -> {os.path.basename(out_file)}")
+            else:
+                print(f"  [Proxy Warning] Failed creating {p['resolution']}: {res.stderr.decode('utf-8', errors='ignore')[:200]}")
+        except Exception as e:
+            print(f"  [Proxy Warning] {p['resolution']} generation error: {e}")
+
+    return proxies
+
+
 def _signature_drift_reason(data: dict, config: dict, expected_codec: str) -> str:
     current_sig = (
         f"{config.get('OUTPUT_WIDTH')}x{config.get('OUTPUT_HEIGHT')}@{config.get('OUTPUT_FPS')}"
@@ -2116,6 +2198,8 @@ def run_chunked_compile(
                 sync_timeline=sync_timeline,
             )
             if ok:
+                if config.get("ENABLE_PROXY_LADDER", True):
+                    export_proxy_ladder(output_path, run_folder, config, current_encoder, execute=True)
                 return True
             else:
                 failed = True

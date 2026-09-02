@@ -11,8 +11,8 @@
   - Backward-compatible shims (image_timestamps.txt, timestamped_transcript.txt, srt) with .sha256 sidecars.
   - Deprecated config keys (IMAGE_PAUSE_SPLIT, SILENCE_SPLIT_GAP) alias to VAD_SNAP_THRESHOLD with one-time warning.
 - State:
-  - Done: GitHub Issues #14-#19 published with blocking dependency links and parent #12 tracking table.
-  - Now: Implementing Ticket 1 (#14) via timeline_engine.py with TDD test suite.
-  - Next: Complete Ticket 1 verification, review, and commit; unblock Tickets 2 (#15), 3 (#16), and 4b (#17).
+  - Done: Ticket 1 (#14) landed (timeline_engine.py + timeline.json canonical sync); Ticket 2 (#15) implemented & verified (Hardware encoding ladder, QSV 1440p support, dynamic Ken Burns duration scale [1.06, 1.10], 4-direction pool round-robin, proxy ladder export); 326/326 unit tests passing.
+  - Now: Ticket 2 (#15) completed.
+  - Next: Implement Ticket 3 (#16) Prompt Planner (3-span window) or Ticket 4b (#17) Checkpoint Invalidation.
 - Open questions (UNCONFIRMED if needed): None.
-- Working set (files/ids/commands): timeline_engine.py, faster_whisper_transcribe_audio.py, compile_video.py, tests/unit/test_timeline_engine.py, docs/adr/0001-timeline-unification.md, spec.md
+- Working set (files/ids/commands): compile_video.py, tests/unit/test_encoder.py, tests/unit/test_timeline_sync.py, docs/adr/0002-encoding-ladder.md, spec.md

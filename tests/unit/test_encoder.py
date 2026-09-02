@@ -113,8 +113,8 @@ class TestBuildEncoderConfig:
 class TestDetectHardwareEncoder:
     """Tests for detect_hardware_encoder(config)."""
 
-    def test_nvenc_priority_when_available(self, encoder_config, monkeypatch):
-        """NVENC selected first when both hardware encoders are available."""
+    def test_qsv_priority_when_available(self, encoder_config, monkeypatch):
+        """QSV selected first when both hardware encoders are available per ADR 0002."""
 
         def mock_probe(encoder):
             return encoder in ["h264_qsv", "h264_nvenc", "libx264"]
@@ -123,8 +123,8 @@ class TestDetectHardwareEncoder:
 
         result = compile_video.detect_hardware_encoder(encoder_config)
 
-        assert result["video_codec"] == "h264_nvenc"
-        assert result["hwaccel"] == "cuda"
+        assert result["video_codec"] == "h264_qsv"
+        assert result["hwaccel"] == "qsv"
 
     def test_qsv_selected_when_low_res_and_no_nvenc(self, encoder_config, monkeypatch):
         """QSV selected when NVENC unavailable and output is at or below 1080p."""
@@ -141,8 +141,8 @@ class TestDetectHardwareEncoder:
         assert result["video_codec"] == "h264_qsv"
         assert result["hwaccel"] == "qsv"
 
-    def test_qsv_skipped_when_high_res(self, encoder_config, monkeypatch):
-        """QSV skipped above 1080p even when available; falls back to CPU."""
+    def test_qsv_allowed_when_high_res(self, encoder_config, monkeypatch):
+        """QSV allowed at 1440p master resolution with format=nv12 per ADR 0002."""
         encoder_config["OUTPUT_WIDTH"] = 2560
         encoder_config["OUTPUT_HEIGHT"] = 1440
 
@@ -153,8 +153,8 @@ class TestDetectHardwareEncoder:
 
         result = compile_video.detect_hardware_encoder(encoder_config)
 
-        assert result["video_codec"] == "libx264"
-        assert result["hwaccel"] == "none"
+        assert result["video_codec"] == "h264_qsv"
+        assert result["hwaccel"] == "qsv"
 
     def test_nvenc_fallback_when_no_qsv(self, encoder_config, monkeypatch):
         """NVENC selected when QSV unavailable."""

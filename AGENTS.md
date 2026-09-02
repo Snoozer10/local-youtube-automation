@@ -81,7 +81,7 @@ When the user requests a durable behavior change, record it here or in the relev
 ## Child DOX Index
 
 - No child AGENTS.md files are needed for the current repository structure.
-- Root-owned files: `README.md`, `LICENSE`, `banner.jpg`, `video-thumbnail.jpg`, `timeline_engine.py` (canonical timeline sync engine), and root-level project documentation.
+- Root-owned files: `README.md`, `GEMINI.md`, `CLAUDE.md`, `LICENSE`, `banner.jpg`, `video-thumbnail.jpg`, `timeline_engine.py` (canonical timeline sync engine), and root-level project documentation.
 
 <!-- pane-agent-context:start -->
 ## Pane

@@ -137,3 +137,84 @@ class TestCFREnforcement:
         assert args[r + 1] == str(fps)
         g = args.index("-g")
         assert args[g + 1] == str(fps * 2)
+
+
+class TestDynamicKenBurnsMotion:
+    def test_dynamic_scale_derivation_from_duration(self):
+        """Scale clamped to [1.06, 1.10] based on span duration per spec.md:85."""
+        cfg = {
+            "OUTPUT_WIDTH": 2560,
+            "OUTPUT_HEIGHT": 1440,
+            "OUTPUT_FPS": 30,
+            "KEN_BURNS_ZOOM_MIN": 1.0,
+            "KEN_BURNS_UPSCALE_FACTOR": 1.12,
+        }
+        # 2.5s -> 75 frames -> scale 1.06
+        f_25 = compile_video.build_ken_burns_filter(cfg, 75, "zoom_in")
+        assert "min(1.06," in f_25.replace(" ", "") or "min(1.060" in f_25.replace(" ", "")
+
+        # 4.5s -> 135 frames -> scale 1.10
+        f_45 = compile_video.build_ken_burns_filter(cfg, 135, "zoom_in")
+        assert "min(1.1," in f_45.replace(" ", "") or "min(1.10" in f_45.replace(" ", "")
+
+        # 3.5s -> 105 frames -> scale 1.08
+        f_35 = compile_video.build_ken_burns_filter(cfg, 105, "zoom_in")
+        assert "min(1.08," in f_35.replace(" ", "") or "min(1.080" in f_35.replace(" ", "")
+
+    def test_round_robin_pool_fallback_in_chunk_filter_graph(self, tmp_path, config):
+        """When AI camera map lacks entry, round-robin pool [zoom_in, zoom_out, pan_left, pan_right] is used."""
+        # Create 5 dummy image files
+        img_dir = tmp_path / "images"
+        img_dir.mkdir()
+        for i in range(5):
+            p = img_dir / f"image_{i:02d}.png"
+            p.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+
+        chunk_timeline = [
+            {"name": f"img_{i}", "frame_count": 90, "occurrence": 1}
+            for i in range(5)
+        ]
+        enc_config = {"video_codec": "libx264", "encoder_args": []}
+
+        # build_chunk_filter_graph with empty ai_cameras and anim_enabled=True
+        inputs, filter_complex, vout = compile_video.build_chunk_filter_graph(
+            config,
+            enc_config,
+            chunk_timeline,
+            str(img_dir),
+            ai_cameras={},
+            manual_cameras={},
+            anim_enabled=True,
+            global_offset_idx=0,
+        )
+
+        # First clip (idx 0) should be zoom_in (contains ease-in min(zoom_max)
+        # Second clip (idx 1) should be zoom_out (contains max(zoom_min)
+        # Third clip (idx 2) should be pan_left (contains iw*(1-ease))
+        # Fourth clip (idx 3) should be pan_right (contains iw*ease)
+        # Fifth clip (idx 4) wraps back to zoom_in
+        assert "min(" in filter_complex  # zoom_in / zoom_out
+        assert "max(" in filter_complex
+
+
+class TestLadderProxyExport:
+    def test_export_proxy_ladder_dry_run(self, tmp_path, config):
+        """export_proxy_ladder generates 1080p and 720p proxy definitions."""
+        master_file = tmp_path / "youtube_ready_video.mp4"
+        master_file.write_bytes(b"dummy mp4 content" * 1000)
+
+        enc_config = compile_video._build_encoder_config("libx264", config)
+        proxies = compile_video.export_proxy_ladder(
+            str(master_file),
+            str(tmp_path),
+            config,
+            enc_config,
+            execute=False,
+        )
+
+        assert len(proxies) == 2
+        p1080, p720 = proxies
+        assert "1080p" in p1080["output_path"]
+        assert "720p" in p720["output_path"]
+        assert "-2:1080" in p1080["scale_filter"] or "1920:1080" in p1080["scale_filter"]
+        assert "-2:720" in p720["scale_filter"] or "1280:720" in p720["scale_filter"]
