@@ -15,6 +15,11 @@ from playwright.sync_api import sync_playwright
 from pipeline_manifest import PhaseStatus, PipelineManifest, compute_script_hash
 from prompt_planner import build_compact_preamble, plan_all_chunks
 from roadmap_orchestrator import generate_master_roadmap, load_or_migrate_roadmap
+from text_gate import (
+    STRENGTHENED_NEGATIVE_PROMPT,
+    check_text_collision,
+    dump_text_collision_debug,
+)
 from utils import (
     get_config_value,
     kill_cdp_chrome,
@@ -3231,8 +3236,39 @@ def main() -> None:
                                             min_size_kb=20,
                                         )
                                         if saved:
-                                            if not is_duplicate:
-                                                download_attempt_success = True
+                                            # Layer 3: OCR Gate Check (Ticket 5 / #18 / ADR 0004)
+                                            has_collision, ocr_boxes = check_text_collision(current_save_path)
+                                            if has_collision:
+                                                print(
+                                                    f"  ⚠️ [TEXT COLLISION] Detected rendered text in {os.path.basename(current_save_path)}: {ocr_boxes}"
+                                                )
+                                                if attempt == 1:
+                                                    print("  🔄 Retrying once with strengthened negative prompt...")
+                                                    payload_text = f"{payload_text}, {STRENGTHENED_NEGATIVE_PROMPT}"
+                                                    if os.path.exists(current_save_path):
+                                                        try:
+                                                            os.remove(current_save_path)
+                                                        except OSError:
+                                                            pass
+                                                    continue
+                                                else:
+                                                    dump_path = os.path.join(
+                                                        subfolder, "debug", f"malformed_chunk_{idx}.json"
+                                                    )
+                                                    dump_text_collision_debug(
+                                                        dump_path, idx, current_save_path, ocr_boxes, payload_text
+                                                    )
+                                                    print(
+                                                        f"  ❌ [TEXT COLLISION] Persistent collision after retry. Debug dump: {dump_path}"
+                                                    )
+                                                    if os.path.exists(current_save_path):
+                                                        try:
+                                                            os.remove(current_save_path)
+                                                        except OSError:
+                                                            pass
+                                            else:
+                                                if not is_duplicate:
+                                                    download_attempt_success = True
                                         else:
                                             print(
                                                 f"  ⚠️ All extraction attempts failed for {os.path.basename(current_save_path)}"

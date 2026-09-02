@@ -11,8 +11,8 @@
   - Backward-compatible shims (image_timestamps.txt, timestamped_transcript.txt, srt) with .sha256 sidecars.
   - Deprecated config keys (IMAGE_PAUSE_SPLIT, SILENCE_SPLIT_GAP) alias to VAD_SNAP_THRESHOLD with one-time warning.
 - State:
-  - Done: Ticket 1 (#14) landed; Ticket 2 (#15) landed; Ticket 3 (#16) landed; Ticket 4b (#17) implemented & verified (timeline hash checkpoint invalidation in CheckpointManager, _signature_drift_reason, and _checkpoint_resume_gate); 340/340 unit tests passing.
-  - Now: Ticket 4b (#17) completed.
-  - Next: Implement Ticket 5 (#18) Roadmap Orchestrator 25-Row Windows & Schema Normalizer.
+  - Done: Ticket 1 (#14) landed; Ticket 2 (#15) landed; Ticket 3 (#16) landed; Ticket 4b (#17) landed; Ticket 5 (#18) implemented & verified (multi-layer text collision gate in text_gate.py with pytesseract + MSER fallback, retry with strengthened negative prompt, debug dump, and integration in flow_image_generator.py); 348/348 unit tests passing.
+  - Now: Ticket 5 (#18) completed.
+  - Next: Implement Ticket 6 (#19) End-to-End Integration, Audio DSP Normalization & Quality Gates.
 - Open questions (UNCONFIRMED if needed): None.
-- Working set (files/ids/commands): compile_video.py, tests/unit/test_checkpoint_resilience.py, tests/unit/test_prompt_planner.py, prompt_planner.py
+- Working set (files/ids/commands): text_gate.py, tests/unit/test_text_gate.py, flow_image_generator.py, docs/adr/0004-text-collision-gate.md
