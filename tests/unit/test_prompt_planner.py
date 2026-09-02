@@ -139,11 +139,13 @@ def manifest(tmp_path: Path) -> PipelineManifest:
 
 @pytest.fixture
 def fake_controller(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    state: dict[str, Any] = {"responses": [], "injections": [], "sessions": 0, "models": []}
+    state: dict[str, Any] = {"responses": [], "injections": [], "sessions": 0, "models": [], "last_idx": None}
 
-    def fake_open(page: Any, target_model: str) -> bool:
-        state["sessions"] += 1
-        state["models"].append(target_model)
+    def fake_persistent(page: Any, current_start_idx: int, planner_model: str) -> bool:
+        if state["last_idx"] is None or current_start_idx - state["last_idx"] >= 100:
+            state["sessions"] += 1
+            state["last_idx"] = current_start_idx
+            state["models"].append(planner_model)
         return True
 
     def fake_inject(page: Any, text: str, fill_limit: int = 500) -> bool:
@@ -155,7 +157,7 @@ def fake_controller(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             raise AssertionError("no queued responses left")
         return str(state["responses"].pop(0))
 
-    monkeypatch.setattr(pp, "open_ephemeral_session", fake_open)
+    monkeypatch.setattr(pp, "ensure_persistent_gemini_session", fake_persistent)
     monkeypatch.setattr(pp, "inject_prompt_via_cdp", fake_inject)
     monkeypatch.setattr(pp, "wait_for_gemini_turn_completion", fake_wait)
     monkeypatch.setattr(pp, "jitter_delay", lambda *a, **k: 0.0)

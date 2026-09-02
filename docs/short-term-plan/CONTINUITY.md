@@ -11,8 +11,8 @@
   - Backward-compatible shims (image_timestamps.txt, timestamped_transcript.txt, srt) with .sha256 sidecars.
   - Deprecated config keys (IMAGE_PAUSE_SPLIT, SILENCE_SPLIT_GAP) alias to VAD_SNAP_THRESHOLD with one-time warning.
 - State:
-  - Done: Ticket 1 (#14) landed (canonical timeline.json & zero-drift span derivation); Ticket 2 (#15) landed (hardware encoding ladder, dynamic Ken Burns, proxy ladder); Ticket 3 (#16) implemented & verified (3-span windowed context, 8-part VisualPrompt schema + continuity_id, English-only gate with transliteration fallback, deterministic strict negative prompt injection, SubjectContinuityTracker); 335/335 unit tests passing.
-  - Now: Ticket 3 (#16) completed.
-  - Next: Implement Ticket 4b (#17) Checkpoint Invalidation via Timeline Hash.
+  - Done: Ticket 1 (#14) landed; Ticket 2 (#15) landed; Ticket 3 (#16) landed; Ticket 4b (#17) implemented & verified (timeline hash checkpoint invalidation in CheckpointManager, _signature_drift_reason, and _checkpoint_resume_gate); 340/340 unit tests passing.
+  - Now: Ticket 4b (#17) completed.
+  - Next: Implement Ticket 5 (#18) Roadmap Orchestrator 25-Row Windows & Schema Normalizer.
 - Open questions (UNCONFIRMED if needed): None.
-- Working set (files/ids/commands): prompt_planner.py, validator.py, tests/unit/test_prompt_planner.py, tests/unit/test_validator.py, docs/adr/0003-prompt-extraction.md, spec.md
+- Working set (files/ids/commands): compile_video.py, tests/unit/test_checkpoint_resilience.py, tests/unit/test_prompt_planner.py, prompt_planner.py

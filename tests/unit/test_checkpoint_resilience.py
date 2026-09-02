@@ -217,3 +217,72 @@ class TestPipelineStateRoundtrip:
         run_agency.save_pipeline_state(str(target), {"video": True})
         assert not (target / "pipeline.json").exists()
         assert run_agency.get_pipeline_state(str(target))["video"] is False
+
+
+class TestTimelineHashInvalidation:
+    def test_timeline_hash_stored_on_initialize(self, tmp_path, config):
+        manager = compile_video.CheckpointManager(str(tmp_path), config)
+        manager.initialize(
+            2,
+            make_encoder_config(),
+            "audio.wav",
+            10.0,
+            timeline_hash="sha256_timeline_v1",
+        )
+        assert manager.data["timeline_hash"] == "sha256_timeline_v1"
+
+    def test_timeline_hash_mismatch_invalidates_checkpoint(self, tmp_path, config):
+        manager = compile_video.CheckpointManager(str(tmp_path), config)
+        manager.initialize(
+            2,
+            make_encoder_config(),
+            "audio.wav",
+            10.0,
+            timeline_hash="sha256_timeline_v1",
+        )
+        reloaded = compile_video.CheckpointManager(str(tmp_path), config)
+        assert not reloaded.is_signature_valid(expected_timeline_hash="sha256_timeline_v2")
+
+    def test_timeline_hash_match_keeps_checkpoint_valid(self, tmp_path, config):
+        manager = compile_video.CheckpointManager(str(tmp_path), config)
+        manager.initialize(
+            2,
+            make_encoder_config(),
+            "audio.wav",
+            10.0,
+            timeline_hash="sha256_timeline_v1",
+        )
+        reloaded = compile_video.CheckpointManager(str(tmp_path), config)
+        assert reloaded.is_signature_valid(expected_timeline_hash="sha256_timeline_v1")
+
+    def test_signature_drift_reason_reports_timeline_hash(self, tmp_path, config):
+        manager = compile_video.CheckpointManager(str(tmp_path), config)
+        manager.initialize(
+            2,
+            make_encoder_config(),
+            "audio.wav",
+            10.0,
+            timeline_hash="sha256_timeline_v1",
+        )
+        reason = compile_video._signature_drift_reason(
+            manager.data, config, "libx264", current_timeline_hash="sha256_timeline_v2"
+        )
+        assert "timeline" in reason.lower()
+
+    def test_checkpoint_resume_gate_invalidates_on_timeline_drift(self, tmp_path, config):
+        config["ENABLE_CHECKPOINT_RESUME"] = True
+        manager = compile_video.CheckpointManager(str(tmp_path), config)
+        manager.initialize(
+            2,
+            make_encoder_config(),
+            "audio.wav",
+            10.0,
+            timeline_hash="sha256_timeline_v1",
+        )
+        out_path = str(tmp_path / "youtube_ready_video.mp4")
+        # Resume gate with drifted timeline hash invalidates checkpoint
+        res = compile_video._checkpoint_resume_gate(
+            config, manager, out_path, "libx264", timeline_hash="sha256_timeline_v2"
+        )
+        assert res is False
+        assert manager.data is None

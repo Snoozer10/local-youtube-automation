@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import queue
@@ -322,14 +323,26 @@ class CheckpointManager:
         audio_path: str,
         audio_duration: float,
         subtitle_path: str = None,
+        timeline_hash: str | None = None,
     ):
         now_str = datetime.now(timezone.utc).isoformat()
         # Save render spec signature to detect config changes across runs
         render_signature = f"{self.config.get('OUTPUT_WIDTH')}x{self.config.get('OUTPUT_HEIGHT')}@{self.config.get('OUTPUT_FPS')}"
 
+        resolved_timeline_hash = timeline_hash
+        if resolved_timeline_hash is None:
+            timeline_json_path = os.path.join(self.run_folder, "timeline.json")
+            if os.path.exists(timeline_json_path):
+                try:
+                    with open(timeline_json_path, "rb") as f:
+                        resolved_timeline_hash = hashlib.sha256(f.read()).hexdigest()
+                except OSError:
+                    pass
+
         self.data = {
             "version": 3,
             "render_signature": render_signature,
+            "timeline_hash": resolved_timeline_hash,
             "run_folder": self.run_folder,
             "encoder": encoder_config["video_codec"],
             "encoder_args": encoder_config["encoder_args"],
@@ -346,13 +359,17 @@ class CheckpointManager:
         }
         self.save()
 
-    def is_signature_valid(self, expected_codec: str | None = None) -> bool:
+    def is_signature_valid(
+        self,
+        expected_codec: str | None = None,
+        expected_timeline_hash: str | None = None,
+    ) -> bool:
         """Returns False if the render spec drifted since checkpoint creation.
 
         Always checks dimensions/FPS signature; adds audio-duration tolerance
         (+/-0.05s) when both stored and current durations are known (legacy
-        checkpoints without the key skip the check); verifies codec only when
-        expected_codec is supplied.
+        checkpoints without the key skip the check); validates timeline_hash if
+        expected_timeline_hash is supplied; verifies codec only when expected_codec is supplied.
         """
         if not isinstance(self.data, dict):
             return True
@@ -367,6 +384,10 @@ class CheckpointManager:
                 if abs(float(stored_duration) - float(current_duration)) > 0.05:
                     return False
             except (TypeError, ValueError):
+                return False
+
+        if expected_timeline_hash is not None and self.data.get("timeline_hash") is not None:
+            if self.data.get("timeline_hash") != expected_timeline_hash:
                 return False
 
         if expected_codec is not None and self.data.get("encoder") != expected_codec:
@@ -2015,7 +2036,12 @@ def export_proxy_ladder(
     return proxies
 
 
-def _signature_drift_reason(data: dict, config: dict, expected_codec: str) -> str:
+def _signature_drift_reason(
+    data: dict,
+    config: dict,
+    expected_codec: str,
+    current_timeline_hash: str | None = None,
+) -> str:
     current_sig = (
         f"{config.get('OUTPUT_WIDTH')}x{config.get('OUTPUT_HEIGHT')}@{config.get('OUTPUT_FPS')}"
     )
@@ -2033,26 +2059,40 @@ def _signature_drift_reason(data: dict, config: dict, expected_codec: str) -> st
         duration_drifted = True
     if duration_drifted:
         return "audio duration"
+    if (
+        current_timeline_hash is not None
+        and data.get("timeline_hash") is not None
+        and data.get("timeline_hash") != current_timeline_hash
+    ):
+        return f"timeline hash ({data.get('timeline_hash')} vs {current_timeline_hash})"
     return f"encoder codec ({data.get('encoder')} vs {expected_codec})"
 
 
 def _checkpoint_resume_gate(
-    config: dict, checkpoint: CheckpointManager, output_path: str, expected_codec: str
+    config: dict,
+    checkpoint: CheckpointManager,
+    output_path: str,
+    expected_codec: str,
+    timeline_hash: str | None = None,
 ) -> bool:
     """Invalidates drifted checkpoints in place; True when the render is already complete."""
     if config["ENABLE_CHECKPOINT_RESUME"] and checkpoint and isinstance(checkpoint.data, dict):
-        if not checkpoint.is_signature_valid(expected_codec=expected_codec):
-            drift_reason = _signature_drift_reason(checkpoint.data, config, expected_codec)
+        if not checkpoint.is_signature_valid(
+            expected_codec=expected_codec,
+            expected_timeline_hash=timeline_hash,
+        ):
+            drift_reason = _signature_drift_reason(
+                checkpoint.data, config, expected_codec, current_timeline_hash=timeline_hash
+            )
             print(f"  [RESUME] {drift_reason} drifted since checkpoint creation.")
             print("  [RESUME] Render signature drifted - reinitializing checkpoint.")
             checkpoint.data = None
 
     if config["ENABLE_CHECKPOINT_RESUME"] and checkpoint and checkpoint.data is not None:
-        if checkpoint.data.get("completed_clips") == checkpoint.data.get(
-            "total_clips"
-        ) and os.path.exists(output_path):
-            print("  [RESUME] Video render already complete. Skipping.")
-            return True
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+            if checkpoint.data.get("completed_clips") == checkpoint.data.get("total_clips"):
+                print("  [RESUME] Full video already assembled and valid. Skipping compilation.")
+                return True
 
     return False
 
@@ -2130,7 +2170,23 @@ def run_chunked_compile(
 ) -> bool:
     output_path = os.path.abspath(os.path.join(run_folder, "youtube_ready_video.mp4"))
 
-    if _checkpoint_resume_gate(config, checkpoint, output_path, encoder_config["video_codec"]):
+    # Resolve timeline.json SHA256 hash for checkpoint invalidation (Ticket 4b / Spec #12)
+    timeline_hash = None
+    timeline_json_path = os.path.join(run_folder, "timeline.json")
+    if os.path.exists(timeline_json_path):
+        try:
+            with open(timeline_json_path, "rb") as f:
+                timeline_hash = hashlib.sha256(f.read()).hexdigest()
+        except OSError:
+            pass
+
+    if _checkpoint_resume_gate(
+        config,
+        checkpoint,
+        output_path,
+        encoder_config["video_codec"],
+        timeline_hash=timeline_hash,
+    ):
         return True
 
     subtitle_path = None
@@ -2149,7 +2205,12 @@ def run_chunked_compile(
     if config["ENABLE_CHECKPOINT_RESUME"] and checkpoint and checkpoint.data is None:
         audio_duration = config.get("_audio_duration", 0.0)
         checkpoint.initialize(
-            len(sync_timeline), encoder_config, audio_path, audio_duration, subtitle_path
+            len(sync_timeline),
+            encoder_config,
+            audio_path,
+            audio_duration,
+            subtitle_path,
+            timeline_hash=timeline_hash,
         )
 
     ai_cameras = load_ai_camera_decisions(run_folder)
