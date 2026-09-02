@@ -11,8 +11,8 @@
   - Backward-compatible shims (image_timestamps.txt, timestamped_transcript.txt, srt) with .sha256 sidecars.
   - Deprecated config keys (IMAGE_PAUSE_SPLIT, SILENCE_SPLIT_GAP) alias to VAD_SNAP_THRESHOLD with one-time warning.
 - State:
-  - Done: Ticket 1 (#14) landed (timeline_engine.py + timeline.json canonical sync); Ticket 2 (#15) implemented & verified (Hardware encoding ladder, QSV 1440p support, dynamic Ken Burns duration scale [1.06, 1.10], 4-direction pool round-robin, proxy ladder export); 326/326 unit tests passing.
-  - Now: Ticket 2 (#15) completed.
-  - Next: Implement Ticket 3 (#16) Prompt Planner (3-span window) or Ticket 4b (#17) Checkpoint Invalidation.
+  - Done: Ticket 1 (#14) landed (canonical timeline.json & zero-drift span derivation); Ticket 2 (#15) landed (hardware encoding ladder, dynamic Ken Burns, proxy ladder); Ticket 3 (#16) implemented & verified (3-span windowed context, 8-part VisualPrompt schema + continuity_id, English-only gate with transliteration fallback, deterministic strict negative prompt injection, SubjectContinuityTracker); 335/335 unit tests passing.
+  - Now: Ticket 3 (#16) completed.
+  - Next: Implement Ticket 4b (#17) Checkpoint Invalidation via Timeline Hash.
 - Open questions (UNCONFIRMED if needed): None.
-- Working set (files/ids/commands): compile_video.py, tests/unit/test_encoder.py, tests/unit/test_timeline_sync.py, docs/adr/0002-encoding-ladder.md, spec.md
+- Working set (files/ids/commands): prompt_planner.py, validator.py, tests/unit/test_prompt_planner.py, tests/unit/test_validator.py, docs/adr/0003-prompt-extraction.md, spec.md

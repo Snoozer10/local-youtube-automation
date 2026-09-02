@@ -448,3 +448,58 @@ class TestResumeAndMerge:
         assert len(result) == 30
         saved = json.loads((tmp_path / "flow_prompts.json").read_text(encoding="utf-8"))
         assert [frame["index"] for frame in saved] == list(range(1, 31))
+
+
+class Test3SpanWindowContext:
+    def test_build_3span_window_context_middle_span(self):
+        spans = [
+            {"index": 1, "start": 0.0, "end": 3.0, "text": "Sentence one", "pause_before": 0.0, "pause_after": 0.4},
+            {"index": 2, "start": 3.4, "end": 6.8, "text": "Sentence two", "pause_before": 0.4, "pause_after": 0.5},
+            {"index": 3, "start": 7.3, "end": 10.5, "text": "Sentence three", "pause_before": 0.5, "pause_after": 0.0},
+        ]
+        ctx = pp.build_3span_window_context(spans, target_index=2)
+        assert ctx["current_span"]["index"] == 2
+        assert ctx["prev_span"]["index"] == 1
+        assert ctx["next_span"]["index"] == 3
+        assert ctx["pause_before"] == 0.4
+        assert ctx["pause_after"] == 0.5
+
+    def test_build_3span_window_context_boundary_spans(self):
+        spans = [
+            {"index": 1, "start": 0.0, "end": 3.0, "text": "First sentence", "pause_before": 0.0, "pause_after": 0.4},
+            {"index": 2, "start": 3.4, "end": 6.8, "text": "Second sentence", "pause_before": 0.4, "pause_after": 0.0},
+        ]
+        # First span has no prev_span
+        ctx_first = pp.build_3span_window_context(spans, target_index=1)
+        assert ctx_first["prev_span"] is None
+        assert ctx_first["next_span"]["index"] == 2
+
+        # Last span has no next_span
+        ctx_last = pp.build_3span_window_context(spans, target_index=2)
+        assert ctx_last["prev_span"]["index"] == 1
+        assert ctx_last["next_span"] is None
+
+
+class TestSubjectContinuityTracker:
+    def test_register_and_match_similar_subject(self):
+        tracker = pp.SubjectContinuityTracker(similarity_threshold=0.78)
+        # Register host
+        c_id = tracker.register_subject("CHARACTER_HOST_MAIN", "Ahmed El-Ghandour with afro hair and wire glasses")
+        assert c_id == "SUBJ_01"
+
+        # Query coreferenced / similar subject
+        match_id, sim, is_match = tracker.resolve_subject("Ahmed El-Ghandour host at desk")
+        assert is_match is True
+        assert match_id == "SUBJ_01"
+        assert sim >= 0.78
+
+    def test_unrelated_subject_creates_new_continuity_id(self):
+        tracker = pp.SubjectContinuityTracker(similarity_threshold=0.78)
+        tracker.register_subject("CHARACTER_HOST_MAIN", "Host with glasses")
+
+        match_id, sim, is_match = tracker.resolve_subject("A mechanical clockwork gears diagram")
+        assert is_match is False
+        assert sim < 0.78
+        # Registering new subject gives new id
+        new_id = tracker.register_subject("CLOCKWORK_DIAGRAM", "A mechanical clockwork gears diagram")
+        assert new_id == "SUBJ_02"

@@ -22,6 +22,8 @@ __all__ = [
     "flatten_visual_prompt_to_diffusion_text",
     "parse_timestamp_seconds",
     "purge_subtitle_phrases",
+    "transliterate_arabic_fallback",
+    "validate_english_only_prompt",
     "verify_pipeline_integrity",
 ]
 
@@ -29,6 +31,76 @@ TIMESTAMP_PATTERN = re.compile(r"^\[\d{1,2}:\d{2}(:\d{2})?\]")
 _FULL_TIMESTAMP_PATTERN = re.compile(r"^\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]$")
 _ARABIC_RANGE_PATTERN = re.compile(r"[\u0600-\u06FF]")
 _LATIN_LETTER_PATTERN = re.compile(r"[A-Za-z]")
+
+STRICT_NEGATIVE_PROMPT = (
+    "no text, no subtitles, no letters, no watermark, no signature, no caption, "
+    "no typography, no calligraphy, no vector, no cel-shading, no 3px, "
+    "no burned-in subtitles, no lower thirds, no on-screen text"
+)
+
+
+def validate_english_only_prompt(text: str) -> tuple[bool, str]:
+    """Verifies that diffusion prompt text does not contain raw Arabic characters (ADR 0003)."""
+    if _ARABIC_RANGE_PATTERN.search(text):
+        return False, "Arabic script detected in diffusion prompt text; output must be English only."
+    return True, ""
+
+
+_ARABIC_TRANSLITERATION_MAP = {
+    "ال": "al-",
+    "ا": "a",
+    "أ": "a",
+    "إ": "i",
+    "آ": "aa",
+    "ب": "b",
+    "ت": "t",
+    "ث": "th",
+    "ج": "j",
+    "ح": "h",
+    "خ": "kh",
+    "د": "d",
+    "ذ": "dh",
+    "ر": "r",
+    "ز": "z",
+    "س": "s",
+    "ش": "sh",
+    "ص": "s",
+    "ض": "d",
+    "ط": "t",
+    "ظ": "z",
+    "ع": "a",
+    "غ": "gh",
+    "ف": "f",
+    "ق": "q",
+    "ك": "k",
+    "ل": "l",
+    "م": "m",
+    "ن": "n",
+    "ه": "h",
+    "و": "w",
+    "ي": "y",
+    "ى": "a",
+    "ة": "ah",
+    "ء": "'",
+    "ئ": "y",
+    "ؤ": "w",
+    "َ": "a",
+    "ُ": "u",
+    "ِ": "i",
+    "ّ": "",
+    "ْ": "",
+    "ً": "an",
+    "ٌ": "un",
+    "ٍ": "in",
+}
+
+
+def transliterate_arabic_fallback(text: str) -> str:
+    """Transliterates Arabic characters to Romanized phonetics for diffusion safety (ADR 0003)."""
+    res = text
+    for ar, en in _ARABIC_TRANSLITERATION_MAP.items():
+        res = res.replace(ar, en)
+    return res
 
 
 def purge_subtitle_phrases(text: str) -> str:
@@ -130,12 +202,22 @@ def flatten_visual_prompt_to_diffusion_text(vp: Any) -> str:
             r"(?i)mixed with 18th-century oil painting cutout parody\.?", "", clean_style
         ).strip()
 
+    mood = vp.get("mood", "").strip()
+    lighting = vp.get("lighting", "").strip()
+    if mood:
+        prompt_parts.append(f"Mood: {mood.rstrip('.')}.")
+    if lighting and not accent:
+        prompt_parts.append(f"Lighting: {lighting.rstrip('.')}.")
+
     if clean_style:
         prompt_parts.append(f"Art Style: {clean_style.rstrip('.')}.")
     else:
         prompt_parts.append(
             "Art Style: 2D graphic vector animation explainer style, crisp 3px black outlines, rich 2-step flat cel-shading, vibrant warm studio illumination, 16:9 widescreen."
         )
+
+    # Deterministic Negative Prompt Injection (ADR 0003)
+    prompt_parts.append(f"Negative Prompt: {STRICT_NEGATIVE_PROMPT}.")
 
     return " ".join(prompt_parts)
 
@@ -225,6 +307,10 @@ class VisualPrompt(BaseModel):
     text_overlay_arabic: str = "NONE"
     accent_color_hook: str = ""
     style_anchor: str = Field(min_length=1)
+    mood: str = ""
+    lighting: str = ""
+    negative_prompt: str = ""
+    continuity_id: str = ""
 
 
 class FrameItem(BaseModel):

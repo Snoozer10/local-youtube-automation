@@ -10,8 +10,10 @@ surviving baseline file.
 
 from __future__ import annotations
 
+import difflib
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -24,13 +26,16 @@ from gemini_controller import (
     inject_prompt_via_cdp,
     jitter_delay,
     log,
-    open_ephemeral_session,
     wait_for_gemini_turn_completion,
 )
 from json_sanitizer import clean_and_repair_json
 from pipeline_manifest import ChunkStatus, PipelineManifest
 from roadmap_orchestrator import RoadmapRow
-from validator import FrameItem
+from validator import (
+    FrameItem,
+    transliterate_arabic_fallback,
+    validate_english_only_prompt,
+)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -103,6 +108,99 @@ def _condense(text: str) -> str:
 
 def _is_int(value: Any) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def build_3span_window_context(
+    spans: list[dict[str, Any]],
+    target_index: int,
+) -> dict[str, Any]:
+    """
+    Constructs a 3-span window context ([i-1, i, i+1]) with boundary pause padding (ADR 0003).
+    """
+    spans_by_idx = {s["index"]: s for s in spans if isinstance(s, dict) and "index" in s}
+    current = spans_by_idx.get(target_index)
+    if current is None:
+        raise ValueError(f"Span index {target_index} not found in spans")
+
+    prev_span = spans_by_idx.get(target_index - 1)
+    next_span = spans_by_idx.get(target_index + 1)
+
+    pause_before = float(current.get("pause_before", 0.0))
+    pause_after = float(current.get("pause_after", 0.0))
+
+    return {
+        "current_span": current,
+        "prev_span": prev_span,
+        "next_span": next_span,
+        "pause_before": pause_before,
+        "pause_after": pause_after,
+    }
+
+
+class SubjectContinuityTracker:
+    """
+    Tracks and matches subjects across spans in a chunk/video session (ADR 0003).
+    Emits SUMMON_ASSET continuity references when cosine/token similarity >= 0.78.
+    """
+
+    def __init__(self, similarity_threshold: float = 0.78) -> None:
+        self.similarity_threshold = similarity_threshold
+        self._table: list[dict[str, Any]] = []
+
+    def register_subject(self, canonical_name: str, subject_text: str) -> str:
+        continuity_id = f"SUBJ_{len(self._table) + 1:02d}"
+        self._table.append({
+            "continuity_id": continuity_id,
+            "canonical_name": canonical_name,
+            "subject_text": subject_text,
+        })
+        return continuity_id
+
+    def _similarity(self, s1: str, s2: str) -> float:
+        t1, t2 = s1.lower().strip(), s2.lower().strip()
+        if not t1 or not t2:
+            return 0.0
+        if t1 == t2 or t1 in t2 or t2 in t1:
+            return 1.0
+        words1 = set(re.findall(r"\w+", t1))
+        words2 = set(re.findall(r"\w+", t2))
+        if not words1 or not words2:
+            return 0.0
+
+        stopwords = {"with", "and", "or", "at", "the", "in", "on", "a", "an", "for", "to", "of", "character"}
+        w1_clean = words1 - stopwords
+        w2_clean = words2 - stopwords
+        if not w1_clean or not w2_clean:
+            w1_clean, w2_clean = words1, words2
+
+        shared = w1_clean & w2_clean
+        overlap = len(shared) / min(len(w1_clean), len(w2_clean))
+
+        matcher = difflib.SequenceMatcher(None, t1, t2)
+        match = matcher.find_longest_match(0, len(t1), 0, len(t2))
+        longest_match_len = match.size
+
+        # If significant named phrase (>=12 chars) or >=2 core content words overlap with >=50% coverage
+        if longest_match_len >= 12 or (len(shared) >= 2 and overlap >= 0.5):
+            return max(0.85, overlap)
+
+        jaccard = len(words1 & words2) / len(words1 | words2)
+        ratio = matcher.ratio()
+        return max(overlap, jaccard, ratio)
+
+    def resolve_subject(self, query_subject: str) -> tuple[str, float, bool]:
+        best_id = ""
+        best_sim = 0.0
+        for entry in self._table:
+            sim_name = self._similarity(query_subject, entry["canonical_name"])
+            sim_desc = self._similarity(query_subject, entry["subject_text"])
+            sim = max(sim_name, sim_desc)
+            if sim > best_sim:
+                best_sim = sim
+                best_id = entry["continuity_id"]
+
+        is_match = best_sim >= self.similarity_threshold
+        return (best_id if is_match else "", best_sim, is_match)
 
 
 def extract_roadmap_slice(
@@ -262,6 +360,24 @@ def _absorb_valid_items(
             repaired_ts = timestamp_map[raw_index]
             log(f"[planner] auto-repair empty timestamp for index {raw_index} -> {repaired_ts}")
             item["timestamp"] = repaired_ts
+
+        # Auto-repair Arabic characters in visual prompt English fields (ADR 0003)
+        vp = item.get("visual_prompt")
+        if isinstance(vp, dict):
+            for field in (
+                "subject_details",
+                "subject_action_increment",
+                "environment_coordinates",
+                "composition_layout",
+                "style_anchor",
+            ):
+                val = vp.get(field)
+                if isinstance(val, str) and val:
+                    valid_en, _ = validate_english_only_prompt(val)
+                    if not valid_en:
+                        log(f"[planner] transliterating Arabic in index {raw_index} field {field}")
+                        vp[field] = transliterate_arabic_fallback(val)
+
         try:
             FrameItem.model_validate(item)
         except ValidationError as exc:

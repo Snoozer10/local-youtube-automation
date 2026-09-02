@@ -260,3 +260,70 @@ class TestIntegrityEngine:
         assert "3px" in joined
         assert "margin" in joined
         assert str(excinfo.value)
+
+
+class TestEnglishOnlyGateAndNegativeInjection:
+    def test_english_only_gate_passes_clean_english(self):
+        from validator import validate_english_only_prompt
+
+        valid, error = validate_english_only_prompt("A host character gesturing enthusiastically at desk")
+        assert valid is True
+        assert error == ""
+
+    def test_english_only_gate_rejects_arabic_script(self):
+        from validator import validate_english_only_prompt
+
+        valid, error = validate_english_only_prompt("Host explaining النظرية النسبية on board")
+        assert valid is False
+        assert "Arabic script detected" in error
+
+    def test_transliterate_arabic_fallback(self):
+        from validator import transliterate_arabic_fallback
+
+        text = "Host holding الكتاب at desk"
+        transliterated = transliterate_arabic_fallback(text)
+        assert "الكتاب" not in transliterated
+        assert "al-kitab" in transliterated.lower() or "ktab" in transliterated.lower() or "kitab" in transliterated.lower()
+
+    def test_flatten_deterministic_negative_injection(self):
+        from validator import flatten_visual_prompt_to_diffusion_text
+
+        vp = {
+            "subject_details": "Host",
+            "subject_action_increment": "points at screen",
+            "environment_coordinates": "Studio",
+            "composition_layout": "centered",
+            "accent_color_hook": "Warm Amber",
+            "style_anchor": "2D graphic vector animation explainer style, crisp 3px black vector outlines, flat 2-step cel-shading",
+            "text_overlay_arabic": "NONE",
+            "mood": "inquisitive",
+            "lighting": "studio spotlight",
+            "continuity_id": "HOST_01",
+        }
+        flattened = flatten_visual_prompt_to_diffusion_text(vp)
+        assert "no text" in flattened.lower()
+        assert "no subtitles" in flattened.lower()
+        assert "no letters" in flattened.lower()
+        assert "no watermark" in flattened.lower()
+
+
+class TestVisualPrompt8PartSchema:
+    def test_8part_visual_prompt_with_continuity_id(self):
+        from validator import VisualPrompt
+
+        vp = VisualPrompt(
+            subject_details="Abo Hmeed",
+            subject_action_increment="examines chart",
+            environment_coordinates="ARCHIVAL_DOSSIER",
+            composition_layout="rule of thirds",
+            camera_specifications="zoom_in",
+            text_overlay_arabic="NONE",
+            accent_color_hook="Sepia",
+            style_anchor="2D graphic vector animation explainer style, crisp 3px black vector outlines, flat 2-step cel-shading",
+            mood="puzzled",
+            lighting="side keylight",
+            continuity_id="ABO_HMEED_01",
+        )
+        assert vp.continuity_id == "ABO_HMEED_01"
+        assert vp.mood == "puzzled"
+        assert vp.lighting == "side keylight"
