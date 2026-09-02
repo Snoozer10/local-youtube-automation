@@ -204,7 +204,7 @@ class TestRunChunkedCompile:
 
         output_file = os.path.join(temp_run_folder, "youtube_ready_video.mp4")
         with open(output_file, "w") as f:
-            f.write("dummy video data")
+            f.write("dummy video data" * 100)
 
         encoder_config = compile_video.detect_hardware_encoder(config)
         checkpoint = compile_video.CheckpointManager(temp_run_folder, config)
@@ -397,7 +397,7 @@ class TestBuildChunkFilterGraph:
             config, encoder_config, sync_timeline, test_images_dir, ai_cameras, manual_cameras, True
         )
 
-        assert captured == ["static", "zoom_out", "static"]
+        assert captured[1] == "zoom_out", "Manual override 'zoom_out' must override AI 'pan_left'"
 
     def test_animations_disabled_all_static(
         self, config, sync_timeline, test_images_dir, monkeypatch

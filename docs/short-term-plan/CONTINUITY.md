@@ -11,8 +11,8 @@
   - Backward-compatible shims (image_timestamps.txt, timestamped_transcript.txt, srt) with .sha256 sidecars.
   - Deprecated config keys (IMAGE_PAUSE_SPLIT, SILENCE_SPLIT_GAP) alias to VAD_SNAP_THRESHOLD with one-time warning.
 - State:
-  - Done: Ticket 1 (#14) landed; Ticket 2 (#15) landed; Ticket 3 (#16) landed; Ticket 4b (#17) landed; Ticket 5 (#18) implemented & verified (multi-layer text collision gate in text_gate.py with pytesseract + MSER fallback, retry with strengthened negative prompt, debug dump, and integration in flow_image_generator.py); 348/348 unit tests passing.
-  - Now: Ticket 5 (#18) completed.
-  - Next: Implement Ticket 6 (#19) End-to-End Integration, Audio DSP Normalization & Quality Gates.
+  - Done: Ticket 1 (#14) landed; Ticket 2 (#15) landed; Ticket 3 (#16) landed; Ticket 4b (#17) landed; Ticket 5 (#18) landed; Ticket 6 (#19) implemented & verified (E2E integration, Audacity DSP session data cleanup contract, EBU R128 -14 LUFS / -1 dBTP audio normalization, zero-drift AV sync, and pipeline manifest state machine verification); all 372 unit and integration tests passing.
+  - Now: Ticket 6 (#19) completed. Spec #12 fully implemented across all tracer-bullet issues (#14-#19).
+  - Next: Code review & closeout.
 - Open questions (UNCONFIRMED if needed): None.
-- Working set (files/ids/commands): text_gate.py, tests/unit/test_text_gate.py, flow_image_generator.py, docs/adr/0004-text-collision-gate.md
+- Working set (files/ids/commands): tests/integration/test_e2e_pipeline.py, compile_video.py, automate_audacity.py, run_agency.py, docs/adr/0005-audio-dsp-contract.md
