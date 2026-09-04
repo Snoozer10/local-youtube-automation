@@ -28,8 +28,17 @@ dependencies = [
     "faster-whisper>=1.0.0",
     "openai-whisper>=20231117",
     "torch>=2.0.0",
-    "t64>=4.66.0",
+    "torchaudio>=2.1.0",
+    "tqdm>=4.66.0",
+    "requests>=2.31.0",
+    "Pillow>=10.0.0",
+    "pydantic>=2.0.0",
+    "moviepy>=1.0.3",
 ]
+
+[project.scripts]
+youtube-automation = "run_agency:main"
+daheeh = "run_agency:main"
 
 [project.optional-dependencies]
 dev = [
@@ -43,9 +52,37 @@ dev = [
     "pre-commit>=3.5.0",
 ]
 
+[tool.setuptools]
+py-modules = [
+    "run_agency",
+    "automate_all",
+    "refine_script",
+    "generate_voice",
+    "automate_audacity",
+    "stitch_chapters",
+    "faster_whisper_transcribe_audio",
+    "correct_transcript_spelling",
+    "timeline_engine",
+    "roadmap_orchestrator",
+    "prompt_planner",
+    "json_sanitizer",
+    "validator",
+    "text_gate",
+    "flow_image_generator",
+    "fix_timestamps",
+    "compile_video",
+    "generate_thumbnail",
+    "utils",
+    "gemini_controller",
+    "gemini_utils",
+    "pipeline_manifest",
+    "script_image_generator",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["*"]
+exclude = ["venv*", "tests*", "docs*", "legacy_and_utilities*", "temp_clips*", "build*", "dist*"]
 
 [tool.black]
 line-length = 100

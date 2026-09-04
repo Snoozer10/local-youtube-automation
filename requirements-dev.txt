@@ -1,4 +1,3 @@
-```
 # ==============================================================================
 # YOUTUBE AUTOMATION PIPELINE — DEVELOPMENT & CI DEPENDENCIES
 # ==============================================================================
@@ -41,12 +40,3 @@ bandit>=1.7.8                   # Static security analyzer (flags unsafe subproc
 # 5. Git Hooks & Workflow Automation
 # ------------------------------------------------------------------------------
 pre-commit>=3.7.0               # Git pre-commit hooks manager for formatting and linting
-```
-
-***
-
-### 📋 Key Enhancements & Additions:
-1. **Added Browser & Subprocess Test Fixtures (`pytest-playwright`, `pytest-timeout`, `pytest-asyncio`)**: Enables reliable integration testing for browser CDP sessions, Named Pipes, and FFmpeg processes without hanging your CI runner.
-2. **Added Static Security Auditing (`bandit`)**: Catches unsafe `subprocess` invocations, unescaped shell strings, or accidental hardcoded secrets before committing.
-3. **Comprehensive Type Stubs (`types-tqdm`, `types-Pillow`, `typing-extensions`)**: Ensures `mypy .` passes cleanly across all modules (including image verification and progress bars).
-4. **Modernized Version Constraints**: Updated baseline versions to current standards compatible with Python 3.10, 3.11, and 3.12+.

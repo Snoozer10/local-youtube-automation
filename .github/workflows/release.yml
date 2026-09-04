@@ -1,0 +1,112 @@
+name: "Release"
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Build Wheel and Source Distribution
+        run: |
+          pip install --upgrade pip build wheel
+          python -m build --sdist --wheel --outdir dist/
+
+      - name: Assemble standalone portable Windows zip bundle
+        shell: pwsh
+        run: |
+          $ref = "${{ github.ref_name }}"
+          $archiveName = "youtube-automation-pipeline-$ref-windows-x64.zip"
+          $distDir = "dist"
+          $archivePath = Join-Path $distDir $archiveName
+          $stagingDir = Join-Path $env:RUNNER_TEMP "bundle_staging"
+
+          if (Test-Path $stagingDir) { Remove-Item -Recurse -Force $stagingDir }
+          New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
+
+          # Copy root python modules
+          Get-ChildItem -Path *.py -File | ForEach-Object {
+              Copy-Item -Path $_.FullName -Destination $stagingDir
+          }
+
+          # Copy tools directory
+          if (Test-Path "tools") {
+              Copy-Item -Path "tools" -Destination $stagingDir -Recurse
+          }
+
+          # Copy configuration files, setup/runner scripts, documentation, and dependencies
+          $requiredFiles = @(
+              "daheeh_config.json",
+              "video_config.txt",
+              "transcribe_config.txt",
+              ".env.example",
+              "setup.bat",
+              "setup.ps1",
+              "run.bat",
+              "README.md",
+              "LICENSE",
+              "CHANGELOG.md",
+              "requirements.txt",
+              "requirements-dev.txt",
+              "pyproject.toml"
+          )
+
+          foreach ($f in $requiredFiles) {
+              if (Test-Path $f) {
+                  Copy-Item -Path $f -Destination $stagingDir
+              }
+          }
+
+          # Strip any __pycache__ or .pyc from staging
+          Get-ChildItem -Path $stagingDir -Recurse -Include "__pycache__", "*.pyc" | Remove-Item -Recurse -Force
+
+          # Ensure dist directory exists
+          if (-not (Test-Path $distDir)) {
+              New-Item -ItemType Directory -Path $distDir -Force | Out-Null
+          }
+
+          # Create zip archive
+          Compress-Archive -Path "$stagingDir\*" -DestinationPath $archivePath -Force
+          Write-Host "[SUCCESS] Assembled portable bundle: $archivePath"
+          Remove-Item -Recurse -Force $stagingDir
+
+      - name: Generate SHA256SUMS.txt
+        shell: pwsh
+        run: |
+          $distFiles = Get-ChildItem -Path dist/* -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" }
+          $lines = foreach ($file in $distFiles) {
+              $hash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLower()
+              "$hash  $($file.Name)"
+          }
+          $lines | Set-Content -Path "dist/SHA256SUMS.txt" -Encoding ascii
+          Get-Content "dist/SHA256SUMS.txt"
+
+      - name: Extract release notes
+        run: python tools/extract_release_notes.py ${{ github.ref_name }} --output release_notes.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          body_path: release_notes.md
+          files: dist/*
+          draft: false
+          prerelease: false
