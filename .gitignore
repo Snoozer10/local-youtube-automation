@@ -91,3 +91,25 @@ local_settings.py
 
 # APM dependencies
 apm_modules/
+
+# Scratch & Diagnostic Scripts (Root-only)
+/check_*.py
+/poll*.py
+/launch_relay.py
+/relay_*/
+/relay_pid.txt
+
+# Scratch Outputs & Logs (Root-only)
+/brief_*.txt
+/*_out.txt
+/events_tail.txt
+/summary.txt
+/map_body.md
+/spec.md.test
+
+# Backups & Editor Artifacts
+*.bak
+*.bak.*
+*.orig
+.cursorrules
+.graphifyignore
