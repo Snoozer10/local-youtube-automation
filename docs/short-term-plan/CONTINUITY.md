@@ -12,13 +12,14 @@
   - Trajectory B Feature 3: Added `words_per_second` modulation in `compile_video.py` (`effective_zoom_max`) with zero-division safety and test-spy backwards compatibility; added 6 unit tests in `test_timeline_sync.py`.
 - State:
   - Done:
-    1. Step 1 (Git Baseline Lock): Complete across 4 atomic commits.
-    2. Feature 1 (CDP 127.0.0.1 & Script Hash Invalidation): Complete (commit `56c5674`).
-    3. Feature 2 (Thumbnail Negative Injection & OCR Text Gate): Complete (commit `dc22c52`).
-    4. Feature 3 (Speech-Paced Dynamic Ken Burns Motion): Complete (commit `89526e0`).
-    5. Full Regression Verification: 398/398 tests passing cleanly (100% green).
-    6. Linting: `ruff check` passes cleanly (0 errors).
-  - Now: Creating final completion walkthrough artifact.
-  - Next: Ready for live end-to-end pipeline runs or next user instructions.
+    1. Git Forensic Research: Verified ground truth vs OpenCode; confirmed 14 dirty files committed atomically + Trajectory B.
+    2. Strategy & Architecture Review: Evaluated worktrees vs hardware singleton locks (CDP 127.0.0.1, Audacity pipe, Intel QSV); rejected SemVer/Changelog cargo-cult.
+    3. Plan Creation & Peer Review: Implementation plan drafted, peer-reviewed, and approved by user.
+    4. Traced & Audited Open Questions: Traced Questions 1-4 with ground-truth forensics.
+    5. Changelog Litigation & Consensus: Standards Advocate and Lean Architecture Advocate litigated and agreed on Lean Release-Seam model with root CHANGELOG.md.
+    6. Git Hygiene Tranche (Tasks 1-3): Untracked legacy backups, purged 17 dead patch scripts and 2 broken test scripts, deleted 2 merged stale branches, purged scratch files, and hardened .gitignore (commit `d186dd1`).
+    7. Release & Documentation Tranche (Task 4): Created root CHANGELOG.md (Keep a Changelog 1.1.0), bumped version to 4.1.0 across pyproject.toml, daheeh_config.json, GEMINI.md, and CLAUDE.md, enabled CI on master in .github/workflows/ci.yml, and staged documentation.
+  - Now: Release & Documentation Tranche (Task 4) complete; ready for Task 5 (Verification & Upstream Sync Engineer).
+  - Next: Execute Task 5 (Full verification test suite, upstream push master & tag v4.1.0).
 - Open questions (UNCONFIRMED if needed): None.
-- Working set (files/ids/commands): run_agency.py, generate_thumbnail.py, compile_video.py, tests/unit/test_agency_script_invalidation.py, tests/unit/test_generate_thumbnail.py, tests/unit/test_timeline_sync.py
+- Working set (files/ids/commands): CHANGELOG.md, pyproject.toml, daheeh_config.json, GEMINI.md, CLAUDE.md, .github/workflows/ci.yml, docs/

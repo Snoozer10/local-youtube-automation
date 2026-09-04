@@ -1,0 +1,61 @@
+{
+  "timestamp": 1788422034.574671,
+  "results": [
+    {
+      "id": "eval-1-polyglot-create",
+      "passed": true,
+      "metrics": {
+        "token_count": 1500,
+        "exit_code": 0,
+        "deep_modules_found": 1,
+        "latency_ms": 412.52099999110214
+      },
+      "details": [
+        "latency_ms: 412.52099999110214 < 500.0 -> True",
+        "token_count: 1500 < 2500.0 -> True",
+        "exit_code: 0 == 0 -> True",
+        "deep_modules_found: 1 >= 1.0 -> True"
+      ]
+    },
+    {
+      "id": "eval-2-federation-repair",
+      "passed": true,
+      "metrics": {
+        "pointer_shim": true,
+        "split_brain_warnings": 0,
+        "exit_code": 0,
+        "latency_ms": 547.2890000091866
+      },
+      "details": [
+        "pointer_shim: True == True -> True",
+        "split_brain_warnings: 0 == 0 -> True"
+      ]
+    },
+    {
+      "id": "eval-3-dag-cycle-detection",
+      "passed": true,
+      "metrics": {
+        "error_detected": "ERR_DAG_CYCLE",
+        "exit_code": 1,
+        "latency_ms": 281.24989999923855
+      },
+      "details": [
+        "error_detected: expected ERR_DAG_CYCLE, got ERR_DAG_CYCLE -> True",
+        "exit_code: 1 == 1 -> True"
+      ]
+    },
+    {
+      "id": "eval-4-reality-drift-detection",
+      "passed": true,
+      "metrics": {
+        "warning_detected": "WARN_REALITY_DRIFT",
+        "exit_code": 1,
+        "latency_ms": 261.06190000427887
+      },
+      "details": [
+        "warning_detected: expected WARN_REALITY_DRIFT, got WARN_REALITY_DRIFT -> True"
+      ]
+    }
+  ],
+  "all_passed": true
+}

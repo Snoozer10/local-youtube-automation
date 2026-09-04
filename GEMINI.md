@@ -1,6 +1,6 @@
 ---
 project_name: "youtube-automation-pipeline"
-version: "4.0.0"
+version: "4.1.0"
 tech_stack:
   - "python"
   - "playwright"

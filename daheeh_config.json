@@ -1,6 +1,6 @@
 {
   "al_daheeh_master_pipeline_config": {
-    "version": "4.0.0",
+    "version": "4.1.0",
     "target_channel": "Al-Daheeh (الدحيح)",
     "dialect_profile": {
       "fusha_academic_ratio": 0.3,

@@ -1,0 +1,340 @@
+# Comprehensive Architectural & Specification Adjustments: `gemini-context-engineer-design.md`
+
+This document consolidates all audited decisions, refinements, debate conclusions, and technical proposals into a finalized, production-grade specification addendum. Use this structured layout to update or replace sections within `gemini-context-engineer-design.md`.
+
+---
+
+## 1. System Architecture & Environment Alignment
+
+### 1.1 Host Environment & Antigravity CLI Alignment
+* **Runtime Ecosystem**: Targets the Go-based **Antigravity CLI (`agy`)** runtime, executing asynchronous multi-agent workflows.
+* **Execution Constraint**: Tooling must complete in **< 150ms** to prevent blocking Antigravity's asynchronous agent scheduler.
+* **Standard Installation Paths**:
+  * **Global User Scope**: `~/.gemini/antigravity-cli/skills/gemini-context-engineer/` (with fallback to `~/.gemini/skills/gemini-context-engineer/`).
+  * **Repository Local Scope**: `.agents/skills/gemini-context-engineer/`.
+  * *Path Resolution Rule*: All path logic must dynamically query `pathlib.Path.home()` and reject hardcoded Windows drive letters (e.g., `C:\Users\...`) to ensure cross-platform portability across Windows, Linux, and macOS/WSL.
+
+### 1.2 Dual-Scope Context Isolation
+The tooling must identify whether it is operating on a **Global User** context or a **Workspace Local** context:
+* **Global Scope (`~/.gemini/GEMINI.md`)**: Configures the agent's persona, cross-project safety guardrails, commit message styles, and default tool behaviors. File tree indexing and component mapping are disabled.
+* **Project Workspace Scope (`./GEMINI.md` or `.agents/GEMINI.md`)**: Configures architecture, workflows, strict constraints, and active project state.
+* **Safety Gate**: `repo_indexer.py` must check if `cwd == Path.home()`. If run from the user root without an explicit `--scope project` flag, it aborts tree traversal to prevent indexing the user's entire home volume.
+
+### 1.3 Strict Zero-Dependency Policy
+* **Minimum Runtime**: **Python 3.11+** (enforces native `tomllib` support).
+* **Allowed Imports**: Exclusively Python standard library modules: `sys`, `os`, `pathlib`, `json`, `re`, `subprocess`, `datetime`, `hashlib`, `tomllib`.
+* External dependencies (`pyyaml`, `pathspec`, `click`, `rich`) are strictly prohibited.
+
+---
+
+## 2. Updated Markdown Anatomy: `GEMINI.md`
+
+To resolve markdown linter violations (`MD025 / single-title`), the document structure is refactored from multiple top-level `# H1` tags to a single `# H1` title with five standardized `## H2` sections.
+
+### 2.1 Complete Document Blueprint
+
+```markdown
+---
+project_name: "example-project"
+version: "1.0.0"
+tech_stack:
+  - "python"
+  - "fastapi"
+  - "postgresql"
+rules:
+  - "strict-typing"
+  - "never-mock-db"
+  - "async-handlers-only"
+exclude_paths:
+  - "dist"
+  - "build"
+  - "tests/fixtures"
+last_indexed: "2026-09-03"
+generator: "gemini-context-engineer/v1.0.0"
+---
+
+# Project Context: example-project
+
+## 🎯 Project Overview
+<!-- High-density executive summary: Purpose, domain, key capabilities, target users -->
+
+## 🏗️ Architecture & Component Mapping
+<!-- Directory topology, bounded contexts, dependency graph, entrypoints -->
+
+## 🛑 Mandatory Engineering Constraints
+<!-- Invariants, non-inferable rules, negative boundaries (DO NOT...), security gates -->
+
+## 🛠️ Common Workflows & CLI Commands
+<!-- Build, test, run, lint, and deploy workflows with copy-pasteable bash commands -->
+
+## 🔄 Active Workstreams & Verification Status
+<!-- Immediate sprint/workstream status, known blockers, active test health -->
+```
+
+### 2.2 Functional Division: Frontmatter `rules` vs. Section 3
+* **Frontmatter `rules`**: Machine-parsable, short slug identifiers (e.g., `["no-global-state", "strict-null-checks"]`) used by agent policy evaluators.
+* **Section 3 (`## 🛑 Mandatory Engineering Constraints`)**: Fully articulated technical specifications, rationale, edge cases, and explicit negative constraints (`NEVER`, `DO NOT`, `MUST`).
+
+### 2.3 Section 5 Volatility Containment
+Renamed from `# 🔄 Current State & Feature Roadmap` to **`## 🔄 Active Workstreams & Verification Status`**.
+* **Forbidden**: Long-term backlogs, general aspirations, or feature roadmaps (which belong in `ROADMAP.md` or an issue tracker).
+* **Mandated**: Current branch state, active verification gates, and critical unresolved bugs.
+
+---
+
+## 3. Tooling Specifications & Hardening
+
+### 3.1 `scripts/validate_gemini_md.py`
+
+#### A. Micro-YAML Parser with Line-Ending Normalization
+To prevent parsing failures across operating systems (CRLF on Windows vs. LF on Linux/macOS), the parser must normalize line endings prior to evaluation:
+
+```python
+def parse_micro_yaml(raw_text: str) -> dict:
+    # 1. Normalize line endings
+    lines = [line.rstrip("\r") for line in raw_text.splitlines()]
+    
+    if not lines or lines[0].strip() != "---":
+        raise ValueError("Missing opening '---' frontmatter delimiter")
+        
+    try:
+        closing_idx = lines[1:].index("---") + 1
+    except ValueError:
+        raise ValueError("Missing closing '---' frontmatter delimiter")
+        
+    yaml_lines = lines[1:closing_idx]
+    data = {}
+    current_list_key = None
+    
+    for line_num, line in enumerate(yaml_lines, start=2):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+            
+        # List items: '  - value'
+        if line.startswith("  - ") or line.startswith("    - "):
+            if not current_list_key:
+                raise ValueError(f"Orphaned list item at line {line_num}: {line}")
+            val = line.split("-", 1)[1].strip().strip('"\'')
+            data[current_list_key].append(val)
+            
+        # Key-Value pairs: 'key: value' or 'key:'
+        elif ":" in line:
+            key, val = line.split(":", 1)
+            key = key.strip()
+            val = val.strip()
+            
+            # Flow-style JSON list: 'key: ["a", "b"]'
+            if val.startswith("[") and val.endswith("]"):
+                data[key] = [x.strip().strip('"\'') for x in val[1:-1].split(",") if x.strip()]
+                current_list_key = None
+            elif not val:  # Opening a multi-line list
+                data[key] = []
+                current_list_key = key
+            else:  # Scalar value
+                data[key] = val.strip('"\'')
+                current_list_key = None
+        else:
+            raise ValueError(f"Malformed frontmatter at line {line_num}: {line}")
+            
+    return data
+```
+
+#### B. Link and Anchor Resolution
+* **Relative Links (`[Text](path/to/file.ext)`)**: Resolve relative to repository root. Forward slashes must normalize cleanly across Windows and POSIX: `Path(raw_path.replace("\\", "/"))`.
+* **Line Anchors (`#L10` or `#L10-L20`)**: Strip anchors during file existence checks, but optionally verify that the referenced file contains at least the target line count.
+* **Absolute URIs**: Flag external HTTP/HTTPS links as warnings (to discourage external context drift), but validate all local `file:///` URIs.
+
+#### C. Dual-Dimension Context Budgeting
+The validator computes both line volume and estimated token density:
+* **Line Thresholds**: 
+  * Target: $\le 350$ lines.
+  * Warning: $351 - 500$ lines (`WARN_BUDGET_APPROACHING`).
+  * Fatal Error: $> 500$ lines (`ERR_BUDGET_EXCEEDED`).
+* **Token/Character Thresholds**:
+  * Calculation: `char_count = len(content)`, `estimated_tokens = char_count // 4`.
+  * Target: $\le 2,500$ tokens ($\le 10,000$ characters).
+  * Warning: $2,501 - 3,500$ tokens.
+  * Fatal Error: $> 3,500$ tokens (`ERR_BUDGET_EXCEEDED`).
+
+#### D. Non-Destructive Rotating Backups
+Replaces the flat `GEMINI.md.bak` overwrite:
+* Backup pattern: `GEMINI.md.<YYYYMMDD_HHMMSS>.bak`.
+* Pruning: Keep the last 3 timestamps; prune older backups automatically to prevent clutter.
+
+---
+
+### 3.2 `scripts/repo_indexer.py`
+
+#### A. High-Speed Git-Native Traversal
+* **Primary Engine**: Executes `git ls-files` via `subprocess.run(["git", "ls-files"], capture_output=True, text=True, check=True)`:
+  * Eliminates custom `.gitignore` parsing bugs (supports negation patterns, nested ignores, submodules).
+  * Typical runtime on a 50,000-file repository is $< 60\text{ms}$.
+* **Fallback Engine (Non-Git Directories)**:
+  * Executes a standard directory walk with a strict directory blocklist:
+    ```python
+    SYSTEM_EXCLUDES = {
+        ".git", ".svn", "node_modules", "venv", ".venv", "dist", 
+        "build", "target", ".next", ".cache", "__pycache__"
+    }
+    ```
+  * Depth limit: Clamped at `--max-depth 3` by default.
+
+#### B. Polyglot Manifest Detection
+Extracts metadata, entrypoints, and standard verification commands (`build`, `test`, `lint`) using Python 3.11+ `tomllib` and `json`:
+* **Node**: `package.json` $\rightarrow$ parses `scripts`, `workspaces`, dependencies.
+* **Python**: `pyproject.toml` $\rightarrow$ parses `[project]`, `[tool.poetry]`, `[tool.ruff]`, `[tool.pytest]`; fallbacks for `requirements.txt` and `setup.cfg`.
+* **Rust**: `Cargo.toml` $\rightarrow$ parses `[package]`, `[workspace]`, binaries, and tests.
+* **Go**: `go.mod` $\rightarrow$ parses module path and Go toolchain version.
+
+---
+
+## 4. Context Hygiene: The "Inferable Rule"
+
+To prevent token waste and cognitive distraction, `references/token_budget_heuristics.md` and `validate_gemini_md.py` will enforce the **Inferable Rule Framework**.
+
+```
+                           CAN THE CONSTRAINTS BE
+                   DIRECTLY INFERRED FROM SOURCE CODE?
+                                 │
+                 ┌───────────────┴───────────────┐
+                YES                              NO
+                 │                               │
+       Does a tool enforce it?          Does breaking it cause
+      (Prettier, ESLint, Ruff)         silent or catastrophic bugs?
+         │               │                 │               │
+        YES              NO               YES              NO
+         │               │                 │               │
+      DISCARD         DISCARD           PRESERVE        DISCARD
+    (Linter job)   (Self-evident)    (Critical Rule)  (Trivial noise)
+```
+
+### 4.1 Subtraction Directives
+1. **Formatting Rules**: Purge rules specifying indentation, single vs. double quotes, line lengths, or bracket spacing (delegated entirely to formatters).
+2. **Idiomatic Language Defaults**: Purge standard language conventions (e.g., *"Use list comprehensions in Python"* or *"Handle Go errors with if err != nil"*).
+3. **Dependency Dumps**: Never replicate complete `package.json` or `Cargo.toml` manifests. List only the top 3-5 core architectural frameworks.
+4. **Self-Documenting CLI Commands**: If running standard tests is simply `pytest` or `cargo test`, do not add elaborate commentary. Only document complex command variations with non-obvious flags (e.g., `pytest -m "not integration" --dist=loadscope`).
+
+---
+
+## 5. Skill Execution Protocol & Self-Correction Engine
+
+The workflow within `SKILL.md` operates as an autonomous self-healing loop:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Agent as Antigravity Agent
+    participant Indexer as repo_indexer.py
+    participant File as GEMINI.md
+    participant Validator as validate_gemini_md.py
+
+    User->>Agent: "Initialize/Update GEMINI.md"
+    Agent->>Indexer: Run --root . --json
+    Indexer-->>Agent: Ground-truth JSON metadata
+    Agent->>File: Write candidate GEMINI.md (5-tier anatomy)
+    
+    loop Self-Correction (Max 2 Attempts)
+        Agent->>Validator: Run validate_gemini_md.py --json
+        Validator-->>Agent: Exit Code & Diagnostic JSON
+        alt Exit Code == 0
+            Agent-->>User: Success (Report token & line metrics)
+        else Exit Code != 0 and Retry < 2
+            Agent->>Agent: Parse error code (e.g., ERR_BUDGET_EXCEEDED, ERR_BROKEN_LINK)
+            Agent->>File: Apply targeted corrective edits
+        else Exit Code != 0 and Retry >= 2
+            Agent-->>User: Halt with structured diagnostic failure report
+        end
+    end
+```
+
+### 5.1 Remediation Strategies by Error Code
+
+* **`ERR_BUDGET_EXCEEDED` $\rightarrow$ Targeted Subtraction Protocol**:
+  1. Trigger the "Inferable Rule": Scan Section 3 and strip all linter-enforced formatting and language boilerplate.
+  2. Convert verbose narrative paragraphs in Section 2 into concise ASCII component diagrams or markdown mapping tables.
+  3. Re-calculate metrics.
+* **`ERR_BROKEN_LINK` $\rightarrow$ Path Resolution Protocol**:
+  1. Read the invalid path from the validator's JSON diagnostic payload.
+  2. Search the indexer's cached file tree for the closest matching basename.
+  3. Rewrite the markdown link to the corrected relative path or remove it if obsolete.
+* **`ERR_SCHEMA_INVALID` $\rightarrow$ Frontmatter Normalization**:
+  1. Identify missing or malformed keys.
+  2. Re-inject the required frontmatter skeleton from `assets/gemini_template.md`.
+
+---
+
+## 6. Release Engineering, Versioning & CI Safeguards
+
+### 6.1 Strict Semantic Versioning (SemVer 2.0.0)
+* **Format**: `MAJOR.MINOR.PATCH` (e.g., `1.0.0`).
+* **Synchronization Triad**: Version strings must match across:
+  1. `SKILL.md` metadata (`metadata.version: 1.0.0`).
+  2. `scripts/__version__.py` (`__version__ = "1.0.0"`), exposed via `--version` on all CLI tools.
+  3. `assets/gemini_template.md` (`generator: "gemini-context-engineer/v1.0.0"`).
+
+### 6.2 Git Tag Protection
+* Enforce branch and tag protection on the origin repository for the `v*` ref pattern (`v[0-9]+.[0-9]+.[0-9]+`).
+* Prohibit force pushes (`--force`) and tag deletions to guarantee immutability when Antigravity CLI pulls skills via:
+  ```bash
+  agy skills install https://github.com/org/gemini-context-engineer.git --tag v1.0.0
+  ```
+
+### 6.3 Pre-Release "Champagne" (Dogfooding) CI Pipeline
+The automated GitHub Actions release workflow must run the following verification matrix before publishing any tag:
+
+```yaml
+name: Skill CI & Self-Validation
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Unit Tests (Polyglot Indexer & Micro-Parser)
+        run: |
+          python -m unittest discover -s tests
+
+      - name: Champagne Test (Dogfooding Validation)
+        run: |
+          # The context engineer must validate its OWN GEMINI.md file without warnings or errors
+          python scripts/validate_gemini_md.py GEMINI.md --json --strict
+```
+
+---
+
+## 7. Review Checklist for Implementation
+
+Before beginning implementation, verify the following files and directories match this layout:
+
+```text
+gemini-context-engineer/
+├── SKILL.md                          # Manifest, Antigravity triggers & self-correction protocol
+├── GEMINI.md                         # Dogfooded repository context file
+├── assets/
+│   └── gemini_template.md            # Golden 5-tier template (Single H1, 5x H2 sections)
+├── references/
+│   ├── token_budget_heuristics.md    # Inferable Rule framework & subtraction matrices
+│   └── migration_guide.md            # Rules for smart-merging legacy GEMINI.md into 5 tiers
+├── scripts/
+│   ├── __version__.py                # Single-source-of-truth version string
+│   ├── repo_indexer.py               # Sub-150ms git-native polyglot configuration indexer
+│   └── validate_gemini_md.py         # CRLF-hardened micro-YAML parser & dual-budget validator
+└── tests/
+    ├── test_indexer.py               # Node, Python, Rust, Go fixture discovery tests
+    └── test_validator.py             # Schema, CRLF, anchor, and token budgeting tests
+```

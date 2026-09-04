@@ -152,7 +152,7 @@ Boris Cherny (creator of Claude Code) keeps his team's file around 100 lines. Un
 **Fill this in per project. Keep it specific. Delete sections that don't apply.**
 
 ### Stack
-- Language and version: Python >=3.10 (pyproject.toml:11) — project `youtube-automation-pipeline` 4.0.0, setuptools backend, Windows-only target.
+- Language and version: Python >=3.10 (pyproject.toml:11) — project `youtube-automation-pipeline` 4.1.0, setuptools backend, Windows-only target.
 - Framework(s) / key deps: playwright>=1.40, youtube-transcript-api, python-docx, faster-whisper, openai-whisper, torch>=2.0, tqdm. Runtime deps in `venv\`; ruff/black/mypy/pytest global.
 - Package manager: pip + venv (no uv/poetry/Makefile/package.json — verified absent).
 - Runtime / deployment target: Windows-only desktop/browser-automation pipeline (CDP, named pipes, hardware FFmpeg).
