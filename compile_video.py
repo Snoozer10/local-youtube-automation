@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 import queue
@@ -424,7 +425,11 @@ class CheckpointManager:
 
 
 def build_ken_burns_filter(
-    config: dict, frame_count: int, camera_action: str, pix_fmt: str = "yuv420p"
+    config: dict,
+    frame_count: int,
+    camera_action: str,
+    pix_fmt: str = "yuv420p",
+    words_per_second: float = 3.0,
 ) -> str:
     """Builds high-precision, sub-pixel stabilized Ken Burns camera motion with BT.709 color accuracy."""
     fps = int(config["OUTPUT_FPS"])
@@ -432,6 +437,10 @@ def build_ken_burns_filter(
     h = int(config["OUTPUT_HEIGHT"])
     frames = max(1, int(frame_count))
     duration = frames / float(fps)
+
+    if isinstance(pix_fmt, (int, float)):
+        words_per_second = float(pix_fmt)
+        pix_fmt = "yuv420p"
 
     zoom_min = float(config.get("KEN_BURNS_ZOOM_MIN", 1.0))
     dynamic_enabled = config.get("KEN_BURNS_DYNAMIC_SCALE", True)
@@ -446,6 +455,16 @@ def build_ken_burns_filter(
             zoom_max = min(dynamic_scale, configured_max)
         else:
             zoom_max = dynamic_scale
+
+    wps = 3.0 if words_per_second is None else float(words_per_second)
+    pace_ratio = max(0.75, min(1.35, wps / 3.0))
+    if dynamic_enabled:
+        if pace_ratio == 1.0:
+            effective_zoom_max = zoom_max
+        else:
+            effective_zoom_max = round(min(1.15, zoom_min + (zoom_max - zoom_min) * pace_ratio), 4)
+    else:
+        effective_zoom_max = zoom_max
 
     upscale = float(config.get("KEN_BURNS_UPSCALE_FACTOR", 1.12))
 
@@ -468,27 +487,27 @@ def build_ken_burns_filter(
     safe_center_y = "trunc((ih-ih/zoom)*0.5)"
 
     if "zoom_in" in camera_action:
-        z_expr = f"min({zoom_max},{zoom_min}+({zoom_max}-{zoom_min})*{ease})"
+        z_expr = f"min({effective_zoom_max},{zoom_min}+({effective_zoom_max}-{zoom_min})*{ease})"
         x_expr = safe_center_x
         y_expr = safe_center_y
     elif "zoom_out" in camera_action:
-        z_expr = f"max({zoom_min},{zoom_max}-({zoom_max}-{zoom_min})*{ease})"
+        z_expr = f"max({zoom_min},{effective_zoom_max}-({effective_zoom_max}-{zoom_min})*{ease})"
         x_expr = safe_center_x
         y_expr = safe_center_y
     elif "pan_left" in camera_action:
-        z_expr = f"{zoom_max}"
+        z_expr = f"{effective_zoom_max}"
         x_expr = f"trunc(max(0,min(iw-iw/zoom,(iw-iw/zoom)*(1-{ease}))))"
         y_expr = safe_center_y
     elif "pan_right" in camera_action:
-        z_expr = f"{zoom_max}"
+        z_expr = f"{effective_zoom_max}"
         x_expr = f"trunc(max(0,min(iw-iw/zoom,(iw-iw/zoom)*{ease})))"
         y_expr = safe_center_y
     elif "tilt_up" in camera_action:
-        z_expr = f"{zoom_max}"
+        z_expr = f"{effective_zoom_max}"
         x_expr = safe_center_x
         y_expr = f"trunc(max(0,min(ih-ih/zoom,(ih-ih/zoom)*(1-{ease}))))"
     elif "tilt_down" in camera_action:
-        z_expr = f"{zoom_max}"
+        z_expr = f"{effective_zoom_max}"
         x_expr = safe_center_x
         y_expr = f"trunc(max(0,min(ih-ih/zoom,(ih-ih/zoom)*{ease})))"
     else:  # static (handles static clips & animations disabled)
@@ -1305,7 +1324,28 @@ def build_chunk_filter_graph(
             if block["name"] in manual_cameras:
                 camera_action = str(manual_cameras[block["name"]])
 
-        kb = build_ken_burns_filter(config, frame_count, camera_action)
+        words_per_second = block.get("words_per_second")
+        if words_per_second is None:
+            span = block.get("span")
+            if isinstance(span, dict) and span.get("text") and float(span.get("duration", 0) or 0) > 0:
+                words_per_second = len(str(span.get("text", "")).split()) / max(0.1, float(span.get("duration", 1.0)))
+            elif block.get("text") and float(block.get("duration", 0) or 0) > 0:
+                words_per_second = len(str(block.get("text", "")).split()) / max(0.1, float(block.get("duration", 1.0)))
+            else:
+                words_per_second = 3.0
+        else:
+            try:
+                words_per_second = float(words_per_second)
+            except (ValueError, TypeError):
+                words_per_second = 3.0
+
+        kb_params = inspect.signature(build_ken_burns_filter).parameters
+        if "words_per_second" in kb_params:
+            kb = build_ken_burns_filter(
+                config, frame_count, camera_action, words_per_second=words_per_second
+            )
+        else:
+            kb = build_ken_burns_filter(config, frame_count, camera_action)
 
         safe_image_path = os.path.abspath(abs_image_path).replace("\\", "/")
         # Pass 1-frame image directly without demuxer loop; zoompan/loop will generate exact frame count

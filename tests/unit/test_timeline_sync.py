@@ -1,5 +1,7 @@
 """Unit tests for zero-drift timeline assembly, Ken Burns filter contract, and CFR args."""
 
+import re
+
 import compile_video
 
 
@@ -225,3 +227,68 @@ class TestLadderProxyExport:
         assert "720p" in p720["output_path"]
         assert "-2:1080" in p1080["scale_filter"] or "1920:1080" in p1080["scale_filter"]
         assert "-2:720" in p720["scale_filter"] or "1280:720" in p720["scale_filter"]
+
+
+class TestSpeechPacedKenBurns:
+    def test_baseline_pace_matches_default(self, config):
+        f = compile_video.build_ken_burns_filter(config, 90, "zoom_in", words_per_second=3.0)
+        assert "min(1.07" in f.replace(" ", "")
+
+    def test_fast_speech_increases_zoom_punch(self, config):
+        f = compile_video.build_ken_burns_filter(config, 90, "zoom_in", words_per_second=4.5)
+        m = re.search(r"min\(([0-9.]+)", f)
+        assert m is not None, "Zoom expression must contain min(bound"
+        bound = float(m.group(1))
+        assert bound > 1.07
+
+    def test_slow_speech_gentle_drift(self, config):
+        f = compile_video.build_ken_burns_filter(config, 90, "zoom_in", words_per_second=1.5)
+        m = re.search(r"min\(([0-9.]+)", f)
+        assert m is not None, "Zoom expression must contain min(bound"
+        bound = float(m.group(1))
+        assert bound < 1.07
+
+    def test_zero_and_extreme_pace_guarded(self, config):
+        f_zero = compile_video.build_ken_burns_filter(config, 90, "zoom_in", words_per_second=0.0)
+        assert "min(" in f_zero
+
+        f_extreme = compile_video.build_ken_burns_filter(config, 90, "zoom_in", words_per_second=12.0)
+        m = re.search(r"min\(([0-9.]+)", f_extreme)
+        assert m is not None, "Zoom expression must contain min(bound"
+        bound = float(m.group(1))
+        assert bound <= 1.15
+
+    def test_frame_duration_and_trim_remain_unchanged_across_pacing(self, config):
+        for wps in [0.0, 1.0, 1.5, 3.0, 4.5, 6.0, 12.0]:
+            f = compile_video.build_ken_burns_filter(config, 90, "zoom_in", words_per_second=wps)
+            assert "d=90" in f
+            assert "trim=start_frame=0:end_frame=90" in f
+
+    def test_build_chunk_filter_graph_derives_wps_from_span(self, tmp_path, config):
+        img_dir = tmp_path / "images"
+        img_dir.mkdir()
+        (img_dir / "00_00.png").write_bytes(b"dummy")
+        chunk_timeline = [
+            {
+                "name": "00_00",
+                "frame_count": 90,
+                "occurrence": 1,
+                "span": {"text": "one two three four five six seven eight nine", "duration": 2.0},
+            }
+        ]
+        enc_config = {"video_codec": "libx264", "encoder_args": []}
+        inputs, filter_complex, vout = compile_video.build_chunk_filter_graph(
+            config,
+            enc_config,
+            chunk_timeline,
+            str(img_dir),
+            ai_cameras={"00_00": "zoom_in"},
+            manual_cameras={},
+            anim_enabled=True,
+        )
+        # 9 words / 2.0s = 4.5 WPS -> pace_ratio=1.35 -> zoom max > 1.07
+        m = re.search(r"min\(([0-9.]+)", filter_complex)
+        assert m is not None
+        assert float(m.group(1)) > 1.07
+
+
