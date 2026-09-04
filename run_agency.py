@@ -1,4 +1,5 @@
 import glob
+import hashlib
 import json
 import os
 import re
@@ -51,7 +52,7 @@ def clean_browser_tabs():
     cdp_port = get_config_value("CDP_PORT", "9222")
     try:
         with sync_playwright() as p:
-            browser = p.chromium.connect_over_cdp(f"http://localhost:{cdp_port}", timeout=3000)
+            browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}", timeout=3000)
             context = browser.contexts[0]
 
             context.new_page()
@@ -102,6 +103,66 @@ def save_pipeline_state(folder_path, state):
         os.replace(tmp_file, state_file)
     except Exception:
         pass
+
+
+def compute_script_hash(folder: str) -> str | None:
+    """Computes SHA-256 hash of refined_script.txt in folder if it exists."""
+    script_path = os.path.join(folder, "refined_script.txt")
+    if not os.path.exists(script_path):
+        return None
+    try:
+        with open(script_path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return None
+
+
+def check_script_invalidation(folder: str, state: dict, video_title: str = "") -> bool:
+    """Checks if refined_script.txt exists and invalidates downstream stages if script changed.
+
+    If state has a script_hash and it differs from current_hash:
+      Logs modification, sets downstream stages (voice, audacity, stitch, transcribe, images,
+      fixtimes, video, thumbnail) to False, updates state["script_hash"] = current_hash,
+      and calls save_pipeline_state. Returns True.
+    Else if state.get("script_hash") is None and refined_script.txt exists:
+      Updates state["script_hash"] = current_hash and calls save_pipeline_state. Returns False.
+    Returns False if no invalidation occurred or script doesn't exist.
+    """
+    script_path = os.path.join(folder, "refined_script.txt")
+    if not os.path.exists(script_path):
+        return False
+
+    current_hash = compute_script_hash(folder)
+    if current_hash is None:
+        return False
+
+    if not video_title:
+        video_title = os.path.basename(os.path.normpath(folder))
+
+    stored_hash = state.get("script_hash")
+    if stored_hash is not None and stored_hash != current_hash:
+        print(f"🔄 [SCRIPT MODIFIED] '{video_title}' script changed. Invalidating downstream stages.")
+        downstream_stages = [
+            "voice",
+            "audacity",
+            "stitch",
+            "transcribe",
+            "images",
+            "fixtimes",
+            "video",
+            "thumbnail",
+        ]
+        for stage in downstream_stages:
+            state[stage] = False
+        state["script_hash"] = current_hash
+        save_pipeline_state(folder, state)
+        return True
+    elif stored_hash is None:
+        state["script_hash"] = current_hash
+        save_pipeline_state(folder, state)
+        return False
+
+    return False
 
 
 def resolve_step_timeout() -> int:
@@ -181,6 +242,10 @@ def _execute_folder_steps(
                 subprocess.run([sys.executable, step["script"]], check=True)
 
             state[step["key"]] = True
+            if step["key"] == "refine":
+                current_hash = compute_script_hash(folder)
+                if current_hash is not None:
+                    state["script_hash"] = current_hash
             save_pipeline_state(folder, state)
             clean_browser_tabs()
 
@@ -227,6 +292,132 @@ def _execute_folder_steps(
     return not folder_failed
 
 
+def process_folder(folder: str, step_timeout: int = 7200) -> bool:
+    """Processes pipeline stages for a single video folder.
+
+    Returns True if completed successfully or skipped, False on failure.
+    """
+    video_title = os.path.basename(os.path.normpath(folder))
+    state = get_pipeline_state(folder)
+
+    if "refine" not in state:
+        state["refine"] = True
+
+    check_script_invalidation(folder, state, video_title)
+
+    if state.get("video", False) and state.get("thumbnail", False):
+        print(f"✅ Video '{video_title}' is already fully compiled and processed. Skipping.")
+        return True
+
+    # -----------------------------------------------------------------
+    # DYNAMIC PIPELINE CONFIGURATION (from .env)
+    # -----------------------------------------------------------------
+    enable_refine = get_config_value("ENABLE_REFINE_SCRIPT", "true").strip().lower() in [
+        "true",
+        "1",
+        "yes",
+    ]
+    flip_audacity = get_config_value("FLIP_AUDACITY_ORDER", "false").strip().lower() in [
+        "true",
+        "1",
+        "yes",
+    ]
+    whisper_engine = get_config_value("WHISPER_ENGINE", "faster_whisper").strip().lower()
+
+    img_gen_type = get_config_value("IMAGE_GENERATOR_TYPE", "flow").strip().lower()
+    img_script = (
+        "script_image_generator.py" if img_gen_type == "script" else "flow_image_generator.py"
+    )
+    whisper_script = (
+        os.path.join("tools", "transcribe_audio.py")
+        if whisper_engine == "hard_whisper"
+        else "faster_whisper_transcribe_audio.py"
+    )
+
+    # Construct declarative pipeline step array
+    folder_steps = []
+
+    # Step 1: Translation & Extraction
+    folder_steps.append(
+        {
+            "key": "translate",
+            "script": "automate_all.py",
+            "desc": "Phase 1: Script Extraction & Translation",
+        }
+    )
+
+    # Step 2: Script Refinement (Conditional)
+    if enable_refine:
+        folder_steps.append(
+            {
+                "key": "refine",
+                "script": "refine_script.py",
+                "desc": "Phase 2: Arabic Script Refinement",
+            }
+        )
+    else:
+        print("ℹ️  [SYSTEM] Script Refinement is disabled in config. Skipping Phase 2 mapping.")
+
+    # Step 3: Voice Generation
+    folder_steps.append(
+        {
+            "key": "voice",
+            "script": "generate_voice.py",
+            "desc": "Phase 3: AI Voice Synthesis",
+        }
+    )
+
+    # Steps 4 & 5: Audio Polishing and Stitching
+    audacity_step = {
+        "key": "audacity",
+        "script": "automate_audacity.py",
+        "desc": "Phase 4: Studio Audio Polish",
+    }
+    stitch_step = {
+        "key": "stitch",
+        "script": "stitch_chapters.py",
+        "desc": "Phase 5: Audio Stitching",
+    }
+
+    if flip_audacity:
+        folder_steps.extend([stitch_step, audacity_step])
+    else:
+        folder_steps.extend([audacity_step, stitch_step])
+
+    # Step 6 to 10: Finalizing Pipeline
+    folder_steps.extend(
+        [
+            {
+                "key": "transcribe",
+                "script": whisper_script,
+                "desc": (f"Phase 6: Whisper Transcription ({whisper_engine.upper()})"),
+            },
+            {
+                "key": "images",
+                "script": img_script,
+                "desc": f"Phase 7: Image Generation ({img_gen_type.upper()})",
+            },
+            {
+                "key": "fixtimes",
+                "script": "fix_timestamps.py",
+                "desc": "Phase 8: Timestamp Alignment Checking",
+            },
+            {
+                "key": "video",
+                "script": "compile_video.py",
+                "desc": "Phase 9: Final Video Compositing & Rendering",
+            },
+            {
+                "key": "thumbnail",
+                "script": "generate_thumbnail.py",
+                "desc": "Phase 10: Youtube Thumbnail Optimization",
+            },
+        ]
+    )
+
+    return _execute_folder_steps(folder, state, folder_steps, video_title, step_timeout)
+
+
 def main():
     print_header("Initializing Fully Autonomous Media Pipeline (Batch Mode)")
     time.sleep(2)
@@ -267,122 +458,7 @@ def main():
         os.utime(folder, None)
         time.sleep(1)
 
-        state = get_pipeline_state(folder)
-
-        if "refine" not in state:
-            state["refine"] = True
-
-        if state.get("video", False) and state.get("thumbnail", False):
-            print(f"✅ Video '{video_title}' is already fully compiled and processed. Skipping.")
-            continue
-
-        # -----------------------------------------------------------------
-        # DYNAMIC PIPELINE CONFIGURATION (from .env)
-        # -----------------------------------------------------------------
-        enable_refine = get_config_value("ENABLE_REFINE_SCRIPT", "true").strip().lower() in [
-            "true",
-            "1",
-            "yes",
-        ]
-        flip_audacity = get_config_value("FLIP_AUDACITY_ORDER", "false").strip().lower() in [
-            "true",
-            "1",
-            "yes",
-        ]
-        whisper_engine = get_config_value("WHISPER_ENGINE", "faster_whisper").strip().lower()
-
-        img_gen_type = get_config_value("IMAGE_GENERATOR_TYPE", "flow").strip().lower()
-        img_script = (
-            "script_image_generator.py" if img_gen_type == "script" else "flow_image_generator.py"
-        )
-        whisper_script = (
-            os.path.join("tools", "transcribe_audio.py")
-            if whisper_engine == "hard_whisper"
-            else "faster_whisper_transcribe_audio.py"
-        )
-
-        # Construct declarative pipeline step array
-        folder_steps = []
-
-        # Step 1: Translation & Extraction
-        folder_steps.append(
-            {
-                "key": "translate",
-                "script": "automate_all.py",
-                "desc": "Phase 1: Script Extraction & Translation",
-            }
-        )
-
-        # Step 2: Script Refinement (Conditional)
-        if enable_refine:
-            folder_steps.append(
-                {
-                    "key": "refine",
-                    "script": "refine_script.py",
-                    "desc": "Phase 2: Arabic Script Refinement",
-                }
-            )
-        else:
-            print("ℹ️  [SYSTEM] Script Refinement is disabled in config. Skipping Phase 2 mapping.")
-
-        # Step 3: Voice Generation
-        folder_steps.append(
-            {
-                "key": "voice",
-                "script": "generate_voice.py",
-                "desc": "Phase 3: AI Voice Synthesis",
-            }
-        )
-
-        # Steps 4 & 5: Audio Polishing and Stitching
-        audacity_step = {
-            "key": "audacity",
-            "script": "automate_audacity.py",
-            "desc": "Phase 4: Studio Audio Polish",
-        }
-        stitch_step = {
-            "key": "stitch",
-            "script": "stitch_chapters.py",
-            "desc": "Phase 5: Audio Stitching",
-        }
-
-        if flip_audacity:
-            folder_steps.extend([stitch_step, audacity_step])
-        else:
-            folder_steps.extend([audacity_step, stitch_step])
-
-        # Step 6 to 10: Finalizing Pipeline
-        folder_steps.extend(
-            [
-                {
-                    "key": "transcribe",
-                    "script": whisper_script,
-                    "desc": (f"Phase 6: Whisper Transcription ({whisper_engine.upper()})"),
-                },
-                {
-                    "key": "images",
-                    "script": img_script,
-                    "desc": f"Phase 7: Image Generation ({img_gen_type.upper()})",
-                },
-                {
-                    "key": "fixtimes",
-                    "script": "fix_timestamps.py",
-                    "desc": "Phase 8: Timestamp Alignment Checking",
-                },
-                {
-                    "key": "video",
-                    "script": "compile_video.py",
-                    "desc": "Phase 9: Final Video Compositing & Rendering",
-                },
-                {
-                    "key": "thumbnail",
-                    "script": "generate_thumbnail.py",
-                    "desc": "Phase 10: Youtube Thumbnail Optimization",
-                },
-            ]
-        )
-
-        if not _execute_folder_steps(folder, state, folder_steps, video_title, step_timeout):
+        if not process_folder(folder, step_timeout):
             continue
 
     elapsed = time.time() - global_start_time
