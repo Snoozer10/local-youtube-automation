@@ -18,7 +18,8 @@
     6. Packaging & Dependency Fixes: Modernized pyproject.toml and requirements-dev.txt, verified setup/runner scripts (setup.bat, setup.ps1, run.bat).
     7. Workflow Modernization: Modernized .github/workflows/ci.yml and created .github/workflows/release.yml.
     8. Package Building & Assembly: Wheel, sdist, standalone portable Windows zip (39 files), and SHA256SUMS.txt generated in dist/.
-  - Now: Committing packaging & workflow updates to master and publishing GitHub release v4.1.0.
-  - Next: Verify published release via `gh release view v4.1.0`.
+    9. Official Publication: GitHub Release v4.1.0 published with all 4 binary assets attached; commits pushed to master.
+  - Now: Release publication complete and verified.
+  - Next: None. Release cycle v4.1.0 concluded.
 - Open questions (UNCONFIRMED if needed): None.
-- Working set (files/ids/commands): requirements-dev.txt, pyproject.toml, setup.bat, setup.ps1, run.bat, .github/workflows/ci.yml, .github/workflows/release.yml, tools/extract_release_notes.py, dist/, gh release create
+- Working set (files/ids/commands): gh release view v4.1.0, dist/
