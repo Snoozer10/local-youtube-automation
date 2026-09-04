@@ -1,3 +1,4 @@
+<!-- AGENT-SYNC: GEMINI.md -->
 # AGENTS.md
 
 Drop-in operating instructions for coding agents. Read this file before every task.
