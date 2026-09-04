@@ -29,6 +29,7 @@ from utils import (
 from validator import (
     enforce_arabic_in_prompt,
     flatten_visual_prompt_to_diffusion_text,
+    purge_subtitle_phrases,
     verify_pipeline_integrity,
 )
 
@@ -2861,8 +2862,9 @@ def main() -> None:
                                     else:
                                         payload_text = natural_prompt
 
-                                    # Apply the Arabic sanitizer right before submitting
+                                    # Apply the Arabic sanitizer and purge subtitle phrases right before submitting
                                     payload_text = enforce_arabic_in_prompt(payload_text)
+                                    payload_text = purge_subtitle_phrases(payload_text)
 
                                     flow_page.wait_for_timeout(1000)
                                     pre_image_srcs = set()
@@ -3242,14 +3244,17 @@ def main() -> None:
                                                 print(
                                                     f"  ⚠️ [TEXT COLLISION] Detected rendered text in {os.path.basename(current_save_path)}: {ocr_boxes}"
                                                 )
+                                                def _cleanup_collision_file(fpath: str) -> None:
+                                                    if os.path.exists(fpath):
+                                                        try:
+                                                            os.remove(fpath)
+                                                        except OSError:
+                                                            pass
+
                                                 if attempt == 1:
                                                     print("  🔄 Retrying once with strengthened negative prompt...")
                                                     payload_text = f"{payload_text}, {STRENGTHENED_NEGATIVE_PROMPT}"
-                                                    if os.path.exists(current_save_path):
-                                                        try:
-                                                            os.remove(current_save_path)
-                                                        except OSError:
-                                                            pass
+                                                    _cleanup_collision_file(current_save_path)
                                                     continue
                                                 else:
                                                     dump_path = os.path.join(
@@ -3261,11 +3266,7 @@ def main() -> None:
                                                     print(
                                                         f"  ❌ [TEXT COLLISION] Persistent collision after retry. Debug dump: {dump_path}"
                                                     )
-                                                    if os.path.exists(current_save_path):
-                                                        try:
-                                                            os.remove(current_save_path)
-                                                        except OSError:
-                                                            pass
+                                                    _cleanup_collision_file(current_save_path)
                                             else:
                                                 if not is_duplicate:
                                                     download_attempt_success = True

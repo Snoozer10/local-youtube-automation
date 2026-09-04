@@ -327,3 +327,44 @@ class TestVisualPrompt8PartSchema:
         assert vp.continuity_id == "ABO_HMEED_01"
         assert vp.mood == "puzzled"
         assert vp.lighting == "side keylight"
+
+    def test_pure_8part_diffusion_schema_validation_and_flattening(self):
+        from validator import (
+            FrameItem,
+            flatten_visual_prompt_to_diffusion_text,
+            verify_pipeline_integrity,
+        )
+
+        item = {
+            "index": 1,
+            "timestamp": "[00:05]",
+            "visual_prompt": {
+                "subject": "Ahmed El-Ghandour in signature yellow hoodie",
+                "action": "points quizzically at chalkboard",
+                "setting": "classic Ahwa studio background",
+                "mood": "educational humor",
+                "lighting": "warm studio illumination",
+                "composition": "medium close-up 16:9 framing",
+                "style": "2D vector animation style",
+                "negative_prompt": "no photorealism, no 3D render",
+                "continuity_id": "HOST_01",
+            },
+        }
+
+        # Verify FrameItem validates cleanly without legacy fields
+        frame = FrameItem.model_validate(item)
+        assert frame.visual_prompt.subject == "Ahmed El-Ghandour in signature yellow hoodie"
+        assert frame.visual_prompt.continuity_id == "HOST_01"
+
+        # Verify pipeline integrity passes without requiring style_anchor
+        verified = verify_pipeline_integrity([item], expected_total=1)
+        assert len(verified) == 1
+
+        # Verify flattening synthesizes elevated diffusion prompt with preset fallback & negative prompt
+        flattened = flatten_visual_prompt_to_diffusion_text(item["visual_prompt"])
+        assert "Ahmed El-Ghandour in signature yellow hoodie, points quizzically at chalkboard" in flattened
+        assert "Scene Setting: classic Ahwa studio background" in flattened
+        assert "Composition: medium close-up 16:9 framing" in flattened
+        assert "Mood: educational humor" in flattened
+        assert "Negative Prompt: no photorealism, no 3D render, no text, no subtitles" in flattened
+

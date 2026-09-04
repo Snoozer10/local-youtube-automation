@@ -77,12 +77,15 @@ _SCHEMA_HINT = (
     '"layout_classification": <token>, '
     '"sequence_metadata": {"set_id": "SET_NN", "frame_index": <int>, '
     '"total_frames_in_set": <int>}, "visual_density": <enum>, '
-    '"visual_prompt": {"subject_details": "<verbatim character token>", '
-    '"subject_action_increment": "<micro-action>", '
-    '"environment_coordinates": "<verbatim layout token>", '
-    '"composition_layout": "<framing geometry>", "camera_specifications": <enum>, '
-    '"text_overlay_arabic": "<Arabic OR NONE>", "accent_color_hook": "<palette color>", '
-    '"style_anchor": "<STYLE_DNA verbatim>"}}]'
+    '"visual_prompt": {"subject": "<character/subject in English>", '
+    '"action": "<action description in English>", '
+    '"setting": "<environment/background in English>", '
+    '"mood": "<emotional tone in English>", '
+    '"lighting": "<lighting style in English or omit>", '
+    '"composition": "<framing geometry in English>", '
+    '"style": "<2D vector animation style or omit>", '
+    '"negative_prompt": "<negative elements or omit>", '
+    '"continuity_id": "<SUBJ_NN or NONE>"}}]'
 )
 
 
@@ -202,6 +205,8 @@ class SubjectContinuityTracker:
         is_match = best_sim >= self.similarity_threshold
         return (best_id if is_match else "", best_sim, is_match)
 
+    find_match = resolve_subject
+
 
 def extract_roadmap_slice(
     roadmap_rows: list[RoadmapRow],
@@ -246,8 +251,7 @@ def build_compact_preamble(presets: dict[str, Any] | None) -> str:
             f"SCHEMA: {_SCHEMA_HINT}",
             f'STYLE_DNA: "{STYLE_DNA_TEXT}"',
             f"FORBIDDEN: {json.dumps(_FORBIDDEN_TERMS, ensure_ascii=False)}",
-            "TYPOGRAPHY: text_overlay_arabic = bold modern Arabic Kufic calligraphy "
-            '(1-3 words) OR exactly "NONE"; Latin letters prohibited',
+            "TYPOGRAPHY & LANGUAGE: Prompt text must be strictly in ENGLISH. Zero Arabic characters allowed in visual_prompt fields (Arabic Kufic typography prohibited, text overlay must be \"NONE\"). Zero on-screen text, zero watermarks, zero typography overlays.",
             "OUTPUT: ONE raw JSON array covering EXACTLY the requested Index span; no prose, "
             "no fences, no repeated objects",
         ]
@@ -259,9 +263,16 @@ def build_chunk_payload(
     preamble: str,
     slice_rows: list[RoadmapRow],
     script_lines: list[tuple[int, str, str]],
+    spans: list[dict[str, Any]] | None = None,
 ) -> str:
-    """Single-turn prompt: preamble + buffered roadmap table + script lines + span directive."""
-    lines: list[str] = [preamble, "", "CRITICAL: timestamp field must be copied VERBATIM from SCRIPT LINES including brackets, e.g. [00:00] - never leave empty", "", "ROADMAP CONTEXT (target span +/- buffer):"]
+    """Single-turn prompt: preamble + buffered roadmap table + 3-span windowed script lines + span directive."""
+    lines: list[str] = [
+        preamble,
+        "",
+        "CRITICAL: timestamp field must be copied VERBATIM from SCRIPT LINES including brackets, e.g. [00:00] - never leave empty",
+        "",
+        "ROADMAP CONTEXT (target span +/- buffer):",
+    ]
     for row in slice_rows:
         cells = [
             _condense(str(row.index)),
@@ -276,7 +287,22 @@ def build_chunk_payload(
         lines.append("| " + " | ".join(cells) + " |")
     lines.extend(["", "SCRIPT LINES TO CONVERT:"])
     for global_index, timestamp, sentence in script_lines:
-        lines.append(f"Index {global_index} [{timestamp}] {_condense(sentence)}")
+        span_ctx = None
+        if spans:
+            try:
+                span_ctx = build_3span_window_context(spans, global_index)
+            except Exception:
+                span_ctx = None
+        line_desc = f"Index {global_index} [{timestamp}] {_condense(sentence)}"
+        if span_ctx:
+            p_before = span_ctx.get("pause_before", 0.0)
+            p_after = span_ctx.get("pause_after", 0.0)
+            prev_s = span_ctx.get("prev_span")
+            next_s = span_ctx.get("next_span")
+            prev_txt = f" | Prev: '{_condense(prev_s.get('text', ''))}'" if prev_s and prev_s.get("text") else ""
+            next_txt = f" | Next: '{_condense(next_s.get('text', ''))}'" if next_s and next_s.get("text") else ""
+            line_desc += f" (pause_before={p_before:.2f}s, pause_after={p_after:.2f}s{prev_txt}{next_txt})"
+        lines.append(line_desc)
     first = script_lines[0][0] if script_lines else 0
     last = script_lines[-1][0] if script_lines else 0
     lines.append("")
@@ -341,8 +367,11 @@ def _validation_error_excerpt(exc: ValidationError) -> str:
 
 
 def _absorb_valid_items(
-    raw_response: str, start_idx: int, end_idx: int,
+    raw_response: str,
+    start_idx: int,
+    end_idx: int,
     timestamp_map: dict[int, str] | None = None,
+    continuity_tracker: SubjectContinuityTracker | None = None,
 ) -> tuple[dict[int, dict[str, Any]], dict[int, str]]:
     try:
         items = clean_and_repair_json(raw_response)
@@ -361,10 +390,18 @@ def _absorb_valid_items(
             log(f"[planner] auto-repair empty timestamp for index {raw_index} -> {repaired_ts}")
             item["timestamp"] = repaired_ts
 
-        # Auto-repair Arabic characters in visual prompt English fields (ADR 0003)
+        # Auto-repair Arabic characters in visual prompt English fields (ADR 0003 & Spec #12)
         vp = item.get("visual_prompt")
         if isinstance(vp, dict):
             for field in (
+                "subject",
+                "action",
+                "setting",
+                "mood",
+                "lighting",
+                "composition",
+                "style",
+                "negative_prompt",
                 "subject_details",
                 "subject_action_increment",
                 "environment_coordinates",
@@ -377,6 +414,17 @@ def _absorb_valid_items(
                     if not valid_en:
                         log(f"[planner] transliterating Arabic in index {raw_index} field {field}")
                         vp[field] = transliterate_arabic_fallback(val)
+
+            # Continuity tracking (Spec line 91)
+            subj = (vp.get("subject") or vp.get("subject_details", "")).strip()
+            if subj and continuity_tracker:
+                c_id, sim, is_match = continuity_tracker.find_match(subj)
+                if is_match:
+                    vp["continuity_id"] = c_id
+                elif not vp.get("continuity_id") or vp.get("continuity_id") == "NONE":
+                    vp["continuity_id"] = continuity_tracker.register_subject(
+                        f"Subject_{raw_index}", subj
+                    )
 
         try:
             FrameItem.model_validate(item)
@@ -459,7 +507,30 @@ def _plan_single_chunk(
     row_by_index = {row.index: row for row in slice_rows}
     expected = list(range(start_idx, end_idx + 1))
 
-    payload = build_chunk_payload(preamble, slice_rows, script_lines)
+    # Construct or load canonical spans for 3-span window context (Spec line 79)
+    spans: list[dict[str, Any]] = []
+    timeline_path = folder / "timeline.json"
+    if timeline_path.exists():
+        try:
+            with open(timeline_path, encoding="utf-8") as f:
+                t_data = json.load(f)
+                spans = t_data.get("spans", [])
+        except Exception:
+            spans = []
+    if not spans:
+        for idx in range(1, len(sentences) + 1):
+            ts = timestamps[idx - 1] if idx <= len(timestamps) else "[00:00]"
+            sent = sentences[idx - 1] if idx <= len(sentences) else ""
+            spans.append({
+                "index": idx,
+                "timestamp": ts,
+                "text": sent,
+                "pause_before": 0.0,
+                "pause_after": 0.0,
+            })
+
+    continuity_tracker = SubjectContinuityTracker()
+    payload = build_chunk_payload(preamble, slice_rows, script_lines, spans=spans)
     attempts = 0
 
     jitter_delay()
@@ -500,7 +571,9 @@ def _plan_single_chunk(
 
     # Build timestamp map for auto-repair and debug
     timestamp_map = {idx: ts for idx, ts, _ in script_lines}
-    valid, errors = _absorb_valid_items(response, start_idx, end_idx, timestamp_map)
+    valid, errors = _absorb_valid_items(
+        response, start_idx, end_idx, timestamp_map, continuity_tracker=continuity_tracker
+    )
     missing = [index for index in expected if index not in valid]
     if missing:
         log(f"[planner] initial missing after absorb: {missing} | errors={errors} | raw_len={len(response)}")
@@ -515,7 +588,9 @@ def _plan_single_chunk(
             log(f"[planner] {chunk_id} repair injection failed; attempt consumed.")
             continue
         last_raw = wait_for_gemini_turn_completion(gemini_page)
-        repaired, repair_errors = _absorb_valid_items(last_raw, start_idx, end_idx, timestamp_map)
+        repaired, repair_errors = _absorb_valid_items(
+            last_raw, start_idx, end_idx, timestamp_map, continuity_tracker=continuity_tracker
+        )
         if repair_errors:
             log(f"[planner] repair {repairs_used} errors: {repair_errors}")
         errors.update(repair_errors)

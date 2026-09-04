@@ -11,7 +11,14 @@ import re
 from collections import Counter
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 __all__ = [
     "FrameItem",
@@ -130,13 +137,17 @@ def flatten_visual_prompt_to_diffusion_text(vp: Any) -> str:
     if not isinstance(vp, dict):
         return str(vp)
 
-    subject = vp.get("subject_details", "").strip()
-    action = vp.get("subject_action_increment", "").strip()
-    layout = vp.get("composition_layout", "").strip()
-    env = vp.get("environment_coordinates", "").strip()
+    # Extract fields with 8-part schema priority and legacy fallback
+    subject = (vp.get("subject") or vp.get("subject_details", "")).strip()
+    action = (vp.get("action") or vp.get("subject_action_increment", "")).strip()
+    layout = (vp.get("composition") or vp.get("composition_layout", "")).strip()
+    env = (vp.get("setting") or vp.get("environment_coordinates", "")).strip()
     accent = vp.get("accent_color_hook", "").strip()
-    style = vp.get("style_anchor", "").strip()
+    style = (vp.get("style") or vp.get("style_anchor", "")).strip()
     text_ar = vp.get("text_overlay_arabic", "NONE").strip()
+    mood = vp.get("mood", "").strip()
+    lighting = vp.get("lighting", "").strip()
+    user_negative = vp.get("negative_prompt", "").strip()
 
     # 1. Purge ABSENT tokens
     if subject.upper().startswith("ABSENT"):
@@ -168,7 +179,7 @@ def flatten_visual_prompt_to_diffusion_text(vp: Any) -> str:
     if env:
         prompt_parts.append(f"Scene Setting: {env.rstrip('.')}.")
 
-    # 5. Clean Composition (Strictly textless framing)
+    # 5. Clean Composition (Strictly textless framing with preset default)
     if layout:
         prompt_parts.append(f"Composition: {layout.rstrip('.')}.")
     else:
@@ -181,12 +192,14 @@ def flatten_visual_prompt_to_diffusion_text(vp: Any) -> str:
         prompt_parts.append(
             f"Color & Lighting: High-contrast 2D studio illumination with {accent.rstrip('.')} accent highlights."
         )
+    elif lighting:
+        prompt_parts.append(f"Lighting: {lighting.rstrip('.')}.")
     else:
         prompt_parts.append(
             "Color & Lighting: Warm amber keylight (#E09F3E) with high-contrast cel-shading."
         )
 
-    # 7. Arabic Typography (Integrated cleanly into scene)
+    # 7. Arabic Typography (Integrated cleanly into scene, if requested by legacy callers)
     if text_ar and text_ar.upper() != "NONE":
         prompt_parts.append(
             f'Typography: A single clean Arabic title graphic reading "{text_ar}" in bold modern Kufic script.'
@@ -202,12 +215,8 @@ def flatten_visual_prompt_to_diffusion_text(vp: Any) -> str:
             r"(?i)mixed with 18th-century oil painting cutout parody\.?", "", clean_style
         ).strip()
 
-    mood = vp.get("mood", "").strip()
-    lighting = vp.get("lighting", "").strip()
     if mood:
         prompt_parts.append(f"Mood: {mood.rstrip('.')}.")
-    if lighting and not accent:
-        prompt_parts.append(f"Lighting: {lighting.rstrip('.')}.")
 
     if clean_style:
         prompt_parts.append(f"Art Style: {clean_style.rstrip('.')}.")
@@ -216,8 +225,12 @@ def flatten_visual_prompt_to_diffusion_text(vp: Any) -> str:
             "Art Style: 2D graphic vector animation explainer style, crisp 3px black outlines, rich 2-step flat cel-shading, vibrant warm studio illumination, 16:9 widescreen."
         )
 
-    # Deterministic Negative Prompt Injection (ADR 0003)
-    prompt_parts.append(f"Negative Prompt: {STRICT_NEGATIVE_PROMPT}.")
+    # Deterministic Negative Prompt Injection (ADR 0003 & Spec #12)
+    if user_negative:
+        combined_negative = f"{user_negative}, {STRICT_NEGATIVE_PROMPT}"
+    else:
+        combined_negative = STRICT_NEGATIVE_PROMPT
+    prompt_parts.append(f"Negative Prompt: {combined_negative}.")
 
     return " ".join(prompt_parts)
 
@@ -299,18 +312,36 @@ class SequenceMetadata(BaseModel):
 class VisualPrompt(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    subject_details: str = Field(min_length=1)
+    # Legacy schema fields
+    subject_details: str = ""
     subject_action_increment: str = ""
     environment_coordinates: str = ""
     composition_layout: str = ""
     camera_specifications: str = ""
     text_overlay_arabic: str = "NONE"
     accent_color_hook: str = ""
-    style_anchor: str = Field(min_length=1)
+    style_anchor: str = ""
+
+    # Spec #12 8-part diffusion schema fields
+    subject: str = ""
+    action: str = ""
+    setting: str = ""
     mood: str = ""
     lighting: str = ""
+    composition: str = ""
+    style: str = ""
     negative_prompt: str = ""
     continuity_id: str = ""
+
+    @model_validator(mode="after")
+    def _validate_subject_present(self) -> "VisualPrompt":
+        subj = (self.subject or self.subject_details).strip()
+        if not subj:
+            raise ValueError("subject_details or subject must not be empty")
+        style = (self.style or self.style_anchor).strip()
+        if not style:
+            raise ValueError("style_anchor or style must not be empty")
+        return self
 
 
 class FrameItem(BaseModel):
@@ -430,13 +461,14 @@ def _collect_schema_and_content_violations(
                     )
 
             anchor = visual_prompt.get("style_anchor", "")
-            anchor_lower = str(anchor).lower()
-            missing_keywords = [
-                kw for kw in ("3px", "vector", "cel-shading") if kw not in anchor_lower
-            ]
-            if missing_keywords:
-                joined = ", ".join(missing_keywords)
-                violations.append(f"{label}: style_anchor missing required keyword(s): {joined}.")
+            if anchor:
+                anchor_lower = str(anchor).lower()
+                missing_keywords = [
+                    kw for kw in ("3px", "vector", "cel-shading") if kw not in anchor_lower
+                ]
+                if missing_keywords:
+                    joined = ", ".join(missing_keywords)
+                    violations.append(f"{label}: style_anchor missing required keyword(s): {joined}.")
 
 
 def _collect_ordering_violations(items: list[dict[str, Any]], violations: list[str]) -> None:
