@@ -22,11 +22,17 @@ from gemini_utils import (  # noqa: E402
     start_clean_gemini_chat,
     wait_for_gemini_response,  # Re-imported standard text wait helper
 )
+from text_gate import (  # noqa: E402
+    STRENGTHENED_NEGATIVE_PROMPT,
+    check_text_collision,
+    dump_text_collision_debug,
+)
 from utils import (  # noqa: E402
     get_config_value,
     launch_browser_with_profile,
     send_telegram_notification,
 )
+from validator import STRICT_NEGATIVE_PROMPT  # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -299,15 +305,36 @@ def send_image_prompt_and_wait(page, message, timeout=180):
 
 def extract_json_from_response(text):
     """Extract JSON from a response that may contain markdown code blocks."""
-    code_block = re.search(r"```(?:json)?\s*\n(.*?)\n```", text, re.DOTALL)
+    if not text or not isinstance(text, str):
+        return None
+
+    code_block = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
     if code_block:
         text = code_block.group(1)
     text = text.strip()
+
+    # Trim surrounding prose to outermost bracket/brace
+    start_idx = -1
+    for i, ch in enumerate(text):
+        if ch in ("{", "["):
+            start_idx = i
+            break
+    end_idx = -1
+    for i in range(len(text) - 1, -1, -1):
+        if text[i] in ("}", "]"):
+            end_idx = i + 1
+            break
+
+    candidate = text[start_idx:end_idx] if (start_idx != -1 and end_idx != -1 and start_idx < end_idx) else text
+
     try:
-        return json.loads(text)
+        return json.loads(candidate)
     except json.JSONDecodeError:
-        print(f"[WARNING] Could not parse JSON from response: {text[:200]}")
-        return None
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            print(f"[WARNING] Could not parse JSON from response: {text[:200]}")
+            return None
 
 
 def build_webcomic_thumbnail_prompt(concept, index):
@@ -348,12 +375,97 @@ def build_webcomic_thumbnail_prompt(concept, index):
 
     if text_overlay:
         prompt += (
-            f'Typography Rule: Render the exact bold Arabic text "{text_overlay}" in large, clean Arabic typography '
-            f"integrated into an uncluttered high-contrast area of the image.\n"
+            "Composition Note: Ensure clean, uncluttered high-contrast negative space is reserved for title overlay; "
+            "do not paint or render any letters, words, or typography directly onto the raw image bitmap.\n"
         )
 
-    prompt += "NEGATIVE PROMPT: [no extra text, no random letters, no photorealism, no watermarks, no gibberish, no soft focus blur]"
+    prompt += f"NEGATIVE PROMPT: [{STRICT_NEGATIVE_PROMPT}]"
     return prompt
+
+
+def parse_critique_json(response_text, concepts=None, top_n=TOP_N):
+    """Parses critique ranking JSON from Gemini response, with fallback on malformed response."""
+    critique = extract_json_from_response(response_text) if response_text else None
+    if isinstance(critique, dict) and "winners" in critique and isinstance(critique["winners"], list):
+        return critique
+
+    print("[WARNING] Critique failed or malformed. Defaulting to fallback title indices.")
+    concepts = concepts or []
+    fallback_winners = [
+        c.get("title_index", i + 1) for i, c in enumerate(concepts[:top_n])
+    ]
+    if not fallback_winners:
+        fallback_winners = list(range(1, top_n + 1))
+    return {
+        "winners": fallback_winners,
+        "improvements": {},
+    }
+
+
+def _save_image_from_response(page, response, filepath):
+    """Downloads image via Playwright UI hover/click or falls back to base64 data extraction."""
+    try:
+        last_response = page.locator("model-response").last
+        img_locator = last_response.locator("img").first
+
+        # Wait for image to actually be attached and visible
+        img_locator.wait_for(state="visible", timeout=15000)
+
+        # Force scroll into view to ensure the hover action is not blocked
+        img_locator.scroll_into_view_if_needed()
+        time.sleep(1)
+
+        # Leverage Playwright's Relative Hover (Forced Center)
+        box = img_locator.bounding_box()
+        if box:
+            hover_x = box["width"] / 2
+            hover_y = box["height"] / 2
+
+            # force=True bypasses the "subtree intercepts pointer events" error from hidden Google UI layers
+            img_locator.hover(position={"x": hover_x, "y": hover_y}, force=True)
+            time.sleep(1.5)  # Wait for the overlay animation to reveal the button
+
+            # Robust Selector for the Download Button from script_image_generator.py
+            dl_btn = last_response.locator(
+                'button[aria-label*="Download full size" i], '
+                'button[aria-label*="Download" i], '
+                'button[aria-label*="تحميل" i], '
+                'button[data-tooltip*="Download" i]'
+            ).first
+
+            if dl_btn.is_visible():
+                with page.expect_download(timeout=30000) as download_info:
+                    dl_btn.click(force=True)
+
+                download = download_info.value
+                download.save_as(filepath)
+
+                if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                    return True
+                else:
+                    print(
+                        f"[WARNING] Download completed but file is missing or 0 bytes: {filepath}"
+                    )
+            else:
+                print("[WARNING] Hover succeeded but Download button did not appear.")
+        else:
+            print("[WARNING] Could not calculate image bounding box for hover.")
+    except Exception as e:
+        # Fallback to base64 extract if UI interaction fails
+        b64_match = re.search(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", response or "")
+        if b64_match:
+            try:
+                img_data = base64.b64decode(b64_match.group(1))
+                with open(filepath, "wb") as f:
+                    f.write(img_data)
+                if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                    return True
+            except Exception as ex:
+                print(f"[ERROR] Base64 extraction failed: {ex}")
+        else:
+            print(f"[ERROR] Image extraction failed: {e}")
+
+    return False
 
 
 def generate_images_via_gemini(page, items, output_dir):
@@ -363,85 +475,74 @@ def generate_images_via_gemini(page, items, output_dir):
 
     for i, item in enumerate(items):
         if isinstance(item, dict):
-            prompt_text = item["prompt"]
+            base_prompt = item["prompt"]
             filename = item["filename"]
+            chunk_idx = item.get("title_index", i + 1)
         else:
-            prompt_text = item
+            base_prompt = item
             filename = f"variant_{i + 1}.png"
-
-        print(f"\n[IMAGE] Generating {filename} ({i + 1}/{len(items)})...")
-
-        response = send_image_prompt_and_wait(page, prompt_text, timeout=300)
-
-        if not response:
-            print(f"[WARNING] No response for {filename}. Skipping.")
-            continue
+            chunk_idx = i + 1
 
         filepath = os.path.join(output_dir, filename)
-        try:
-            last_response = page.locator("model-response").last
-            img_locator = last_response.locator("img").first
 
-            # Wait for image to actually be attached and visible
-            img_locator.wait_for(state="visible", timeout=15000)
+        for attempt in (1, 2):
+            if attempt == 1:
+                prompt_to_send = base_prompt
+                print(f"\n[IMAGE] Generating {filename} ({i + 1}/{len(items)})...")
+            else:
+                prompt_to_send = f"{base_prompt}\n{STRENGTHENED_NEGATIVE_PROMPT}"
+                print(f"\n[IMAGE] Retrying {filename} with strengthened negative prompt (attempt 2)...")
 
-            # Force scroll into view to ensure the hover action is not blocked
-            img_locator.scroll_into_view_if_needed()
-            time.sleep(1)
+            response = send_image_prompt_and_wait(page, prompt_to_send, timeout=300)
+            if not response:
+                print(f"[WARNING] No response for {filename} on attempt {attempt}.")
+                continue
 
-            # Leverage Playwright's Relative Hover (Forced Center)
-            box = img_locator.bounding_box()
-            if box:
-                # Hover the exact dead-center of the image to trigger the UI overlay safely
-                hover_x = box["width"] / 2
-                hover_y = box["height"] / 2
+            saved = _save_image_from_response(page, response, filepath)
+            if not saved or not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
+                print(
+                    f"[WARNING] Download completed but file is missing or 0 bytes: {filepath}"
+                )
+                continue
 
-                # force=True bypasses the "subtree intercepts pointer events" error from hidden Google UI layers
-                img_locator.hover(position={"x": hover_x, "y": hover_y}, force=True)
-                time.sleep(1.5)  # Wait for the overlay animation to reveal the button
-
-                # Robust Selector for the Download Button from script_image_generator.py
-                dl_btn = last_response.locator(
-                    'button[aria-label*="Download full size" i], '
-                    'button[aria-label*="Download" i], '
-                    'button[aria-label*="تحميل" i], '
-                    'button[data-tooltip*="Download" i]'
-                ).first
-
-                if dl_btn.is_visible():
-                    # The Native expect_download Handler
-                    with page.expect_download(timeout=30000) as download_info:
-                        dl_btn.click(force=True)
-
-                    download = download_info.value
-                    download.save_as(filepath)
-
-                    # Post-Download Verification Guard
-                    if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
-                        generated.append(filepath)
-                        print(f"[OK] Saved variant {i + 1}: {filepath}")
-                    else:
-                        print(
-                            f"[WARNING] Download completed but file is missing or 0 bytes: {filepath}"
-                        )
+            # Immediately after the downloaded PNG image is written to disk:
+            has_collision, ocr_boxes = check_text_collision(filepath)
+            if has_collision:
+                if attempt == 1:
+                    print(f"⚠️ [THUMBNAIL TEXT COLLISION] Detected text: {ocr_boxes}")
+                    if os.path.exists(filepath):
+                        try:
+                            os.remove(filepath)
+                        except OSError:
+                            pass
+                    # Retry once appending STRENGTHENED_NEGATIVE_PROMPT
+                    continue
                 else:
-                    print("[WARNING] Hover succeeded but Download button did not appear.")
+                    # Attempt 2 also fails: dump debug and purge corrupt image
+                    print(
+                        f"⚠️ [THUMBNAIL TEXT COLLISION] Attempt 2 failed for {filename}. Purging image."
+                    )
+                    dump_path = os.path.join(
+                        output_dir,
+                        f"collision_debug_{os.path.splitext(filename)[0]}.json",
+                    )
+                    dump_text_collision_debug(
+                        dump_path=dump_path,
+                        chunk_index=chunk_idx,
+                        image_path=filepath,
+                        ocr_boxes=ocr_boxes,
+                        prompt_text=prompt_to_send,
+                    )
+                    if os.path.exists(filepath):
+                        try:
+                            os.remove(filepath)
+                        except OSError:
+                            pass
+                    break
             else:
-                print("[WARNING] Could not calculate image bounding box for hover.")
-        except Exception as e:
-            # Fallback to base64 extract if UI interaction fails
-            b64_match = re.search(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", response)
-            if b64_match:
-                try:
-                    img_data = base64.b64decode(b64_match.group(1))
-                    with open(filepath, "wb") as f:
-                        f.write(img_data)
-                    generated.append(filepath)
-                    print(f"[OK] Saved variant {i + 1} (base64): {filepath}")
-                except Exception as ex:
-                    print(f"[ERROR] Base64 extraction failed: {ex}")
-            else:
-                print(f"[ERROR] Image extraction failed for variant {i + 1}: {e}")
+                generated.append(filepath)
+                print(f"[OK] Saved variant {i + 1}: {filepath}")
+                break
 
     return generated
 
@@ -540,18 +641,14 @@ def main():
         # Step 2: Send Critique Prompt directly in the SAME chat session!
         critique_msg = CRITIQUE_PROMPT_TEMPLATE.format(top_n=TOP_N)
         critique_response = send_and_wait(page, critique_msg, timeout=180)
-        critique = extract_json_from_response(critique_response)
+        critique = parse_critique_json(critique_response, concepts, top_n=TOP_N)
 
-        if critique:
+        if critique_response and extract_json_from_response(critique_response):
             with open(critique_path, "w", encoding="utf-8") as f:
                 json.dump(critique, f, ensure_ascii=False, indent=2)
             print(f"[OK] Critique saved to {critique_path}")
         else:
-            print("[WARNING] Critique failed. Defaulting to first 2 title indices.")
-            critique = {
-                "winners": [c.get("title_index", i + 1) for i, c in enumerate(concepts[:TOP_N])],
-                "improvements": {},
-            }
+            print("[WARNING] Critique failed. Using fallback winners.")
 
         winners = critique.get("winners", [1, 2])[:TOP_N]
         improvements = critique.get("improvements", {})
