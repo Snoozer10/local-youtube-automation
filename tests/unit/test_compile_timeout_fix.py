@@ -1,7 +1,5 @@
 """Regression tests for compile-video-output duration-aware timeout."""
 
-import pytest
-
 import compile_video
 
 
