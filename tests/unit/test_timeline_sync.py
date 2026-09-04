@@ -103,8 +103,15 @@ class TestKenBurnsFilterContract:
     def test_zoom_in_and_out_use_eased_min_max_bounds(self, config):
         zoom_in = compile_video.build_ken_burns_filter(config, 90, "zoom_in")
         zoom_out = compile_video.build_ken_burns_filter(config, 90, "zoom_out")
-        assert f"min({config.get('KEN_BURNS_ZOOM_MAX', 1.08)}" in zoom_in.replace(" ", "")
+        # 90 frames @ 30fps = 3.0s duration -> dynamic scale clamp(1.06 + (3.0 - 2.5)/2.0 * 0.04) = 1.07
+        assert "min(1.07" in zoom_in.replace(" ", "")
         assert f"max({config.get('KEN_BURNS_ZOOM_MIN', 1.0)}" in zoom_out.replace(" ", "")
+
+        # When dynamic scale is explicitly False, honors KEN_BURNS_ZOOM_MAX
+        cfg_fixed = config.copy()
+        cfg_fixed["KEN_BURNS_DYNAMIC_SCALE"] = False
+        zoom_fixed = compile_video.build_ken_burns_filter(cfg_fixed, 90, "zoom_in")
+        assert f"min({cfg_fixed.get('KEN_BURNS_ZOOM_MAX', 1.08)}" in zoom_fixed.replace(" ", "")
 
     def test_static_action_pins_zoom_to_identity(self, config):
         f = compile_video.build_ken_burns_filter(config, 45, "static shot")
