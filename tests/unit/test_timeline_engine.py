@@ -225,6 +225,23 @@ class TestShimsAndSidecars:
         finally:
             shutil.rmtree(d, ignore_errors=True)
 
+    def test_load_timeline_or_shim_stale_sidecar_raises_value_error(self, sample_whisper_words):
+        d = tempfile.mkdtemp()
+        try:
+            words = build_words_from_whisper(sample_whisper_words, audio_duration=10.0)
+            timeline = build_timeline(words, audio_duration=10.0, audio_file="voice.wav", fps=30)
+            t_path, _ = save_timeline_and_shims(timeline, d)
+
+            # Corrupt timeline.json content so load_timeline_or_shim falls back to shim
+            with open(t_path, "w", encoding="utf-8") as f:
+                f.write("{invalid json")
+
+            # Shim has the original hash, but timeline.json was modified -> verification fails closed
+            with pytest.raises(ValueError, match="Stale or untrusted timeline shim"):
+                load_timeline_or_shim(d)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
 
 class TestDeprecatedKeyMigration:
     def test_deprecated_alias_triggers_warning_and_sets_threshold(self):

@@ -15,11 +15,17 @@ import hashlib
 import json
 import os
 import re
+import sys
 import tempfile
 import warnings
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 TIMELINE_FILENAME = "timeline.json"
 TIMELINE_VERSION = "1.0.0"
@@ -506,6 +512,14 @@ def load_timeline_or_shim(run_folder: str) -> list[dict[str, Any]]:
     blocks = []
     if not os.path.exists(txt_path):
         return blocks
+
+    # Fail-closed sidecar check: if timeline.json exists, verify shim integrity
+    if os.path.exists(timeline_path):
+        if not verify_shim(txt_path, timeline_path):
+            raise ValueError(
+                f"Stale or untrusted timeline shim detected at '{txt_path}'. "
+                f"Sidecar does not match '{timeline_path}'."
+            )
 
     with open(txt_path, encoding="utf-8") as f:
         for line in f:
