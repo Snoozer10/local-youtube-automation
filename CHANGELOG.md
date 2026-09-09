@@ -24,6 +24,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Verified
 - **Full Production Milestone (22.24 Minutes)**: Completed 100% end-to-end production for *Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!* (57 mastered voice chapters, 293 storyboard frames generated via Google Flow with self-healing recovery at Frame 264, 15/15 video chunks compiled into 1440p master video `youtube_ready_video.mp4` with 0.01s audio-visual drift).
 
+## [4.2.0] - 2026-09-07
+
+### Added
+- **PEP 517/518 Modular Package Architecture**: Reorganized monolithic scripts into authoritative modular domain packages under `src/youtube_automation/` (`core`, `audio`, `speech`, `timeline`, `nlp`, `prompts`, `browser`, `visuals`, `video`, `orchestrator`).
+- **Transparent Root Facade Proxies (`_FacadeProxy`)**: Implemented backward-compatible dynamic proxy shims at repository root (`compile_video.py`, `flow_image_generator.py`, `generate_voice.py`, `automate_audacity.py`, `stitch_chapters.py`, etc.) ensuring zero CLI regressions and dynamic bidirectional monkeypatch synchronization.
+- **Formulative Pedagogy Drills Scaffold**: Added the initial 3-tier pedagogy scaffold with 6 hardware and daemon diagnostic pre-flight drills in `exercises/`:
+  - `01-audio-dsp`: `01.01-tts-chapter-slicing` and `01.02-audacity-named-pipe-ipc`
+  - `03-browser-cdp`: `03.01-cdp-connection-and-lifecycle` and `03.02-turn-completion-detector`
+  - `05-hardware-video-compositing`: `05.01-qsv-hardware-encoder-probe` and `05.02-ken-burns-smoothstep-math`
+- **Scaffold Linter Tooling**: Created `tools/lint_exercises.py` to enforce strict pedagogy structure, directory conventions, and link integrity.
+- **Automated Windows Setup Wizards**: Added `setup.ps1` and `setup.bat` for automated environment verification, FFmpeg/Audacity prerequisite checks, and virtual environment provisioning.
+- **Deterministic Release Notes Slicer**: Added `tools/extract_release_notes.py` for automated extraction of Keep a Changelog sections.
+
+### Changed
+- **Test Suite Modernization**: Migrated test suites from legacy `.tests/` to standardized `tests/unit/` conforming to `pytest.ini`.
+- **CI/CD Quality Gates**: Updated `.github/workflows/ci.yml` and `run.bat` to include `test-drills` and `lint-exercises` verification commands.
+
+### Security
+- **Hardened Git Boundaries**: Blocked secret leaks, browser profiles, and runtime artifacts via updated `.gitignore`.
+
 ## [4.1.0] - 2026-09-04
 
 ### Added
