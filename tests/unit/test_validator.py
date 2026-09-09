@@ -368,3 +368,23 @@ class TestVisualPrompt8PartSchema:
         assert "Mood: educational humor" in flattened
         assert "Negative Prompt: no photorealism, no 3D render, no text, no subtitles" in flattened
 
+    def test_negative_prompt_with_subtitles_and_margins_allowed(self):
+        from validator import verify_pipeline_integrity
+
+        item = {
+            "index": 1,
+            "timestamp": "[00:05]",
+            "visual_prompt": {
+                "subject": "A 2D graphic vector illustration of a scientist",
+                "action": "holding a beaker",
+                "setting": "clean white laboratory",
+                "mood": "serious",
+                "lighting": "bright studio light",
+                "composition": "centered 16:9 shot",
+                "style": "2D vector animation explainer style, crisp 3px black vector outlines, flat 2-step cel-shading",
+                "negative_prompt": "subtitles, margin, watermark, text overlay",
+            },
+        }
+        verified = verify_pipeline_integrity([item], expected_total=1)
+        assert len(verified) == 1
+

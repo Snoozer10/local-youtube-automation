@@ -204,6 +204,11 @@ def send_and_wait(page, message, timeout=180):
         print("[ERROR] Could not find input box.")
         return None
 
+    # Import and use RESPONSE_SELECTOR to track text responses safely
+    from gemini_utils import RESPONSE_SELECTOR
+
+    initial_count = page.locator(RESPONSE_SELECTOR).count()
+
     input_box.click()
     time.sleep(0.5)
     input_box.fill(message)
@@ -215,10 +220,6 @@ def send_and_wait(page, message, timeout=180):
     else:
         page.keyboard.press("Enter")
 
-    # Import and use RESPONSE_SELECTOR to track text responses safely
-    from gemini_utils import RESPONSE_SELECTOR
-
-    initial_count = page.locator(RESPONSE_SELECTOR).count()
     return wait_for_gemini_response(page, initial_count, timeout_seconds=timeout)
 
 
@@ -288,6 +289,8 @@ def send_image_prompt_and_wait(page, message, timeout=180):
         print("[ERROR] Could not find input box.")
         return None
 
+    initial_count = page.locator("model-response").count()
+
     input_box.click()
     time.sleep(0.5)
     input_box.fill(message)
@@ -299,7 +302,6 @@ def send_image_prompt_and_wait(page, message, timeout=180):
     else:
         page.keyboard.press("Enter")
 
-    initial_count = page.locator("model-response").count()
     return wait_for_gemini_image_response(page, initial_count, timeout_seconds=timeout)
 
 
@@ -451,19 +453,28 @@ def _save_image_from_response(page, response, filepath):
         else:
             print("[WARNING] Could not calculate image bounding box for hover.")
     except Exception as e:
-        # Fallback to base64 extract if UI interaction fails
-        b64_match = re.search(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", response or "")
-        if b64_match:
-            try:
-                img_data = base64.b64decode(b64_match.group(1))
-                with open(filepath, "wb") as f:
-                    f.write(img_data)
-                if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
-                    return True
-            except Exception as ex:
-                print(f"[ERROR] Base64 extraction failed: {ex}")
-        else:
-            print(f"[ERROR] Image extraction failed: {e}")
+        print(f"[WARNING] Download interaction error: {e}")
+
+    # Fallback to direct src inspection / screenshot / base64
+    try:
+        last_response = page.locator("model-response").last
+        img_locator = last_response.locator("img").first
+        if img_locator.is_visible():
+            src = img_locator.get_attribute("src") or ""
+            if src.startswith("data:image/"):
+                b64_data = re.search(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", src)
+                if b64_data:
+                    img_data = base64.b64decode(b64_data.group(1))
+                    with open(filepath, "wb") as f:
+                        f.write(img_data)
+                    if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                        return True
+            img_locator.screenshot(path=filepath)
+            if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                print(f"[INFO] Saved image via element screenshot: {filepath}")
+                return True
+    except Exception as ex:
+        print(f"[ERROR] Direct image fallback extraction failed: {ex}")
 
     return False
 

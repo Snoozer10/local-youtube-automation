@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "youtube-automation-pipeline"
-version = "4.1.0"
+version = "4.3.0"
 description = "Automated end-to-end YouTube video automation pipeline: transcript -> Khaleeji Arabic translation -> TTS -> Audacity -> AI images -> Video compilation"
 readme = "README.md"
 license = {text = "MIT"}
@@ -80,7 +80,7 @@ py-modules = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src", "."]
 include = ["*"]
 exclude = ["venv*", "tests*", "docs*", "legacy_and_utilities*", "temp_clips*", "build*", "dist*"]
 
@@ -172,7 +172,9 @@ addopts = "-v --strict-markers --tb=short"
 markers = [
     "integration: marks tests as integration tests (require browsers, FFmpeg, Audacity)",
     "unit: marks tests as unit tests (no external dependencies)",
+    "drill: Pre-flight subsystem hardware diagnostic drill",
 ]
+norecursedirs = [".*", "build", "dist", "*.egg", "venv", "problem"]
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]

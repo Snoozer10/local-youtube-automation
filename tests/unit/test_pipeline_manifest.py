@@ -142,6 +142,11 @@ def test_all_chunks_done_logic(tmp_path: Path) -> None:
     failed.set_chunk_status("chunk_2", [16, 30], ChunkStatus.FAILED, 3)
     assert failed.all_chunks_done() is False
 
+    # Status override to COMPLETED allows all_chunks_done to return True
+    completed_manifest = PipelineManifest.load_or_create(tmp_path, "hash1")
+    completed_manifest.set_planning_status(PhaseStatus.COMPLETED)
+    assert completed_manifest.all_chunks_done() is True
+
 
 def test_record_rendered_dedup_and_sort(tmp_path: Path) -> None:
     manifest = PipelineManifest.load_or_create(tmp_path, "hash1")

@@ -55,6 +55,7 @@ Default section order:
 - Verification
 - Child DOX Index
 
+
 ## Style
 
 - Keep docs concise, current, and operational
@@ -78,10 +79,37 @@ Default section order:
 
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
+## Ownership & Domain Boundaries
+
+- `src/youtube_automation/`: Authoritative modular domain packages conforming to PEP 517/518:
+  - `core`: Low-level system primitives, process handling, atomic disk writes, and profile management (`utils.py`).
+  - `audio`: Neural TTS voice synthesis, Win32 Audacity Named Pipe IPC DSP mastering, and lossless WAV chapter stitching (`tts_generator.py`, `audacity_client.py`, `chapter_stitcher.py`).
+  - `speech`: Faster-Whisper ASR transcription, silero VAD alignment, and sequence-matcher lexical transcript spelling correction (`transcriber.py`, `spelling_corrector.py`).
+  - `timeline`: Single source of truth (SSOT) timeline management and timestamp reconciliation (`engine.py`, `fix_timestamps.py`).
+  - `nlp`: Multi-tier repair and structural sanitization for LLM JSON outputs (`json_sanitizer.py`).
+  - `prompts`: Pydantic prompt validation, 8-part visual prompt schemas, and deterministic negative prompt injection (`validator.py`).
+  - `browser`: Playwright Chrome DevTools Protocol (CDP) client loopback binding (`127.0.0.1:9222`), tab lifecycle hygiene, and Gemini web UI controllers (`cdp_client.py`, `gemini_utils.py`).
+  - `visuals`: Google Flow image generation, continuity character asset studio, base64 extraction, and OCR text collision gates (`flow_generator.py`, `asset_studio.py`, `image_extractor.py`, `text_gate.py`).
+  - `video`: FFmpeg hardware video compositing (Intel QSV / NVENC / CPU fallback), Ken Burns dynamic smoothstep pan-and-zoom transformation, filtergraph generation, and ASS subtitle burning (`compiler.py`, `encoder.py`, `ken_burns.py`, `filter_graph.py`, `subtitles.py`).
+  - `orchestrator`: Pipeline stage orchestration and batch execution coordination.
+- Root entrypoint facade shims: Transparent `_FacadeProxy` shims at the repository root (`compile_video.py`, `flow_image_generator.py`, `generate_voice.py`, `automate_audacity.py`, `stitch_chapters.py`, `faster_whisper_transcribe_audio.py`, `correct_transcript_spelling.py`, `fix_timestamps.py`, `text_gate.py`, `timeline_engine.py`, `validator.py`, `json_sanitizer.py`, `utils.py`, `gemini_utils.py`) ensuring zero regressions for legacy CLI invocation and dynamic bidirectional monkeypatch synchronization.
+- `exercises/`: Formulative pedagogy scaffold and pre-flight diagnostic drills:
+  - `01-audio-dsp`: Audio chapter slicing, speech tag armoring, and live Audacity Named Pipe IPC validation.
+  - `03-browser-cdp`: CDP loopback port diagnostics, browser process lifecycle, and 3-factor Gemini turn completion detection.
+  - `05-hardware-video-compositing`: Intel QSV encoder probe with `QSV_LOOKAHEAD=0` / `nv12` invariants, and Ken Burns smoothstep math.
+- `tools/`: Quality assurance and release tooling:
+  - `tools/lint_exercises.py`: Formulative pedagogy scaffold linter enforcing naming standards, directory layouts, and link integrity.
+  - `tools/extract_release_notes.py`: Deterministic changelog slicer.
+- Root configuration & orchestration: `run_agency.py` (supervisor batch runner), `run.bat` (wrapper with `test-drills` support), `setup.ps1`, `setup.bat`, `pyproject.toml`, `pytest.ini`.
+
 ## Child DOX Index
 
-- No child AGENTS.md files are needed for the current repository structure.
-- Root-owned files: `README.md`, `GEMINI.md`, `CLAUDE.md`, `LICENSE`, `banner.jpg`, `video-thumbnail.jpg`, `timeline_engine.py` (canonical timeline sync engine), `text_gate.py` (multi-layer text collision gate for Flow image generation), `tools/extract_release_notes.py` (deterministic changelog slicer), `setup.bat`, `setup.ps1`, `run.bat`, and root-level project documentation.
+- No child AGENTS.md files are currently required; root `AGENTS.md` serves as the authoritative DOX rail for the unified repository tree.
+- Domain scopes governed directly by root contracts:
+  - `src/youtube_automation/` (`core`, `audio`, `speech`, `timeline`, `nlp`, `prompts`, `browser`, `visuals`, `video`, `orchestrator`)
+  - `exercises/` (pedagogy scaffold & pre-flight diagnostic drills)
+  - `tools/` (`lint_exercises.py`, `extract_release_notes.py`)
+  - Root-owned scripts, facade shims, and docs: `README.md`, `GEMINI.md`, `CLAUDE.md`, `LICENSE`, `banner.jpg`, `video-thumbnail.jpg`, `setup.bat`, `setup.ps1`, `run.bat`.
 
 <!-- pane-agent-context:start -->
 ## Pane

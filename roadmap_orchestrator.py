@@ -267,9 +267,26 @@ def generate_master_roadmap(
     windows = split_transcript_into_windows(sentences, window_size)
     collected: dict[int, RoadmapRow] = {}
     previous_last: RoadmapRow | None = None
+
+    jsonl_path = folder_path / ROADMAP_JSONL_FILENAME
+    if jsonl_path.exists():
+        for r in _read_jsonl_rows(jsonl_path):
+            if r.index <= total:
+                collected[r.index] = r
+
     for page_number, window in enumerate(windows, start=1):
         start_idx = (page_number - 1) * window_size + 1
         end_idx = start_idx + len(window) - 1
+        expected_indices = set(range(start_idx, end_idx + 1))
+        if expected_indices.issubset(collected.keys()):
+            previous_last = collected[end_idx]
+            manifest.mark_roadmap_page_complete(page_number, end_idx)
+            log(
+                f"[roadmap] page {page_number}/{len(windows)} reused from checkpoint "
+                f"(Indices {start_idx}-{end_idx})."
+            )
+            continue
+
         page_rows = _generate_page(
             gemini_page,
             window,

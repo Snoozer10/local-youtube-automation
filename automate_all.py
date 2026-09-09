@@ -2,17 +2,22 @@ import html
 import json
 import os
 import re
-import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
-from docx import Document
-from playwright.sync_api import sync_playwright
-from youtube_transcript_api import YouTubeTranscriptApi
+# Ensure src/ is on sys.path for direct script execution
+_src_dir = str(Path(__file__).resolve().parent / "src")
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 
-from gemini_utils import (
+from docx import Document  # noqa: E402
+from playwright.sync_api import sync_playwright  # noqa: E402
+from youtube_transcript_api import YouTubeTranscriptApi  # noqa: E402
+
+from gemini_utils import (  # noqa: E402
     RESPONSE_SELECTOR,
     find_input_box,
     find_send_button,
@@ -21,7 +26,7 @@ from gemini_utils import (
     start_clean_gemini_chat,
     wait_for_gemini_response,
 )
-from utils import atomic_write_json, get_config_value
+from utils import atomic_write_json, get_config_value  # noqa: E402
 
 # Windows console hardening: guarantee UTF-8 for Arabic output even when piped.
 if sys.platform.startswith("win"):
@@ -254,50 +259,15 @@ def ensure_chrome_debug_session():
     except Exception:
         pass
 
-    print(f"Chrome debugging session not found on port {cdp_port}. Launching Chrome...")
-    chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-    profile_dir = r"C:\ChromeDebugProfile"
-    os.makedirs(profile_dir, exist_ok=True)
+    browser_type = get_config_value("BROWSER_TYPE", "chrome")
+    profile_index = get_config_value("ACTIVE_PROFILE_INDEX", "2")
+    print(
+        f"Chrome debugging session not found on port {cdp_port}. "
+        f"Launching {browser_type} with Profile Index {profile_index}..."
+    )
+    from utils import launch_browser_with_profile
 
-    if not os.path.exists(chrome_path):
-        print(f"Error: Chrome executable not found at '{chrome_path}'")
-        return False
-
-    try:
-        subprocess.Popen(
-            [
-                chrome_path,
-                f"--remote-debugging-port={cdp_port}",
-                f"--user-data-dir={profile_dir}",
-            ],
-            creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.DETACHED_PROCESS,
-        )
-    except Exception:
-        try:
-            subprocess.Popen(
-                [
-                    chrome_path,
-                    f"--remote-debugging-port={cdp_port}",
-                    f"--user-data-dir={profile_dir}",
-                ]
-            )
-        except Exception as ex:
-            print(f"Failed to launch Chrome: {ex}")
-            return False
-
-    print("Waiting for Chrome to initialize...")
-    for _ in range(10):
-        time.sleep(1)
-        try:
-            with urllib.request.urlopen(url, timeout=1) as response:
-                if response.status == 200:
-                    print(f"Chrome launched and listening on port {cdp_port}!")
-                    return True
-        except Exception:
-            continue
-
-    print(f"Error: Chrome was launched but port {cdp_port} did not become active.")
-    return False
+    return launch_browser_with_profile(browser_type, profile_index, port=cdp_port)
 
 
 # -------------------------------------------------------------

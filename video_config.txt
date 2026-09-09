@@ -3,7 +3,7 @@
 # ============================================================
 
 # --- Feature Toggles ---
-ENABLE_ANIMATIONS=false
+ENABLE_ANIMATIONS=true
 ENABLE_HARDWARE_ENCODER=true
 ENABLE_SINGLE_PASS=true
 ENABLE_CHECKPOINT_RESUME=true
@@ -16,9 +16,9 @@ SUB_FONT_NAME=Cairo-Bold
 SUB_FONT_SIZE=34
 SUB_MARGIN_V=75
 
-# --- Output Spec (1440p forces YouTube VP9/AV1 high-bitrate codecs) ---
-OUTPUT_WIDTH=2560
-OUTPUT_HEIGHT=1440
+# --- Output Spec (1080p 16:9 Widescreen) ---
+OUTPUT_WIDTH=1920
+OUTPUT_HEIGHT=1080
 # Never change the framerate dynamically between chunks
 OUTPUT_FPS=30
 OUTPUT_PIX_FMT=yuv420p

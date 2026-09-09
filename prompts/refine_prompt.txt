@@ -19,13 +19,7 @@ Within every refined paragraph, you must compose sentence lengths with musical v
 
 ---
 
-### 3. THE SKEPTIC INTERJECTION ("ABO HMEED"):
-- Every 2-3 paragraphs, insert a brief, blunt, highly sarcastic interruption from the viewer's persona:
-  Examples: "أبو حميد، أنت بتهبد؟" | "ثانية واحدة يا أبو حميد!" | "يا نهار أسود يا أبو حميد! إيه الراجل دا؟!"
-
----
-
-### 4. THE EXISTENTIAL OUTRO MODULATION (THE FINAL 2 PARAGRAPHS):
+### 3. THE EXISTENTIAL OUTRO MODULATION (THE FINAL 2 PARAGRAPHS):
 - If refining the closing paragraphs/outro of the script:
   * Drop all slapstick comedy, Abo Hmeed interjections, and street puns.
   * Shift into an intimate, philosophical, goosebump-inducing tone (العِبرة الوجودية).
@@ -33,7 +27,7 @@ Within every refined paragraph, you must compose sentence lengths with musical v
 
 ---
 
-### 5. PHONETIC TASHKEEL INJECTION:
+### 4. PHONETIC TASHKEEL INJECTION:
 - Force correct TTS pronunciation by applying targeted diacritics ONLY on ambiguous colloquial Egyptian words:
   (كِدَه، بِيُقول، هُوبَّا، دِي، دَه، قِسط، مِعَلّم، بِيصِيهَا، بِيِدَشْمِل، خَازُوق، سَحْلَة).
 
@@ -41,7 +35,7 @@ Within every refined paragraph, you must compose sentence lengths with musical v
 
 ---
 
-### 6. THE 4-CATEGORY SLANG DIVERSIFICATION LEDGER:
+### 5. THE 4-CATEGORY SLANG DIVERSIFICATION LEDGER:
 To prevent repetitive slang fatigue, rotate slang terms across these 4 distinct categories:
 - Category A (The Pacing Boosters): (هوبا، قوم إيه، فـ ثانية، على غفلة، فجأة كدا).
 - Category B (The Parasocial Address): (يا سيدي، يا عبقري، يا نبيه، يا فنان، يا دكتور).
@@ -51,7 +45,7 @@ To prevent repetitive slang fatigue, rotate slang terms across these 4 distinct 
 
 ---
 
-### 7. STRICT ANTI-PATTERNS (ZERO TOLERANCE):
+### 6. STRICT ANTI-PATTERNS (ZERO TOLERANCE):
 - NO Gen-Z internet slang (Strictly ban: Aura, Simp, Rizz, Skibidi, NPC, Crashing Out).
 - NO Translatese/Fusha connectors (Strictly ban: علاوة على ذلك، بناءً عليه، من الجدير بالذكر، نستنتج مما سبق، حيثما).
 - NO raw un-transliterated digits (Spell out numbers phonetically: "تمنتاشر مليون" instead of "18,000,000").
@@ -59,7 +53,7 @@ To prevent repetitive slang fatigue, rotate slang terms across these 4 distinct 
 
 ---
 
-### 8. THE PIPELINE EXECUTION PROTOCOL:
+### 7. THE PIPELINE EXECUTION PROTOCOL:
 You MUST execute the structured thinking process inside XML `<thinking>...</thinking>` tags:
 <thinking>
 1. SLANG_LEDGER_AUDIT: Check categories (A, B, C, D) used previously to guarantee zero repetition.

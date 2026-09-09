@@ -21,7 +21,10 @@ refine_checkpoint.json
 audacity_checkpoint.json
 voice_checkpoint.json
 planning_checkpoint.json
+runtime_state.json
 *.log
+*.log.err
+*.err
 error.log
 
 # Browser Profiles (Contain Auth Cookies/Sessions)
@@ -35,6 +38,8 @@ youtube_urls.txt
 
 # Runtime Artifacts
 youtube_runs/
+youtube_runs_backup/
+debug_snapshots/
 __pycache__/
 *.pyc
 *.pyo
@@ -53,6 +58,7 @@ htmlcov/
 # OS
 Thumbs.db
 Desktop.ini
+%SystemDrive%/
 
 # Tool-Specific Directories
 .agents/
@@ -76,8 +82,9 @@ build/
 .coverage.*
 coverage.xml
 
-# Type Checking
+# Type Checking & Linting
 .mypy_cache/
+.ruff_cache/
 .dmypy.json
 dmypy.json
 
@@ -106,6 +113,9 @@ apm_modules/
 /summary.txt
 /map_body.md
 /spec.md.test
+/flow_*.png
+/create_shims.py
+/tools/dev_scratch/
 
 # Backups & Editor Artifacts
 *.bak

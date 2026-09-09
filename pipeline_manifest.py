@@ -143,7 +143,12 @@ class PipelineManifest:
             "attempts": attempts,
         }
 
+    def set_planning_status(self, status: PhaseStatus) -> None:
+        self._data["planning_phase"]["status"] = status.value
+
     def all_chunks_done(self) -> bool:
+        if self._data["planning_phase"].get("status") == PhaseStatus.COMPLETED.value:
+            return True
         chunks: dict[str, Any] = self._data["planning_phase"]["chunks"]
         if not chunks:
             return False

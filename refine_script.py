@@ -225,18 +225,29 @@ class DialectTashkeelEngine:
         try:
             with open(config_path, encoding="utf-8") as f:
                 config = json.load(f)
-            self._lexicon = (
+            raw_lexicon = (
                 config.get("al_daheeh_master_pipeline_config", {})
                 .get("dialect_profile", {})
                 .get("tashkeel_lexicon", {})
             )
-            if not self._lexicon:
+            if not raw_lexicon:
                 print("[WARN] Tashkeel DISABLED: tashkeel_lexicon empty/missing in config.")
                 return
+
+            # Build normalized mapping: store raw config keys as well as derived unvocalized Arabic roots
+            self._lexicon = {}
+            for key, vocalized in raw_lexicon.items():
+                self._lexicon[key] = vocalized
+                unvocalized = re.sub(r"[\u064B-\u0652]", "", vocalized).strip()
+                if unvocalized:
+                    self._lexicon[unvocalized] = vocalized
+
             # Sort longest tokens first to avoid partial-matching substrings
             sorted_keys = sorted(self._lexicon.keys(), key=len, reverse=True)
             escaped = [re.escape(k) for k in sorted_keys]
-            pattern = rf"(^|[\s.,!?؛،:\(\)\[\]\"'])(و|ف|ب|ك|ل|لل|فال|وال|بال)?(?P<word>{'|'.join(escaped)})(?=[\s.,!?؛،:\(\)\[\]\"']|$)"
+            # Use non-greedy (??) prefix matching so full words like 'كده' are matched directly
+            # rather than accidentally splitting into prefix 'ك' + word 'ده'
+            pattern = rf"(^|[\s.,!?؛،:\(\)\[\]\"'])(و|ف|ب|ك|ل|لل|فال|وال|بال)??(?P<word>{'|'.join(escaped)})(?=[\s.,!?؛،:\(\)\[\]\"']|$)"
             self._regex = re.compile(pattern)
         except Exception as e:
             print(f"[WARN] Failed to compile Tashkeel engine: {e}")
@@ -887,14 +898,16 @@ def main():
     max_retries = CONFIG.max_retries
     switch_accounts = CONFIG.switch_accounts
     browser_type = CONFIG.browser_type
-    profile_index = int(get_runtime_state("ACTIVE_PROFILE_INDEX", "1"))
+    profile_index = int(
+        get_runtime_state("ACTIVE_PROFILE_INDEX", get_config_value("ACTIVE_PROFILE_INDEX", "2"))
+    )
 
     print(
         f"[CONFIG] Active Profile Index: {profile_index} | Browser: {browser_type} | Model: {model_name}"
     )
 
     # 2. Automatically verify or launch Chrome debug session using the configured profile index
-    if not ensure_chrome_debug_session(browser_type, profile_index):
+    if not ensure_chrome_debug_session(browser_type, profile_index, force_restart=False):
         print("Could not verify or start Chrome debugging session. Exiting.")
         return
 

@@ -9,6 +9,7 @@ WHISPER_LANGUAGE=ar
 WHISPER_BEAM_SIZE=5
 WHISPER_VAD_FILTER=true
 WHISPER_MIN_SPEECH_DURATION_MS=250
+VAD_SNAP_THRESHOLD=0.35
 
 # --- Prompt / Priming Control ---
 # Slices script to max words to fit Whisper's strict 224-token prompt buffer

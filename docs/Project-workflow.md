@@ -188,14 +188,14 @@ All state files (`pipeline.json`, refine/voice/audacity checkpoints, voice manif
 ## 🧪 Testing & Validation
 
 ```bash
-# Run the audit test suite (117 tests; no GUI/Audacity/FFmpeg required)
-python -m pytest .tests/unit -v
+# Run the audit test suite (unit tests; no GUI/Audacity/FFmpeg required)
+python -m pytest tests/unit -v
 
-# Run the legacy compile_video test suite
+# Run the full test suite
 python -m pytest tests/ -v
 
 # Test timeline synchronization math
-python -m pytest .tests/unit/test_timeline.py -v
+python -m pytest tests/unit/test_timeline.py -v
 
 # Run linting and type checking (formatting is enforced by pre-commit's ruff-format)
 ruff check .

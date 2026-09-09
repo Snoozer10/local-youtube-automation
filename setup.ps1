@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # YouTube Automation Pipeline — Automated Windows Setup (PowerShell 5.1 / 7+)
 # ==============================================================================
 [CmdletBinding()]
@@ -224,6 +224,10 @@ Write-Host ""
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "    Setup complete! You can now run the pipeline via:            " -ForegroundColor Cyan
 Write-Host "        .\run.bat                                               " -ForegroundColor White
+Write-Host "    Or execute hardware/daemon diagnostic pre-flight drills:     " -ForegroundColor Cyan
+Write-Host "        .\run.bat test-drills                                   " -ForegroundColor White
+Write-Host "    Or validate exercise pedagogy scaffold:                      " -ForegroundColor Cyan
+Write-Host "        .\venv\Scripts\python.exe tools\lint_exercises.py       " -ForegroundColor White
 Write-Host "    Or directly in PowerShell:                                   " -ForegroundColor Cyan
 Write-Host "        .\venv\Scripts\python.exe run_agency.py                 " -ForegroundColor White
 Write-Host "=================================================================" -ForegroundColor Cyan

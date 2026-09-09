@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-09-09
+
+### Added
+- **Google Flow SPA Hydration Recovery**: Added `wait_for_flow_input_box` with 15s deadline pumping CDP WebSocket transport via `page.wait_for_timeout(300)` instead of `time.sleep()`.
+- **Card-Spawn Handshake**: Introduced pre-submission card count tracking and a 20s handshake window to distinguish queue latency from true generation stalls, eliminating false double-submission re-triggers.
+- **Angular CDK Overlay Portaling Interaction**: Refactored Google Flow model and output settings to portal into root `div.cdk-overlay-container`, clearing blocking `cdk-overlay-backdrop` overlays.
+- **Quota & Rate-Limit Error Fast-Failover**: Added card error regex matching (`reached your usage limit`, `you have not been charged`), instantly triggering account rotation instead of 120s silent timeouts.
+- **Two-Tier Watchdog & Paired Diagnostic Dumper**: Scoped generation activity watching to `active_card` with a 120s stall ceiling, 360s hard ceiling, and atomic dual `.png` + `.html` DOM diagnostic artifact dumps.
+- **Formulative Pedagogy Drill 03.03**: Implemented `exercises/03-browser-cdp/03.03-flow-hydration-recovery/` with 9 deterministic pytest tests verifying SPA hydration delays, transient modal dismissal, quota detection, and card spawn handshakes.
+
+### Changed
+- **Anti-Occlusion Browser Flags**: Added `--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling` and `--disable-background-media-suspend` to Chrome launch flags to prevent Windows DWM from throttling background CDP tasks.
+- **Safe Mouse Coordinates**: Updated `wake_up_page()` target coordinates to safe `(100, 15)` to avoid accidental toolbar button clicks.
+
+### Verified
+- **Full Production Milestone (22.24 Minutes)**: Completed 100% end-to-end production for *Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!* (57 mastered voice chapters, 293 storyboard frames generated via Google Flow with self-healing recovery at Frame 264, 15/15 video chunks compiled into 1440p master video `youtube_ready_video.mp4` with 0.01s audio-visual drift).
+
 ## [4.1.0] - 2026-09-04
 
 ### Added

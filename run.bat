@@ -28,11 +28,28 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b %ERRORLEVEL%
 )
 
+if /i "%~1"=="test-drills" (
+    echo [INFO] Running pre-flight hardware/daemon diagnostic drills...
+    echo.
+    python -m pytest exercises/ -v -m drill %2 %3 %4 %5 %6 %7 %8 %9
+    set "EXIT_CODE=%ERRORLEVEL%"
+    goto :check_exit
+)
+
+if /i "%~1"=="lint-exercises" (
+    echo [INFO] Running exercise pedagogy linter...
+    echo.
+    python tools\lint_exercises.py %2 %3 %4 %5 %6 %7 %8 %9
+    set "EXIT_CODE=%ERRORLEVEL%"
+    goto :check_exit
+)
+
 echo [INFO] Running YouTube Automation Pipeline (run_agency.py)...
 echo.
 python run_agency.py %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
+:check_exit
 if %EXIT_CODE% NEQ 0 (
     echo.
     echo [ERROR] Pipeline terminated with exit code: %EXIT_CODE%

@@ -161,18 +161,24 @@ Boris Cherny (creator of Claude Code) keeps his team's file around 100 lines. Un
 - Install: `python -m venv venv; .\venv\Scripts\Activate.ps1; pip install -r requirements.txt; pip install -r requirements-dev.txt; python -m playwright install --with-deps`. NOTE: requirements-dev.txt currently has TODO literal ``` fence lines (rows 1, 44) that break pip — flag but do not fix.
 - Build: none (no build step; setuptools package).
 - Test (all): `python -m pytest tests/ -v` (full) / `python -m pytest tests/unit -v` (CI scope); must run from repo root.
+- Test (drills): `python -m pytest exercises/ -v -m drill` (hardware & daemon pre-flight diagnostic drills).
+- Test (exercises): `python -m pytest exercises/ -v` (curriculum solution test suite).
+- Lint (exercises): `python tools/lint_exercises.py` (validate exercise scaffold).
+- Run drills (batch): `run.bat test-drills` (Windows wrapper for pre-flight diagnostic drills).
 - Test (single file): `python -m pytest tests/unit/test_timeline.py -v`
-- Lint: `ruff check . --fix` ; `ruff format --check .`
-- Typecheck: `mypy .` (strict + ignore_missing_imports)
+- Lint: `ruff check src/ exercises/ tools/ --fix` ; `ruff format --check .`
+- Typecheck: `mypy src/` (strict + ignore_missing_imports)
 - Run locally: `python run_agency.py` (supervisor) or per-phase entrypoints.
 - Also: `pre-commit run --all-files`
 
 Prefer single-file or single-test runs during iteration. Full suites are for the final verification pass.
 
 ### Layout
-- Source lives in: root-entrypoint `.py` scripts (run_agency.py supervisor + per-phase: automate_all.py, refine_script.py, generate_voice.py, stitch_chapters.py, automate_audacity.py, faster_whisper_transcribe_audio.py, correct_transcript_spelling.py, flow_image_generator.py, script_image_generator.py, fix_timestamps.py, compile_video.py, generate_thumbnail.py) + planning layer modules (pipeline_manifest.py, json_sanitizer.py, validator.py, gemini_controller.py, roadmap_orchestrator.py, prompt_planner.py, gemini_utils.py, utils.py).
+- Source lives in: modular domain packages under `src/youtube_automation/` (`core/`, `audio/`, `speech/`, `timeline/`, `nlp/`, `prompts/`, `browser/`, `visuals/`, `video/`, `orchestrator/`), bridged transparently via root facade shims (`_FacadeProxy`) preserving 100% legacy CLI and monkeypatch compatibility (`run_agency.py`, `compile_video.py`, `flow_image_generator.py`, `generate_voice.py`, `automate_audacity.py`, `stitch_chapters.py`, `faster_whisper_transcribe_audio.py`, `correct_transcript_spelling.py`, `fix_timestamps.py`, `timeline_engine.py`, `validator.py`, `json_sanitizer.py`, `utils.py`, `gemini_utils.py`).
+- Curriculum & diagnostic drills live in: `exercises/` (`01-audio-dsp/`, `03-browser-cdp/`, `05-hardware-video-compositing/`).
+- Tools live in: `tools/lint_exercises.py` (pedagogy scaffold linter), `tools/extract_release_notes.py` (changelog slicer).
 - Tests live in: `tests/` (unit/, integration/, mocks/, conftest.py root).
-- Do not modify: youtube_runs/, venv/, .git, __pycache__, legacy_and_utilities/, Implementation plans/, Security Division Analysis/, .agents/, .gemini/, .opencode/, .specify/, .superpowers/, graphify-out/, docs/, .env, *.json checkpoints, *.log, browser profiles (gitignored / ruff-excluded).
+- Do not modify: youtube_runs/, venv/, .git, __pycache__, legacy_and_utilities/, .agents/, .gemini/, .opencode/, .specify/, .superpowers/, graphify-out/, docs/, .env, *.json checkpoints, *.log, browser profiles (gitignored / ruff-excluded).
 
 ### Conventions specific to this repo
 - Naming: snake_case modules, single-package flat layout at root.
@@ -196,7 +202,7 @@ Prefer single-file or single-test runs during iteration. Full suites are for the
 
 ## Stack & repo boundaries
 
-- **Single-package monorepo.** Entrypoints: `run_agency.py` (supervisor) or single-phase: `automate_all.py` → `refine_script.py` → `generate_voice.py` → `stitch_chapters.py`/`automate_audacity.py` → `faster_whisper_transcribe_audio.py` → `correct_transcript_spelling.py` → `flow_image_generator.py` (or `script_image_generator.py`) → `fix_timestamps.py` → `compile_video.py` → `generate_thumbnail.py`. See `README.md:207` + `Project-workflow.md:5`.
+- **Modular PEP 517/518 domain package (`src/youtube_automation/`) with root facade shims.** Root entrypoints (`run_agency.py`, `automate_all.py`, `refine_script.py`, `generate_voice.py`, `stitch_chapters.py`, `automate_audacity.py`, `faster_whisper_transcribe_audio.py`, `correct_transcript_spelling.py`, `flow_image_generator.py`, `fix_timestamps.py`, `compile_video.py`, `generate_thumbnail.py`) wrap domain implementations in `src/youtube_automation/` via `_FacadeProxy` preserving legacy CLI syntax and monkeypatch transparency.
 - **State in `youtube_runs/<Title>/` (gitignored).** Never commit `.env`, `runtime_state.json`, `*.json` checkpoints (`pipeline.json`, `*_checkpoint.json`, `voice_generation_manifest.json`, `compile_checkpoint.json`, `planning_checkpoint.json`). Batch: `run_agency.py` scans for `final_output.txt` and drives `pipeline.json` (`translate, refine, voice, audacity, stitch, transcribe, images, fixtimes, video, thumbnail` in `run_agency.py:66`).
 - **Planning layer DAG (2026-08):** `flow_image_generator.py` → `pipeline_manifest.py` → `json_sanitizer.py` → `validator.py` → `gemini_controller.py` → `roadmap_orchestrator.py` → `prompt_planner.py`. Strictly acyclic — never import upward. `validator.py` owns pure utils `flatten_visual_prompt_to_diffusion_text`/`enforce_arabic_in_prompt`/`purge_subtitle_phrases`.
 
@@ -217,12 +223,14 @@ copy .env.example .env   # fill TELEGRAM_*, CDP_PORT, model routing; ACTIVE_PROF
 
 ```powershell
 python -m pytest tests/unit -v                         # CI scope; full = python -m pytest tests/ -v
+python -m pytest exercises/ -v -m drill                # hardware & daemon pre-flight diagnostic drills
+python tools/lint_exercises.py                         # validate exercise pedagogy scaffold
 python -m pytest tests/unit/test_timeline.py -v        # single-file example
 python -m pytest tests/ --cov=. --cov-report=term-missing
-ruff check . --fix
-ruff format --check .          # pre-commit uses ruff-format, not black directly
-black --check --line-length 100 .  # pyproject.toml:55 line-length 100, exclude youtube_runs/venv
-mypy .                         # strict + ignore_missing_imports (pyproject.toml:93)
+ruff check src/ exercises/ tools/ --fix
+ruff format --check .                                  # pre-commit uses ruff-format, not black directly
+black --check --line-length 100 .                      # pyproject.toml:55 line-length 100, exclude youtube_runs/venv
+mypy src/                                              # strict + ignore_missing_imports (pyproject.toml:93)
 pre-commit run --all-files
 ```
 
@@ -258,26 +266,96 @@ pre-commit run --all-files
 
 ## Subagent task matrix
 
-| Task | Script | Checklist |
-| --- | --- | --- |
-| Linguistic Transcreation | `automate_all.py` | 30/70 ratio + academic fallback on safety block |
-| Script Doctor Polish | `refine_script.py` | `daheeh_config.json` Tashkeel; strip `<thinking>`/`<slang_ledger>` |
-| Voice Synthesis | `generate_voice.py` | Bezier mouse; MD5 dedup; `voice_generation_manifest.json` |
-| DSP Mastering | `automate_audacity.py` | Named Pipes alive; `SelectAll:` before effects |
-| Audio Stitching | `stitch_chapters.py` | lossless Wave frames, zero drop |
-| ASR & Cadence Pacing | `faster_whisper_transcribe_audio.py` | 3-6 words/chunk; VAD `0.40s`; `transcribe_config.txt` |
-| Lexical Spellcheck | `correct_transcript_spelling.py` | `difflib.SequenceMatcher` vs `refined_script.txt`, timestamps untouched |
-| Roadmap Paging | `roadmap_orchestrator.py` | fixed 25-row pages; anchor = last row K-1; atomic jsonl rewrite/page |
-| JSON Planning | `prompt_planner.py` | slice ±1 buffer; ephemeral session; self-heal ≤2 same-session |
-| Visual Generation | `flow_image_generator.py` | `@asset` chip injection; native screenshot; continuity |
-| Thumbnail | `generate_thumbnail.py` | self-critique scoring, 2 variants |
-| Video Compositing | `compile_video.py` | zero-drift frames; `filter_complex_script`; QSV→NVENC→CPU |
+| Task | Root Facade Entrypoint | Domain Package Module | Checklist |
+| --- | --- | --- | --- |
+| Linguistic Transcreation | `automate_all.py` | `automate_all.py` | 30/70 ratio + academic fallback on safety block |
+| Script Doctor Polish | `refine_script.py` | `refine_script.py` | `daheeh_config.json` Tashkeel; strip `<thinking>`/`<slang_ledger>` |
+| Voice Synthesis | `generate_voice.py` | `src/youtube_automation/audio/tts_generator.py` | Bezier mouse; MD5 dedup; `voice_generation_manifest.json` |
+| DSP Mastering | `automate_audacity.py` | `src/youtube_automation/audio/audacity_client.py` | Named Pipes alive; `SelectAll:` before effects |
+| Audio Stitching | `stitch_chapters.py` | `src/youtube_automation/audio/chapter_stitcher.py` | Lossless Wave frames, zero drop |
+| ASR & Cadence Pacing | `faster_whisper_transcribe_audio.py` | `src/youtube_automation/speech/transcriber.py` | 3-6 words/chunk; VAD `0.40s`; `transcribe_config.txt` |
+| Lexical Spellcheck | `correct_transcript_spelling.py` | `src/youtube_automation/speech/spelling_corrector.py` | `difflib.SequenceMatcher` vs `refined_script.txt`, timestamps untouched |
+| Timeline SSOT | `timeline_engine.py` | `src/youtube_automation/timeline/engine.py` | Single source of truth for `timeline.json` |
+| Timestamp Fix | `fix_timestamps.py` | `src/youtube_automation/timeline/fix_timestamps.py` | Monotonic audio-aligned timestamp reconciliation |
+| Roadmap Paging | `roadmap_orchestrator.py` | `roadmap_orchestrator.py` | Fixed 25-row pages; anchor = last row K-1; atomic jsonl rewrite/page |
+| JSON Planning | `prompt_planner.py` | `src/youtube_automation/nlp/json_sanitizer.py` | Slice ±1 buffer; ephemeral session; self-heal ≤2 same-session |
+| Visual Generation | `flow_image_generator.py` | `src/youtube_automation/visuals/flow_generator.py` | `@asset` chip injection; native screenshot; continuity |
+| Text Collision Gate | `text_gate.py` | `src/youtube_automation/visuals/text_gate.py` | Multi-layer OCR text filter before saving images |
+| Video Compositing | `compile_video.py` | `src/youtube_automation/video/compiler.py` | Zero-drift frames; `filter_complex_script`; QSV→NVENC→CPU |
+| Ken Burns Motion | `compile_video.py` | `src/youtube_automation/video/ken_burns.py` | Speech-paced dynamic smoothstep zoom & pan math |
+| Thumbnail | `generate_thumbnail.py` | `generate_thumbnail.py` | Self-critique scoring, 2 variants |
+
+## Architecture & Ubiquitous Language Sync
+
+### Layered Architecture & Component Mapping
+```text
+Pipeline Execution Flow:
+[Phase 1: Transcreation] ──► [Phase 2: Script Polish] ──► [Phase 3: TTS Synthesis]
+                                                                  │
+[Phase 6: Whisper ASR]   ◄── [Phase 5: Audio Stitch]  ◄── [Phase 4: Audacity DSP]
+       │
+       ▼
+[Phase 7: Spellcheck]    ──► [Phase 8: Timeline Engine] ─► [Phase 9: Roadmap & Prompts]
+                                                                  │
+[Phase 12: FFmpeg Render] ◄── [Phase 11: Timestamp Fix] ◄── [Phase 10: Visual Harvesting]
+       │
+       ▼
+[Phase 13: Thumbnail Gen]
+
+Layered Modular Architecture:
+┌────────────────────────────────────────────────────────────────────────┐
+│ CLI Entrypoints & Root Facade Shims (_FacadeProxy Delegation Layer)    │
+├────────────────────────────────────────────────────────────────────────┤
+│ Modular Domain Packages (src/youtube_automation/)                      │
+│ ├── core         (utils, atomic writes, subprocess wrappers)           │
+│ ├── audio        (tts_generator, audacity_client, chapter_stitcher)    │
+│ ├── speech       (transcriber, spelling_corrector)                     │
+│ ├── timeline     (engine, fix_timestamps)                             │
+│ ├── nlp          (json_sanitizer)                                      │
+│ ├── prompts      (validator, 8-part diffusion schema)                  │
+│ ├── browser      (cdp_client, gemini_utils)                            │
+│ ├── visuals      (flow_generator, asset_studio, image_extractor, gate) │
+│ ├── video        (compiler, encoder, ken_burns, filter_graph, subs)    │
+│ └── orchestrator (pipeline batch scheduling)                           │
+├────────────────────────────────────────────────────────────────────────┤
+│ Pedagogy Scaffold & Pre-Flight Diagnostic Drills (exercises/)          │
+│ ├── 01-audio-dsp (chapter slicing, audacity pipe IPC drill)            │
+│ ├── 03-browser-cdp (CDP port loopback diagnostic, turn detector)       │
+│ └── 05-hardware-video-compositing (QSV encoder probe, smoothstep math) │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Domain Lexicon & Ubiquitous Language
+| Term | Canonical Meaning | Forbidden Synonyms / Overloaded Usage |
+| :--- | :--- | :--- |
+| `Timeline` | Authoritative single source of truth (`timeline.json`) managed by `timeline_engine.py` | "Word list", "Subtitle timing" |
+| `VisualPrompt` | Validated 8-part diffusion prompt schema strictly conforming to ADR 0004 | "Image description", "Prompt string" |
+| `Ken Burns` | Dynamic smoothstep pan-and-zoom transformation applied in FFmpeg filtergraph | "Zoom effect", "Slide animation" |
+| `CDP Session` | Chrome DevTools Protocol WebSocket connection bound strictly to 127.0.0.1:9222 | "Browser tab", "Selenium session" |
+| `Transcreation` | Fusha/Amiya educational Arabic rewrite emulating Al-Daheeh persona | "Direct translation", "Machine translation" |
+| `Facade Shim` | Transparent root module shim (`_FacadeProxy`) delegating calls and syncing monkeypatches with `src/` | "Wrapper hack", "Mock import" |
+| `Pre-flight Drill` | Pytest diagnostic test (`@pytest.mark.drill`) verifying live hardware (QSV) or daemons (Audacity, CDP) | "Smoke test", "Dummy test" |
+| `Pedagogy Scaffold` | Three-tier curriculum structure (`explainer`, `problem`, `solution`) under `exercises/` | "Sample code", "Sandbox" |
+
+### Architectural Health & Deep Modules
+| Module / Subtree | Interface Count | Implementation LOC | Leverage | Classification |
+| :--- | :--- | :--- | :--- | :--- |
+| [src/youtube_automation/timeline/fix_timestamps.py](src/youtube_automation/timeline/fix_timestamps.py) | 1 | 129 | 129.0 | Deep Module |
+| [src/youtube_automation/nlp/json_sanitizer.py](src/youtube_automation/nlp/json_sanitizer.py) | 2 | 169 | 84.5 | Deep Module |
+| [src/youtube_automation/speech/spelling_corrector.py](src/youtube_automation/speech/spelling_corrector.py) | 6 | 282 | 47.0 | Deep Module |
+| [src/youtube_automation/video/ken_burns.py](src/youtube_automation/video/ken_burns.py) | 4 | 181 | 45.25 | Deep Module |
+| [src/youtube_automation/visuals/text_gate.py](src/youtube_automation/visuals/text_gate.py) | 6 | 236 | 39.33 | Deep Module |
+| [src/youtube_automation/audio/chapter_stitcher.py](src/youtube_automation/audio/chapter_stitcher.py) | 5 | 193 | 38.6 | Deep Module |
+| [src/youtube_automation/browser/cdp_client.py](src/youtube_automation/browser/cdp_client.py) | 6 | 228 | 38.0 | Deep Module |
+| [src/youtube_automation/video/encoder.py](src/youtube_automation/video/encoder.py) | 4 | 152 | 38.0 | Deep Module |
+| [src/youtube_automation/visuals/image_extractor.py](src/youtube_automation/visuals/image_extractor.py) | 6 | 236 | 39.33 | Deep Module |
+| [src/youtube_automation/core/utils.py](src/youtube_automation/core/utils.py) | 12 | 410 | 34.17 | Deep Module |
 
 ## Style & workflow
 
 - **Formatter/linter/type:** `black --line-length 100` (exclude `youtube_runs,venv,.git,__pycache__` — `pyproject.toml:54`), `ruff` `E,W,F,I,B,C4,UP` (`pyproject.toml:72`), `mypy --strict --ignore-missing-imports` (`pyproject.toml:93`). Fix `ruff check --fix` + `ruff format`.
 - **OpenCode:** `opencode.json` → `default_agent: AGENTS-PROJECT`; lean-ctx shadow mode; `AGENTS.md` via `instructions`. Caveman mode for agent comms; code/commits normal.
-- **Git:** `youtube_runs/`, `Implementation plans/`, `Security Division Analysis/`, `.agents/`, `.opencode/`, `graphify-out/` gitignored. Never auto-commit video/WAVs.
+- **Git:** `youtube_runs/`, `legacy_and_utilities/`, `.agents/`, `.opencode/`, `graphify-out/` gitignored. Never auto-commit video/WAVs.
 
 ## References
 

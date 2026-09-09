@@ -1,0 +1,81 @@
+"""Visuals automation package.
+
+Covers Google Flow SPA visual generation, asset studio character/scene turnarounds,
+4-tier image extraction ladder, and multi-layer OCR text collision gates.
+"""
+
+from .asset_studio import (
+    FLOW_ASSET_PRESETS,
+    get_profile_assets_manifest_path,
+    is_profile_assets_initialized,
+    mark_profile_assets_initialized,
+    setup_flow_characters_and_scenes,
+    summon_asset_in_prompt,
+    wait_for_prompt_format_completion,
+)
+from .flow_generator import (
+    FlowSelectors,
+    GeminiSelectors,
+    StoryboardFrame,
+    attach_previous_images_to_prompt,
+    clear_attached_prompt_chips,
+    count_attached_prompt_chips,
+    is_flow_page_healthy,
+    log,
+    main,
+    parse_json_prompts,
+    save_sorted_prompts_file,
+    scan_batch_folders,
+    setup_flow_ui,
+    wait_for_flow_app_ready,
+    wait_for_flow_generation_handshake,
+    wait_for_flow_generation_idle,
+    wait_for_predicate,
+    write_runtime_telemetry,
+)
+from .image_extractor import (
+    atomic_screenshot_and_verify,
+    extract_high_res_image,
+    save_binary_image_data,
+    validate_image_file,
+)
+from .text_gate import (
+    STRENGTHENED_NEGATIVE_PROMPT,
+    check_text_collision,
+    dump_text_collision_debug,
+)
+
+__all__ = [
+    "FLOW_ASSET_PRESETS",
+    "FlowSelectors",
+    "GeminiSelectors",
+    "STRENGTHENED_NEGATIVE_PROMPT",
+    "StoryboardFrame",
+    "atomic_screenshot_and_verify",
+    "attach_previous_images_to_prompt",
+    "check_text_collision",
+    "clear_attached_prompt_chips",
+    "count_attached_prompt_chips",
+    "dump_text_collision_debug",
+    "extract_high_res_image",
+    "get_profile_assets_manifest_path",
+    "is_flow_page_healthy",
+    "is_profile_assets_initialized",
+    "log",
+    "main",
+    "mark_profile_assets_initialized",
+    "parse_json_prompts",
+    "save_binary_image_data",
+    "save_sorted_prompts_file",
+    "scan_batch_folders",
+    "setup_flow_characters_and_scenes",
+    "setup_flow_ui",
+    "summon_asset_in_prompt",
+    "validate_image_file",
+    "wait_for_flow_app_ready",
+    "wait_for_flow_generation_handshake",
+    "wait_for_flow_generation_idle",
+    "wait_for_predicate",
+    "wait_for_prompt_format_completion",
+    "write_runtime_telemetry",
+]
