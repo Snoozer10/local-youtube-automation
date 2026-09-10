@@ -133,6 +133,7 @@ Automated video pipeline emulating the Egyptian/Khaleeji Arabic "Al-Daheeh" educ
 | `#10` | Flow Generator Hardening v2 | Done | `#9` | `python -m py_compile src/youtube_automation/visuals/flow_generator.py && python -m pytest exercises/03-browser-cdp/03.03-flow-hydration-recovery/solution/test_exercise.py -v` |
 | `#11` | Full Production Run (293 frames) | Done | `#10` | 293 PNGs in `generated_images/` + `youtube_ready_video.mp4` (1334.50s, 0.01s A/V drift) |
 | `#12` | Creative Refinement (Plan v4) | Done | `#11` | `python tools/lint_exercises.py && python -m pytest tests/unit -v` (414 passed) |
+| `#13` | NotebookLM Discover & Socratic Curation | Done | `#12` | `python -m pytest tests/unit/test_notebooklm_discover.py tests/unit/test_socratic_engine.py -v` (424 passed) |
 
 ### Known Failure Modes & Project Learnings
 - [LEARNING-001]: NEVER enable `look_ahead` on Intel QSV (`h264_qsv`) with sw-decoded frames; ALWAYS enforce `QSV_LOOKAHEAD=0`.
@@ -147,3 +148,5 @@ Automated video pipeline emulating the Egyptian/Khaleeji Arabic "Al-Daheeh" educ
 - [LEARNING-010]: NEVER use a generic error regex in the generation watchdog; ALWAYS include `reached your usage limit|you have not been charged` — Flow quota errors render as card text, not `[role='alert']`, causing 120s silent stalls if undetected.
 - [LEARNING-011]: NEVER check for progressbar immediately after pressing Enter; ALWAYS use a Card-Spawn Handshake (record pre-submit card count, poll ≤20s for count increase) to distinguish queue latency from true stall — prevents false double-submission re-triggers.
 - [LEARNING-012]: NEVER scope `.animate-pulse` / skeleton checks globally; ALWAYS scope to `active_card` (last card locator) to avoid false "still loading" signals from historical generation cards re-animating on scroll.
+- [LEARNING-013]: NEVER attempt to query a modal-closing element while submitting in NotebookLM Web Discover; ALWAYS monitor the Sources panel where candidate cards stage for `+ Import` and verify count increments atomically.
+- [LEARNING-014]: ALWAYS use `-X utf8` and set `PYTHONIOENCODING=utf-8` on Windows when invoking subprocess runners to avoid charmap codec `UnicodeEncodeError` on emoji/Unicode status logs.

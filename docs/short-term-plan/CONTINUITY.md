@@ -21,8 +21,12 @@
     7. Phase 6 Transcription: Completed via Faster-Whisper on CPU (int8). Generated 293 zero-drift timeline spans across 40,030 frames (1334.34s) saved to canonical timeline.json with SHA256 sidecars.
     8. Flow Image Generator Hardening v2: All 5 components implemented and verified (py_compile PASS). Pedagogy drill 03.03 created. Drill tests passing.
     9. Generated images: All 293 frames (Frames 1–293) on disk in generated_images/. 1 queue stall at Frame 264 auto-recovered on Attempt 2. Zero hard failures.
-    10. Video Compilation: COMPLETE. youtube_ready_video.mp4 (1334.50s) assembled from 15 chunks. Proxy ladder: 1080p + 720p. Audio/video drift: 0.01s. Exit code 0.
-  - Now: Creative Refinement Implementation (v4) complete across all 4 phases on branch `feat/creative-prompt-script-refinement`. All 414 unit tests pass, pre-flight drills pass, and exercise pedagogy linter is 100% clean.
-  - Next: Merge `feat/creative-prompt-script-refinement` into `master` or initiate the next production run with the updated solo-narration and Flow visual engine.
-- Open questions: None.
-- Working set (files/ids/commands): CONTEXT.md, spec.md, docs/adr/0003-prompt-extraction.md, AGENTS.md, prompts/prompt.txt, prompts/prompt_phase3.txt, prompts/refine_prompt.txt, prompts/TTS_PROMPT.txt, refine_script.py, roadmap_orchestrator.py, prompt_planner.py, src/youtube_automation/visuals/asset_studio.py, src/youtube_automation/prompts/validator.py, src/youtube_automation/visuals/text_gate.py, tests/unit/test_script_refinement.py, tests/unit/test_text_gate.py, creative_refinement_plan_v4.md
+    11. NotebookLM Authentication & Session Persistence: COMPLETE. Validated live landing on notebook.google.com/?pli=1 with persistent profile and 1-2 year session cookies saved in state.json. Zero-reauth stability confirmed.
+    12. NotebookLM Web Discover Automation (Q1–Q4): COMPLETE. Successfully ingested 114 curated research sources across all 4 visual prompt engineering domains (Fast & Deep research) into active notebook `9c7ccbcc-18ba-4789-9efc-893523ee744f`.
+    13. Socratic Cross-Examination & Visual Prompt Curation: COMPLETE. Executed live dialectical synthesis across 114 sources. Extracted 5 empirical prompt engineering principles (modular scaffolding, single-generation inference pass, ~94% negative prohibition compliance, Da Vinci Sfumato chiaroscuro, 1-2-3 shape hierarchy, 24mm wide-angle optics). Updated `socratic_engine.py` and unit tests (424/424 unit tests passed, 35/35 exercise drills clean).
+  - Now: Formulating detailed implementation plan for operationalizing Socratic prompt rules and executing 5-frame canary benchmark.
+  - Next: Await user approval on plan, implement `prompt_enhancer.py`, update visual presets in `asset_studio.py`, and run 5-frame canary generation.
+- Open questions:
+  1. Confirm 5 canary frame indices (recommended: Frames 1, 15, 60, 150, 264 covering all 4 epistemic archetypes).
+  2. Confirm saving enhanced prompts to sidecar `master_roadmap_socratic.jsonl` and `flow_prompts_socratic.json` to preserve baseline comparisons.
+- Working set (files/ids/commands): src/youtube_automation/prompts/prompt_enhancer.py, prompt_enhancer.py, src/youtube_automation/visuals/asset_studio.py, tools/run_canary_benchmark.py, tests/unit/test_prompt_enhancer.py, docs/short-term-plan/CONTINUITY.md
