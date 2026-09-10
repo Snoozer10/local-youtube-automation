@@ -51,9 +51,9 @@ _COLUMN_SEMANTICS = "\n".join(
         "COLUMN SEMANTICS:",
         "Sequence Type options: STANDALONE | PROGRESSIVE_BUILD_SET | REACTION_PUNCHLINE_SET | "
         "HISTORICAL_PARODY | SCIENTIFIC_BLUEPRINT | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM "
-        "| SKEPTIC_SPLIT",
+        "| SKEPTIC_SPLIT | EXPLAINER_DECK | PRESENTATION_SLIDE",
         "Layout Classification options: AHWA_STUDIO | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM_DESK "
-        "| RETRO_BLUEPRINT | HISTORICAL_MUSEUM | ISOLATED_WHITE",
+        "| RETRO_BLUEPRINT | HISTORICAL_MUSEUM | ISOLATED_WHITE | KEYNOTE_SLATE",
         "Camera Specification options: zoom_in | zoom_out | pan_left | pan_right | tilt_up "
         "| tilt_down | static",
         "Style: clean 2D vector animation, balanced 16:9 staging with subject centered; never "
@@ -186,6 +186,16 @@ def build_page_prompt(
         )
     lines.append("")
     lines.append(_COLUMN_SEMANTICS)
+    lines.append("")
+    lines.append("DIRECTING RULES:")
+    lines.append("- Dynamic 5-Shot Scale Rhythm: Cycle camera specifications systematically: EWS -> MS -> ECU -> ISO / DECK -> CU.")
+    lines.append("  Forbid two consecutive rows from using the identical shot scale / framing.")
+    lines.append("- The 60/40 Split Rule: Use Host Character (HOST) in at most 40% of rows. Dedicate 60% of rows to Subject-Centric B-Roll, Macro Props, Cutaway Schematics, and Explainer Decks.")
+    lines.append("- Metaphor-to-Visual Translation Engine: Prevent literal translations of idioms. Use clever visual metaphors:")
+    lines.append("  * Financial collapse / inflation -> Banknote frying in a street falafel pan, or vault with cobwebs.")
+    lines.append("  * Bureaucratic paralysis / mental filter -> Exhausted clerk behind frosted glass with a red 'REJECTED' stamp.")
+    lines.append("  * Mental chaos / overthinking -> Tangled red wires on a 1950s switchboard, endless card catalog.")
+    lines.append("  * Scientific breakthrough -> Glowing amber mathematical blueprint unfolding.")
     lines.append("")
     lines.append("SCRIPT LINES:")
     for offset, sentence in enumerate(window):

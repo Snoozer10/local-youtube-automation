@@ -194,7 +194,7 @@ def _detect_via_mser_fallback(image_path: str, config: dict | None = None) -> li
 
 
 def check_text_collision(
-    image_path: str, config: dict | None = None
+    image_path: str, config: dict | None = None, sequence_type: str | None = None, is_explainer: bool = False
 ) -> tuple[bool, list[dict[str, Any]]]:
     """Checks an image on disk for burned-in text / subtitle collisions.
 
@@ -221,8 +221,31 @@ def check_text_collision(
         else:
             boxes = []
 
-    box_dicts = [asdict(b) if isinstance(b, OCRBox) else dict(b) for b in boxes]
-    has_collision = len(box_dicts) > 0
+    try:
+        with Image.open(image_path) as img:
+            img_w, img_h = img.size
+    except Exception:
+        img_w, img_h = 1920, 1080
+
+    box_dicts = []
+    has_collision = False
+
+    explainer_types = {"EXPLAINER_DECK", "ARCHIVAL_DOSSIER", "METRIC"}
+    treat_as_explainer = is_explainer or (sequence_type and sequence_type.upper() in explainer_types)
+
+    for b in boxes:
+        box_dict = asdict(b) if isinstance(b, OCRBox) else dict(b)
+        bbox = box_dict["bbox"]
+        top = bbox[1]
+        bottom = bbox[1] + bbox[3]
+
+        if treat_as_explainer and top <= 0.8 * img_h and bottom <= 0.8 * img_h:
+            box_dict["permitted"] = True
+        else:
+            has_collision = True
+
+        box_dicts.append(box_dict)
+
     return has_collision, box_dicts
 
 

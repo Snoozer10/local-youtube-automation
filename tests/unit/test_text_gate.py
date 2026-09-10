@@ -196,3 +196,53 @@ class TestDebugDumpAndStrengthenedPrompt:
         assert "no letters" in neg
         assert "no words" in neg
         assert "no subtitles" in neg
+
+class TestSpatialAwareness:
+    def test_explainer_deck_permits_upper_text(self, monkeypatch, sample_image):
+        def mock_image_to_data(image, output_type=None):
+            return {
+                "text": ["", "Title"],
+                "conf": ["-1", "95"],
+                "left": [0, 100],
+                "top": [0, 100],  # Top 10%
+                "width": [0, 100],
+                "height": [0, 100],
+            }
+
+        monkeypatch.setattr(text_gate, "_run_pytesseract_dict", mock_image_to_data)
+        has_text, boxes = text_gate.check_text_collision(sample_image, sequence_type="EXPLAINER_DECK")
+        assert not has_text, "Explainer deck should permit text in upper 80%"
+        assert len(boxes) == 1
+        assert boxes[0].get("permitted") is True
+
+    def test_explainer_deck_rejects_bottom_text(self, monkeypatch, sample_image):
+        def mock_image_to_data(image, output_type=None):
+            return {
+                "text": ["", "Subtitle"],
+                "conf": ["-1", "95"],
+                "left": [0, 100],
+                "top": [0, 900],  # Bottom 10%
+                "width": [0, 100],
+                "height": [0, 100],
+            }
+
+        monkeypatch.setattr(text_gate, "_run_pytesseract_dict", mock_image_to_data)
+        has_text, boxes = text_gate.check_text_collision(sample_image, sequence_type="EXPLAINER_DECK")
+        assert has_text, "Explainer deck should reject text in bottom 20%"
+        assert len(boxes) == 1
+        assert boxes[0].get("permitted") is not True
+
+    def test_standalone_rejects_all_text(self, monkeypatch, sample_image):
+        def mock_image_to_data(image, output_type=None):
+            return {
+                "text": ["", "Title"],
+                "conf": ["-1", "95"],
+                "left": [0, 100],
+                "top": [0, 100],  # Top 10%
+                "width": [0, 100],
+                "height": [0, 100],
+            }
+
+        monkeypatch.setattr(text_gate, "_run_pytesseract_dict", mock_image_to_data)
+        has_text, boxes = text_gate.check_text_collision(sample_image, sequence_type="STANDALONE")
+        assert has_text, "Standalone should reject text even in upper 80%"

@@ -161,6 +161,16 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
                 "Visual rule: Empty solid white background only. Zero characters, zero props, zero gradients."
             ),
         },
+        "KEYNOTE_SLATE": {
+            "name": "SCENE_KEYNOTE_SLATE_ENV",
+            "scene_prompt": (
+                "2D graphic vector explainer presentation background plate. "
+                "Matte dark charcoal canvas (#1E2026) with subtle geometric grid overlay. "
+                "Dual floating container cards with soft drop shadows, clean 3px vector outlines, "
+                "generous negative space in the lower 25% for video subtitles, 16:9 widescreen. "
+                "Visual rule: Presentation graphic plate only. Zero characters, zero 3D CGI."
+            ),
+        },
     },
 }
 

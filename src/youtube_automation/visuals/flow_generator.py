@@ -1399,7 +1399,7 @@ def main() -> None:
                                         attach_count = 0
 
                                     natural_prompt = flatten_visual_prompt_to_diffusion_text(
-                                        prompt_text
+                                        prompt_text, sequence_type=seq_type
                                     )
 
                                     if attach_count > 0:
@@ -1803,7 +1803,7 @@ def main() -> None:
                                                 ).strip().lower() in ("true", "1", "yes")
                                             }
                                             has_collision, ocr_boxes = check_text_collision(
-                                                current_save_path, config=gate_cfg
+                                                current_save_path, config=gate_cfg, sequence_type=prompt_item.sequence_type
                                             )
                                             if has_collision:
                                                 print(

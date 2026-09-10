@@ -119,7 +119,7 @@ def purge_subtitle_phrases(text: str) -> str:
     return " ".join(text.split()).strip(" ,.-")
 
 
-def flatten_visual_prompt_to_diffusion_text(vp: Any) -> str:
+def flatten_visual_prompt_to_diffusion_text(vp: Any, sequence_type: str = "STANDALONE") -> str:
     """
     Transforms a structured visual_prompt dictionary into an elevated,
     high-salience, production-grade diffusion prompt for Google Flow / Imagen 3.
@@ -180,12 +180,18 @@ def flatten_visual_prompt_to_diffusion_text(vp: Any) -> str:
         prompt_parts.append(f"Scene Setting: {env.rstrip('.')}.")
 
     # 5. Clean Composition (Strictly textless framing with preset default)
-    if layout:
-        prompt_parts.append(f"Composition: {layout.rstrip('.')}.")
+    if sequence_type == "EXPLAINER_DECK":
+        if layout:
+            prompt_parts.append(f"Composition: {layout.rstrip('.')}. Clean presentation layout, typography callouts positioned in top/middle.")
+        else:
+            prompt_parts.append("Composition: Clean presentation layout, balanced 16:9 widescreen framing, typography callouts positioned in top/middle.")
     else:
-        prompt_parts.append(
-            "Composition: Balanced 16:9 widescreen framing, sharp central subject focus."
-        )
+        if layout:
+            prompt_parts.append(f"Composition: {layout.rstrip('.')}.")
+        else:
+            prompt_parts.append(
+                "Composition: Balanced 16:9 widescreen framing, sharp central subject focus."
+            )
 
     # 6. Lighting & Chromatic Palette
     if accent:
@@ -226,10 +232,11 @@ def flatten_visual_prompt_to_diffusion_text(vp: Any) -> str:
         )
 
     # Deterministic Negative Prompt Injection (ADR 0003 & Spec #12)
+    deck_negative = ", no text in lower-third, no burned subtitles, no bottom captions" if sequence_type == "EXPLAINER_DECK" else ""
     if user_negative:
-        combined_negative = f"{user_negative}, {STRICT_NEGATIVE_PROMPT}"
+        combined_negative = f"{user_negative}, {STRICT_NEGATIVE_PROMPT}{deck_negative}"
     else:
-        combined_negative = STRICT_NEGATIVE_PROMPT
+        combined_negative = f"{STRICT_NEGATIVE_PROMPT}{deck_negative}"
     prompt_parts.append(f"Negative Prompt: {combined_negative}.")
 
     return " ".join(prompt_parts)

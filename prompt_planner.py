@@ -64,11 +64,12 @@ _FORBIDDEN_TERMS: list[str] = [
 ]
 _SEQUENCE_TYPE_ENUM = (
     "STANDALONE | PROGRESSIVE_BUILD_SET | REACTION_PUNCHLINE_SET | HISTORICAL_PARODY | "
-    "SCIENTIFIC_BLUEPRINT | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM | SKEPTIC_SPLIT"
+    "SCIENTIFIC_BLUEPRINT | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM | SKEPTIC_SPLIT | "
+    "EXPLAINER_DECK | PRESENTATION_SLIDE"
 )
 _LAYOUT_ENUM = (
     "AHWA_STUDIO | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM_DESK | RETRO_BLUEPRINT | "
-    "HISTORICAL_MUSEUM | ISOLATED_WHITE"
+    "HISTORICAL_MUSEUM | ISOLATED_WHITE | KEYNOTE_SLATE"
 )
 _CAMERA_ENUM = "zoom_in | zoom_out | pan_left | pan_right | tilt_up | tilt_down | static"
 _VISUAL_DENSITY_ENUM = "DENSE_SCENE | MINIMALIST_MACRO | MEDIUM_ACTION"
@@ -251,7 +252,11 @@ def build_compact_preamble(presets: dict[str, Any] | None) -> str:
             f"SCHEMA: {_SCHEMA_HINT}",
             f'STYLE_DNA: "{STYLE_DNA_TEXT}"',
             f"FORBIDDEN: {json.dumps(_FORBIDDEN_TERMS, ensure_ascii=False)}",
-            "TYPOGRAPHY & LANGUAGE: Prompt text must be strictly in ENGLISH. Zero Arabic characters allowed in visual_prompt fields (Arabic Kufic typography prohibited, text overlay must be \"NONE\"). Zero on-screen text, zero watermarks, zero typography overlays.",
+            "TYPOGRAPHY & LANGUAGE: Prompt text must be strictly in ENGLISH. Zero Arabic characters allowed in visual_prompt fields (Arabic Kufic typography prohibited, text overlay must be \"NONE\").",
+            "IN-IMAGE TYPOGRAPHY RULES:",
+            " - Clean English words inside quotes (e.g., \"78%\", \"STAGE 1\", \"OPTION A vs OPTION B\", \"CLASSIFIED\").",
+            " - Never place text in the bottom 20% safe zone.",
+            " - Only trigger text when the sequence is EXPLAINER_DECK, ARCHIVAL_DOSSIER, MAP, or METRIC. Otherwise, strictly enforce textless visuals.",
             "OUTPUT: ONE raw JSON array covering EXACTLY the requested Index span; no prose, "
             "no fences, no repeated objects",
         ]
