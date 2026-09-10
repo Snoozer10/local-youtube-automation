@@ -91,7 +91,7 @@ Active Register: Dynamic Chest-to-Head Modulation
 Acoustic Space: Ultra-dry studio, crisp proximity effect, zero room echo
 
 2. Expressive Script Block
-"[tone: street_logic][pace: 160] تخيل منطقة في دماغك بتشتغل زي الفلتر.. [pause: short] [tone: expert_drop] علماء الأعصاب بيسموها الـ Orbitofrontal Cortex. [pause: comedic_halt] [tone: bureaucratic_mockery] يعني بالبلدي كدا، [pause: short] دا الـ CEO ممدد رجليه على المكتب وقاعد يدي أوامر! [pause: tension] [tone: skeptic_shout] أبو حميد، أنت بتهبد؟ إيه اللي جاب المدير للمخ؟! [pause: short] [tone: street_logic] اتقل يا عزيزي.. [pace: staccato] واسمع التقيلة."
+"[tone: street_logic][pace: 160] تخيل منطقة في دماغك بتشتغل زي الفلتر.. [pause: short] [tone: expert_drop] علماء الأعصاب بيسموها الـ Orbitofrontal Cortex. [pause: comedic_halt] [tone: bureaucratic_mockery] يعني بالبلدي كدا، [pause: short] دا الـ CEO ممدد رجليه على المكتب وقاعد يدي أوامر! [pause: tension] [tone: skeptic_shout] هو أنا بهبد؟ إيه اللي جاب المدير للمخ؟! [pause: short] [tone: street_logic] اتقل يا عزيزي.. [pace: staccato] واسمع التقيلة."
 
 --------------------------------------------------------------------------------
 Before we begin, reply with exactly: "Rules Confirmation: Awaiting the transcript."
