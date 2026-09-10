@@ -48,13 +48,17 @@ Automated video pipeline emulating the Egyptian/Khaleeji Arabic "Al-Daheeh" educ
 | Audio Synthesis & DSP | [audio/](src/youtube_automation/audio/) | [generate_voice](generate_voice.py), [audacity](automate_audacity.py), [stitch](stitch_chapters.py) | AI Studio TTS, Win32 Named Pipes DSP, lossless WAV stitch |
 | Speech & Lexical Sync | [speech/](src/youtube_automation/speech/) | [transcribe](faster_whisper_transcribe_audio.py), [spellcheck](correct_transcript_spelling.py) | Faster-Whisper ASR, Silero VAD pause snap, monotonic spellcheck |
 | Timeline SSOT | [timeline/](src/youtube_automation/timeline/) | [timeline_engine](timeline_engine.py), [fix_timestamps](fix_timestamps.py) | Canonical timeline.json, SHA-256 sidecars, timestamp repair |
-| Visual Generation | [visuals/](src/youtube_automation/visuals/) | [flow_generator](flow_image_generator.py), [text_gate](text_gate.py) | Google Flow UI automation, continuity studio, OCR text gate |
+| Visual Generation | [visuals/](src/youtube_automation/visuals/) | [flow_generator](flow_image_generator.py), [text_gate](text_gate.py) | Google Flow UI automation, continuity studio, OCR text gate (upper-80% safe zone) |
 | Hardware Video Render | [video/](src/youtube_automation/video/) | [compile_video](compile_video.py) | FFmpeg compositor, QSV (lookahead=0, nv12), Ken Burns, ASS |
 | Browser CDP Engine | [browser/](src/youtube_automation/browser/) | [cdp_client](src/youtube_automation/browser/cdp_client.py), [gemini_utils](gemini_utils.py) | Port 9222 loopback binding, tab hygiene, Gemini web controls |
 | Core Primitives | [core/](src/youtube_automation/core/) | [utils](utils.py) | Atomic disk writes, process lifecycle, profile rotation |
 | Prompt & NLP Engines | [nlp/](src/youtube_automation/nlp/), [prompts/](src/youtube_automation/prompts/) | [json_sanitizer](json_sanitizer.py), [validator](validator.py) | Multi-tier LLM JSON repair, 8-part prompt validation |
-| Pipeline Orchestrator | [orchestrator/](src/youtube_automation/orchestrator/) | [run_agency](run_agency.py), [roadmap](roadmap_orchestrator.py) | Batch scheduling, 25-row paged visual storyboard |
+| Pipeline Orchestrator | [orchestrator/](src/youtube_automation/orchestrator/) | [run_agency](run_agency.py), [roadmap](roadmap_orchestrator.py) | Batch scheduling, 25-row paged visual storyboard, 5-shot scale cycle |
 | Pedagogy & Diagnostics | [exercises/](exercises/) | [lint_exercises](tools/lint_exercises.py), [run.bat](run.bat) | 3-tier pedagogy drills (01-audio, 03-browser, 05-video) |
+
+> **Visual Engines Architecture & Ownership**:
+> - `flow_image_generator.py` (and `src/youtube_automation/visuals/flow_generator.py`) is the primary visual engine. Prompts are governed by `roadmap_orchestrator.py`, `prompt_planner.py`, and `asset_studio.py` (`FLOW_ASSET_PRESETS`, `STYLE_DNA_TEXT`).
+> - `script_image_generator.py` is the legacy alternative generator, exclusively owning `prompts/visual_style.txt` and `prompts/visuals_plan.txt`.
 
 ### Domain Lexicon & Ubiquitous Language
 | Term | Canonical Meaning | Forbidden Synonyms / Overloaded Usage |
@@ -128,6 +132,7 @@ Automated video pipeline emulating the Egyptian/Khaleeji Arabic "Al-Daheeh" educ
 | `#9` | Repo Cleanup & Consolidation | Done | `#8` | `python tools/lint_exercises.py && python -m pytest tests/ -v` |
 | `#10` | Flow Generator Hardening v2 | Done | `#9` | `python -m py_compile src/youtube_automation/visuals/flow_generator.py && python -m pytest exercises/03-browser-cdp/03.03-flow-hydration-recovery/solution/test_exercise.py -v` |
 | `#11` | Full Production Run (293 frames) | Done | `#10` | 293 PNGs in `generated_images/` + `youtube_ready_video.mp4` (1334.50s, 0.01s A/V drift) |
+| `#12` | Creative Refinement (Plan v4) | Done | `#11` | `python tools/lint_exercises.py && python -m pytest tests/unit -v` (414 passed) |
 
 ### Known Failure Modes & Project Learnings
 - [LEARNING-001]: NEVER enable `look_ahead` on Intel QSV (`h264_qsv`) with sw-decoded frames; ALWAYS enforce `QSV_LOOKAHEAD=0`.
