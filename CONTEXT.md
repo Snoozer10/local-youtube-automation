@@ -37,7 +37,7 @@ Ordered set `[1440p master, 1080p proxy, 720p proxy]` rendered in one ffmpeg inv
 _Avoid_: single-rendition, per-file config
 
 **visual_prompt**:
-Structured 8-part JSON per span (`subject, action, setting, mood, lighting, composition, style, negative_prompt`) plus `continuity_id` handle, derived from 3-span window (current ±1 with `pause_before`/`pause_after` padding at chunk boundaries); LLM fills only fields with signal, missing fields fallback to `visual_style.txt` preset at `flatten` time, not invented.
+Structured 8-part JSON per span (`subject, action, setting, mood, lighting, composition, style, negative_prompt`) plus `continuity_id` handle, derived from 3-span window (current ±1 with `pause_before`/`pause_after` padding at chunk boundaries); LLM fills only fields with signal, missing fields fallback to `STYLE_DNA_TEXT` in `prompt_planner.py` / `validator.py` at `flatten` time, not invented. Note: `visual_style.txt` is legacy and consumed strictly by `script_image_generator.py`.
 _Avoid_: freeform diffusion text, forced hallucination
 
 **negative_prompt**:
