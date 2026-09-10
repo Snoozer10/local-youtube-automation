@@ -30,6 +30,11 @@ def log(msg: str) -> None:
 # ==========================================
 # ASSET PRESETS (CHARACTERS & SCENES)
 # ==========================================
+STYLE_DNA_TEXT: str = (
+    "2D graphic vector animation explainer style, crisp 3px black vector outlines, "
+    "flat 2-step cel-shading, 1-2-3 shape hierarchy, 16:9 widescreen"
+)
+
 FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
     "CHARACTERS": {
         "HOST": {
@@ -38,13 +43,13 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
                 "Character Visual DNA: Ahmed El-Ghandour (Al-Daheeh). "
                 "Anatomy: Voluminous dark curly afro hair, thin round wire-rim glasses, animated hazel eyes, expressive comedic eyebrows, light stubble. "
                 "Outfit: Matte charcoal-grey pullover hoodie (#2B2D42), black relaxed joggers, clean white minimal sneakers. "
-                "Rendering Invariant: 2D graphic vector animation style, uniform 3px black contour outlines, flat 2-step cel-shading."
+                "Rendering Invariant: 2D graphic vector animation style, uniform 3px black contour outlines, flat 2-step cel-shading, 1-2-3 shape hierarchy."
             ),
             "portrait_prompt": (
                 "Studio character visual development bust portrait of Ahmed El-Ghandour (Al-Daheeh) in a 2D graphic vector animation explainer style. "
                 "Chest-up framing with 15% upper headroom: thin circular wire-rim glasses, wide energetic comic eyes, wild voluminous curly black afro hair, expressive eyebrows, light comedic stubble. "
                 "Wearing an unbranded matte charcoal-grey pullover hoodie (#2B2D42). "
-                "Rendering: Crisp 3px black vector contour outlines, vibrant flat 2-step cel-shading, high-contrast studio illumination, pure solid seamless white background (#FFFFFF). "
+                "Rendering: Crisp 3px black vector contour outlines, vibrant flat 2-step cel-shading, 1-2-3 shape hierarchy, Da Vinci Sfumato chiaroscuro lighting against desaturated negative space, pure solid seamless white background (#FFFFFF). "
                 "Visual rule: Clean 2D animation art only. Zero 3D CGI, zero photorealism, zero gradients, zero shadows on backdrop."
             ),
             "body_prompt": (
@@ -52,7 +57,7 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
                 "Horizontal 3-view orthographic lineup: full-body front view, 3/4 dynamic perspective view, and side profile view. "
                 "Character: Ahmed El-Ghandour (Al-Daheeh) in 2D graphic vector animated style. "
                 "Biometrics & Wardrobe: Circular wireframe glasses, voluminous dark curly afro hair, matte charcoal-grey pullover hoodie (#2B2D42), relaxed black joggers, minimal white canvas sneakers. "
-                "Technical constraints: Aligned eye-lines and identical proportions across all 3 views, crisp 3px black vector contour lines, flat 2-step cel-shading, pure solid seamless white background (#FFFFFF). "
+                "Technical constraints: Aligned eye-lines and identical proportions across all 3 views, crisp 3px black vector contour lines, flat 2-step cel-shading, 1-2-3 shape hierarchy, pure solid seamless white background (#FFFFFF). "
                 "Visual rule: Studio model turnaround sheet only. Zero 3D render, zero photorealism, zero floor shadows, zero background props."
             ),
         },
@@ -110,8 +115,8 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
             "name": "SCENE_AHWA_STUDIO_ENV",
             "scene_prompt": (
                 "2D animation layout background plate of a cozy Cairo studio. "
-                "Wooden desk, stacked encyclopedias, retro CRT monitor, Egyptian glass teacup with mint, warm 3200K tungsten lighting. "
-                "Crisp 3px black vector outlines, flat cel-shading, open central staging area, 16:9 widescreen. "
+                "Wooden desk, stacked encyclopedias, retro CRT monitor, Egyptian glass teacup with mint, warm 3200K tungsten lighting with Da Vinci Sfumato chiaroscuro. "
+                "Crisp 3px black vector outlines, flat cel-shading, 1-2-3 shape hierarchy, open central staging area, 16:9 widescreen. "
                 "Visual rule: Empty background plate only. Zero characters, zero 3D CGI."
             ),
         },

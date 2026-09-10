@@ -106,3 +106,13 @@ def test_enhance_diffusion_prompt_standalone_string():
     assert "1-2-3 shape hierarchy" in enhanced_text.lower()
     assert "sfumato" in enhanced_text.lower() or "chiaroscuro" in enhanced_text.lower()
     assert "negative prompt:" in enhanced_text.lower()
+
+
+def test_asset_studio_socratic_presets():
+    from youtube_automation.visuals.asset_studio import FLOW_ASSET_PRESETS, STYLE_DNA_TEXT
+    assert "1-2-3 shape hierarchy" in STYLE_DNA_TEXT
+    host_info = FLOW_ASSET_PRESETS["CHARACTERS"]["HOST"]["info"]
+    assert "1-2-3 shape hierarchy" in host_info or "shape hierarchy" in host_info
+    ahwa_prompt = FLOW_ASSET_PRESETS["SCENES"]["AHWA_STUDIO"]["scene_prompt"]
+    assert "sfumato" in ahwa_prompt.lower() or "chiaroscuro" in ahwa_prompt.lower() or "1-2-3 shape hierarchy" in ahwa_prompt.lower()
+

@@ -21,7 +21,6 @@ from youtube_automation.prompts.validator import (
     flatten_visual_prompt_to_diffusion_text,
     purge_subtitle_phrases,
 )
-from youtube_automation.visuals.asset_studio import FLOW_ASSET_PRESETS
 
 
 class EpistemicClass(str, Enum):
