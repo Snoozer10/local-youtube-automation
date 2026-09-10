@@ -15,6 +15,17 @@ from youtube_automation.prompts.socratic_engine import (
     SocraticCurationEngine,
     SocraticDialogueTurn,
 )
+from youtube_automation.prompts.prompt_enhancer import (
+    SOCRATIC_CAMERA_DNA,
+    SOCRATIC_LIGHTING_DNA,
+    SOCRATIC_NEGATIVE_PROMPT,
+    SOCRATIC_STYLE_DNA,
+    enhance_diffusion_prompt,
+    enhance_frame_item,
+    enhance_visual_prompt,
+    transform_prompts_file,
+    transform_roadmap_jsonl,
+)
 from youtube_automation.prompts.validator import (
     STRICT_NEGATIVE_PROMPT,
     FrameItem,
@@ -36,6 +47,10 @@ __all__ = [
     "NotebookLMDiscoverEngine",
     "ResearchCache",
     "ResearchClusterDossier",
+    "SOCRATIC_CAMERA_DNA",
+    "SOCRATIC_LIGHTING_DNA",
+    "SOCRATIC_NEGATIVE_PROMPT",
+    "SOCRATIC_STYLE_DNA",
     "SemioticTopology",
     "SocraticCurationEngine",
     "SocraticDialogueTurn",
@@ -43,7 +58,12 @@ __all__ = [
     "SequenceMetadata",
     "VisualPrompt",
     "enforce_arabic_in_prompt",
+    "enhance_diffusion_prompt",
+    "enhance_frame_item",
+    "enhance_visual_prompt",
     "flatten_visual_prompt_to_diffusion_text",
     "purge_subtitle_phrases",
+    "transform_prompts_file",
+    "transform_roadmap_jsonl",
     "verify_pipeline_integrity",
 ]
