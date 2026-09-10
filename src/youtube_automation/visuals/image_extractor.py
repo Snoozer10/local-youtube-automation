@@ -24,6 +24,7 @@ from urllib.parse import urljoin
 def validate_image_file(file_path: str, min_size_kb: int = 20) -> bool:
     """Validates that an image exists on disk, exceeds the minimum byte threshold,
     and contains valid image headers (PNG, JPEG, or WebP) without corruption.
+    Also rejects completely blank or transparent images (such as tainted canvas artifacts).
     """
     if not os.path.exists(file_path):
         return False
@@ -32,12 +33,25 @@ def validate_image_file(file_path: str, min_size_kb: int = 20) -> bool:
     if file_size < (min_size_kb * 1024):
         return False
 
-    # Fast Pillow integrity check (verifies file is not truncated/corrupted)
+    # Fast Pillow integrity check (verifies file is not truncated/corrupted and not blank)
     try:
         from PIL import Image
 
         with Image.open(file_path) as img:
             w, h = img.size  # Read dimensions BEFORE verify() (verify() consumes the stream)
+            # Guard against completely blank/empty or zero-content images (e.g. tainted canvas artifacts)
+            try:
+                extrema = img.getextrema()
+                if extrema:
+                    if isinstance(extrema[0], tuple):
+                        if all(b_min == 0 and b_max == 0 for b_min, b_max in extrema):
+                            return False
+                    elif isinstance(extrema, tuple) and len(extrema) == 2:
+                        if extrema[0] == 0 and extrema[1] == 0:
+                            return False
+            except Exception:
+                pass
+
             img.verify()
             return w > 100 and h > 100
     except Exception:
@@ -111,7 +125,7 @@ def atomic_screenshot_and_verify(
                 os.remove(temp_path)
             return False
     except Exception as e:
-        print(f"  \u26a0\ufe0f Atomic screenshot failed: {e}")
+        print(f"  ⚠️ Atomic screenshot failed: {e}")
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
@@ -130,8 +144,9 @@ def extract_high_res_image(
 
     Tier 1: Inline base64 data URL (no network needed).
     Tier 2: Authenticated network stream via page.request.get() (bypasses CORS,
-            inherits the browser session's cookies/auth, no canvas involved).
+            inherits browser session auth, direct CDN fetch).
     Tier 2B: Local blob: URL fetched in-page (same-origin, no CORS issue).
+    Tier 2C: In-page fetch fallback (with credentials, no canvas fallback).
     Tier 3: De-hovered atomic Playwright screenshot fallback.
     """
     os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
@@ -153,10 +168,10 @@ def extract_high_res_image(
             base64_data = src.split(",", 1)[1]
             raw_bytes = base64.b64decode(base64_data)
             if save_binary_image_data(raw_bytes, save_path, min_size_kb=min_size_kb):
-                print(f"  \u2705 Saved (Inline Base64): {os.path.basename(save_path)}")
+                print(f"  ✅ Saved (Inline Base64): {os.path.basename(save_path)}")
                 return True
         except Exception as e:
-            print(f"  \u2139\ufe0f Base64 extraction failed ({e}), falling back to network stream...")
+            print(f"  ℹ️ Base64 extraction failed ({e}), falling back to network stream...")
 
     # --- TIER 2: Local Blob URL (fetchable in browser context without CORS) ---
     if src.startswith("blob:"):
@@ -177,38 +192,36 @@ def extract_high_res_image(
                 base64_data = data_url.split(",", 1)[1]
                 raw_bytes = base64.b64decode(base64_data)
                 if save_binary_image_data(raw_bytes, save_path, min_size_kb=min_size_kb):
-                    print(f"  \u2705 Saved (Blob Fetch): {os.path.basename(save_path)}")
+                    print(f"  ✅ Saved (Blob Fetch): {os.path.basename(save_path)}")
                     return True
         except Exception as e:
-            print(f"  \u2139\ufe0f Blob fetch extraction failed ({e}), falling back to screenshot...")
+            print(f"  ℹ️ Blob fetch extraction failed ({e}), falling back to network stream...")
 
-    # --- TIER 2B: In-Page Canvas / Fetch Extraction (bypasses CDN cookie restrictions) ---
+    # --- TIER 2A: Authenticated Network Stream via Playwright (bypasses CORS, direct CDN fetch) ---
     if src.startswith(("http://", "https://", "/")):
+        try:
+            absolute_src = urljoin(page.url, src)
+            response = page.request.get(absolute_src)
+            if response.ok:
+                if save_binary_image_data(response.body(), save_path, min_size_kb=min_size_kb):
+                    print(f"  ✅ Saved (Network Stream): {os.path.basename(save_path)}")
+                    return True
+        except Exception as e:
+            print(f"  ℹ️ Network stream extraction failed ({e}), falling back to in-page fetch...")
+
+        # --- TIER 2B: In-Page Fetch (with session credentials, no canvas fallback) ---
         try:
             js_fetch = """
             async (img) => {
-                try {
-                    const response = await fetch(img.src, {credentials: 'include'});
-                    if (!response.ok) throw new Error('fetch not ok');
-                    const blob = await response.blob();
-                    return await new Promise((resolve) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result);
-                        reader.onerror = () => resolve(null);
-                        reader.readAsDataURL(blob);
-                    });
-                } catch (e) {
-                    try {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = img.naturalWidth || img.width;
-                        canvas.height = img.naturalHeight || img.height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0);
-                        return canvas.toDataURL('image/png');
-                    } catch (e2) {
-                        return null;
-                    }
-                }
+                const response = await fetch(img.src, {credentials: 'include'});
+                if (!response.ok) throw new Error('fetch not ok: ' + response.status);
+                const blob = await response.blob();
+                return await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = () => resolve(null);
+                    reader.readAsDataURL(blob);
+                });
             }
             """
             data_url = img_locator.evaluate(js_fetch)
@@ -216,21 +229,10 @@ def extract_high_res_image(
                 base64_data = data_url.split(",", 1)[1]
                 raw_bytes = base64.b64decode(base64_data)
                 if save_binary_image_data(raw_bytes, save_path, min_size_kb=min_size_kb):
-                    print(f"  Saved (In-Page Fetch/Canvas): {os.path.basename(save_path)}")
+                    print(f"  ✅ Saved (In-Page Fetch): {os.path.basename(save_path)}")
                     return True
         except Exception as e:
-            print(f"  In-page fetch/canvas failed ({e}), falling back to network stream...")
-
-        # --- TIER 2C: Network Stream via Playwright (fallback, may lack CDN cookies) ---
-        try:
-            absolute_src = urljoin(page.url, src)
-            response = page.request.get(absolute_src)
-            if response.ok:
-                if save_binary_image_data(response.body(), save_path, min_size_kb=min_size_kb):
-                    print(f"  Saved (Network Stream): {os.path.basename(save_path)}")
-                    return True
-        except Exception as e:
-            print(f"  Network stream extraction failed ({e}), falling back to screenshot...")
+            print(f"  ℹ️ In-page fetch failed ({e}), falling back to screenshot...")
 
     # --- TIER 3: Atomic De-Hovered Screenshot Fallback ---
     return atomic_screenshot_and_verify(img_locator, save_path, page, min_size_kb=min_size_kb)

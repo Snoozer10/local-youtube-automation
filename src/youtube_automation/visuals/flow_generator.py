@@ -792,7 +792,7 @@ def dismiss_blocking_flow_modals(page: Any) -> bool:
             modal = page.locator(sel).first
             if modal.is_visible():
                 close_btn = modal.locator(
-                    "button[aria-label*='close' i], button:has-text('Got it'), button:has-text('Get started'), button:has-text('Dismiss'), button:has-text('Close')"
+                    "button[aria-label*='close' i], button:has-text('حسنًا'), button:has-text('Got it'), button:has-text('Get started'), button:has-text('Dismiss'), button:has-text('Close')"
                 ).first
                 if close_btn.is_visible():
                     close_btn.click(force=True)

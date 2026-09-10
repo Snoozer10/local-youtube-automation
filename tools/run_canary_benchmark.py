@@ -21,6 +21,28 @@ except ImportError:
     from text_gate import check_text_collision  # type: ignore
 
 try:
+    from youtube_automation.visuals.image_extractor import extract_high_res_image, validate_image_file
+    from youtube_automation.visuals.flow_generator import (
+        wait_for_flow_input_box,
+        inject_prompt_safely,
+        dismiss_blocking_flow_modals,
+    )
+except ImportError:
+    try:
+        from image_extractor import extract_high_res_image, validate_image_file  # type: ignore
+        from flow_image_generator import (  # type: ignore
+            wait_for_flow_input_box,
+            inject_prompt_safely,
+            dismiss_blocking_flow_modals,
+        )
+    except Exception:
+        extract_high_res_image = None
+        validate_image_file = None
+        wait_for_flow_input_box = None
+        inject_prompt_safely = None
+        dismiss_blocking_flow_modals = None
+
+try:
     from youtube_automation.prompts.prompt_enhancer import enhance_diffusion_prompt
 except ImportError:
     from prompt_enhancer import enhance_diffusion_prompt  # type: ignore
@@ -177,14 +199,32 @@ def run_canary_benchmark(
     except ImportError:
         raise RuntimeError("Playwright is required for live canary benchmark execution.")
 
+    try:
+        from youtube_automation.core.utils import launch_browser_with_profile
+    except ImportError:
+        try:
+            from utils import launch_browser_with_profile  # type: ignore
+        except ImportError:
+            launch_browser_with_profile = None
+
     print(f"[CANARY] Connecting to Chrome DevTools Protocol at 127.0.0.1:{cdp_port}...")
     with sync_playwright() as p:
+        browser = None
         try:
             browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
-        except Exception as e:
-            raise RuntimeError(
-                f"Could not connect to Chrome CDP on port {cdp_port}. Ensure Chrome is launched with --remote-debugging-port={cdp_port}. Error: {e}"
-            )
+        except Exception:
+            if launch_browser_with_profile is not None:
+                print(f"[CANARY] Port {cdp_port} not reachable. Auto-launching Chrome with Profile 1...")
+                if launch_browser_with_profile("chrome", 1, cdp_port):
+                    time.sleep(2.0)
+                    try:
+                        browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
+                    except Exception as err2:
+                        raise RuntimeError(f"Launched Chrome but failed to connect over CDP: {err2}")
+            if browser is None:
+                raise RuntimeError(
+                    f"Could not connect to Chrome CDP on port {cdp_port}. Ensure Chrome is launched with --remote-debugging-port={cdp_port}."
+                )
 
         contexts = browser.contexts
         flow_page = None
@@ -215,28 +255,94 @@ def run_canary_benchmark(
 
             save_image_path = os.path.join(canary_dir, f"{clean_ts}.png")
 
-            print(f"\n[CANARY] Generating Frame {idx} ({archetype}) -> {save_image_path}...")
+            if os.path.exists(save_image_path) and (validate_image_file is None or validate_image_file(save_image_path, min_size_kb=50)):
+                print(f"\n[CANARY] Frame {idx} already exists and verified on disk: {save_image_path}")
+            else:
+                print(f"\n[CANARY] Generating Frame {idx} ({archetype}) -> {save_image_path}...")
 
-            # Input prompt into Flow
-            input_box = flow_page.locator("textarea, div[contenteditable='true']").first
-            if input_box.is_visible():
-                input_box.click(force=True)
-                flow_page.wait_for_timeout(200)
-                flow_page.keyboard.press("Control+A")
-                flow_page.keyboard.press("Backspace")
-                flow_page.keyboard.insert_text(socratic_text)
-                flow_page.wait_for_timeout(500)
-                flow_page.keyboard.press("Enter")
-                print(f"[CANARY] Submitted prompt for Frame {idx}. Waiting for generation...")
-                # Poll for completion (up to 90s)
-                time.sleep(15.0)
+                if dismiss_blocking_flow_modals:
+                    dismiss_blocking_flow_modals(flow_page)
+
+                input_box = wait_for_flow_input_box(flow_page, timeout_seconds=15.0) if wait_for_flow_input_box else flow_page.locator("textarea, div[contenteditable='true']").first
+
+                # Record pre-existing state
+                pre_image_srcs = set()
+                for loc in flow_page.locator("img").all():
+                    try:
+                        s = loc.get_attribute("src")
+                        if s:
+                            pre_image_srcs.add(s)
+                    except Exception:
+                        pass
+                pre_card_count = flow_page.locator("div[data-card-index], .generation-card, [role='article']").count()
+
+                # Inject prompt safely
+                if inject_prompt_safely and input_box:
+                    inject_prompt_safely(flow_page, input_box, socratic_text)
+                elif input_box:
+                    input_box.click(force=True)
+                    flow_page.wait_for_timeout(200)
+                    flow_page.keyboard.press("Control+A")
+                    flow_page.keyboard.press("Backspace")
+                    flow_page.keyboard.insert_text(socratic_text)
+                    flow_page.wait_for_timeout(500)
+
+                # Submit
+                submit_btn = flow_page.locator("button[aria-label*='Start generation' i], button:has-text('arrow_forward')").first
+                if submit_btn.is_visible():
+                    submit_btn.click(force=True)
+                else:
+                    flow_page.keyboard.press("Enter")
+
+                print(f"[CANARY] Submitted prompt for Frame {idx}. Waiting for card spawn...")
+                # Handshake
+                for _ in range(20):
+                    curr_count = flow_page.locator("div[data-card-index], .generation-card, [role='article']").count()
+                    if curr_count > pre_card_count or flow_page.locator("[role='progressbar']").is_visible():
+                        break
+                    flow_page.wait_for_timeout(1000)
+
+                print(f"[CANARY] Monitoring generation for Frame {idx}...")
+                # Watchdog polling (up to 120s)
+                start_gen_time = time.time()
+                new_image_loc = None
+                while time.time() - start_gen_time < 120:
+                    is_loading = flow_page.locator("[role='progressbar']").is_visible() or flow_page.locator(".animate-pulse").is_visible()
+                    candidates = []
+                    for img_loc in flow_page.locator("img").all():
+                        try:
+                            src = img_loc.get_attribute("src")
+                            if src and src not in pre_image_srcs and img_loc.is_visible():
+                                box = img_loc.bounding_box()
+                                if box and box["width"] > 180 and box["height"] > 120:
+                                    candidates.append((box["y"], box["x"], img_loc))
+                        except Exception:
+                            pass
+                    if candidates and not is_loading:
+                        candidates.sort(key=lambda item: (item[0], item[1]))
+                        new_image_loc = candidates[-1][2]
+                        print(f"  ✅ Frame {idx} render complete!")
+                        break
+                    flow_page.wait_for_timeout(2000)
+
+                # Extract high-res image
+                if new_image_loc and extract_high_res_image:
+                    new_image_loc.scroll_into_view_if_needed()
+                    flow_page.wait_for_timeout(500)
+                    extract_high_res_image(flow_page, new_image_loc, save_image_path, min_size_kb=20)
+                elif new_image_loc:
+                    new_image_loc.screenshot(path=save_image_path)
 
             # OCR Text Gate Evaluation
             has_collision = False
             ocr_text = "NONE"
             upper_clear = True
+            gate_cfg = {
+                "ENABLE_MSER_FALLBACK": os.getenv("FLOW_ENABLE_MSER_FALLBACK", "false").strip().lower() in ("true", "1", "yes")
+            }
+            seq_type = item.get("sequence_type", "STANDALONE")
             if os.path.exists(save_image_path):
-                has_collision, boxes = check_text_collision(save_image_path)
+                has_collision, boxes = check_text_collision(save_image_path, config=gate_cfg, sequence_type=seq_type)
                 ocr_text = ", ".join(b.get("text", "") for b in boxes if b.get("text")) or "NONE"
                 upper_clear = not has_collision
 

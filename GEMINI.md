@@ -134,6 +134,7 @@ Automated video pipeline emulating the Egyptian/Khaleeji Arabic "Al-Daheeh" educ
 | `#11` | Full Production Run (293 frames) | Done | `#10` | 293 PNGs in `generated_images/` + `youtube_ready_video.mp4` (1334.50s, 0.01s A/V drift) |
 | `#12` | Creative Refinement (Plan v4) | Done | `#11` | `python tools/lint_exercises.py && python -m pytest tests/unit -v` (414 passed) |
 | `#13` | NotebookLM Discover & Socratic Curation | Done | `#12` | `python -m pytest tests/unit/test_notebooklm_discover.py tests/unit/test_socratic_engine.py -v` (424 passed) |
+| `#14` | Socratic Prompt Operationalization & Canary Benchmark | Done | `#13` | `python tools/lint_exercises.py && python -m pytest tests/unit -v` (445 passed) |
 
 ### Known Failure Modes & Project Learnings
 - [LEARNING-001]: NEVER enable `look_ahead` on Intel QSV (`h264_qsv`) with sw-decoded frames; ALWAYS enforce `QSV_LOOKAHEAD=0`.
@@ -150,3 +151,4 @@ Automated video pipeline emulating the Egyptian/Khaleeji Arabic "Al-Daheeh" educ
 - [LEARNING-012]: NEVER scope `.animate-pulse` / skeleton checks globally; ALWAYS scope to `active_card` (last card locator) to avoid false "still loading" signals from historical generation cards re-animating on scroll.
 - [LEARNING-013]: NEVER attempt to query a modal-closing element while submitting in NotebookLM Web Discover; ALWAYS monitor the Sources panel where candidate cards stage for `+ Import` and verify count increments atomically.
 - [LEARNING-014]: ALWAYS use `-X utf8` and set `PYTHONIOENCODING=utf-8` on Windows when invoking subprocess runners to avoid charmap codec `UnicodeEncodeError` on emoji/Unicode status logs.
+- [LEARNING-015]: NEVER rely on in-page canvas fallbacks (`ctx.drawImage`) when extracting cross-origin images in Google Flow; ALWAYS prioritize Playwright's `page.request.get()` network stream (inheriting browser session cookies and bypassing CORS), and validate that `img.getextrema()` is not all zeros to reject blank/tainted canvas artifacts.
