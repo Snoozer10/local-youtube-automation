@@ -116,3 +116,74 @@ def test_asset_studio_socratic_presets():
     ahwa_prompt = FLOW_ASSET_PRESETS["SCENES"]["AHWA_STUDIO"]["scene_prompt"]
     assert "sfumato" in ahwa_prompt.lower() or "chiaroscuro" in ahwa_prompt.lower() or "1-2-3 shape hierarchy" in ahwa_prompt.lower()
 
+
+def test_transform_prompts_file_roundtrip(tmp_path):
+    import json
+    from youtube_automation.prompts.prompt_enhancer import transform_prompts_file
+
+    input_file = tmp_path / "flow_prompts.json"
+    output_file = tmp_path / "flow_prompts_socratic.json"
+
+    dummy_data = [
+        {
+            "index": 1,
+            "timestamp": "[00:00]",
+            "sequence_type": "STANDALONE",
+            "layout_classification": "ISOLATED_WHITE",
+            "sequence_metadata": {"set_id": "SET_01", "frame_index": 1, "total_frames_in_set": 1},
+            "visual_density": "MINIMALIST_MACRO",
+            "visual_prompt": {
+                "subject": "Terence Howard stylized 2D portrait",
+                "style": "2D graphic vector",
+            },
+        },
+        {
+            "index": 2,
+            "timestamp": "[00:03]",
+            "sequence_type": "STANDALONE",
+            "layout_classification": "ISOLATED_WHITE",
+            "sequence_metadata": {"set_id": "SET_02", "frame_index": 1, "total_frames_in_set": 1},
+            "visual_density": "MINIMALIST_MACRO",
+            "visual_prompt": {
+                "subject": "glowing padlock",
+                "style": "2D graphic vector",
+            },
+        },
+    ]
+    input_file.write_text(json.dumps(dummy_data), encoding="utf-8")
+
+    out = transform_prompts_file(str(input_file), str(output_file))
+    assert len(out) == 2
+    assert output_file.exists()
+
+    with open(output_file, encoding="utf-8") as f:
+        loaded = json.load(f)
+    assert len(loaded) == 2
+    assert "1-2-3 shape hierarchy" in loaded[0]["visual_prompt"]["style"].lower()
+
+
+def test_transform_roadmap_jsonl_roundtrip(tmp_path):
+    import json
+    from youtube_automation.prompts.prompt_enhancer import transform_roadmap_jsonl
+
+    input_file = tmp_path / "master_roadmap.jsonl"
+    output_file = tmp_path / "master_roadmap_socratic.jsonl"
+
+    rows = [
+        {"index": 1, "timestamp": "00:00 - 00:03", "visual_concept": "Portrait of host", "color_and_arabic_text": "NONE"},
+        {"index": 2, "timestamp": "00:03 - 00:06", "visual_concept": "Glowing padlock", "color_and_arabic_text": "NONE"},
+    ]
+    with open(input_file, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+
+    out = transform_roadmap_jsonl(str(input_file), str(output_file))
+    assert len(out) == 2
+    assert output_file.exists()
+
+    with open(output_file, encoding="utf-8") as f:
+        loaded = [json.loads(line) for line in f if line.strip()]
+    assert len(loaded) == 2
+    assert "1-2-3 shape hierarchy" in loaded[0]["visual_concept"]
+
+

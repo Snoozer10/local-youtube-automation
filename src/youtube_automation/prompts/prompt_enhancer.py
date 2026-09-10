@@ -96,6 +96,8 @@ def enhance_visual_prompt(vp: VisualPrompt | dict[str, Any]) -> VisualPrompt:
             style = f"{style.rstrip('.')}, 1-2-3 shape hierarchy"
         if "3px" not in style.lower():
             style = f"{style.rstrip('.')}, crisp 3px black vector outlines"
+        if "cel-shading" not in style.lower():
+            style = f"{style.rstrip('.')}, flat 2-step cel-shading"
 
     # 3. Rule 3: Da Vinci Sfumato Chiaroscuro Lighting
     if not lighting:
