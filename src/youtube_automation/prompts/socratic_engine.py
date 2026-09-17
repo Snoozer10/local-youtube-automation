@@ -7,19 +7,14 @@ the strict 8-part VisualPrompt schema for Google Flow / Imagen 3.
 
 from __future__ import annotations
 
-import json
-import re
 from enum import Enum
-from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from youtube_automation.prompts.notebooklm_client import NotebookLMClient
 from youtube_automation.prompts.validator import (
-    STRICT_NEGATIVE_PROMPT,
     VisualPrompt,
     flatten_visual_prompt_to_diffusion_text,
-    purge_subtitle_phrases,
 )
 
 
@@ -105,7 +100,7 @@ class SocraticCurationEngine:
 
     def __init__(
         self,
-        client: Optional[NotebookLMClient] = None,
+        client: NotebookLMClient | None = None,
         notebook_id: str = "al-daheeh-research",
     ):
         self.client = client or NotebookLMClient()
@@ -204,7 +199,7 @@ class SocraticCurationEngine:
         dossier: ResearchClusterDossier,
         frame_index: int,
         timestamp: str,
-        character_handle: Optional[str] = None,
+        character_handle: str | None = None,
     ) -> CuratedVisualPromptPayload:
         """Transmutes a ResearchClusterDossier into an 8-part VisualPrompt with empirical research constraints."""
         r1_text = dossier.turns[0].oracle_response if dossier.turns else ""
@@ -239,13 +234,14 @@ class SocraticCurationEngine:
         if dossier.epistemic_class == EpistemicClass.DEBUNK_DISSECTION:
             lighting = "Dual-temperature illumination: Crimson accent backlight (#E63946) on the fallacy, warm amber keylight (#E09F3E) on the empirical proof"
 
-        # Composition with explicit camera optics and upper-80% safe zone margins
-        composition = "24mm wide-angle framing, balanced 16:9 widescreen layout, subjects strictly positioned in middle-third with 25% clean margins"
+        # Composition with explicit camera optics and 16:9 foveal safe zone coordinates
+        composition = "orthographic flat 2D projection plane, zero barrel distortion, zero keystoning, telephoto equivalent perspective, clean 16:9 widescreen composition strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980, leaving 10% peripheral bleed padding for automated pan and zoom"
 
         # Prohibitions: Negative latent suppression acting as explicit filter (~94% compliance)
         negative_prompt = (
             "no specular glare, no cluttered background elements, no fake HDR, "
             "no text, no numbers, no subtitles, no chalkboard, no letters, "
+            "no 24mm lens, no wide-angle distortion, no fisheye, no barrel distortion, no keystone distortion, "
             "no photorealism, no 3D CGI, no gradients, no burned subtitles"
         )
 

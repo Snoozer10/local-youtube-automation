@@ -41,8 +41,9 @@ _LATIN_LETTER_PATTERN = re.compile(r"[A-Za-z]")
 
 STRICT_NEGATIVE_PROMPT = (
     "no text, no subtitles, no letters, no watermark, no signature, no caption, "
-    "no typography, no calligraphy, no vector, no cel-shading, no 3px, "
-    "no burned-in subtitles, no lower thirds, no on-screen text"
+    "no typography, no calligraphy, "
+    "no burned-in subtitles, no lower thirds, no on-screen text, "
+    "no 24mm lens, no wide-angle lens, no fisheye, no barrel distortion, no keystone distortion"
 )
 
 
@@ -457,8 +458,8 @@ def _collect_schema_and_content_violations(
         # Flag subtitle (including plural subtitles) as forbidden - used for subtitle overlays
         if _re.search(r"\bsubtitles?\b", dump):
             violations.append(f"{label}: forbidden term 'subtitle' detected in payload.")
-        # Flag margin as separate word (left margin band) but allow marginalia/margins (legitimate blueprint terms)
-        if _re.search(r"\bmargin\b", dump):
+        # Flag margin as separate word (left margin band) but allow marginalia/margins and bleed margin
+        if _re.search(r"(?<!bleed\s)\bmargin\b", dump):
             violations.append(f"{label}: forbidden term 'margin' detected in payload.")
 
         visual_prompt = item.get("visual_prompt")
@@ -476,12 +477,17 @@ def _collect_schema_and_content_violations(
             anchor = visual_prompt.get("style_anchor", "")
             if anchor:
                 anchor_lower = str(anchor).lower()
-                missing_keywords = [
-                    kw for kw in ("3px", "vector", "cel-shading") if kw not in anchor_lower
-                ]
-                if missing_keywords:
-                    joined = ", ".join(missing_keywords)
-                    violations.append(f"{label}: style_anchor missing required keyword(s): {joined}.")
+                is_socratic = any(
+                    k in anchor_lower
+                    for k in ("da vinci", "sketchbook", "archival", "socratic")
+                )
+                if not is_socratic:
+                    missing_keywords = [
+                        kw for kw in ("3px", "vector", "cel-shading") if kw not in anchor_lower
+                    ]
+                    if missing_keywords:
+                        joined = ", ".join(missing_keywords)
+                        violations.append(f"{label}: style_anchor missing required keyword(s): {joined}.")
 
 
 def _collect_ordering_violations(items: list[dict[str, Any]], violations: list[str]) -> None:

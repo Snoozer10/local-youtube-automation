@@ -49,15 +49,16 @@ _INDEX_DIGITS_RE = re.compile(r"\d+")
 _COLUMN_SEMANTICS = "\n".join(
     [
         "COLUMN SEMANTICS:",
-        "Sequence Type options: STANDALONE | PROGRESSIVE_BUILD_SET | REACTION_PUNCHLINE_SET | "
-        "HISTORICAL_PARODY | SCIENTIFIC_BLUEPRINT | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM "
+        "Sequence Type options: STANDALONE | PROGRESSIVE_BUILD_SET | PROGRESSIVE_BUILD "
+        "| COMPARATIVE_SPLIT | PUNCHLINE_STANDALONE | EVIDENTIARY_ARCHIVAL | REACTION_PUNCHLINE_SET "
+        "| HISTORICAL_PARODY | SCIENTIFIC_BLUEPRINT | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM "
         "| SKEPTIC_SPLIT | EXPLAINER_DECK | PRESENTATION_SLIDE",
         "Layout Classification options: AHWA_STUDIO | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM_DESK "
         "| RETRO_BLUEPRINT | HISTORICAL_MUSEUM | ISOLATED_WHITE | KEYNOTE_SLATE",
         "Camera Specification options: zoom_in | zoom_out | pan_left | pan_right | tilt_up "
         "| tilt_down | static",
-        "Style: clean 2D vector animation, balanced 16:9 staging with subject centered; never "
-        "write subtitle/margin notes; Color & Selective Arabic Text holds Arabic ONLY for key "
+        "Style: Socratic technical Da Vinci sketchbook illustration, balanced 16:9 staging with subject centered; "
+        "never write subtitle/margin notes; Color & Selective Arabic Text holds Arabic ONLY for key "
         "punchlines or academic seals, otherwise NONE, zero Latin words.",
     ]
 )
@@ -163,7 +164,11 @@ def parse_roadmap_rows(md_text: str) -> list[RoadmapRow]:
 
 
 def build_page_prompt(
-    window: list[str], start_idx: int, end_idx: int, anchor_row: RoadmapRow | None
+    window: list[str],
+    start_idx: int,
+    end_idx: int,
+    anchor_row: RoadmapRow | None = None,
+    overlap_rows: list[RoadmapRow] | None = None,
 ) -> str:
     """Build the single-turn page envelope per roadmap spec section 2.1."""
     lines: list[str] = [
@@ -172,11 +177,18 @@ def build_page_prompt(
     ]
     if anchor_row is not None:
         lines.append(f'CONTINUITY ANCHOR (Index {start_idx - 1}): "{anchor_row.visual_concept}"')
+    if overlap_rows:
+        lines.append("")
+        lines.append("[PREVIOUS CONTEXT BUFFER (Last 2 Spans for Boundary Continuity)]:")
+        for orow in overlap_rows:
+            lines.append(
+                f"- Index {orow.index} ({orow.sequence_type}): \"{orow.visual_concept}\""
+            )
     lines.append("")
     lines.append(
         f"Strict Constraint: Output MUST start at Index {start_idx} and end at Index {end_idx}."
     )
-    if anchor_row is not None:
+    if anchor_row is not None or overlap_rows:
         lines.append(
             f"Output format: Raw Markdown Table rows only, do not repeat headers: {_HEADER_ROW}"
         )
@@ -191,11 +203,14 @@ def build_page_prompt(
     lines.append("- Dynamic 5-Shot Scale Rhythm: Cycle camera specifications systematically: EWS -> MS -> ECU -> ISO / DECK -> CU.")
     lines.append("  Forbid two consecutive rows from using the identical shot scale / framing.")
     lines.append("- The 60/40 Split Rule: Use Host Character (HOST) in at most 40% of rows. Dedicate 60% of rows to Subject-Centric B-Roll, Macro Props, Cutaway Schematics, and Explainer Decks.")
-    lines.append("- Metaphor-to-Visual Translation Engine: Prevent literal translations of idioms. Use clever visual metaphors:")
-    lines.append("  * Financial collapse / inflation -> Banknote frying in a street falafel pan, or vault with cobwebs.")
-    lines.append("  * Bureaucratic paralysis / mental filter -> Exhausted clerk behind frosted glass with a red 'REJECTED' stamp.")
-    lines.append("  * Mental chaos / overthinking -> Tangled red wires on a 1950s switchboard, endless card catalog.")
-    lines.append("  * Scientific breakthrough -> Glowing amber mathematical blueprint unfolding.")
+    lines.append("- Dynamic Semantic Decomposition (Strict Zero-Hardcoding Mandate):")
+    lines.append("  * Derive concrete physical staging and anchors dynamically from Arabic script lines across any domain (Biology, Economics, History, Quantum Physics, etc.).")
+    lines.append("  * Ground concepts in physical artifacts, fine Da Vinci archival draughtsmanship, chiaroscuro lighting, and tangible historical/scientific objects rather than generic clipart.")
+    lines.append("  * Socratic Epistemic Archetypes:")
+    lines.append("    - PROGRESSIVE_BUILD: Continuous physical scene evolving across 2-4 consecutive beats via concrete additions.")
+    lines.append("    - COMPARATIVE_SPLIT: Juxtaposition of competing theories, scales, or paradigms across balanced spatial quadrants.")
+    lines.append("    - PUNCHLINE_STANDALONE: Distinct satirical or emphatic punchline punctuation.")
+    lines.append("    - EVIDENTIARY_ARCHIVAL: Archival document, specimen slate, or technical blueprint.")
     lines.append("")
     lines.append("SCRIPT LINES:")
     for offset, sentence in enumerate(window):
@@ -277,6 +292,7 @@ def generate_master_roadmap(
     windows = split_transcript_into_windows(sentences, window_size)
     collected: dict[int, RoadmapRow] = {}
     previous_last: RoadmapRow | None = None
+    previous_overlap: list[RoadmapRow] = []
 
     jsonl_path = folder_path / ROADMAP_JSONL_FILENAME
     if jsonl_path.exists():
@@ -290,6 +306,8 @@ def generate_master_roadmap(
         expected_indices = set(range(start_idx, end_idx + 1))
         if expected_indices.issubset(collected.keys()):
             previous_last = collected[end_idx]
+            prev_indices = sorted([idx for idx in collected.keys() if idx <= end_idx])
+            previous_overlap = [collected[idx] for idx in prev_indices[-2:]]
             manifest.mark_roadmap_page_complete(page_number, end_idx)
             log(
                 f"[roadmap] page {page_number}/{len(windows)} reused from checkpoint "
@@ -305,10 +323,13 @@ def generate_master_roadmap(
             previous_last,
             planner_model,
             max_page_repairs,
+            overlap_rows=previous_overlap if previous_overlap else None,
         )
         for row in page_rows:
             collected[row.index] = row
         previous_last = page_rows[-1]
+        prev_indices = sorted(collected.keys())
+        previous_overlap = [collected[idx] for idx in prev_indices[-2:]]
         _atomic_rewrite_files(folder_path, sorted(collected.values(), key=lambda item: item.index))
         manifest.mark_roadmap_page_complete(page_number, end_idx)
         manifest.save()
@@ -445,9 +466,12 @@ def _generate_page(
     anchor_row: RoadmapRow | None,
     planner_model: str,
     max_page_repairs: int,
+    overlap_rows: list[RoadmapRow] | None = None,
 ) -> list[RoadmapRow]:
     span = f"{start_idx}-{end_idx}"
-    payload = build_page_prompt(window, start_idx, end_idx, anchor_row)
+    payload = build_page_prompt(
+        window, start_idx, end_idx, anchor_row, overlap_rows=overlap_rows
+    )
     # Session persistence: reuse chat within threshold, only new chat every N lines
     if not ensure_persistent_gemini_session(gemini_page, start_idx, planner_model):
         raise RuntimeError(f"[roadmap] failed to ensure persistent session for page {span}.")
@@ -521,3 +545,127 @@ def _generate_page(
                 f"unresolved indices: {missing}. Raw preview: {response[:500]!r}"
             )
     return [merged[index] for index in sorted(merged)]
+
+
+def build_scene_graph_from_roadmap(
+    rows: list[RoadmapRow],
+    timeline_path_or_dict: str | Path | dict[str, Any],
+    video_title: str = "Video Storyboard",
+) -> Any:
+    """Build a Pydantic SceneGraph from roadmap rows and timeline spans with bijective sync."""
+    from src.youtube_automation.timeline.scene_graph import MacroScene, SceneBeat, SceneGraph
+
+    if isinstance(timeline_path_or_dict, (str, Path)):
+        timeline_data = json.loads(Path(timeline_path_or_dict).read_text(encoding="utf-8"))
+    else:
+        timeline_data = timeline_path_or_dict
+
+    spans = timeline_data.get("spans", [])
+    spans_by_idx = {s["index"]: s for s in spans}
+
+    sorted_rows = sorted(rows, key=lambda r: r.index)
+    total_spans = len(sorted_rows)
+
+    def _map_archetype(seq: str) -> str:
+        seq_upper = seq.upper()
+        if "PROGRESSIVE" in seq_upper or "BUILD" in seq_upper:
+            return "PROGRESSIVE_BUILD"
+        if "COMPARATIVE" in seq_upper or "SPLIT" in seq_upper or "SKEPTIC" in seq_upper:
+            return "COMPARATIVE_SPLIT"
+        if (
+            "ARCHIVAL" in seq_upper
+            or "BLUEPRINT" in seq_upper
+            or "EVIDENTIARY" in seq_upper
+            or "HISTORICAL" in seq_upper
+        ):
+            return "EVIDENTIARY_ARCHIVAL"
+        return "PUNCHLINE_STANDALONE"
+
+    scenes: list[MacroScene] = []
+    current_beats: list[SceneBeat] = []
+    current_archetype: str | None = None
+    current_anchor: str = ""
+    scene_counter = 1
+
+    for row in sorted_rows:
+        span_idx = row.index - 1 if sorted_rows[0].index == 1 else row.index
+        span = spans_by_idx.get(span_idx, {})
+        duration = float(span.get("duration", 3.0))
+        timestamp = row.timestamp or f"{span.get('start', 0.0):.2f}"
+
+        arch = _map_archetype(row.sequence_type)
+        is_new_scene = False
+        if current_archetype is None:
+            is_new_scene = True
+        elif arch != current_archetype and arch != "PROGRESSIVE_BUILD":
+            is_new_scene = True
+        elif len(current_beats) >= 6:
+            is_new_scene = True
+
+        if is_new_scene and current_beats:
+            scenes.append(
+                MacroScene(
+                    scene_id=f"scene_{scene_counter:03d}",
+                    domain_niche="Science & Epistemology",
+                    scene_archetype=current_archetype,  # type: ignore
+                    chromatic_domain="TECHNICAL_SLATE",
+                    start_timestamp=current_beats[0].timestamp,
+                    end_timestamp=current_beats[-1].timestamp,
+                    continuity_anchor=current_anchor,
+                    camera_rig="orthographic flat 2D projection, fixed perspective",
+                    beats=current_beats,
+                )
+            )
+            scene_counter += 1
+            current_beats = []
+
+        if not current_beats:
+            current_archetype = arch
+            current_anchor = row.visual_concept
+
+        overlay_text = (
+            row.color_and_arabic_text
+            if row.color_and_arabic_text not in ("NONE", "", "none")
+            else None
+        )
+        beat = SceneBeat(
+            beat_index=len(current_beats) + 1,
+            timeline_span_index=span_idx,
+            timestamp=timestamp,
+            duration_seconds=duration,
+            script_line=row.script_line,
+            visual_delta=row.visual_concept,
+            spatial_direction="centered",
+            master_setup_prompt=row.visual_concept,
+            surgical_delta_prompt=(
+                f"In the attached scene, maintain identical background, desk, and lighting. "
+                f"Add {row.visual_concept} centered."
+            ),
+            arabic_overlay_text=overlay_text,
+            overlay_type="TITLE_CARD" if overlay_text else None,
+            sha256_hash=None,
+            render_status="PENDING",
+        )
+        current_beats.append(beat)
+
+    if current_beats and current_archetype:
+        scenes.append(
+            MacroScene(
+                scene_id=f"scene_{scene_counter:03d}",
+                domain_niche="Science & Epistemology",
+                scene_archetype=current_archetype,  # type: ignore
+                chromatic_domain="TECHNICAL_SLATE",
+                start_timestamp=current_beats[0].timestamp,
+                end_timestamp=current_beats[-1].timestamp,
+                continuity_anchor=current_anchor,
+                camera_rig="orthographic flat 2D projection, fixed perspective",
+                beats=current_beats,
+            )
+        )
+
+    return SceneGraph(
+        video_title=video_title,
+        total_scenes=len(scenes),
+        total_spans=total_spans,
+        scenes=scenes,
+    )

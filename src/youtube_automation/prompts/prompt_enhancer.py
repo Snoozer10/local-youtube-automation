@@ -4,7 +4,7 @@ Operationalizes the 5 empirical NotebookLM Socratic prompt engineering rules:
 1. Modular prompt scaffolding & single-generation inference pass
 2. 1-2-3 shape hierarchy (primary silhouette, sub-structures, small accents)
 3. Da Vinci Sfumato chiaroscuro lighting against desaturated negative space
-4. 24mm wide-angle lens with f/1.8 optical framing
+4. Orthographic flat 2D projection plane with telephoto equivalent perspective (zero barrel distortion, zero keystoning)
 5. Strict negative latent suppression (~94% compliance filter)
 6. English-only compliance (ADR 0003: zero raw Arabic characters in diffusion prompts)
 """
@@ -17,11 +17,11 @@ import os
 import re
 import sys
 import tempfile
-from typing import Any, Optional
+from typing import Any
 
 from youtube_automation.prompts.validator import (
-    FrameItem,
     STRICT_NEGATIVE_PROMPT,
+    FrameItem,
     VisualPrompt,
     flatten_visual_prompt_to_diffusion_text,
     purge_subtitle_phrases,
@@ -35,25 +35,427 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-SOCRATIC_STYLE_DNA = (
-    "2D graphic vector animation explainer style, crisp 3px black vector outlines, "
-    "flat 2-step cel-shading, 1-2-3 shape hierarchy, 16:9 widescreen"
+# Strategy 1: Visual Style Anchor Lockdown (Modern 2D Comic Vector DNA)
+MASTER_POSITIVE_STYLE_DNA: str = (
+    "High-end 2D graphic vector animation explainer style, bold 3px black contour linework, "
+    "flat 2-step cel-shading, isolated clean white background (#FFFFFF), "
+    "balanced 16:9 widescreen composition, sharp central subject focus, high focal clarity, "
+    "1-2-3 shape hierarchy"
+)
+
+STRICT_BANNED_KEYWORDS: list[str] = [
+    "technical blueprint",
+    "blueprint",
+    "archival document",
+    "sepia vellum",
+    "vellum",
+    "da vinci sketchbook",
+    "da vinci",
+    "leonardo da vinci",
+    "bistre wash",
+    "cross-hatching",
+    "oil painting",
+    "photorealistic",
+    "photorealism",
+    "3D CGI",
+    "octane render",
+    "retro blueprint",
+]
+
+SOCRATIC_STYLE_DNA = MASTER_POSITIVE_STYLE_DNA
+
+# Unified Studio Substrates (Audit §3.2, §6.1)
+LIGHT_LIMBO_SUBSTRATE: str = "neutral light studio limbo ground (#F8F8FA)"
+AHWA_STUDIO_GROUND: str = "warm dark mahogany studio workbench (#2A2420)"
+
+# Chromatic Attention Law (60-30-10) & Codec-Safe Accents (Audit §6.1, §6.2)
+CODEC_SAFE_RED: str = "#EB191E"  # RGB(235, 25, 30) prevents 4:2:0 chroma subsampling bleeding
+STRUCTURAL_CHARCOAL: str = "#2D3444"
+ACCENT_ELECTRIC_CYAN: str = "#00E5FF"
+ACCENT_AMBER: str = "#FFB300"
+ACCENT_SPRING_GREEN: str = "#00E676"
+
+CHROMATIC_PALETTE_60_30_10: str = (
+    "Palette: 60% base ground, 30% charcoal lines, "
+    "10% kinetic accents (Electric Cyan #00E5FF, Amber #FFB300, Spring Green #00E676, Codec-Safe Red #EB191E)"
 )
 
 SOCRATIC_LIGHTING_DNA = (
-    "Da Vinci Sfumato chiaroscuro lighting against desaturated negative space, "
-    "warm amber keylight (#E09F3E)"
+    "high-key clean studio illumination, sharp contrast, razor-sharp shadow falloff, zero gradients on isolated clean white background (#FFFFFF)"
 )
 
 SOCRATIC_CAMERA_DNA = (
-    "24mm wide-angle lens, f/1.8 shallow depth of field, balanced 16:9 widescreen framing"
+    "clean 16:9 widescreen composition strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980, "
+    "leaving 10% peripheral bleed padding for automated pan and zoom, level eye-line perspective, "
+    "orthographic flat 2D projection plane, zero barrel distortion, zero keystoning, telephoto equivalent perspective"
 )
 
-SOCRATIC_NEGATIVE_PROMPT = (
-    f"{STRICT_NEGATIVE_PROMPT}, no burned subtitles, no chalkboard clutter, "
-    "no specular glare, no fake HDR, no 3D CGI, no photorealism, no blurry details, "
-    "no visual noise, no text in lower-third"
+# Strategy 2: Two-Tier Text Quarantine Negative Token Suppression
+STRICT_ZERO_TEXT_NEGATIVE: str = (
+    "no text, no letters, no words, no alphabet, no labels, no watermark, no logo, "
+    "no signs, no writing, no typography, no captions, no subtitles, no burned subtitles, "
+    "no chalkboard, no specular glare, no English, "
+    "no numbers, no equations, no diagrams with text, no alphanumeric characters, "
+    "no technical blueprint, no architectural CAD, no engineering drawings, "
+    "no sepia vellum, no da vinci sketchbook, no parchment, no dirty background, "
+    "no sfumato, "
+    "no 24mm lens, no wide-angle lens, no wide-angle distortion, no fisheye, no barrel distortion, no keystone distortion, "
+    "no saturated pure red, no pure red RGB(255,0,0), no crushed blacks RGB(0,0,0), "
+    "no oil painting, no 3D CGI, no photorealism, no realistic skin textures, "
+    "no blurry details, no visual noise, no text in lower-third"
 )
+
+SOCRATIC_NEGATIVE_PROMPT: str = STRICT_ZERO_TEXT_NEGATIVE
+
+ASSET_TOKEN_EXPANSIONS: dict[str, str] = {
+    "CHARACTER_SKEPTIC_ABO_HMEED": "Abo Hmeed (The Everyday Skeptic) in 2D graphic vector animation style, animated bewildered comedic facial expression, navy casual jacket over heather-grey crewneck t-shirt",
+    "CHARACTER_HOST_MAIN": "Al-Daheeh Egyptian cartoon educational host, dark curly hair, black round glasses, animated expressive comedic facial expression, 2D graphic vector animation style",
+    "CHARACTER_AL_DAHEEH": "Al-Daheeh Egyptian cartoon educational host, dark curly hair, black round glasses, animated expressive comedic facial expression, 2D graphic vector animation style",
+    "CHARACTER_CLERK_BUREAUCRAT": "comical Egyptian government bureaucrat in worn tan suit with thick glasses, 2D graphic vector animation style",
+    "SCENE_ISOLATED_WHITE_ENV": "isolated clean white background (#FFFFFF)",
+    "SCENE_AHWA_STUDIO_ENV": "traditional Egyptian Ahwa cafe studio on clean isolated white background (#FFFFFF)",
+    "SCENE_COMPARATIVE_DIAGRAM_ENV": "clean minimalist comparative split diagram desk on isolated white background (#FFFFFF)",
+    "SCENE_RETRO_BLUEPRINT_ENV": "isolated clean white background (#FFFFFF)",
+    "SCENE_HISTORICAL_MUSEUM": "isolated clean white background (#FFFFFF)",
+    "SCENE_LIGHT_LIMBO_ENV": "neutral light studio limbo ground (#F8F8FA)",
+    "SCENE_AHWA_STUDIO_GROUND_ENV": "warm dark mahogany studio workbench (#2A2420)",
+}
+
+
+def expand_asset_tokens(text: str) -> str:
+    """Expands asset preset constants like CHARACTER_SKEPTIC_ABO_HMEED into concrete 2D vector descriptions."""
+    if not text:
+        return ""
+    result = text
+    for token, expansion in ASSET_TOKEN_EXPANSIONS.items():
+        if token in result:
+            result = result.replace(token, expansion)
+    return result
+
+
+def purge_banned_visual_keywords(text: str) -> str:
+    """Purges all banned style keywords (blueprints, parchments, photorealism, CGI)
+    and replaces them with clean 2D vector concepts."""
+    if not text:
+        return ""
+    result = expand_asset_tokens(text)
+    # Replace blueprint and CAD patterns with clean 2D vector graphic diagrams
+    result = re.sub(r"\b(retro\s+)?blueprints?\b", "clean 2D vector graphic diagram", result, flags=re.IGNORECASE)
+    result = re.sub(r"\btechnical\s+schematics?\b", "minimalist 2D vector graphic", result, flags=re.IGNORECASE)
+    result = re.sub(r"\b(archival\s+documents?|sepia\s+vellum|vellum|parchments?)\b", "clean unwritten white paper sheet", result, flags=re.IGNORECASE)
+    result = re.sub(r"\b(da\s+vinci(\s+sketchbook)?|leonardo\s+da\s+vinci)\b", "clean 2D vector draughtsmanship", result, flags=re.IGNORECASE)
+    result = re.sub(r"\b(bistre\s+wash|cross-hatching)\b", "flat 2-step cel-shading", result, flags=re.IGNORECASE)
+    result = re.sub(r"\b(oil\s+painting|photorealistic|photorealism|3D\s+CGI|octane\s+render)\b", "2D graphic vector animation", result, flags=re.IGNORECASE)
+    # Purge equations / mathematical formulas in prompt to prevent diffusion model from drawing English CAD letters
+    result = re.sub(r"\b(mathematical\s+physics\s+formulas?|mathematical\s+equations?|multiplication\s+equations?|equations?|formulas?)\b", "abstract geometric line curves without text or numbers", result, flags=re.IGNORECASE)
+    # Purge legacy 24mm and wide-angle lens tokens
+    result = re.sub(
+        r"\b24\s*mm(\s+wide[- ]angle)?(\s+lens|\s+optics|\s+framing)?\b|\bwide[- ]angle\s+lens\b|\bfisheye(\s+lens)?\b",
+        "orthographic flat 2D projection plane",
+        result,
+        flags=re.IGNORECASE,
+    )
+    result = re.sub(r"\s+", " ", result)
+    return result.strip()
+
+
+# ==============================================================================
+# TIER 1.1: HARDENED SURFACE NEUTRALIZATION & ACTIVE DATA TELEMETRY
+# ==============================================================================
+
+# Priority 1: High-precision compound phrases (MUST match before solitary nouns)
+COMPOUND_SURFACE_RULES: list[tuple[str, str]] = [
+    # Circuit boards & electronics (Preserve engineering context, inject active telemetry)
+    (
+        r"\b(printed\s+)?circuit\s+boards?\b",
+        "printed circuit schematic board with copper trace paths and glowing micro-nodes",
+    ),
+    (
+        r"\b(motherboards?|breadboards?)\b",
+        "circuit prototyping board with micro-traces and glowing indicator nodes",
+    ),
+    # Split-screen & interface composition (Preserve layout geometry, prevent self-duplication)
+    (
+        r"\bsplit[-\s]screens?(?!\s+dual\s+composition)\b",
+        "split-screen dual composition with bilateral comparative panels",
+    ),
+    (
+        r"\b(green[-\s]screens?|touch[-\s]screens?|lock[-\s]screens?)\b",
+        "digital touch interface displaying vector geometry",
+    ),
+    # Books & ledgers (Prevent 'open closed book' antonymous state inversion)
+    (
+        r"\bopen(\s+retro)?\s+(books?|notebooks?|ledgers?|journals?)\b",
+        "open technical reference ledger with abstract non-textual proportion charts",
+    ),
+    (
+        r"\b(closed\s+)?(books?|notebooks?|journals?|manuals?)\b",
+        "unmarked reference volume with plain cover",
+    ),
+    # Chalkboards / Whiteboards (guarded against re-matching dark matte chalkboard)
+    (
+        r"(?<!\bdark\smatte\s)\b(blackboards?|chalkboards?|whiteboards?)\b",
+        "dark matte chalkboard with clean geometric diagrams and non-linguistic coordinate axes",
+    ),
+]
+
+# Priority 2: Solitary nouns guarded by strict negative lookbehinds
+GUARDED_SOLITARY_SURFACE_RULES: list[tuple[str, str]] = [
+    # Screens / Monitors: guarded against split-, full-, green-, touch-, lock-, telemetry
+    (
+        r"(?<!\bsplit-)(?<!\bsplit\s)(?<!\bfull-)(?<!\bfull\s)(?<!\bgreen\s)(?<!\btouch\s)(?<!\block\s)(?<!\btelemetry\s)"
+        r"\b(screens?|displays?|monitors?|televisions?|tvs?)\b",
+        "digital telemetry display with abstract waveform traces and glowing coordinate nodes",
+    ),
+    # Display boards / easels: guarded against circuit, mother, bread, dash, story, cutting, chalk, white, black, key, schematic, prototyping, display
+    (
+        r"(?<!\bcircuit\s)(?<!\bmother)(?<!\bbread)(?<!\bdash)(?<!\bstory)(?<!\bcutting)"
+        r"(?<!\bchalk)(?<!\bwhite)(?<!\bblack)(?<!\bkey)(?<!\bschematic\s)(?<!\bprototyping\s)(?<!\bdisplay\s)"
+        r"\b(signboards?|plaques?|boards?|billboards?|banners?|posters?)\b",
+        "unmarked wooden display easel",
+    ),
+    # Placards / Documents: convert dead blank paper to active drafting placards
+    (
+        r"\b(papers?|documents?|parchments?|dossiers?|sheets?)\b",
+        "drafting placard displaying abstract non-textual ratio diagrams",
+    ),
+    # Insignias / Stamps: guarded against wax seal
+    (
+        r"(?<!\bwax\s)\b(stamps?|seals?|badges?|labels?|tags?)\b",
+        "stylized wax seal emblem",
+    ),
+    # Schematics / Blueprints: guarded against circuit, vector
+    (
+        r"(?<!\bvector\s)(?<!\bcircuit\s)\b(schematics?|blueprints?|cad\s+drawings?)\b",
+        "orthographic vector schematic with abstract node linkages",
+    ),
+    # Formulas / Math: replace with active geometric telemetry
+    (
+        r"\b(equations?|formulas?|math\s+symbols?|mathematical\s+physics\s+formulas?)\b",
+        "abstract non-textual proportion bars and geometric wave curves",
+    ),
+]
+
+# Priority 0: Repair rules for pre-existing corrupted dataset strings
+LEGACY_CORRUPTION_REPAIR_RULES: list[tuple[str, str]] = [
+    (
+        r"circuit blank unmarked wooden board with zero writing",
+        "printed circuit schematic board with copper trace paths and glowing micro-nodes",
+    ),
+    (
+        r"split-blank dark glass monitor without display",
+        "split-screen dual composition with bilateral comparative panels",
+    ),
+    (
+        r"open retro blank closed book with unmarked plain cover",
+        "open technical reference ledger with abstract non-textual proportion charts",
+    ),
+    (
+        r"blank closed book with unmarked plain cover",
+        "unmarked reference volume with plain cover",
+    ),
+    (
+        r"blank dark glass monitor without display",
+        "digital telemetry display with abstract waveform traces and glowing coordinate nodes",
+    ),
+    (
+        r"clean unwritten white paper sheet",
+        "drafting placard displaying abstract non-textual ratio diagrams",
+    ),
+    (
+        r"blank unmarked wooden board with zero writing",
+        "unmarked wooden display easel",
+    ),
+    (
+        r"blank unmarked dark chalkboard with clean matte surface",
+        "dark matte chalkboard with clean geometric diagrams and non-linguistic coordinate axes",
+    ),
+    (
+        r"ornate blank brass stamping tool without lettering",
+        "stylized wax seal emblem",
+    ),
+    # Recursive self-duplication purges
+    (
+        r"(clean 2D vector graphic lines with zero text\s*){1,}",
+        "clean 2D vector schematics ",
+    ),
+    (
+        r"(abstract geometric line curves without text or numbers\s*){1,}",
+        "abstract non-textual proportion curves ",
+    ),
+    (
+        r"\bdiagram\s+diagram\b",
+        "diagram",
+    ),
+]
+
+
+def neutralize_surfaces(text: str) -> str:
+    """Neutralizes textual surfaces, eliminating Latin text leaks while replacing
+    dead blank boards/screens with active abstract non-linguistic data telemetry.
+    Mathematically idempotent: neutralize_surfaces(neutralize_surfaces(text)) == neutralize_surfaces(text).
+    """
+    if not text:
+        return ""
+
+    result = text
+
+    # Step 0: Purge legacy corrupted phrases first
+    for pattern, repl in LEGACY_CORRUPTION_REPAIR_RULES:
+        result = re.sub(pattern, repl, result, flags=re.IGNORECASE)
+
+    # 1. Strip quoted English phrases like 'REJECTED', 'CRITICAL', "CONFIDENTIAL", 'START', 'FINISH'
+    result = re.sub(r"['\"][^'\"]*['\"]", "", result)
+
+    # Step 2: Execute compound surface substitutions
+    for pattern, repl in COMPOUND_SURFACE_RULES:
+        result = re.sub(pattern, repl, result, flags=re.IGNORECASE)
+
+    # Step 3: Execute guarded solitary surface substitutions
+    for pattern, repl in GUARDED_SOLITARY_SURFACE_RULES:
+        result = re.sub(pattern, repl, result, flags=re.IGNORECASE)
+
+    # Step 4: De-duplicate consecutive duplicated telemetry phrases
+    result = re.sub(r"\b(clean 2D vector schematics\s*){2,}", "clean 2D vector schematics ", result)
+    result = re.sub(r"\b(digital telemetry display\s*){2,}", "digital telemetry display ", result)
+
+    # Step 5: Normalize whitespaces and trailing punctuation
+    result = re.sub(r"\s+", " ", result).strip()
+    result = re.sub(r"\s+([,.:;])", r"\1", result)
+    return result
+
+
+MAD_CONTRADICTORY_NEGATIVE_TOKENS: set[str] = {
+    "3px", "no 3px", "3 px", "no 3 px",
+    "vector", "no vector",
+    "cel-shading", "no cel-shading", "cel shading", "no cel shading",
+    "contour", "contour linework",
+    "linework", "2d graphic", "graphic vector",
+    "clean lines", "sharp lines",
+    "orthographic", "no orthographic",
+    "telephoto", "no telephoto",
+    "2d", "no 2d",
+}
+
+
+def _split_negative_tokens(text: str) -> list[str]:
+    """Splits negative prompt strings on commas while preserving parenthesized tuples like RGB(255,0,0)."""
+    tokens: list[str] = []
+    current: list[str] = []
+    in_paren = False
+    for char in text:
+        if char == "(":
+            in_paren = True
+        elif char == ")":
+            in_paren = False
+        if char == "," and not in_paren:
+            tok = "".join(current).strip()
+            if tok:
+                tokens.append(tok)
+            current = []
+        else:
+            current.append(char)
+    tok = "".join(current).strip()
+    if tok:
+        tokens.append(tok)
+    return tokens
+
+
+def sanitize_negative_prompt(user_negative: str = "") -> str:
+    """Builds a deterministic, de-duplicated negative prompt free of MAD token contradictions."""
+    tokens: set[str] = set()
+
+    for tok in _split_negative_tokens(STRICT_NEGATIVE_PROMPT):
+        cleaned = tok.strip()
+        if cleaned and cleaned.lower() not in MAD_CONTRADICTORY_NEGATIVE_TOKENS:
+            tokens.add(cleaned)
+
+    for tok in _split_negative_tokens(STRICT_ZERO_TEXT_NEGATIVE):
+        cleaned = tok.strip()
+        if cleaned and cleaned.lower() not in MAD_CONTRADICTORY_NEGATIVE_TOKENS:
+            tokens.add(cleaned)
+
+    if user_negative:
+        for tok in _split_negative_tokens(user_negative):
+            cleaned = tok.strip()
+            norm = re.sub(r"^no\s+", "", cleaned, flags=re.IGNORECASE).strip().lower()
+            if cleaned and cleaned.lower() not in MAD_CONTRADICTORY_NEGATIVE_TOKENS and norm not in MAD_CONTRADICTORY_NEGATIVE_TOKENS:
+                tokens.add(cleaned)
+
+    return ", ".join(sorted(tokens))
+
+
+def build_mode_a_prompt(
+    subject: str,
+    spatial_direction: str = "centered focal composition",
+    setting: str = "SCENE_LIGHT_LIMBO_ENV",
+    domain_palette: str = "TECHNICAL_SLATE",
+) -> str:
+    """
+    Builds a Mode A Master Anchor Setup prompt (70-110 words) using the 6-Part Universal Prompt Grammar (Audit §4.3):
+    Part 1: Master Style Anchor
+    Part 2: Camera Optical Model
+    Part 3: 16:9 Safe Composition
+    Part 4: Substrate Ground
+    Part 5: Semantic Data Entity
+    Part 6: Codec-Safe Accents
+    """
+    clean_subj = purge_banned_visual_keywords(neutralize_surfaces(_ensure_english_text(purge_subtitle_phrases(subject))))
+
+    # Part 1: Master Style Anchor
+    part1 = "High-end 2D graphic vector animation explainer style, uniform 3px deep charcoal (#2D3444) contour linework, flat 2-step cel-shading with razor-sharp shadow edges, zero gradients."
+
+    # Part 2: Camera Optical Model
+    part2 = "Orthographic flat 2D projection plane, zero barrel distortion, zero keystoning, telephoto equivalent perspective."
+
+    # Part 3: 16:9 Safe Composition
+    part3 = "Clean 16:9 widescreen composition strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980, leaving 10% peripheral bleed padding for automated pan and zoom."
+
+    # Part 4: Substrate Ground
+    setting_desc = "neutral light studio limbo ground (#F8F8FA)"
+    if setting:
+        if setting == "SCENE_AHWA_STUDIO_ENV" or "ahwa" in setting.lower():
+            setting_desc = "warm dark mahogany studio workbench (#2A2420)"
+        elif setting == "SCENE_LIGHT_LIMBO_ENV" or "limbo" in setting.lower():
+            setting_desc = "neutral light studio limbo ground (#F8F8FA)"
+        elif setting == "SCENE_ISOLATED_WHITE_ENV" or "white" in setting.lower():
+            setting_desc = "isolated clean white background (#FFFFFF)"
+        else:
+            clean_setting = purge_banned_visual_keywords(neutralize_surfaces(_ensure_english_text(setting)))
+            setting_desc = f"{clean_setting}, neutral light studio limbo ground (#F8F8FA)"
+    part4 = f"Locked studio substrate, {setting_desc}, zero luminance strobing."
+
+    # Part 5: Semantic Data Entity
+    part5 = f"{clean_subj.rstrip('.')}. {spatial_direction}, abstract non-textual proportion meters."
+
+    # Part 6: Codec-Safe Accents (60-30-10 chromatic attention law)
+    part6 = "Palette: 60% base ground, 30% charcoal lines, 10% kinetic accents (Cyan #00E5FF, Amber #FFB300, Spring Green #00E676, Codec-Safe Red #EB191E)."
+
+    return f"{part1} {part2} {part3} {part4} {part5} {part6}"
+
+
+def build_mode_b_prompt(
+    visual_delta: str,
+    spatial_direction: str = "centered",
+) -> str:
+    """
+    Builds a Mode B Progressive Surgical Delta prompt (< 25 words) using the L.A.D. Formula.
+    [Reference Lock] + [Anchor Stability] + [Single Surgical Delta]
+    Strictly strips out 100% of style DNA, camera specifications, lighting descriptions,
+    and negative tokens to prevent Attention Dilution (Strategy 4).
+    """
+    clean_delta = purge_banned_visual_keywords(neutralize_surfaces(_ensure_english_text(purge_subtitle_phrases(visual_delta)))).strip(".")
+    direction = spatial_direction.strip() if spatial_direction else "centered"
+
+    prompt = f"In the attached reference image, maintain identical subject, background, and lighting. Add {clean_delta} {direction}."
+    words = prompt.split()
+    if len(words) > 24:
+        base_prefix = "In the attached reference image, maintain identical subject and background. Add "
+        prefix_words = base_prefix.split()
+        max_delta_words = 24 - len(prefix_words)
+        trimmed_delta = " ".join(clean_delta.split()[:max_delta_words])
+        prompt = f"{base_prefix}{trimmed_delta}."
+    return prompt
 
 
 def _ensure_english_text(text: str) -> str:
@@ -68,65 +470,40 @@ def _ensure_english_text(text: str) -> str:
 
 def enhance_visual_prompt(vp: VisualPrompt | dict[str, Any]) -> VisualPrompt:
     """
-    Elevates an 8-part VisualPrompt using the 5 empirical Socratic principles.
-    Injects 1-2-3 shape hierarchy, Da Vinci Sfumato chiaroscuro, 24mm optics,
-    and reinforced negative latent suppression.
+    Elevates an 8-part VisualPrompt using the Modern 2D Vector Explainer Style DNA.
+    Enforces Strategy 1 (Style Lockdown), Strategy 2 (Two-Tier Text Quarantine),
+    and Strategy 4 (L.A.D. Delta Isolation).
     """
     if isinstance(vp, dict):
         data = dict(vp)
     else:
         data = vp.model_dump()
 
-    # 1. English-Only Sanitization (ADR 0003)
-    subject = _ensure_english_text(data.get("subject") or data.get("subject_details", "")).strip()
-    action = _ensure_english_text(data.get("action") or data.get("subject_action_increment", "")).strip()
-    setting = _ensure_english_text(data.get("setting") or data.get("environment_coordinates", "")).strip()
-    mood = data.get("mood", "").strip()
-    lighting = data.get("lighting", "").strip()
-    composition = data.get("composition") or data.get("composition_layout", "").strip()
-    style = data.get("style") or data.get("style_anchor", "").strip()
+    # 1. English-Only Sanitization, Surface Neutralization & Banned Keyword Purge
+    subject = purge_banned_visual_keywords(neutralize_surfaces(_ensure_english_text(data.get("subject") or data.get("subject_details", "")).strip()))
+    action = purge_banned_visual_keywords(neutralize_surfaces(_ensure_english_text(data.get("action") or data.get("subject_action_increment", "")).strip()))
+    setting = purge_banned_visual_keywords(neutralize_surfaces(_ensure_english_text(data.get("setting") or data.get("environment_coordinates", "")).strip()))
+    mood = purge_banned_visual_keywords(data.get("mood", "").strip())
+    lighting = purge_banned_visual_keywords(data.get("lighting", "").strip())
+    composition = purge_banned_visual_keywords(data.get("composition") or data.get("composition_layout", "").strip())
+    style = purge_banned_visual_keywords(data.get("style") or data.get("style_anchor", "").strip())
     user_negative = data.get("negative_prompt", "").strip()
     continuity_id = data.get("continuity_id", "").strip()
 
-    # 2. Rule 2: 1-2-3 Shape Hierarchy Injection into Style
-    if not style:
-        style = SOCRATIC_STYLE_DNA
-    else:
-        if "1-2-3 shape hierarchy" not in style.lower():
-            style = f"{style.rstrip('.')}, 1-2-3 shape hierarchy"
-        if "3px" not in style.lower():
-            style = f"{style.rstrip('.')}, crisp 3px black vector outlines"
-        if "cel-shading" not in style.lower():
-            style = f"{style.rstrip('.')}, flat 2-step cel-shading"
+    # Normalize setting: if retro blueprint or museum, enforce clean isolated white studio
+    if not setting or "blueprint" in setting.lower() or "museum" in setting.lower():
+        setting = "SCENE_ISOLATED_WHITE_ENV"
 
-    # 3. Rule 3: Da Vinci Sfumato Chiaroscuro Lighting
-    if not lighting:
-        lighting = SOCRATIC_LIGHTING_DNA
-    else:
-        if "sfumato" not in lighting.lower() and "chiaroscuro" not in lighting.lower():
-            lighting = f"{lighting.rstrip('.')}, Da Vinci Sfumato chiaroscuro lighting against desaturated negative space"
-
-    # 4. Rule 4: 24mm Wide-Angle Optics Framing
+    # 2. Modern 2D Vector Explainer Style Anchor Lockdown
+    style = MASTER_POSITIVE_STYLE_DNA
+    lighting = SOCRATIC_LIGHTING_DNA
     if not composition:
         composition = SOCRATIC_CAMERA_DNA
-    else:
-        if "24mm" not in composition.lower():
-            composition = f"{composition.rstrip('.')}, 24mm wide-angle lens, f/1.8 shallow depth of field"
+    elif "orthographic" not in composition.lower():
+        composition = f"{composition}, {SOCRATIC_CAMERA_DNA}"
 
-    # 5. Rule 5: Reinforced Negative Latent Suppression (~94% compliance)
-    negative_tokens = set()
-    if user_negative:
-        for token in user_negative.split(","):
-            cleaned = token.strip()
-            if cleaned:
-                negative_tokens.add(cleaned)
-    for token in SOCRATIC_NEGATIVE_PROMPT.split(","):
-        cleaned = token.strip()
-        if cleaned:
-            negative_tokens.add(cleaned)
-
-    # Reassemble deterministic ordered negative prompt
-    ordered_negative = ", ".join(sorted(negative_tokens))
+    # 3. Two-Tier Text Quarantine Negative Suppression (MAD Purged)
+    ordered_negative = sanitize_negative_prompt(user_negative)
 
     # Purge subtitle triggers across all fields
     subject = purge_subtitle_phrases(subject)
@@ -182,14 +559,20 @@ def enhance_frame_item(item: FrameItem | dict[str, Any]) -> FrameItem:
 def enhance_diffusion_prompt(
     input_data: VisualPrompt | FrameItem | dict[str, Any] | str,
     sequence_type: str = "STANDALONE",
+    mode: str = "A",
+    visual_delta: str = "",
+    spatial_direction: str = "centered",
 ) -> str:
     """
     Transforms any prompt payload or raw string into an elevated, production-grade
-    diffusion prompt conforming to the 5 Socratic principles.
+    diffusion prompt conforming to S.S.L.C.M. (Mode A) or L.A.D. (Mode B) framework.
     """
+    if mode == "B" and visual_delta:
+        return build_mode_b_prompt(visual_delta, spatial_direction)
+
     if isinstance(input_data, str):
-        # Raw string handling
-        cleaned_str = _ensure_english_text(purge_subtitle_phrases(input_data))
+        # Raw string handling with surface neutralization
+        cleaned_str = neutralize_surfaces(_ensure_english_text(purge_subtitle_phrases(input_data)))
         parts = [
             cleaned_str.rstrip(".") + ".",
             f"Composition: {SOCRATIC_CAMERA_DNA}.",
@@ -229,7 +612,7 @@ def enhance_diffusion_prompt(
 def transform_prompts_file(
     input_file: str,
     output_file: str,
-    limit: Optional[int] = None,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """
     Transforms flow_prompts.json into an elevated flow_prompts_socratic.json.
@@ -269,7 +652,7 @@ def transform_prompts_file(
 def transform_roadmap_jsonl(
     input_file: str,
     output_file: str,
-    limit: Optional[int] = None,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """
     Transforms master_roadmap.jsonl into master_roadmap_socratic.jsonl.
@@ -296,9 +679,9 @@ def transform_roadmap_jsonl(
     enhanced_rows: list[dict[str, Any]] = []
     for r in rows:
         concept = r.get("visual_concept", "")
-        # Inject shape hierarchy and Sfumato lighting into concept
+        # Inject shape hierarchy and razor-sharp lighting into concept
         if concept and "1-2-3 shape hierarchy" not in concept:
-            concept = f"{concept.rstrip('.')}. 1-2-3 shape hierarchy with Da Vinci Sfumato chiaroscuro lighting."
+            concept = f"{concept.rstrip('.')}. 1-2-3 shape hierarchy with razor-sharp shadow falloff, zero gradients."
         r["visual_concept"] = concept
         enhanced_rows.append(r)
 

@@ -388,3 +388,37 @@ class TestVisualPrompt8PartSchema:
         verified = verify_pipeline_integrity([item], expected_total=1)
         assert len(verified) == 1
 
+
+def test_strict_negative_prompt_free_of_style_dna():
+    """Enforce invariant: STRICT_NEGATIVE_PROMPT must never contain style DNA keywords,
+    and must enforce optical camera distortion prohibitions (Task 1.3)."""
+    from youtube_automation.prompts.validator import STRICT_NEGATIVE_PROMPT
+
+    prohibited = ["3px", "vector", "cel-shading"]
+    for word in prohibited:
+        assert word not in STRICT_NEGATIVE_PROMPT.lower(), f"Prohibited positive token '{word}' in STRICT_NEGATIVE_PROMPT"
+
+    # Task 1.3 Camera Model Migration Negative Assertions
+    required_negative_camera_bans = ["no 24mm lens", "no barrel distortion", "no keystone distortion"]
+    for ban in required_negative_camera_bans:
+        assert ban in STRICT_NEGATIVE_PROMPT.lower(), f"Required camera ban '{ban}' missing from STRICT_NEGATIVE_PROMPT"
+
+
+def test_bleed_padding_and_margin_pass_integrity():
+    from youtube_automation.prompts.validator import verify_pipeline_integrity
+    item = {
+        "index": 1,
+        "timestamp": "[00:05]",
+        "visual_prompt": {
+            "subject_details": "scientific apparatus",
+            "setting_environment": "clean white laboratory",
+            "lighting_setup": "bright studio light",
+            "composition_layout": "16:9 widescreen with 10% bleed padding and 10% bleed margin",
+            "style_anchor": "2D vector animation explainer style, crisp 3px black vector outlines, flat 2-step cel-shading",
+            "negative_prompt": "subtitles, watermark, text overlay",
+        },
+    }
+    verified = verify_pipeline_integrity([item], expected_total=1)
+    assert len(verified) == 1
+
+
