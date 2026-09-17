@@ -251,9 +251,10 @@
         - Compiled interactive side-by-side comparison studio `studio_viewer.html` and `canary_comparison_viewer.html` in `canary_disambiguated_7/` with kinetic badges and baseline references.
     44. Antigravity 2.0 Operational Runbook v2.0: COMPLETE & APPROVED!
         - Generated turnkey operational runbook `antigravity_2_0_operational_runbook.md` (v2.0) with 5 critical runtime hardening patches (bounded Phase 1, path sanitization for 'What Do Animals Think Of Humans', timeline SSOT read-only contract, gitignore verification with skip-worktree, and two-tier failure taxonomy separating 3-strike daemon reconnects from 2-attempt isolated code patches).
+        - Published version-controlled runbook `docs/runbooks/antigravity_2_0_operational_runbook_v2.md` in repository (`f81ed81`).
         - Added `/docs/incidents/` to `.gitignore` (`75477d7`) ensuring clean branch hygiene during incident logging.
         - Working tree confirmed 100% clean; full regression suite 500/500 passed; pedagogy drills 35/35 valid.
-  - Now: Standby mode. Antigravity 2.0 is executing the autonomous 10-phase pipeline on test URL `https://youtube.com/watch?v=vIqTRyX-cq0`.
+  - Now: Standby mode. Provided file paths and turnkey launch directive to user for Antigravity 2.0 autonomous execution.
   - Next: Conduct post-run adversarial audit of verification scorecard (`docs/user-reports/verification_scorecard_vIqTRyX-cq0.md`), execution telemetry, media streams, and git diff upon Antigravity 2.0 return.
 - Open questions: None.
-- Working set (files/ids/commands): antigravity_2_0_operational_runbook.md, youtube_urls.txt, youtube_runs/What Do Animals Think Of Humans/
+- Working set (files/ids/commands): docs/runbooks/antigravity_2_0_operational_runbook_v2.md, youtube_urls.txt, youtube_runs/What Do Animals Think Of Humans/
