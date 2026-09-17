@@ -16,12 +16,11 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import re
 import sys
 import time
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 logger = logging.getLogger("NotebookLMDiscover")
 
@@ -303,7 +302,7 @@ class NotebookLMDiscoverEngine:
         self,
         page: Any,
         mode: Literal["fast", "deep"] = "fast",
-        timeout_seconds: Optional[int] = None,
+        timeout_seconds: int | None = None,
     ) -> bool:
         """Monitors scan completion watchdog until results/Import button are visible."""
         timeout = timeout_seconds or (240 if mode == "deep" else 90)
@@ -321,13 +320,13 @@ class NotebookLMDiscoverEngine:
             # Check if import button is visible
             import_btn = page.locator("button:has-text('Import')").first
             if import_btn.is_visible():
-                logger.info(f"[Discover] Scan finished successfully: Import button visible.")
+                logger.info("[Discover] Scan finished successfully: Import button visible.")
                 return True
 
             # Check if completed status is visible
             completed = page.locator("*:has-text('Research completed!'), *:has-text('completed!')").count()
             if completed > 0:
-                logger.info(f"[Discover] Scan finished successfully: Completion status detected.")
+                logger.info("[Discover] Scan finished successfully: Completion status detected.")
                 return True
 
             page.wait_for_timeout(2000)
@@ -413,7 +412,7 @@ class NotebookLMDiscoverEngine:
 
     def execute_batch(
         self,
-        queries: Optional[list[dict[str, Any]]] = None,
+        queries: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Executes the full batch across all research queries."""
         target_queries = queries or DEFAULT_RESEARCH_QUERIES

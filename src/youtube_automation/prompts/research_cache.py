@@ -14,7 +14,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 class ResearchCache:
@@ -38,7 +38,7 @@ class ResearchCache:
         key = self.compute_hash(notebook_id, query)
         return self._get_entry_path(key).exists()
 
-    def get(self, notebook_id: str, query: str) -> Optional[dict[str, Any]]:
+    def get(self, notebook_id: str, query: str) -> dict[str, Any] | None:
         """Retrieves cached payload if available, else None."""
         key = self.compute_hash(notebook_id, query)
         entry_path = self._get_entry_path(key)
@@ -46,13 +46,13 @@ class ResearchCache:
             return None
 
         try:
-            with open(entry_path, "r", encoding="utf-8") as f:
+            with open(entry_path, encoding="utf-8") as f:
                 data = json.load(f)
             return data
         except Exception:
             return None
 
-    def get_response_text(self, notebook_id: str, query: str) -> Optional[str]:
+    def get_response_text(self, notebook_id: str, query: str) -> str | None:
         """Convenience method to retrieve pure response text."""
         entry = self.get(notebook_id, query)
         if entry and isinstance(entry, dict):
@@ -64,7 +64,7 @@ class ResearchCache:
         notebook_id: str,
         query: str,
         response: str,
-        metadata: Optional[dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """Atomically stores query response to disk using tempfile + os.replace."""
         key = self.compute_hash(notebook_id, query)

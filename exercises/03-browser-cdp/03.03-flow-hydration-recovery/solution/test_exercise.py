@@ -14,11 +14,10 @@ Covers all 5 production-grade helper functions:
 
 from __future__ import annotations
 
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Generator
-
 import sys
+import threading
+from collections.abc import Generator
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import pytest

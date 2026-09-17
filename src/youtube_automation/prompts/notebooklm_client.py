@@ -8,13 +8,10 @@ Provides unified interface for querying NotebookLM with:
 
 from __future__ import annotations
 
-import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Optional
 
 from youtube_automation.prompts.research_cache import ResearchCache
 
@@ -24,7 +21,7 @@ class NotebookLMClient:
 
     def __init__(
         self,
-        skill_dir: Optional[str | Path] = None,
+        skill_dir: str | Path | None = None,
         cache_dir: str | Path = "research_cache",
         mock_mode: bool = False,
     ):
@@ -44,7 +41,7 @@ class NotebookLMClient:
         self,
         question: str,
         notebook_id: str = "al-daheeh-research",
-        notebook_url: Optional[str] = None,
+        notebook_url: str | None = None,
         timeout: int = 120,
         bypass_cache: bool = False,
     ) -> str:

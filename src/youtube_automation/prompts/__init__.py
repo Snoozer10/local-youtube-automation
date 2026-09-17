@@ -5,16 +5,6 @@ from youtube_automation.prompts.notebooklm_discover import (
     DEFAULT_RESEARCH_QUERIES,
     NotebookLMDiscoverEngine,
 )
-from youtube_automation.prompts.research_cache import ResearchCache
-from youtube_automation.prompts.socratic_engine import (
-    CuratedVisualPromptPayload,
-    EpistemicClass,
-    LayoutClassification,
-    ResearchClusterDossier,
-    SemioticTopology,
-    SocraticCurationEngine,
-    SocraticDialogueTurn,
-)
 from youtube_automation.prompts.prompt_enhancer import (
     SOCRATIC_CAMERA_DNA,
     SOCRATIC_LIGHTING_DNA,
@@ -25,6 +15,16 @@ from youtube_automation.prompts.prompt_enhancer import (
     enhance_visual_prompt,
     transform_prompts_file,
     transform_roadmap_jsonl,
+)
+from youtube_automation.prompts.research_cache import ResearchCache
+from youtube_automation.prompts.socratic_engine import (
+    CuratedVisualPromptPayload,
+    EpistemicClass,
+    LayoutClassification,
+    ResearchClusterDossier,
+    SemioticTopology,
+    SocraticCurationEngine,
+    SocraticDialogueTurn,
 )
 from youtube_automation.prompts.validator import (
     STRICT_NEGATIVE_PROMPT,
