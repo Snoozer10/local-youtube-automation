@@ -145,6 +145,7 @@ Automated video pipeline emulating the Egyptian/Khaleeji Arabic "Al-Daheeh" educ
 | `#23` | Socratic Master Video Compilation (1080p, 22.24m) | Done | `#22` | `python compile_video.py` (232.62 MB, 1334.50s, 0.01s A/V drift, 1080p & 720p proxies verified) |
 | `#24` | Studio Viewer Baseline Collision Fix & Chunk Scaffolding | Done | `#23` | `python -m pytest tests/unit/test_viewer_generator.py -v` (11/11 viewers regenerated & verified) |
 | `#25` | Long-Form 16:9 Broadcast Refactoring (Tiers 1, 2, 3) | Done | `#24` | `python -m pytest tests/unit -v` (500/500 PASS), `python tools/lint_exercises.py` (35/35 PASS), `compile_video.py` (40,035 frames, 1334.50s, 0.01s drift) |
+| `#26` | Option B Disambiguated 7-Frame Rollout | Done | `#25` | `python tools/run_canary_benchmark.py --force-overwrite --frames 16,18,20,33,34,44,49 --output-dir "youtube_runs/Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!/canary_disambiguated_7"` (7/7 PASS, 0 collisions, 0 text leaks) |
 
 ### Known Failure Modes & Project Learnings
 - [LEARNING-001]: NEVER enable `look_ahead` on Intel QSV (`h264_qsv`) with sw-decoded frames; ALWAYS enforce `QSV_LOOKAHEAD=0`.

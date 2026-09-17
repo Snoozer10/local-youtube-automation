@@ -243,7 +243,13 @@
         - Full regression suite passing: 500/500 unit tests green, exercise scaffold linter 100% clean (35/35 files).
         - Documented knowledge note in `docs/facts-notes/code-kinematics/automated-broadcast-assembly-verification.md`.
         - TIER 1, TIER 2, AND TIER 3 REFACTORING IS NOW 100% COMPLETE!
-  - Now: All tasks in `long_form_broadcast_refactoring_plan.md` are 100% COMPLETE and fully verified.
-  - Next: Present comprehensive final milestone report to the user detailing Tier 1, Tier 2, and Tier 3 accomplishments, facts-notes, verification metrics, and studio links.
+    43. Option B Disambiguated 7-Frame Benchmark Generation: COMPLETE & VERIFIED!
+        - Generated all 7 colliding frames (16, 18, 20, 33, 34, 44, 49) into `canary_disambiguated_7/` via Google Flow CDP on Profile 4 (`kylesmash00@gmail.com`).
+        - All 7 frames generated on Attempt 1/3 via Mode A Master Setup with 100% SUCCESS and saved via direct Playwright network stream.
+        - 100% OCR text gate pass (7/7 `ocr_text: NONE`, zero text collisions) and 100% safe zone clearance.
+        - Verified 7 unique SHA-256 hashes across all 7 frames (zero duplicate collisions).
+        - Compiled interactive side-by-side comparison studio `studio_viewer.html` and `canary_comparison_viewer.html` in `canary_disambiguated_7/` with kinetic badges and baseline references.
+  - Now: Option B generation and verification complete.
+  - Next: Present final deliverables and interactive comparison studio to the user.
 - Open questions: None.
-- Working set (files/ids/commands): compile_video.py, tools/viewer_generator.py, src/youtube_automation/video/compiler.py, src/youtube_automation/video/ken_burns.py, youtube_runs/Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!/youtube_ready_video.mp4
+- Working set (files/ids/commands): tools/run_canary_benchmark.py, tools/viewer_generator.py, youtube_runs/Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!/canary_disambiguated_7/studio_viewer.html

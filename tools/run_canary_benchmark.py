@@ -376,12 +376,13 @@ def run_canary_benchmark(
         raise RuntimeError("Playwright is required for live canary benchmark execution.") from err
 
     try:
-        from youtube_automation.core.utils import launch_browser_with_profile
+        from youtube_automation.core.utils import get_runtime_state, launch_browser_with_profile
     except ImportError:
         try:
-            from utils import launch_browser_with_profile  # type: ignore
+            from utils import get_runtime_state, launch_browser_with_profile  # type: ignore
         except ImportError:
             launch_browser_with_profile = None
+            get_runtime_state = None
 
     print(f"[CANARY] Connecting to Chrome DevTools Protocol at 127.0.0.1:{cdp_port}...")
     with sync_playwright() as p:
@@ -390,8 +391,9 @@ def run_canary_benchmark(
             browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
         except Exception:
             if launch_browser_with_profile is not None:
-                print(f"[CANARY] Port {cdp_port} not reachable. Auto-launching Chrome with Profile 1...")
-                if launch_browser_with_profile("chrome", 1, cdp_port):
+                active_profile = get_runtime_state("ACTIVE_PROFILE_INDEX", "Profile 4") if get_runtime_state else "Profile 4"
+                print(f"[CANARY] Port {cdp_port} not reachable. Auto-launching Chrome with {active_profile}...")
+                if launch_browser_with_profile("chrome", active_profile, cdp_port):
                     time.sleep(2.0)
                     try:
                         browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")

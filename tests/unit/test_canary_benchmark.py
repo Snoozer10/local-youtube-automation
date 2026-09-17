@@ -12,7 +12,19 @@ from tools.run_canary_benchmark import (
     build_canary_comparison_row,
     format_comparison_markdown_table,
     select_canary_frames,
+    is_fatal_flow_quota_error,
 )
+
+
+def test_is_fatal_flow_quota_error():
+    assert is_fatal_flow_quota_error("لقد بلغت الحدّ الأقصى للاستخدام. يُرجى إعادة المحاولة لاحقًا.") is True
+    assert is_fatal_flow_quota_error("You have reached your usage limit. You have not been charged.") is True
+    assert is_fatal_flow_quota_error("Rate limit exceeded") is True
+    assert is_fatal_flow_quota_error("Quota exceeded for this project") is True
+    assert is_fatal_flow_quota_error("Element not found") is False
+    assert is_fatal_flow_quota_error("") is False
+    assert is_fatal_flow_quota_error(None) is False
+
 
 
 def test_select_canary_frames():
@@ -72,3 +84,46 @@ def test_format_comparison_markdown_table():
     assert "Host Hook" in md
     assert "Debunk Dissection" in md
     assert "PASS" in md
+
+
+def test_parse_frame_spec():
+    from tools.run_canary_benchmark import parse_frame_spec
+
+    # 'all' expands to full range
+    assert parse_frame_spec("all", total_count=10) == list(range(1, 11))
+    assert parse_frame_spec("", total_count=5) == [1, 2, 3, 4, 5]
+
+    # Ranges
+    assert parse_frame_spec("1-5", total_count=10) == [1, 2, 3, 4, 5]
+    assert parse_frame_spec("1-3, 7-9", total_count=10) == [1, 2, 3, 7, 8, 9]
+
+    # Mixed ranges and singletons
+    assert parse_frame_spec("1, 5, 8-10", total_count=10) == [1, 5, 8, 9, 10]
+
+    # Out of bounds and deduplication
+    assert parse_frame_spec("0-3, 3, 999", total_count=5) == [1, 2, 3]
+
+
+def test_viewer_generator_basic(tmp_path):
+    from tools.viewer_generator import generate_comparison_viewer_html
+    import json
+
+    run_dir = str(tmp_path)
+    socratic_file = tmp_path / "flow_prompts_socratic.json"
+    baseline_file = tmp_path / "flow_prompts.json"
+    canary_dir = tmp_path / "canary_images"
+    canary_dir.mkdir()
+
+    mock_prompts = [{"index": 1, "timestamp": "[00:00]", "visual_prompt": "Test prompt"}]
+    with open(socratic_file, "w", encoding="utf-8") as f:
+        json.dump(mock_prompts, f)
+    with open(baseline_file, "w", encoding="utf-8") as f:
+        json.dump(mock_prompts, f)
+
+    out_html = generate_comparison_viewer_html(run_dir, str(canary_dir))
+    assert out_html.endswith("canary_comparison_viewer.html")
+    with open(out_html, encoding="utf-8") as f:
+        content = f.read()
+    assert "Socratic Visual Prompt Comparison Studio" in content
+    assert "const frames =" in content
+
