@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import io
 import math
 import struct
 import wave
+
 import pytest
 
 from src.youtube_automation.video.ken_burns import AudioTransientDetector

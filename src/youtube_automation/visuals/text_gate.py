@@ -223,9 +223,9 @@ def check_text_collision(
 
     try:
         with Image.open(image_path) as img:
-            img_w, img_h = img.size
+            _, img_h = img.size
     except Exception:
-        img_w, img_h = 1920, 1080
+        img_h = 1080
 
     box_dicts = []
     has_collision = False

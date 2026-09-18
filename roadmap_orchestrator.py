@@ -13,7 +13,6 @@ from typing import Any
 
 from gemini_controller import (
     ensure_persistent_gemini_session,
-    get_session_reset_threshold,
     inject_prompt_via_cdp,
     jitter_delay,
     log,
@@ -157,14 +156,14 @@ def parse_roadmap_rows(md_text: str) -> list[RoadmapRow]:
     lowered_columns = [column.lower() for column in ROADMAP_COLUMNS]
     # Debug: log raw response stats
     total_lines = len(md_text.splitlines())
-    table_lines = [l for l in md_text.splitlines() if l.strip().startswith("|") or "\t" in l]
+    table_lines = [line for line in md_text.splitlines() if line.strip().startswith("|") or "\t" in line]
     log(f"[roadmap] parse_roadmap_rows: total_lines={total_lines} table_lines={len(table_lines)} md_len={len(md_text)}")
     for line in md_text.splitlines():
         cells = parse_markdown_table_line(line)
         if not cells:
             continue
         if [cell.lower() for cell in cells[: len(ROADMAP_COLUMNS)]] == lowered_columns:
-            log(f"[roadmap] header row detected, skipping")
+            log("[roadmap] header row detected, skipping")
             continue
         if len(cells) < len(ROADMAP_COLUMNS):
             # FIX: accept 7 columns by padding missing Color column (common Gemini truncation)
@@ -207,7 +206,8 @@ def build_page_prompt(
     niche_title = niche_preset.name if niche_preset else "General Educational Explainer"
 
     lines: list[str] = [
-        "[SYSTEM DIRECTIVE: VISUAL ROADMAP ARCHITECT]",
+        f"[SYSTEM DIRECTIVE: {channel_title}]",
+        f"Educational Niche: {niche_title}",
         f"Generate roadmap entries ONLY for Script Indices {start_idx} through {end_idx}.",
     ]
     if anchor_row is not None:
@@ -557,14 +557,7 @@ def _generate_page(
         # Final lenient salvage: try to extract any 7+ cell rows that were skipped, pad and accept
         log(f"[roadmap] page {span} exhausted after {repairs_used} repairs; attempting lenient salvage for {missing}")
         # Dump raw for offline debug
-        try:
-            from pathlib import Path as _P
-            import json as _js, tempfile as _tf, os as _os
-            # Find folder from manifest if available? Use current folder via manifest path parent
-            # Fallback: log raw to console for now
-            log(f"[roadmap] salvage raw tail for {span}: {response[-1000:]!r}")
-        except Exception:
-            pass
+        log(f"[roadmap] salvage raw tail for {span}: {response[-1000:]!r}")
         # If still missing after salvage, raise but do NOT trigger outer new-chat loop for minor 1-2 missing
         # Instead, try to synthesize missing rows from anchor or script lines
         if len(missing) <= 2 and len(merged) >= len(expected_indices) - 2:

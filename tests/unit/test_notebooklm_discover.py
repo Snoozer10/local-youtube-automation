@@ -1,12 +1,12 @@
 """Unit tests for NotebookLM Web Discover & Deep Research Engine."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from youtube_automation.prompts.notebooklm_discover import (
     DEFAULT_RESEARCH_QUERIES,
     NotebookLMDiscoverEngine,
-    SELECTORS,
 )
 
 

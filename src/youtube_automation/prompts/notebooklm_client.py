@@ -121,7 +121,6 @@ class NotebookLMClient:
         """Parses clean answer text from runner script stdout."""
         lines = stdout.splitlines()
         ans_lines: list[str] = []
-        capturing = False
 
         for line in lines:
             if "💬 Asking:" in line or "📚 Notebook:" in line or "⏳" in line or "🌐" in line:

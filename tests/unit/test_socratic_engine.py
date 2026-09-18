@@ -1,22 +1,16 @@
 """Unit tests for the Socratic Visual Prompt Curation Engine and NotebookLM cache."""
 
 from pathlib import Path
-import pytest
-from pydantic import ValidationError
 
 from youtube_automation.prompts.notebooklm_client import NotebookLMClient
 from youtube_automation.prompts.research_cache import ResearchCache
 from youtube_automation.prompts.socratic_engine import (
     CuratedVisualPromptPayload,
     EpistemicClass,
-    LayoutClassification,
     ResearchClusterDossier,
-    SemioticTopology,
     SocraticCurationEngine,
-    SocraticDialogueTurn,
 )
 from youtube_automation.prompts.validator import (
-    VisualPrompt,
     validate_english_only_prompt,
 )
 

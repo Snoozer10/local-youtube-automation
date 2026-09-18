@@ -1,5 +1,14 @@
 """Prompts domain package: Pydantic schemas, Socratic curation, and validation."""
 
+from youtube_automation.prompts.niche_engine import (
+    NICHE_PRESETS,
+    SPATIAL_LAYOUT_PRESETS,
+    TELEMETRY_PRESETS,
+    ChannelProfile,
+    NichePreset,
+    get_niche_preset,
+    load_channel_profile,
+)
 from youtube_automation.prompts.notebooklm_client import NotebookLMClient
 from youtube_automation.prompts.notebooklm_discover import (
     DEFAULT_RESEARCH_QUERIES,
@@ -35,16 +44,6 @@ from youtube_automation.prompts.validator import (
     flatten_visual_prompt_to_diffusion_text,
     purge_subtitle_phrases,
     verify_pipeline_integrity,
-)
-
-from youtube_automation.prompts.niche_engine import (
-    NICHE_PRESETS,
-    SPATIAL_LAYOUT_PRESETS,
-    TELEMETRY_PRESETS,
-    ChannelProfile,
-    NichePreset,
-    get_niche_preset,
-    load_channel_profile,
 )
 
 __all__ = [

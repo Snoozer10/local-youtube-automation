@@ -1,5 +1,6 @@
-import sys
 import importlib
+import sys
+
 
 class _FacadeProxy:
     def __init__(self, target_module_name):

@@ -9,20 +9,16 @@ Validates the operationalization of the 5 empirical NotebookLM principles:
 6. English-only compliance (ADR 0003: zero Arabic characters in diffusion prompts)
 """
 
-import pytest
-from pydantic import ValidationError
 
+from youtube_automation.prompts.prompt_enhancer import (
+    enhance_diffusion_prompt,
+    enhance_frame_item,
+    enhance_visual_prompt,
+)
 from youtube_automation.prompts.validator import (
     FrameItem,
     VisualPrompt,
     validate_english_only_prompt,
-)
-from youtube_automation.prompts.prompt_enhancer import (
-    SOCRATIC_NEGATIVE_PROMPT,
-    SOCRATIC_STYLE_DNA,
-    enhance_diffusion_prompt,
-    enhance_frame_item,
-    enhance_visual_prompt,
 )
 
 
@@ -121,6 +117,7 @@ def test_asset_studio_socratic_presets():
 
 def test_transform_prompts_file_roundtrip(tmp_path):
     import json
+
     from youtube_automation.prompts.prompt_enhancer import transform_prompts_file
 
     input_file = tmp_path / "flow_prompts.json"
@@ -166,6 +163,7 @@ def test_transform_prompts_file_roundtrip(tmp_path):
 
 def test_transform_roadmap_jsonl_roundtrip(tmp_path):
     import json
+
     from youtube_automation.prompts.prompt_enhancer import transform_roadmap_jsonl
 
     input_file = tmp_path / "master_roadmap.jsonl"
@@ -254,7 +252,9 @@ def test_mad_token_conflict_purge():
 
 
 def test_build_mode_a_prompt():
-    from youtube_automation.prompts.prompt_enhancer import build_mode_a_prompt, MASTER_POSITIVE_STYLE_DNA
+    from youtube_automation.prompts.prompt_enhancer import (
+        build_mode_a_prompt,
+    )
 
     prompt = build_mode_a_prompt("antique brass double-pan balance scale", setting="dark walnut drafting table")
     assert "antique brass double-pan balance scale" in prompt
@@ -331,12 +331,12 @@ def test_universal_6part_grammar_mode_a():
 
 def test_unified_substrate_and_codec_safe_color_anchoring():
     from youtube_automation.prompts.prompt_enhancer import (
-        LIGHT_LIMBO_SUBSTRATE,
         AHWA_STUDIO_GROUND,
         CODEC_SAFE_RED,
+        LIGHT_LIMBO_SUBSTRATE,
+        STRICT_ZERO_TEXT_NEGATIVE,
         build_mode_a_prompt,
         sanitize_negative_prompt,
-        STRICT_ZERO_TEXT_NEGATIVE,
     )
 
     assert "#F8F8FA" in LIGHT_LIMBO_SUBSTRATE

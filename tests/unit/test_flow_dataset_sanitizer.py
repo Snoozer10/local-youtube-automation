@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import json
-import pytest
+
 from src.youtube_automation.prompts.prompt_enhancer import expand_asset_tokens
 from tools.sanitize_flow_dataset import (
     COLLISION_DISAMBIGUATION_MAP,
     OVERSAMPLING_2K_DIRECTIVE,
-    sanitize_flow_item,
-    sanitize_roadmap_item,
     sanitize_flow_dataset,
+    sanitize_flow_item,
 )
 
 
@@ -131,19 +130,19 @@ def test_idempotence_and_dataset_roundtrip(tmp_path):
     assert fc == 1
     assert rc == 1
 
-    with open(flow_file, "r", encoding="utf-8") as f:
+    with open(flow_file, encoding="utf-8") as f:
         pass1_flow = json.load(f)
-    with open(roadmap_file, "r", encoding="utf-8") as f:
-        pass1_road = [json.loads(l) for l in f]
+    with open(roadmap_file, encoding="utf-8") as f:
+        pass1_road = [json.loads(line) for line in f]
 
     fc2, rc2 = sanitize_flow_dataset(str(flow_file), str(roadmap_file))
     assert fc2 == 1
     assert rc2 == 1
 
-    with open(flow_file, "r", encoding="utf-8") as f:
+    with open(flow_file, encoding="utf-8") as f:
         pass2_flow = json.load(f)
-    with open(roadmap_file, "r", encoding="utf-8") as f:
-        pass2_road = [json.loads(l) for l in f]
+    with open(roadmap_file, encoding="utf-8") as f:
+        pass2_road = [json.loads(line) for line in f]
 
     assert pass1_flow == pass2_flow
     assert pass1_road == pass2_road

@@ -4,6 +4,7 @@ import math
 import os
 import struct
 import wave
+from typing import Any
 
 
 def build_ken_burns_filter(

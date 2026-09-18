@@ -1,4 +1,3 @@
-import pytest
 import os
 import sys
 
@@ -6,6 +5,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from refine_script import sanitize_solo_narrator_text, validate_refinement_quality
+
 
 def test_sanitize_solo_narrator_text():
     # Strips prefixes
@@ -15,7 +15,7 @@ def test_sanitize_solo_narrator_text():
     assert sanitize_solo_narrator_text("Host: Welcome back") == "Welcome back"
     assert sanitize_solo_narrator_text("Speaker 1: Hello") == "Hello"
     assert sanitize_solo_narrator_text("Narrator:   Test") == "Test"
-    
+
     # Preserves rhetorical internal use
     assert sanitize_solo_narrator_text("طب ليه أبو حميد قال كدا؟") == "طب ليه أبو حميد قال كدا؟"
     assert sanitize_solo_narrator_text("أنا كأبو حميد بحب الشاي") == "أنا كأبو حميد بحب الشاي"

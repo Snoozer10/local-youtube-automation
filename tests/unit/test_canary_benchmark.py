@@ -6,13 +6,12 @@ Validates:
 3. Markdown report formatting.
 """
 
-import pytest
 
 from tools.run_canary_benchmark import (
     build_canary_comparison_row,
     format_comparison_markdown_table,
-    select_canary_frames,
     is_fatal_flow_quota_error,
+    select_canary_frames,
 )
 
 
@@ -105,8 +104,9 @@ def test_parse_frame_spec():
 
 
 def test_viewer_generator_basic(tmp_path):
-    from tools.viewer_generator import generate_comparison_viewer_html
     import json
+
+    from tools.viewer_generator import generate_comparison_viewer_html
 
     run_dir = str(tmp_path)
     socratic_file = tmp_path / "flow_prompts_socratic.json"

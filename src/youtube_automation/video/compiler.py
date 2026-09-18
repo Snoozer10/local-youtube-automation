@@ -602,7 +602,7 @@ def enrich_timeline_kinetics(run_folder: str, fps: int = 30) -> dict:
     if not os.path.exists(timeline_path):
         raise FileNotFoundError(f"timeline.json not found in {run_folder}")
 
-    with open(timeline_path, "r", encoding="utf-8") as f:
+    with open(timeline_path, encoding="utf-8") as f:
         timeline_data = json.load(f)
 
     # Priority audio path resolution

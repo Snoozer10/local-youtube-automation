@@ -879,8 +879,8 @@ def build_dual_mode_prompt(
     )
 
     try:
-        from youtube_automation.prompts.prompt_enhancer import enhance_diffusion_prompt, build_mode_a_prompt
         from youtube_automation.prompts.niche_engine import load_channel_profile
+        from youtube_automation.prompts.prompt_enhancer import build_mode_a_prompt
 
         channel_profile = load_channel_profile(run_dir)
         master_prompt = raw_dict.get("master_setup_prompt") or raw_dict.get("socratic_prompt")
@@ -1790,7 +1790,6 @@ def main(run_folder: str | None = None) -> None:
                         prompt_text = prompt_item.prompt_text
                         seq_type = prompt_item.sequence_type
                         frame_idx = prompt_item.frame_index
-                        total_frames_in_set = prompt_item.total_frames_in_set
                         ts_source = (
                             ts
                             if ts
@@ -2371,7 +2370,7 @@ def main(run_folder: str | None = None) -> None:
                                         break
                                     else:
                                         print(
-                                            f"🛑 [FATAL QUOTA] Account quota limit reached and account switching is disabled. Halting."
+                                            "🛑 [FATAL QUOTA] Account quota limit reached and account switching is disabled. Halting."
                                         )
                                         sys.exit(1)
                                 else:

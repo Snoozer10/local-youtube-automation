@@ -2,13 +2,14 @@
 
 import os
 from unittest.mock import MagicMock
-from PIL import Image
+
 import pytest
+from PIL import Image
 
 from youtube_automation.visuals.image_extractor import (
-    validate_image_file,
-    save_binary_image_data,
     extract_high_res_image,
+    save_binary_image_data,
+    validate_image_file,
 )
 
 
@@ -59,8 +60,8 @@ def test_save_binary_image_data(temp_image_dir):
 def test_extract_high_res_image_tier1_base64(temp_image_dir):
     save_path = str(temp_image_dir / "tier1.png")
     img = Image.new("RGB", (200, 200), (12, 34, 56))
-    import io
     import base64
+    import io
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")

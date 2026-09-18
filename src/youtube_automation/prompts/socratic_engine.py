@@ -203,8 +203,6 @@ class SocraticCurationEngine:
     ) -> CuratedVisualPromptPayload:
         """Transmutes a ResearchClusterDossier into an 8-part VisualPrompt with empirical research constraints."""
         r1_text = dossier.turns[0].oracle_response if dossier.turns else ""
-        r2_text = dossier.turns[1].oracle_response if len(dossier.turns) > 1 else ""
-        r3_text = dossier.turns[2].oracle_response if len(dossier.turns) > 2 else ""
 
         # Construct front-loaded subject and action following 1-2-3 shape hierarchy
         if dossier.semiotic_topology == SemioticTopology.BIFURCATED_STAGE:

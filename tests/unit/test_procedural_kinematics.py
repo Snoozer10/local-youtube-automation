@@ -4,13 +4,14 @@ import math
 import struct
 import tempfile
 import wave
+
 import pytest
 
+from youtube_automation.video.compiler import prepare_synchronized_timeline
 from youtube_automation.video.ken_burns import (
     build_ken_burns_filter,
     derive_multishot_crop,
 )
-from youtube_automation.video.compiler import prepare_synchronized_timeline
 
 
 @pytest.fixture

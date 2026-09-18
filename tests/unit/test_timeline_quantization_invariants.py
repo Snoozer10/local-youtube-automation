@@ -7,6 +7,7 @@ import json
 import os
 import struct
 import wave
+
 import pytest
 
 from src.youtube_automation.timeline.engine import get_wav_duration
@@ -70,7 +71,7 @@ def test_canonical_timeline_ingestion_bypasses_resnapping():
     assert len(sync_timeline) == 293
 
     # Assert 1:1 match of frame bounds against pre-quantized timeline.json
-    for idx, (sync_clip, exp_span) in enumerate(zip(sync_timeline, expected_spans)):
+    for idx, (sync_clip, exp_span) in enumerate(zip(sync_timeline, expected_spans, strict=True)):
         assert sync_clip["start_frame"] == exp_span["start_frame"], f"Span {idx} start_frame mismatch"
         assert sync_clip["end_frame"] == exp_span["end_frame"], f"Span {idx} end_frame mismatch"
         assert sync_clip["frame_count"] == exp_span["frame_count"], f"Span {idx} frame_count mismatch"
@@ -95,7 +96,7 @@ def test_cumulative_integer_quantization_zero_drift():
     assert sync_timeline[0]["start_frame"] == 0
 
     # 2. Strict monotonic contiguity: zero voids, zero overlaps
-    for prev, cur in zip(sync_timeline, sync_timeline[1:]):
+    for prev, cur in zip(sync_timeline, sync_timeline[1:], strict=False):
         assert cur["start_frame"] == prev["end_frame"]
         assert cur["frame_count"] == cur["end_frame"] - cur["start_frame"]
         assert cur["frame_count"] >= 1

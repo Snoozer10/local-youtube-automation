@@ -119,7 +119,8 @@ def ensure_persistent_gemini_session(page, current_start_idx: int, planner_model
         log(f"[session] reusing chat (last={_last_session_start_index}, cur={current_start_idx}, threshold={get_session_reset_threshold()}, model={planner_model})")
         # Light health check: input box must exist, no error state
         try:
-            from gemini_utils import check_gemini_error_state as _ces, find_input_box as _fib
+            from gemini_utils import check_gemini_error_state as _ces
+            from gemini_utils import find_input_box as _fib
             if _fib(page) is None or _ces(page):
                 log("[session] input box missing or error state on reuse, forcing new chat")
                 ok = open_ephemeral_session(page, planner_model)
