@@ -38,7 +38,7 @@ if hasattr(sys.stderr, "reconfigure"):
 # Strategy 1: Visual Style Anchor Lockdown (Modern 2D Comic Vector DNA)
 MASTER_POSITIVE_STYLE_DNA: str = (
     "High-end 2D graphic vector animation explainer style, bold 3px black contour linework, "
-    "flat 2-step cel-shading, isolated clean white background (#FFFFFF), "
+    "flat 2-step cel-shading, locked neutral studio substrate ground (#F8F8FA), "
     "balanced 16:9 widescreen composition, sharp central subject focus, high focal clarity, "
     "1-2-3 shape hierarchy"
 )
@@ -81,7 +81,7 @@ CHROMATIC_PALETTE_60_30_10: str = (
 )
 
 SOCRATIC_LIGHTING_DNA = (
-    "high-key clean studio illumination, sharp contrast, razor-sharp shadow falloff, zero gradients on isolated clean white background (#FFFFFF)"
+    "high-key clean studio illumination, sharp contrast, razor-sharp shadow falloff, zero gradients on locked studio substrate"
 )
 
 SOCRATIC_CAMERA_DNA = (
@@ -112,42 +112,66 @@ ASSET_TOKEN_EXPANSIONS: dict[str, str] = {
     "CHARACTER_HOST_MAIN": "Al-Daheeh Egyptian cartoon educational host, dark curly hair, black round glasses, animated expressive comedic facial expression, 2D graphic vector animation style",
     "CHARACTER_AL_DAHEEH": "Al-Daheeh Egyptian cartoon educational host, dark curly hair, black round glasses, animated expressive comedic facial expression, 2D graphic vector animation style",
     "CHARACTER_CLERK_BUREAUCRAT": "comical Egyptian government bureaucrat in worn tan suit with thick glasses, 2D graphic vector animation style",
-    "SCENE_ISOLATED_WHITE_ENV": "isolated clean white background (#FFFFFF)",
-    "SCENE_AHWA_STUDIO_ENV": "traditional Egyptian Ahwa cafe studio on clean isolated white background (#FFFFFF)",
-    "SCENE_COMPARATIVE_DIAGRAM_ENV": "clean minimalist comparative split diagram desk on isolated white background (#FFFFFF)",
-    "SCENE_RETRO_BLUEPRINT_ENV": "isolated clean white background (#FFFFFF)",
-    "SCENE_HISTORICAL_MUSEUM": "isolated clean white background (#FFFFFF)",
+    "SCENE_ISOLATED_WHITE_ENV": "neutral light studio limbo ground (#F8F8FA)",
+    "SCENE_AHWA_STUDIO_ENV": "traditional Egyptian Ahwa cafe studio, warm dark mahogany studio workbench (#2A2420), subtle warm atmospheric illumination",
+    "SCENE_KEYNOTE_SLATE_ENV": "neutral light studio limbo desk (#F8F8FA) with an orthographic drafting placard resting flat on the surface",
+    "SCENE_COMPARATIVE_DIAGRAM_ENV": "neutral light studio limbo desk (#F8F8FA) with a comparative split diagram placard resting flat on the surface",
+    "SCENE_RETRO_BLUEPRINT_ENV": "neutral light studio limbo desk (#F8F8FA) with an orthographic cyan blueprint drafting placard resting flat on the surface",
+    "SCENE_HISTORICAL_MUSEUM": "neutral light studio limbo desk (#F8F8FA) with an archival parchment folio resting flat on the surface",
     "SCENE_LIGHT_LIMBO_ENV": "neutral light studio limbo ground (#F8F8FA)",
+    "SCENE_HOST_STUDIO_ENV": "neutral light studio limbo ground (#F8F8FA) with a clean educational presenter desk",
     "SCENE_AHWA_STUDIO_GROUND_ENV": "warm dark mahogany studio workbench (#2A2420)",
 }
 
 
-def expand_asset_tokens(text: str) -> str:
-    """Expands asset preset constants like CHARACTER_SKEPTIC_ABO_HMEED into concrete 2D vector descriptions."""
+def expand_asset_tokens(text: str, profile: Any | None = None) -> str:
+    """Expands asset preset constants into concrete 2D vector descriptions, respecting channel profile overrides."""
     if not text:
         return ""
     result = text
-    for token, expansion in ASSET_TOKEN_EXPANSIONS.items():
+    expansions = dict(ASSET_TOKEN_EXPANSIONS)
+    if profile is not None:
+        avatar_desc = getattr(profile, "host_avatar_description", "") or ""
+        if avatar_desc:
+            expansions["CHARACTER_HOST_MAIN"] = avatar_desc
+            expansions["CHARACTER_AL_DAHEEH"] = avatar_desc
+        custom_tokens = getattr(profile, "custom_tokens", None)
+        if isinstance(custom_tokens, dict):
+            expansions.update(custom_tokens)
+    for token, expansion in expansions.items():
         if token in result:
             result = result.replace(token, expansion)
     return result
 
 
-def purge_banned_visual_keywords(text: str) -> str:
+def purge_banned_visual_keywords(text: str, profile: Any | None = None) -> str:
     """Purges all banned style keywords (blueprints, parchments, photorealism, CGI)
     and replaces them with clean 2D vector concepts."""
     if not text:
         return ""
-    result = expand_asset_tokens(text)
+    result = expand_asset_tokens(text, profile=profile)
     # Replace blueprint and CAD patterns with clean 2D vector graphic diagrams
     result = re.sub(r"\b(retro\s+)?blueprints?\b", "clean 2D vector graphic diagram", result, flags=re.IGNORECASE)
     result = re.sub(r"\btechnical\s+schematics?\b", "minimalist 2D vector graphic", result, flags=re.IGNORECASE)
-    result = re.sub(r"\b(archival\s+documents?|sepia\s+vellum|vellum|parchments?)\b", "clean unwritten white paper sheet", result, flags=re.IGNORECASE)
+    result = re.sub(r"\b(archival\s+documents?|sepia\s+vellum|vellum|parchments?)\b", "archival drafting folio displaying non-textual proportion diagrams", result, flags=re.IGNORECASE)
     result = re.sub(r"\b(da\s+vinci(\s+sketchbook)?|leonardo\s+da\s+vinci)\b", "clean 2D vector draughtsmanship", result, flags=re.IGNORECASE)
     result = re.sub(r"\b(bistre\s+wash|cross-hatching)\b", "flat 2-step cel-shading", result, flags=re.IGNORECASE)
     result = re.sub(r"\b(oil\s+painting|photorealistic|photorealism|3D\s+CGI|octane\s+render)\b", "2D graphic vector animation", result, flags=re.IGNORECASE)
     # Purge equations / mathematical formulas in prompt to prevent diffusion model from drawing English CAD letters
     result = re.sub(r"\b(mathematical\s+physics\s+formulas?|mathematical\s+equations?|multiplication\s+equations?|equations?|formulas?)\b", "abstract geometric line curves without text or numbers", result, flags=re.IGNORECASE)
+    # Demote colloquial slang metaphors to peripheral corner props
+    result = re.sub(
+        r"\b(yellow\s+)?(microbuses?|transit\s+buses?|public\s+transport\s+buses?|minibuses?)\b",
+        "miniature toy microbus prop in the peripheral desk corner",
+        result,
+        flags=re.IGNORECASE,
+    )
+    result = re.sub(
+        r"\b(phone\s+recharge\s+cards?|sim\s+cards?|recharge\s+vouchers?)\b",
+        "small phone card prop in the peripheral desk corner",
+        result,
+        flags=re.IGNORECASE,
+    )
     # Purge legacy 24mm and wide-angle lens tokens
     result = re.sub(
         r"\b24\s*mm(\s+wide[- ]angle)?(\s+lens|\s+optics|\s+framing)?\b|\bwide[- ]angle\s+lens\b|\bfisheye(\s+lens)?\b",
@@ -318,6 +342,11 @@ def neutralize_surfaces(text: str) -> str:
     # Step 4: De-duplicate consecutive duplicated telemetry phrases
     result = re.sub(r"\b(clean 2D vector schematics\s*){2,}", "clean 2D vector schematics ", result)
     result = re.sub(r"\b(digital telemetry display\s*){2,}", "digital telemetry display ", result)
+    result = re.sub(
+        r"\b(drafting placard displaying abstract non-textual ratio diagrams\s*){2,}",
+        "drafting placard displaying abstract non-textual ratio diagrams ",
+        result,
+    )
 
     # Step 5: Normalize whitespaces and trailing punctuation
     result = re.sub(r"\s+", " ", result).strip()
@@ -390,48 +419,89 @@ def build_mode_a_prompt(
     spatial_direction: str = "centered focal composition",
     setting: str = "SCENE_LIGHT_LIMBO_ENV",
     domain_palette: str = "TECHNICAL_SLATE",
+    niche: str = "GENERAL_EXPLAINER",
+    telemetry_type: str = "PROPORTIONAL_RATIO_METERS",
+    framing_scale: str = "",
+    channel_profile: Any | None = None,
 ) -> str:
     """
-    Builds a Mode A Master Anchor Setup prompt (70-110 words) using the 6-Part Universal Prompt Grammar (Audit §4.3):
-    Part 1: Master Style Anchor
-    Part 2: Camera Optical Model
-    Part 3: 16:9 Safe Composition
-    Part 4: Substrate Ground
-    Part 5: Semantic Data Entity
-    Part 6: Codec-Safe Accents
+    Builds a Mode A Master Anchor Setup prompt (70-110 words) using the Inverted Pyramid Universal Prompt Grammar:
+    Zone 1: Primary Semantic Entity & Action (Tokens 1-35) -> Subject & framing first for maximum diffusion attention
+    Zone 2: Spatial Staging & Telemetry (Tokens 36-55) -> 16:9 widescreen layout & non-linguistic data telemetry
+    Zone 3: Niche Substrate Ground (Tokens 56-75) -> Environment & 60-30-10 palette
+    Zone 4: Master Style Anchor & Optics (Tokens 76-95) -> 2D vector cel-shading & orthographic optical plane
     """
-    clean_subj = purge_banned_visual_keywords(neutralize_surfaces(_ensure_english_text(purge_subtitle_phrases(subject))))
+    from youtube_automation.prompts.niche_engine import (
+        SPATIAL_LAYOUT_PRESETS,
+        TELEMETRY_PRESETS,
+        get_niche_preset,
+    )
 
-    # Part 1: Master Style Anchor
-    part1 = "High-end 2D graphic vector animation explainer style, uniform 3px deep charcoal (#2D3444) contour linework, flat 2-step cel-shading with razor-sharp shadow edges, zero gradients."
+    niche_preset = get_niche_preset(niche)
+    clean_subj = purge_banned_visual_keywords(
+        neutralize_surfaces(_ensure_english_text(purge_subtitle_phrases(subject))),
+        profile=channel_profile,
+    )
 
-    # Part 2: Camera Optical Model
-    part2 = "Orthographic flat 2D projection plane, zero barrel distortion, zero keystoning, telephoto equivalent perspective."
+    # Zone 1: Primary Semantic Entity & Action (Tokens 1-35, Highest Attention Weight)
+    prefix_framing = (
+        f"{framing_scale} framing of "
+        if framing_scale and not any(clean_subj.lower().startswith(x) for x in ["ms ", "mcu ", "cu ", "ws ", "ews ", "wide ", "close-up", "medium "])
+        else ""
+    )
+    zone1 = f"{prefix_framing}{clean_subj.rstrip('.')}."
 
-    # Part 3: 16:9 Safe Composition
-    part3 = "Clean 16:9 widescreen composition strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980, leaving 10% peripheral bleed padding for automated pan and zoom."
+    # Zone 2: Spatial Staging & Telemetry (Tokens 36-55)
+    if not spatial_direction or spatial_direction == "centered focal composition":
+        spatial_desc = "Clean 16:9 widescreen composition strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980, leaving 10% peripheral bleed padding for automated pan and zoom"
+    else:
+        spatial_desc = SPATIAL_LAYOUT_PRESETS.get(spatial_direction.strip().upper(), spatial_direction)
+        if "16:9" not in spatial_desc and "coordinates" not in spatial_desc:
+            spatial_desc = f"{spatial_desc}, coordinates X: 180 to 1740, Y: 90 to 980, leaving 10% peripheral bleed padding"
 
-    # Part 4: Substrate Ground
-    setting_desc = "neutral light studio limbo ground (#F8F8FA)"
-    if setting:
-        if setting == "SCENE_AHWA_STUDIO_ENV" or "ahwa" in setting.lower():
+    telemetry_desc = TELEMETRY_PRESETS.get(telemetry_type.strip().upper(), niche_preset.default_telemetry)
+    zone2 = f"{spatial_desc}, displaying {telemetry_desc}."
+
+    # Zone 3: Substrate Ground & 60-30-10 Palette (Tokens 56-75)
+    setting_desc = niche_preset.substrate_desc
+    if setting and setting != "SCENE_LIGHT_LIMBO_ENV":
+        s_lower = setting.lower()
+        if setting == "SCENE_AHWA_STUDIO_ENV" or "ahwa" in s_lower or "mahogany" in s_lower:
             setting_desc = "warm dark mahogany studio workbench (#2A2420)"
-        elif setting == "SCENE_LIGHT_LIMBO_ENV" or "limbo" in setting.lower():
-            setting_desc = "neutral light studio limbo ground (#F8F8FA)"
-        elif setting == "SCENE_ISOLATED_WHITE_ENV" or "white" in setting.lower():
+        elif setting == "SCENE_HOST_STUDIO_ENV" or "host" in s_lower:
+            setting_desc = "neutral light studio limbo ground (#F8F8FA) with a clean educational presenter desk"
+        elif setting == "SCENE_KEYNOTE_SLATE_ENV" or "slate" in s_lower or "keynote" in s_lower:
+            setting_desc = "neutral light studio limbo desk (#F8F8FA) with an orthographic drafting placard resting flat on the surface"
+        elif setting == "SCENE_RETRO_BLUEPRINT_ENV" or "blueprint" in s_lower:
+            setting_desc = "neutral light studio limbo desk (#F8F8FA) with an orthographic cyan blueprint drafting placard resting flat on the surface"
+        elif setting == "SCENE_HISTORICAL_MUSEUM" or "museum" in s_lower or "parchment" in s_lower or "history" in s_lower:
+            setting_desc = "archival map research table (#EFECE6) with drafting placards resting flat on the surface"
+        elif setting == "SCENE_COMPARATIVE_DIAGRAM_ENV" or "comparative" in s_lower:
+            setting_desc = "neutral light studio limbo desk (#F8F8FA) with a comparative split diagram placard resting flat on the surface"
+        elif setting == "SCENE_ISOLATED_WHITE_ENV" or "white" in s_lower:
             setting_desc = "isolated clean white background (#FFFFFF)"
+        elif "limbo" in s_lower:
+            setting_desc = "neutral light studio limbo ground (#F8F8FA)"
         else:
             clean_setting = purge_banned_visual_keywords(neutralize_surfaces(_ensure_english_text(setting)))
             setting_desc = f"{clean_setting}, neutral light studio limbo ground (#F8F8FA)"
-    part4 = f"Locked studio substrate, {setting_desc}, zero luminance strobing."
+    elif not setting or setting == "SCENE_LIGHT_LIMBO_ENV":
+        if niche == "GENERAL_EXPLAINER":
+            setting_desc = "neutral light studio limbo ground (#F8F8FA)"
+        else:
+            setting_desc = niche_preset.substrate_desc
 
-    # Part 5: Semantic Data Entity
-    part5 = f"{clean_subj.rstrip('.')}. {spatial_direction}, abstract non-textual proportion meters."
+    palette_desc = (
+        niche_preset.palette_desc
+        if niche != "GENERAL_EXPLAINER"
+        else "Palette: 60% base ground, 30% charcoal lines, 10% kinetic accents (Cyan #00E5FF, Amber #FFB300, Spring Green #00E676, Codec-Safe Red #EB191E)"
+    )
+    zone3 = f"Locked studio substrate, {setting_desc}, zero luminance strobing. {palette_desc}."
 
-    # Part 6: Codec-Safe Accents (60-30-10 chromatic attention law)
-    part6 = "Palette: 60% base ground, 30% charcoal lines, 10% kinetic accents (Cyan #00E5FF, Amber #FFB300, Spring Green #00E676, Codec-Safe Red #EB191E)."
+    # Zone 4: Master Style Anchor & Camera Optics (Tokens 76-95)
+    zone4 = "High-end 2D graphic vector animation explainer style, uniform 3px deep charcoal (#2D3444) contour linework, flat 2-step cel-shading, zero gradients, zero text, Orthographic flat 2D projection plane, zero barrel distortion, zero keystoning, telephoto equivalent perspective."
 
-    return f"{part1} {part2} {part3} {part4} {part5} {part6}"
+    return f"{zone1} {zone2} {zone3} {zone4}"
 
 
 def build_mode_b_prompt(
@@ -490,9 +560,15 @@ def enhance_visual_prompt(vp: VisualPrompt | dict[str, Any]) -> VisualPrompt:
     user_negative = data.get("negative_prompt", "").strip()
     continuity_id = data.get("continuity_id", "").strip()
 
-    # Normalize setting: if retro blueprint or museum, enforce clean isolated white studio
-    if not setting or "blueprint" in setting.lower() or "museum" in setting.lower():
-        setting = "SCENE_ISOLATED_WHITE_ENV"
+    # Normalize setting: map to Two-Substrate studio architecture
+    if not setting:
+        setting = "SCENE_LIGHT_LIMBO_ENV"
+    elif "blueprint" in setting.lower():
+        setting = "SCENE_RETRO_BLUEPRINT_ENV"
+    elif "museum" in setting.lower():
+        setting = "SCENE_HISTORICAL_MUSEUM"
+    elif "ahwa" in setting.lower() or "host" in (data.get("subject") or "").lower():
+        setting = "SCENE_AHWA_STUDIO_ENV"
 
     # 2. Modern 2D Vector Explainer Style Anchor Lockdown
     style = MASTER_POSITIVE_STYLE_DNA

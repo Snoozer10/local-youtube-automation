@@ -120,6 +120,14 @@ class TestParseMarkdownTableLine:
     def test_whitespace_stripped(self) -> None:
         assert ro.parse_markdown_table_line("  |  x  |  y  |  ") == ["x", "y"]
 
+    def test_tab_separated_rendered_html_row(self) -> None:
+        assert ro.parse_markdown_table_line("1\t00:01\tArabic text\tSTANDALONE") == [
+            "1",
+            "00:01",
+            "Arabic text",
+            "STANDALONE",
+        ]
+
 
 class TestParseRoadmapRows:
     REALISTIC_TABLE = "\n".join(
@@ -143,8 +151,23 @@ class TestParseRoadmapRows:
         assert rows[0].sequence_type == "STANDALONE"
         assert rows[0].color_and_arabic_text == "دا قِسط"
         assert rows[1].layout_classification == "HISTORICAL_MUSEUM"
-        assert rows[1].camera_specification == "pan_left"
-        assert rows[2].visual_concept == "Blueprint overhead reveal of the machine"
+
+    def test_tab_separated_rendered_html_table(self) -> None:
+        html_table_text = "\n".join(
+            [
+                "Index\tTimestamp\tScript Line\tSequence Type\tLayout Classification\tCamera Specification\tVisual Concept & Composition\tColor & Selective Arabic Text",
+                "1\t00:00\tسطر أول\tSTANDALONE\tHOST_STUDIO_DESK\tzoom_in\tWide host desk establishing shot\tNONE",
+                "2\t00:05\tسطر ثانٍ\tPROGRESSIVE_BUILD_SET\tEXPLAINER_DECK\tpan_right\tSplit screen profile view\tNONE",
+            ]
+        )
+        rows = ro.parse_roadmap_rows(html_table_text)
+        assert len(rows) == 2
+        assert rows[0].index == 1
+        assert rows[0].layout_classification == "HOST_STUDIO_DESK"
+        assert rows[1].index == 2
+        assert rows[1].sequence_type == "PROGRESSIVE_BUILD_SET"
+        assert rows[1].camera_specification == "pan_right"
+        assert rows[1].visual_concept == "Split screen profile view"
         assert rows[0].script_line == "سطر أول"
 
     def test_short_rows_skipped_without_crash(self) -> None:

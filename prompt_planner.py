@@ -68,8 +68,8 @@ _SEQUENCE_TYPE_ENUM = (
     "EXPLAINER_DECK | PRESENTATION_SLIDE"
 )
 _LAYOUT_ENUM = (
-    "AHWA_STUDIO | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM_DESK | RETRO_BLUEPRINT | "
-    "HISTORICAL_MUSEUM | ISOLATED_WHITE | KEYNOTE_SLATE"
+    "AHWA_STUDIO | HOST_STUDIO_DESK | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM_DESK | RETRO_BLUEPRINT | "
+    "HISTORICAL_MUSEUM | ISOLATED_WHITE | KEYNOTE_SLATE | EXPLAINER_DECK"
 )
 _CAMERA_ENUM = "zoom_in | zoom_out | pan_left | pan_right | tilt_up | tilt_down | static"
 _VISUAL_DENSITY_ENUM = "DENSE_SCENE | MINIMALIST_MACRO | MEDIUM_ACTION"
@@ -233,12 +233,26 @@ def _render_preset_section(title: str, specs: dict[str, Any], description_key: s
     return lines
 
 
-def build_compact_preamble(presets: dict[str, Any] | None) -> str:
+def build_compact_preamble(presets: dict[str, Any] | None, profile: Any | None = None) -> str:
     """Token-dense YAML-style block anchoring asset tokens, style DNA, and output contract."""
-    lines: list[str] = ["# KEYFRAME PROMPT ARCHITECT (AL-DAHEEH VISUAL STYLE V5)"]
+    channel_title = getattr(profile, "channel_name", "UNIVERSAL EXPLAINER STUDIO") if profile else "UNIVERSAL EXPLAINER STUDIO"
+    niche_title = getattr(profile, "niche", "GENERAL_EXPLAINER") if profile else "GENERAL_EXPLAINER"
+    lines: list[str] = [f"# KEYFRAME PROMPT ARCHITECT ({channel_title} - {niche_title})"]
     if presets:
         characters = presets.get("CHARACTERS")
         if isinstance(characters, dict):
+            # If profile overrides host avatar description, inject it into HOST character info
+            if profile is not None:
+                host_desc = getattr(profile, "host_avatar_description", "") or ""
+                host_mode = getattr(profile, "host_mode", "CUSTOM_AVATAR")
+                if host_mode == "NONE":
+                    characters = {k: v for k, v in characters.items() if k != "HOST"}
+                elif host_desc and "HOST" in characters and isinstance(characters["HOST"], dict):
+                    chars_copy = dict(characters)
+                    host_copy = dict(chars_copy["HOST"])
+                    host_copy["info"] = f"Character Visual DNA: {host_desc}. 2D graphic vector animation style, crisp 3px linework, flat cel-shading."
+                    chars_copy["HOST"] = host_copy
+                    characters = chars_copy
             lines.extend(_render_preset_section("CHARACTERS", characters, "info"))
         scenes = presets.get("SCENES")
         if isinstance(scenes, dict):
@@ -252,11 +266,9 @@ def build_compact_preamble(presets: dict[str, Any] | None) -> str:
             f"SCHEMA: {_SCHEMA_HINT}",
             f'STYLE_DNA: "{STYLE_DNA_TEXT}"',
             f"FORBIDDEN: {json.dumps(_FORBIDDEN_TERMS, ensure_ascii=False)}",
+            "SEQUENTIAL ANIMATION MANDATE: When an argument or topic spans 2-4 sentences, you MUST group them into a continuous progressive sequence: set sequence_type='PROGRESSIVE_BUILD_SET' on the first frame (frame_index=1), and sequence_type='PROGRESSIVE_BUILD' on subsequent frames (frame_index=2, 3...). In progressive frames, keep the subject and setting identical while describing surgical additive changes or camera scale punches. When discussing an animal, organism, brain structure, or scientific mechanism across multiple sentences, keep that EXACT animal/mechanism in the scene across the entire sequence. Do NOT jump to random unrelated props on every sentence.",
             "TYPOGRAPHY & LANGUAGE: Prompt text must be strictly in ENGLISH. Zero Arabic characters allowed in visual_prompt fields (Arabic Kufic typography prohibited, text overlay must be \"NONE\").",
-            "IN-IMAGE TYPOGRAPHY RULES:",
-            " - Clean English words inside quotes (e.g., \"78%\", \"STAGE 1\", \"OPTION A vs OPTION B\", \"CLASSIFIED\").",
-            " - Never place text in the bottom 20% safe zone.",
-            " - Only trigger text when the sequence is EXPLAINER_DECK, ARCHIVAL_DOSSIER, MAP, or METRIC. Otherwise, strictly enforce textless visuals.",
+            "STRICT ZERO-TEXT INVARIANT: Zero Latin text, zero English words, zero letters, zero slogans on-screen. Never output words or labels in quotes (do NOT write 'STAGE 1' or 'CLASSIFIED'). Convey data and processes purely through visual non-linguistic telemetry: abstract proportion bars, percentage glyphs (e.g. 75%), node linkages, directional trajectory arrows, and comparative split quadrants. Absolutely textless visuals. Text overlay must be 'NONE'.",
             "OUTPUT: ONE raw JSON array covering EXACTLY the requested Index span; no prose, "
             "no fences, no repeated objects",
         ]
@@ -485,11 +497,19 @@ def _chunk_is_complete(
     manifest: PipelineManifest,
     frames_by_index: dict[int, dict[str, Any]],
 ) -> bool:
+    expected_indices = set(range(start_idx, end_idx + 1))
+    if expected_indices.issubset(frames_by_index.keys()):
+        chunk = manifest.get_chunk(chunk_id)
+        if not chunk or chunk.get("status") not in _DONE_STATUSES:
+            manifest.set_chunk_status(chunk_id, list(expected_indices), ChunkStatus.VERIFIED, 1)
+            manifest.save()
+        return True
     chunk = manifest.get_chunk(chunk_id)
     status = str(chunk.get("status", "")) if chunk else ""
     if status not in _DONE_STATUSES:
         return False
     return all(index in frames_by_index for index in range(start_idx, end_idx + 1))
+
 
 
 def _plan_single_chunk(
@@ -652,8 +672,15 @@ def plan_all_chunks(
     if manifest.get_chunk("chunk_1") is None:
         manifest.init_planning(chunk_size, len(chunks))
 
+    profile = None
+    try:
+        from youtube_automation.prompts.niche_engine import load_channel_profile
+        profile = load_channel_profile(str(folder_path))
+    except Exception:
+        profile = None
+
     frames_by_index = _load_baseline_frames(prompts_path)
-    preamble = build_compact_preamble(presets)
+    preamble = build_compact_preamble(presets, profile=profile)
 
     for chunk_id, start_idx, end_idx in chunks:
         if _chunk_is_complete(chunk_id, start_idx, end_idx, manifest, frames_by_index):
@@ -676,7 +703,9 @@ def plan_all_chunks(
         )
         frames_by_index.update(planned)
         _persist_frames(prompts_path, frames_by_index)
+        manifest.save()
         log(f"[planner] {chunk_id} committed through Index {end_idx}.")
+
 
     missing_final = [index for index in range(1, total + 1) if index not in frames_by_index]
     if missing_final:

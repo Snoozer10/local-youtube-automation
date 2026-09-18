@@ -408,8 +408,9 @@ def _auto_clean_item(item: dict[str, Any]) -> None:
             if "marginalia" not in cleaned.lower() and "margins of the" not in cleaned.lower():
                 # Remove stray safe-margin remnants that purge didn't catch
                 import re as _re2
-                cleaned = _re2.sub(r"(?i)\b\d+%\s*bottom\s*safe\s*margin\b[^.]*", "", cleaned)
-                cleaned = _re2.sub(r"(?i)\bsafe\s*margin\b", "", cleaned)
+                cleaned = _re2.sub(r"(?i)\b\d+%\s*bottom\s*safe(?:ty)?\s*margin\b[^.]*", "", cleaned)
+                cleaned = _re2.sub(r"(?i)\bsafe(?:ty)?\s*margin\b", "", cleaned)
+
             visual_prompt[key] = " ".join(cleaned.split()).strip(" ,.-")
     overlay = visual_prompt.get("text_overlay_arabic", "NONE")
     if isinstance(overlay, str):

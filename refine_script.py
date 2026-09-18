@@ -914,9 +914,9 @@ def main():
     max_retries = CONFIG.max_retries
     switch_accounts = CONFIG.switch_accounts
     browser_type = CONFIG.browser_type
-    profile_index = int(
-        get_runtime_state("ACTIVE_PROFILE_INDEX", get_config_value("ACTIVE_PROFILE_INDEX", "2"))
-    )
+    _raw_profile = get_runtime_state("ACTIVE_PROFILE_INDEX", get_config_value("ACTIVE_PROFILE_INDEX", "2"))
+    _match = re.search(r"\d+", str(_raw_profile))
+    profile_index = int(_match.group(0)) if _match else 2
 
     print(
         f"[CONFIG] Active Profile Index: {profile_index} | Browser: {browser_type} | Model: {model_name}"
