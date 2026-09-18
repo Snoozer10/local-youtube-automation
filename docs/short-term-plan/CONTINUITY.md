@@ -1,17 +1,23 @@
-- Goal (incl. success criteria): Complete 100% full-script audio synthesis and end-to-end pipeline execution for 'Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!'. Success criteria: (1) Harvest all 110 paragraphs (3,798 words, 21,585 chars) into 57 sequential Al-Daheeh TTS chapters in voice_generation_manifest.json (>95% script coverage); (2) Synthesize missing Chapters 15–57 in Google AI Studio via Playwright CDP without re-synthesizing verified Chapters 1–14 [COMPLETED]; (3) Master all 57 chapters via Audacity DSP [COMPLETED: 1334.49s, 22.24m]; (4) Losslessly stitch full master audio (full_episode_voice.wav) [COMPLETED]; (5) Re-align full transcript via Faster-Whisper ASR into canonical timeline.json [COMPLETED: 293 spans, 40030 frames, 1334.34s]; (6) Generate corresponding storyboard images via Google Flow and render complete 22.24-minute master video.
+- Goal (incl. success criteria): Execute Post-Run Adversarial Audit, Gap Analysis, and Broadcast-Grade PR Preparation for target URL 'https://youtube.com/watch?v=vIqTRyX-cq0' ('What Do Animals Think Of Humans') following 10-phase production pass (197/200, 98.5%). Success criteria: (1) Complete adversarial evaluation of Redis/Memcached premise; (2) Verify all architectural invariants against master; (3) Run static analysis, AST validation, and regression baselines (520/520 unit tests, 35/35 pedagogy drills); (4) Atomically stage 32 modified + 12 untracked files into 5 conventional commits; (5) Package broadcast-grade PR targeting master via gh CLI.
 - Constraints/Assumptions:
   - Windows 11 PowerShell environment; unbuffered execution (python -u).
-  - Chrome DevTools Protocol bound to 127.0.0.1:9222 with active Google AI Studio and Google Flow tabs.
+  - Chrome DevTools Protocol bound strictly to 127.0.0.1:9222.
   - Zero cloud SDKs (local Playwright CDP loopback only); atomic disk writes for checkpoints and manifests.
-  - Non-destructive resume: Chapters 1–57 WAVs verified on disk; update manifest checkpoints atomically.
+  - Canonical timeline.json is read-only SSOT with cryptographic SHA-256 sidecars.
+  - youtube_urls.txt has skip-worktree bit enabled (S); youtube_runs/ and /docs/incidents/ gitignored.
 - Key decisions:
-  - Audio Truncation Root Cause: Documented in understood-errors.md.
-  - Multi-Account HTTP 403 Failover: Successfully rotated Profile 1 -> Profile 2 -> Profile 3 during synthesis.
-  - Audacity Mastering Chain: NoiseGate, TruncateSilence, BassAndTreble, Compressor, Normalize applied to full stitched master audio, producing tight 22.24m (1334.49s) voice track.
-  - Faster-Whisper Zero-Drift Timeline: Transcribed 618 chunks into 293 spans across 40,030 frames (1334.34s) perfectly matching the 1334.49s audio.
-  - Flow Hardening v2 (2026-09-09): Implemented hydration-safe poller, guarded modal dismisser, React-safe keyboard injection, scoped active_card watchdog with 120s stall + 360s hard ceiling, dual diagnostic dumper, and anti-occlusion Chrome flags. Pedagogy drill 03.03 created and verified.
+  - Adversarial Caching Verdict: Reject Redis and Memcached as unnecessary operational bloat for local Windows sequential video pipeline; confirm existing filesystem atomic writes, rolling SHA-256 ledgers, and in-memory LRU caching are optimal and crash-resilient.
+  - Pull Request Packaging: Target base branch master from feat/creative-prompt-script-refinement via gh CLI (Snoozer10).
 - State:
   - Done:
+    1. Antigravity 2.0 autonomous 10-phase pipeline run completed on vIqTRyX-cq0 (197/200, 98.5% pass).
+    2. Verification scorecard (verification_scorecard_vIqTRyX-cq0.md) and session handoff (HANDOFF.md) published.
+    3. Specialized skills activated: github-cli, requesting-code-review, finishing-a-development-branch.
+    4. AST syntax validation passed across all 24 Python files; zero hardcoded secrets detected.
+    5. Regression baseline verified: 520 / 520 unit tests passed, 35 / 35 pedagogy drills valid.
+  - Now: Formulate and present updated implementation plan artifact with README.md, Project-workflow.md, CHANGELOG.md (v4.4.0), and GEMINI.md rule injection.
+  - Next: Execute Phase C static analysis auto-fixes, Phase D documentation modernization & GEMINI.md injection, Phase E 5-stage atomic git commits, and Phase F PR creation via gh.
+  - Historical Archive:
     1. Phase 1 & 2: Script Translation & 110-paragraph Al-Daheeh transcreation complete.
     2. Root Cause Analysis & Prevention: Documented in docs/error-solving/understood-errors.md.
     3. Chapter Harvesting: 100% complete (57 chapters, 110 paragraphs, 3,679 words).
@@ -249,12 +255,70 @@
         - 100% OCR text gate pass (7/7 `ocr_text: NONE`, zero text collisions) and 100% safe zone clearance.
         - Verified 7 unique SHA-256 hashes across all 7 frames (zero duplicate collisions).
         - Compiled interactive side-by-side comparison studio `studio_viewer.html` and `canary_comparison_viewer.html` in `canary_disambiguated_7/` with kinetic badges and baseline references.
-    44. Antigravity 2.0 Operational Runbook v2.0: COMPLETE & APPROVED!
-        - Generated turnkey operational runbook `antigravity_2_0_operational_runbook.md` (v2.0) with 5 critical runtime hardening patches (bounded Phase 1, path sanitization for 'What Do Animals Think Of Humans', timeline SSOT read-only contract, gitignore verification with skip-worktree, and two-tier failure taxonomy separating 3-strike daemon reconnects from 2-attempt isolated code patches).
-        - Published version-controlled runbook `docs/runbooks/antigravity_2_0_operational_runbook_v2.md` in repository (`f81ed81`).
-        - Added `/docs/incidents/` to `.gitignore` (`75477d7`) ensuring clean branch hygiene during incident logging.
-        - Working tree confirmed 100% clean; full regression suite 500/500 passed; pedagogy drills 35/35 valid.
-  - Now: Standby mode. Provided file paths and turnkey launch directive to user for Antigravity 2.0 autonomous execution.
-  - Next: Conduct post-run adversarial audit of verification scorecard (`docs/user-reports/verification_scorecard_vIqTRyX-cq0.md`), execution telemetry, media streams, and git diff upon Antigravity 2.0 return.
+    45. Antigravity 2.0 Autonomous Verification Run (What Do Animals Think Of Humans - vIqTRyX-cq0): IN PROGRESS!
+        - Pre-flight: Branch verified clean, 502/502 tests passed, 35/35 exercise drills clean.
+        - Phase 1 (Arabic Transcreation): COMPLETE (20/20). Generated final_output.txt (7,789 chars, 1,489 words) and Translation.docx.
+        - Phase 2 (Dialect & Script Refinement): COMPLETE (19/20). Refined into Cairo host persona, cleaned meta-banter relic, 40 sequential paragraphs (1,506 words) in refined_script.txt and tts_payload.json.
+        - Phase 3 (AI Neural Voice Synthesis): COMPLETE (19/20). Generated 10/10 WAV chapters in voice_chapters/ (705.75s, 11.76m, 24kHz mono 16-bit PCM). Audio and voice generation manifests verified. Multi-account quota failover executed autonomously.
+        - Phase 4 (Audacity DSP Mastering): COMPLETE (20/20). Mastered 10/10 chapters in polished_chapters/ via Win32 Named Pipe IPC (602.27s, 10.04m, 44.1kHz mono 16-bit PCM). Manifests re-timed and synchronized atomically.
+        - Phase 5 (Lossless Master Audio Stitching): COMPLETE (20/20). Stitched 10 chapters into full_episode_voice.wav (602.267s, 10.04m, 44.1kHz mono 16-bit PCM, 26,559,958 frames, delta 0.000s). Synced to audacity_voice/.
+        - Phase 6 (Speech Alignment & Canonical Timeline SSOT): COMPLETE (20/20). Faster-Whisper transcribed master audio on CPU int8 (852.85s). Built canonical timeline.json with 139 zero-drift spans across 18,057 frames matching 602.27s audio at 30.00 fps. SHA-256 sidecar validated.
+        - Phase 1 Hardening & Chatter Audit: COMPLETE (5/5 tests PASS). Added imperative prompt command armor, is_valid_arabic_transcreation() (>=35% Arabic ratio gate), and sanitize_gemini_chatter() in automate_all.py. Documented in understood-errors.md, INCIDENT_PHASE1_CHATTER, and prompt-engineering facts-notes.
+        - Phase 7A (Storyboard Roadmap & Prompt Planning): COMPLETE (100%). master_roadmap.jsonl (139 rows) and flow_prompts.json (139 frames across 14 chunks) committed.
+        - Phase 7B (Google Flow Batch Visual Generation): IN PROGRESS (33+/139 frames on disk).
+          - Fixed active_card selection order from .last to .first (Google Flow prepends new cards at top of feed).
+          - Fixed candidate extraction in flow_generator.py to query flow-image-tile img across page and sort ascending by (y, x).
+          - Fixed 404 URL checkpoint bug and ensured retry reloads SPA rather than navigating to dead projects.
+          - Fixed Mode B empty surgical delta fallback to Mode A when visual_delta is blank.
+          - Prevented false account rotations on transient non-quota errors.
+          - Batch generating steadily at ~35s/frame with zero quota errors, 100% network stream extraction, zero duplicate collisions.
+          - STOPPED per user request at Frame 62/139 (task-1299 killed) to fix visual aesthetic (pure white background overcorrection).
+          - Phase 7B Visual Engine Upgrade: Implemented Two-Substrate Studio Model (`#2A2420` mahogany Ahwa workbench for host & `#F8F8FA` neutral drafting limbo desk for technical diagrams), non-linguistic data telemetry (ratio bars, sinusoidal waves, node linkages), metaphor demotion (miniature peripheral desk props), and 6-part universal prompt grammar in `prompt_enhancer.py` and `flow_generator.py`.
+          - Archived 60 old frames to `generated_images_canary_v3_backup/`.
+          - Generated 3-frame canary benchmark (`00_00.png` [host at Ahwa mahogany desk], `00_06.png` [brain schematic on drafting desk], `00_10.png` [Mode B surgical delta vector lines]). All 3 frames verified visually and passing text gate.
+          - Architectural Research Ingestion (`https://share.gemini.google/4n8vv9x9CmHt`): Extracted Universal Motion Design, Pacing & Sequential Animation Master Framework (13-Beat Taxonomy, 60-30-10 Chromatic Law, Saccadic Typography Law, Damped Harmonic Oscillators, Bi-Directional Ken Burns, Spectral Carving).
+          - Pipeline Generalization Decision: User directed decoupling from Al-Daheeh into a dynamically adaptive multi-niche engine (setting current run to `GENERAL_EXPLAINER`), focusing exclusively on full Long-Form 16:9 Widescreen composition (no 9:16 Shorts cropping), and re-architecting the Google Flow prompt schema into an Inverted Pyramid structure (Subject & Action first for diffusion attention).
+          - Diagnosed & Fixed Gemini Error Card & Refusal Root Causes:
+            1. Rendered HTML Table Tab Delimitation: Fixed `parse_markdown_table_line` in `roadmap_orchestrator.py` to parse both `\t` (rendered HTML `<table>` cells from Playwright `innerText`) and `|` (pipes), fixing false empty turn signals (33/33 unit tests passed).
+            2. Diffusion Prompt Contamination Refusal: Streamlined `get_column_semantics` and `build_page_prompt` to eliminate low-level diffusion tokens (hex codes, coordinate envelopes) from text table prompts that triggered Gemini multi-modal refusal guardrails. Verified 25-row generation in ~20s.
+            3. Resilient Browser Retry: Updated `_retry_gemini_call` in `flow_generator.py` to reset session tracking and navigate to `https://gemini.google.com/app` instead of reloading broken chat URLs.
+            4. Verified full test suite: 520/520 unit tests passed, 35/35 exercise drills clean.
+            5. CDP Freeze Diagnosis & Unblock (LEARNING-034): Diagnosed Playwright `connect_over_cdp` timeout caused by an unresponsive Google AI Studio tab renderer thread deadlocking CDP session initialization. Closed frozen tab via HTTP endpoint `http://127.0.0.1:9222/json/close/2E0A1772CCACCD815C68DAD60B0AD436`. Verified instantaneous CDPClient connection (<4s) with Gemini and Flow tabs.
+            6. Phase 7A Master Roadmap & Prompt Planning: 100% COMPLETE & VERIFIED. All 139 rows committed to `master_roadmap.jsonl`, and all 139 diffusion prompts generated, sanitized, and verified in `flow_prompts.json`.
+            7. Prompt Planner Error Recovery Hardening: Diagnosed retry loop where an error card in Gemini chat caused repeated failures while `_retry_gemini_call` retried in the same tainted chat and manifest lacked per-chunk persistence. Fixed `_retry_gemini_call` to always start fresh chat; updated `gemini_controller.py` to detect error states on reuse; updated `prompt_planner.py` to detect existing frames on disk in `flow_prompts.json` and save manifest atomically per chunk. 61/61 unit tests passing.
+    - Done:
+      ...
+      46. Phase 7B Visual Production (What Do Animals Think Of Humans): 100% COMPLETE & VERIFIED!
+          - All 139 frames (Frames 1–139) generated and verified on disk in `youtube_runs/What Do Animals Think Of Humans/generated_images/` (272 KB–779 KB, zero 0-byte corruptions).
+          - 139 / 139 unique SHA-256 hashes (zero duplicate collisions).
+          - 100% non-linguistic telemetry adherence (zero Latin text leaks).
+          - Full regression suite: 520/520 unit tests PASSED; 35/35 pedagogy drills clean.
+          - Interactive comparison studio viewer generated at `studio_viewer.html`.
+       47. Phase 8 Timestamp Alignment & SSOT Invariant: 100% COMPLETE & VERIFIED!
+           - Executed `fix_timestamps.py` with strict Read-Only SSOT invariant on `timeline.json`.
+           - Verified `timeline.json.sha256` sidecar remained unmodified and verified.
+       48. Phase 9 Hardware Video Compilation: 100% COMPLETE & VERIFIED!
+           - Rendered 211 synchronized clips across 11 chunks in `temp_clips/`.
+           - Master video assembled: `youtube_ready_video.mp4` (161,393,596 bytes, 602.267s, exact 0.00s drift against 602.267s master voiceover).
+           - Complete proxy ladder generated: `youtube_ready_video_1080p.mp4` (86,071,239 bytes) and `youtube_ready_video_720p.mp4` (43,654,769 bytes).
+           - Post-encode stream analysis: h264 1920x1080 @ 30.00 fps CFR (18,068 video frames, 28,230 audio frames, 0.00s A/V drift).
+       49. Phase 10 YouTube Thumbnail Packaging: 100% COMPLETE & VERIFIED!
+           - Generated 5 title-matched webcomic/explainer thumbnail concepts from `titles.txt` and script excerpt.
+           - Autonomous self-critique in Gemini Pro ranked winning concepts: Title 3 (Cat & Giant Clumsy Human, Score 36) and Title 1 (Glowing Dog Eye with Snack Box, Score 31).
+           - Synthesized both winning thumbnails in Gemini Imagen (`title_1_thumbnail.png` [1.79 MB] and `title_3_thumbnail.png` [2.31 MB]).
+           - Two-tier OCR text collision gate caught MSER texture artifact on Variant 2 Attempt 1, purged the image, and cleanly re-synthesized on Attempt 2 with strengthened negative prompt.
+           - Full regression suite: 520 / 520 unit tests PASSED (28.55s); 35 / 35 exercise drills clean.
+       50. Incident Documentation & Scorecard Consolidation: 100% COMPLETE!
+           - Created missing incident files: `INCIDENT_PHASE4_AUDACITY_NAMED_PIPE_COLD_BOOT_TIMEOUT_20260917T101700.md`, `INCIDENT_PHASE5_AUDIO_STITCH_AND_PATH_RESOLUTION_20260917T102000.md`, `INCIDENT_PHASE6_WHISPER_MANIFEST_DESYNC_AND_SPELLING_ALIGNMENT_20260917T111900.md`, `INCIDENT_PHASE8_TIMELINE_SSOT_READONLY_INVARIANT_20260917T215600.md`, and `INCIDENT_PHASE10_THUMBNAIL_COLLISION_20260917T223600.md`.
+           - Updated all 10 Phase Scorecards and expanded Section 5 ("Incident & Self-Healing Registry") with all 12 incidents across all 10 phases.
+           - Synchronized authoritative report at `docs/user-reports/verification_scorecard_vIqTRyX-cq0.md` and brain artifact `verification_scorecard_vIqTRyX-cq0.md`.
+           - Updated `exercises/01-audio-dsp/01.02-audacity-named-pipe-ipc/explainer/readme.md` with Section 4 (cold-boot polling window) and passed exercise linter (35/35).
+    - Now: Handoff to fresh Antigravity CLI session for comprehensive post-run adversarial audit, gap analysis, static analysis, and PR preparation.
+    - Next:
+      1. Fresh Antigravity CLI session activates Git/GitHub skills (`github-cli`, `requesting-code-review`, `finishing-a-development-branch`).
+      2. Objectively evaluate Redis/Memcached premise vs zero-dependency local atomic disk/in-memory caching.
+      3. Conduct comprehensive Gap Analysis against base branch `master` (18 commits, invariant adherence, gitignore leaks).
+      4. Execute Deep Static Analysis Scan (`ruff check`, `mypy src/`, AST parsing, security/secret scans).
+      5. Stage clean atomic commits and package broadcast-grade Pull Request targeting `master`.
 - Open questions: None.
-- Working set (files/ids/commands): docs/runbooks/antigravity_2_0_operational_runbook_v2.md, youtube_urls.txt, youtube_runs/What Do Animals Think Of Humans/
+- Working set (files/ids/commands): docs/sessions/HANDOFF.md, docs/user-reports/verification_scorecard_vIqTRyX-cq0.md, docs/runbooks/antigravity_2_0_operational_runbook_v2.md, youtube_runs/What Do Animals Think Of Humans/

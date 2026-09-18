@@ -1,78 +1,162 @@
-# Session Handoff: Full Episode Visual Studio Rollout, Master Video Compilation & Studio Viewer Verification
+# Session Handoff & Kick-Off: Post-Run Adversarial Audit & PR Preparation
 
-**Date**: 2026-09-15  
-**Working Directory**: `C:\Users\Snoozer\Downloads\Antigravity\Youtube Automation 2\buckup\Version 4 before deepseek implementation plan\image_generation`  
-**Episode Run**: `youtube_runs\Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!`  
-
----
-
-## 1. What Was Accomplished in this Session
-
-1. **Full Episode Socratic Visual Rollout (Frames 1–293: 100% COMPLETE & AUDITED)**:
-   - **Chunk 1 (Frames 1–50)**: 50/50 PASS, 50 unique SHA-256 hashes in `chunk_1_images/`.
-   - **Chunk 2 (Frames 51–100)**: 50/50 PASS, 50 unique SHA-256 hashes in `chunk_2_images/` (Profile 2 → Profile 3 rotation).
-   - **Chunk 3 (Frames 101–150)**: 50/50 PASS, 50 unique SHA-256 hashes in `chunk_3_images/`.
-   - **Chunk 4 (Frames 151–200)**: 50/50 PASS, 50 unique SHA-256 hashes in `chunk_4_images/` (Frame 200 card-spawn auto-recovered on Attempt 2).
-   - **Chunk 5 (Frames 201–250)**: 50/50 PASS, 50 unique SHA-256 hashes in `chunk_5_images/` (Frame 207 render watchdog stall auto-recovered on Attempt 2).
-   - **Chunk 6 (Frames 251–293)**: 43/43 PASS, 43 unique SHA-256 hashes in `chunk_6_images/` (Profile 3 → Profile 4 rotation; Frame 292 stale scrape caught and recovered on Attempt 2).
-   - **Cumulative**: **293 / 293 frames generated, verified, and unique (0 collisions, 0 Latin text leaks, 100% OCR text gate pass)**.
-
-2. **Socratic Master Video Compilation (1080p, 22.24m: 100% COMPLETE & VERIFIED)**:
-   - Consolidated 293 Socratic frames into `generated_images/` (archived original baselines to `generated_images_baseline/`).
-   - Executed `compile_video.py` across 15 chunks (20 clips/chunk) using `libx264` (`preset=veryfast, crf=17, tune=animation, profile:v=high, level=5.1`).
-   - Master video assembled: `youtube_ready_video.mp4` (232.62 MB, 1334.50s, exactly 0.01s A/V drift).
-   - Generated complete proxy ladder: `youtube_ready_video_1080p.mp4` (89.03 MB) and `youtube_ready_video_720p.mp4` (58.12 MB).
-
-3. **Studio Viewer Baseline Path Collision Fix & Hardening**:
-   - **Root Cause**: When `socratic_master_frames/` was copied into `generated_images/` for compilation, `viewer_generator.py` hardcoded `baseline_img_rel = ../generated_images/{fname}`, causing both panels to resolve to the identical Socratic frame.
-   - **Fix**: Hardened `tools/viewer_generator.py` to prioritize `generated_images_baseline/` (341 original baseline PNGs), derived all relative URLs dynamically via `os.path.relpath(target, html_dir)`, added fallback to master Socratic frames for out-of-chunk navigation, added chunk and enhanced/restored filter dropdowns, and initialized viewers at the first local chunk frame (`initIdx = frames.findIndex(f => f.in_local_dir)`).
-   - Recompiled and verified all 11 studio viewers (`generated_images/`, `socratic_master_frames/`, `chunk_1_images/` through `chunk_6_images/`, and early canaries). Validated that 286 frames have distinct hashes (`is_enhanced=True`) and 7 audit-approved frames are clearly badged (`is_restored=True`), with zero path or hash collisions.
-
-4. **Quality Gates & Pedagogy**:
-   - Unit tests: **469 / 469 passed (100% green)** including new `test_baseline_backup_resolution_and_relative_paths`.
-   - Exercise pedagogy scaffold linter: **35 / 35 files valid (0 errors)**.
-   - Documentation: Updated `CONTINUITY.md`, `GEMINI.md` (`[LEARNING-027]`, Workstream `#24`), `understood-errors.md`, and `exercises/03-browser-cdp/.../explainer/readme.md` (Section 20).
+> **Target Session**: Fresh Antigravity CLI Session  
+> **Previous Supervisors**: Antigravity CLI (Architecture/Refactoring) & Antigravity 2.0 (Execution Lead)  
+> **Target Run**: `https://youtube.com/watch?v=vIqTRyX-cq0` (*"What Do Animals Think Of Humans"*)  
+> **Output Run Directory**: `youtube_runs/What Do Animals Think Of Humans`  
+> **Branch**: `feat/creative-prompt-script-refinement`  
+> **Date**: 2026-09-18  
+> **Verification Score**: **197 / 200 (98.5% — BROADCAST PRODUCTION PASS ✅)**  
 
 ---
 
-## 2. Active Output Artifacts & Review Links
+## 1. Executive Summary & Verification Context
 
-| Artifact | Location | Size / Metric | Status |
-| :--- | :--- | :--- | :--- |
-| **Master Video (1080p)** | [youtube_ready_video.mp4](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/youtube_ready_video.mp4) | 232.62 MB (1334.50s, 0.01s drift) | **VERIFIED** |
-| **Proxy 1080p** | [youtube_ready_video_1080p.mp4](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/youtube_ready_video_1080p.mp4) | 89.03 MB (1334.50s) | **VERIFIED** |
-| **Proxy 720p** | [youtube_ready_video_720p.mp4](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/youtube_ready_video_720p.mp4) | 58.12 MB (1334.50s) | **VERIFIED** |
-| **Master Comparison Studio** | [generated_images/studio_viewer.html](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/generated_images/studio_viewer.html) | 1.13 MB (All 293 frames side-by-side) | **VERIFIED** |
-| **Socratic Master Archive Studio** | [socratic_master_frames/studio_viewer.html](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/socratic_master_frames/studio_viewer.html) | 1.13 MB (All 293 frames side-by-side) | **VERIFIED** |
-| **Chunk 1 Studio (Frames 1–50)** | [chunk_1_images/studio_viewer.html](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/chunk_1_images/studio_viewer.html) | 1.14 MB (Frame 1 landing) | **VERIFIED** |
-| **Chunk 2 Studio (Frames 51–100)** | [chunk_2_images/studio_viewer.html](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/chunk_2_images/studio_viewer.html) | 1.14 MB (Frame 51 landing) | **VERIFIED** |
-| **Chunk 3 Studio (Frames 101–150)** | [chunk_3_images/studio_viewer.html](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/chunk_3_images/studio_viewer.html) | 1.14 MB (Frame 101 landing) | **VERIFIED** |
-| **Chunk 4 Studio (Frames 151–200)** | [chunk_4_images/studio_viewer.html](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/chunk_4_images/studio_viewer.html) | 1.14 MB (Frame 151 landing) | **VERIFIED** |
-| **Chunk 5 Studio (Frames 201–250)** | [chunk_5_images/studio_viewer.html](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/chunk_5_images/studio_viewer.html) | 1.14 MB (Frame 201 landing) | **VERIFIED** |
-| **Chunk 6 Studio (Frames 251–293)** | [chunk_6_images/studio_viewer.html](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/chunk_6_images/studio_viewer.html) | 1.14 MB (Frame 251 landing) | **VERIFIED** |
-| **Original Baselines** | [generated_images_baseline/](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/generated_images_baseline) | 341 PNGs | **ARCHIVED** |
-| **Master Socratic Frames** | [socratic_master_frames/](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/socratic_master_frames) | 293 PNGs | **PRODUCTION** |
-| **Timeline SSOT** | [timeline.json](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/timeline.json) | 293 spans, 40,030 frames | **VERIFIED** |
-| **Master Voice Track** | [full_episode_voice.wav](file:///C:/Users/Snoozer/Downloads/Antigravity/Youtube%20Automation%202/buckup/Version%204%20before%20deepseek%20implementation%20plan/image_generation/youtube_runs/Terrence%20Howard%20This%20is%20The%20Best%20Kept%20SECRET%20in%20The%20ENTIRE%20WORLD!/audacity_voice/full_episode_voice.wav) | 1334.49s (22.24m) | **VERIFIED** |
+Antigravity 2.0 has autonomously executed all 10 phases of the video production pipeline conforming to the hardened operational runbook (`docs/runbooks/antigravity_2_0_operational_runbook_v2.md`).
+
+All production phases completed with zero unhandled exceptions, zero data losses, and full self-healing under the Two-Tier Protocol:
+- **Phase 1 (Extraction & Transcreation)**: 20/20 paragraphs transcreated into Arabic via Gemini Pro.
+- **Phase 2 (Refinement & Dialect Polish)**: 40 paragraphs (1,506 words) in `refined_script.txt` & `tts_payload.json`.
+- **Phase 3 (AI Neural TTS)**: 10/10 WAV chapters in `voice_chapters/` (705.75s raw) with HTTP 403 multi-account failover.
+- **Phase 4 (Audacity DSP Mastering)**: 10/10 chapters in `polished_chapters/` (602.27s, 10.04m) via Win32 Named Pipe IPC.
+- **Phase 5 (Lossless Audio Stitching)**: Master audio in `full_episode_voice.wav` (602.267s, exact 0.000s delta).
+- **Phase 6 (Speech Alignment & Timeline SSOT)**: Faster-Whisper ASR generated canonical `timeline.json` (139 zero-drift spans, 18,057 frames at 30.00 fps CFR).
+- **Phase 7A/7B (Storyboard Roadmap & Google Flow Visuals)**: 139 roadmap entries in `master_roadmap.jsonl`, 139 diffusion prompts in `flow_prompts.json`, and 139/139 PNGs in `generated_images/` with 139 unique SHA-256 hashes (zero collisions, zero text leaks).
+- **Phase 8 (Timestamp Invariant Verification)**: Read-only SSOT contract verified (`timeline.json` unmutated).
+- **Phase 9 (Hardware Video Compositing)**: 211 clips compiled into master `youtube_ready_video.mp4` (161.4 MB, 602.267s, **exact 0.00s A/V drift**) plus 1080p and 720p proxy ladders.
+- **Phase 10 (YouTube Thumbnail Packaging)**: 2 winning variants synthesized (`title_1_thumbnail.png` [1.79 MB] & `title_3_thumbnail.png` [2.31 MB]) passing two-tier OCR text collision gates.
 
 ---
 
-## 3. Next Session Priorities
+## 2. Active Output Deliverables & Media Stream Telemetry
 
-1. **User Visual Satisfaction Audit**:
-   - Receive the user's feedback after inspecting the master video (`youtube_ready_video.mp4`) and side-by-side comparison studios (`studio_viewer.html`).
-2. **Surgical Frame Adjustments (if requested)**:
-   - If the user specifies frames to alter or re-generate, re-run targeted prompts via:
-     ```bash
-     python tools/run_canary_benchmark.py --frames <frame_indices>
-     ```
-   - Re-compile the master video:
-     ```bash
-     python compile_video.py
-     ```
-   - Update comparison viewers:
-     ```bash
-     python tools/viewer_generator.py --run-dir "youtube_runs/Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!" --canary-dir "youtube_runs/Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!/generated_images"
-     ```
-3. **Episode Finalization**:
-   - If all frames are approved as-is, the episode is 100% complete and ready for release.
+All deliverables reside on disk in `youtube_runs/What Do Animals Think Of Humans/`:
+
+| Deliverable Asset | Exact Location | Metric / Size | Status |
+| :--- | :--- | :--- | :---: |
+| **Master Video (1080p)** | `youtube_runs/What Do Animals Think Of Humans/youtube_ready_video.mp4` | 161.39 MB, 602.267s, 0.00s drift | **PASS ✅** |
+| **Web Proxy (1080p)** | `youtube_runs/What Do Animals Think Of Humans/youtube_ready_video_1080p.mp4` | 86.07 MB, 602.267s, 18,068 frames | **PASS ✅** |
+| **Mobile Proxy (720p)** | `youtube_runs/What Do Animals Think Of Humans/youtube_ready_video_720p.mp4` | 43.65 MB, 602.267s, 18,068 frames | **PASS ✅** |
+| **Master Audio** | `youtube_runs/What Do Animals Think Of Humans/audacity_voice/full_episode_voice.wav` | 53.12 MB, 602.267s, 44.1kHz mono | **PASS ✅** |
+| **Canonical Timeline** | `youtube_runs/What Do Animals Think Of Humans/timeline.json` | 325.8 KB, 139 spans, 18,057 frames | **PASS ✅** |
+| **Winning Thumbnail 1** | `youtube_runs/What Do Animals Think Of Humans/thumbnails/title_1_thumbnail.png` | 1.79 MB (Dog eye + treat box) | **PASS ✅** |
+| **Winning Thumbnail 3** | `youtube_runs/What Do Animals Think Of Humans/thumbnails/title_3_thumbnail.png` | 2.31 MB (Cat + giant servant) | **PASS ✅** |
+| **Generated Frames** | `youtube_runs/What Do Animals Think Of Humans/generated_images/` | 139 PNGs, 139 unique SHA-256 hashes | **PASS ✅** |
+| **Studio Viewer** | `youtube_runs/What Do Animals Think Of Humans/studio_viewer.html` | Interactive side-by-side comparison | **PASS ✅** |
+| **Verification Scorecard** | `docs/user-reports/verification_scorecard_vIqTRyX-cq0.md` | Complete 10-phase evaluation (197/200) | **PASS ✅** |
+
+### ffprobe Verification Telemetry
+```json
+{
+  "file": "youtube_ready_video.mp4",
+  "duration_seconds": 602.266667,
+  "audio_duration_seconds": 602.266667,
+  "av_drift_seconds": 0.000000,
+  "video": {
+    "codec": "h264",
+    "resolution": "1920x1080",
+    "framerate": "30/1 (30.00 fps CFR)",
+    "frames": 18068,
+    "pix_fmt": "yuv420p",
+    "color_space": "bt709"
+  },
+  "audio": {
+    "codec": "aac",
+    "channels": 1,
+    "sample_rate": 44100
+  }
+}
+```
+
+---
+
+## 3. Codebase Changes & Blast Radius Breakdown
+
+During execution, Antigravity 2.0 implemented self-healing patches and feature enhancements across 32 modified files and 10 untracked files:
+
+### Key Code Modifications & Additions
+1. **Dynamic Multi-Niche Prompt Architecture**:
+   - Added `src/youtube_automation/prompts/niche_engine.py` (decoupling Al-Daheeh persona from generic educational topics).
+   - Created `tests/unit/test_niche_engine.py` and `tests/unit/test_phase1_sanitizer.py`.
+   - Updated `prompt_planner.py`, `roadmap_orchestrator.py`, and `src/youtube_automation/prompts/prompt_enhancer.py`.
+2. **Google Flow Batch Visual Hardening**:
+   - `src/youtube_automation/visuals/flow_generator.py`: Added candidate sorting by $(y, x)$ (top-most card priority), 404 image check, two-substrate visual engine (`#2A2420` Ahwa wood vs `#F8F8FA` neutral limbo), resilient gap-skipping, and single-pass post-batch backfill.
+   - Added tests in `tests/unit/test_flow_deduplication.py`.
+3. **Audio & DSP Hardening**:
+   - `src/youtube_automation/audio/tts_generator.py`: QUIC UDP bypass (`--disable-quic`), deterministic DNS IP pinning, and automated HTTP 403 account failover.
+   - `src/youtube_automation/audio/audacity_client.py`: 80s cold-boot polling window and 6.0s grace period for Win32 Named Pipes on Windows.
+   - Added tests in `tests/unit/test_audio_manifest.py`.
+4. **Hardware Video Compositing**:
+   - `src/youtube_automation/video/compiler.py`: Thread thrash guard (capped to 1 worker on 4 CPU cores) and dynamic timeline sidecar resynchronization.
+5. **Thumbnail Generation**:
+   - `generate_thumbnail.py`: Target run directory CLI parameter, regex profile index parsing, and two-tier OCR collision self-healing with strengthened negative tokens.
+
+---
+
+## 4. Current Quality & Verification Baseline
+
+Before opening the new session, the following automated quality checks were executed and confirmed green:
+- **Unit Test Suite**: `python -m pytest tests/unit -q`  
+  **Result**: **520 / 520 PASSED** in 29.25s (100% green, 0 regressions).
+- **Exercise Pedagogy Scaffold Linter**: `python tools/lint_exercises.py`  
+  **Result**: **35 / 35 valid** (0 errors, 0 broken links).
+- **Git Branch**: `feat/creative-prompt-script-refinement`
+- **Protected Paths**: `youtube_urls.txt` has `skip-worktree` set (`S`); `youtube_runs/` and `/docs/incidents/` in `.gitignore`.
+
+---
+
+## 5. Mandate for the New Session (Post-Run Adversarial Audit & PR Preparation)
+
+When the fresh Antigravity CLI session starts, it must execute the following sequential audit and pre-merge protocol:
+
+### Step 1: Baseline Context Ingestion & Skill Invocation
+- Read this handoff guide (`docs/sessions/HANDOFF.md`) and the verification scorecard (`docs/user-reports/verification_scorecard_vIqTRyX-cq0.md`).
+- Read `docs/short-term-plan/CONTINUITY.md` and `docs/product/product.md`.
+- **Invoke Specialized Skills**:
+  - `github-cli`: Verify `gh` CLI status (`gh auth status` already confirmed active for `Snoozer10`), inspect remote tracking against base branch `master`, and manage PR workflows.
+  - `requesting-code-review`: Apply structured code review criteria to evaluate blast radius, maintainability, and regression hazards.
+  - `finishing-a-development-branch`: Validate branch hygiene, rebase/merge readiness, and pre-merge verification before opening the PR.
+
+### Step 2: Unverified Premise Evaluation — Redis / Memcached vs Local In-Memory/Disk Caching
+- **The User's Premise**: *"My initial hunch is Redis or Memcached, but treat this as an unverified premise."*
+- **Adversarial Assessment**:
+  - Examine whether introducing an external caching daemon (Redis / Memcached) is technically justified for this local video automation pipeline, or if it constitutes unnecessary architectural bloat.
+  - Evaluate trade-offs:
+    - External daemons require running background network services on Windows, port bindings (`6379`/`11211`), connection error handling, and external installation dependencies that violate the zero-cloud-SDK / minimal runtime philosophy.
+    - The pipeline's existing caching strategy utilizes local atomic disk writes (`NamedTemporaryFile` + `os.replace` + `fsync`), in-memory SHA-256 rolling ledgers, and JSON/WAV manifest checkpoints that survive process restarts and power loss without external daemons.
+  - Deliver a clear, anti-sycophantic verdict and propose the optimal lightweight alternatives (e.g., Python `functools.lru_cache`, `sqlite3` in WAL mode, or the existing filesystem SHA-256 ledgers) if additional caching is required.
+
+### Step 3: Comprehensive Gap Analysis
+- **Base Branch Divergence**:
+  - Run `git diff master...feat/creative-prompt-script-refinement --stat` to map all delta boundaries across the 18 commits.
+- **Architectural Invariant Auditing**:
+  - Confirm Intel QSV invariants: `QSV_LOOKAHEAD=0` and `format=nv12` filtergraph clamping.
+  - Confirm Playwright CDP loopback binding strictly to `127.0.0.1:9222`.
+  - Confirm Canonical Timeline SSOT contract: `timeline.json` remains read-only during downstream processing (`fix_timestamps.py`), with valid `.sha256` sidecars.
+- **Leak & Debris Scan**:
+  - Verify that `youtube_urls.txt` preserves the `skip-worktree` bit (`git ls-files -v | grep youtube_urls.txt` returns `S`).
+  - Verify that runtime assets (`youtube_runs/`) and incident dumps (`docs/incidents/`) remain strictly gitignored with zero leakage into the staging area.
+
+### Step 4: Deep Static Analysis Scan
+- **Code Linter & Style**: Run `ruff check src/ tests/ exercises/ tools/` to flag lint errors, style drifts, or dead code.
+- **Type Checking**: Run `mypy src/` to verify type annotations across new and modified modules.
+- **AST & Import Integrity**: Scan all 32 modified files and newly added modules (`src/youtube_automation/prompts/niche_engine.py`, `tests/unit/test_niche_engine.py`, `tests/unit/test_phase1_sanitizer.py`) for valid AST parsing and clean imports.
+- **Security & Secret Scan**: Ensure zero hardcoded API keys, tokens, passwords, or personal credentials exist in tracked code.
+- **Regression Test Confirmation**: Run `python -m pytest tests/unit -q` (must remain 520/520 green) and `python tools/lint_exercises.py` (must remain 35/35 valid).
+
+### Step 5: Clean Atomic Git Staging
+- Stage and commit the 32 modified files and 10 untracked files into logical, conventional commits:
+  1. `feat(prompts): add dynamic niche engine and decouple multi-niche prompts`
+  2. `feat(visuals): harden Google Flow batch generator with top-of-feed sorting and gap-skipping`
+  3. `feat(audio): expand Audacity cold-boot polling window and TTS network resilience`
+  4. `docs(incidents): stage incident resolutions and prompt-engineering facts-notes`
+  5. `docs(scorecard): record full 10-phase broadcast verification scorecard (197/200 PASS)`
+- Confirm working tree is 100% clean (`git status` shows `nothing to commit, working tree clean`).
+
+### Step 6: Broadcast-Grade Pull Request Packaging
+- Leverage the `github-cli` skill to formulate and prepare the Pull Request targeting `master`.
+- Include a comprehensive, broadcast-grade PR description detailing:
+  - Long-form 16:9 widescreen refactoring (Tiers 1, 2, and 3).
+  - Autonomous 10-phase verification run on `vIqTRyX-cq0` (*What Do Animals Think Of Humans*).
+  - Automated test coverage (520 unit tests, 35 pedagogy drills, exact 0.00s A/V drift).
+  - Self-healing architecture and two-tier incident isolation.
