@@ -15,7 +15,6 @@ import argparse
 import json
 import os
 import re
-import sys
 
 from youtube_automation.prompts.prompt_enhancer import (
     neutralize_surfaces,
@@ -187,7 +186,7 @@ def sanitize_flow_dataset(
 
     flow_count = 0
     if os.path.exists(flow_json_path):
-        with open(flow_json_path, "r", encoding="utf-8") as f:
+        with open(flow_json_path, encoding="utf-8") as f:
             flow_data = json.load(f)
         sanitized_flow = [sanitize_flow_item(item) for item in flow_data]
         tmp_flow = out_flow_path + ".tmp"
@@ -198,7 +197,7 @@ def sanitize_flow_dataset(
 
     roadmap_count = 0
     if os.path.exists(roadmap_jsonl_path):
-        with open(roadmap_jsonl_path, "r", encoding="utf-8") as f:
+        with open(roadmap_jsonl_path, encoding="utf-8") as f:
             lines = [json.loads(line) for line in f if line.strip()]
         sanitized_roadmap = [sanitize_roadmap_item(item) for item in lines]
         tmp_road = out_roadmap_path + ".tmp"

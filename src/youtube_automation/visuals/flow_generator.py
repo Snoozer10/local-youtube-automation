@@ -137,6 +137,7 @@ __all__ = [
     "capture_debug_state",
     "card_spawn_handshake",
     "check_flow_quota_or_errors",
+    "classify_flow_error",
     "clean_context_tabs",
     "clear_attached_prompt_chips",
     "connect_cdp",
@@ -654,8 +655,11 @@ def attach_previous_images_to_prompt(
         stride = max(1, batch_count)
         primary_cards = [feed_imgs[i][2] for i in range(0, total_found, stride)]
 
-        target_subset = primary_cards[-count_to_attach:]
-        cards_to_attach = list(target_subset)
+        # Google Flow prepends newly generated cards at the TOP of the feed (lowest Y, index 0).
+        # To attach the most recent previous frame(s), take the first count_to_attach cards
+        # and attach them in chronological order (oldest to newest: e.g. [card_1, card_0]).
+        target_subset = primary_cards[:count_to_attach]
+        cards_to_attach = list(reversed(target_subset))
 
         attached_so_far = 0
         for card_elem in cards_to_attach:
@@ -753,6 +757,46 @@ def check_flow_quota_or_errors(page: Any, target_locator: Any = None) -> str | N
     return None
 
 
+def classify_flow_error(error_msg: str, page_text: str = "") -> str:
+    """Classifies a Google Flow generation error into:
+    - 'FATAL_QUOTA': Account daily burst or usage limits reached (requires profile rotation).
+    - 'POLICY_VIOLATION': Prompt rejected by safety, terms, or copyright filters (must NOT rotate accounts).
+    - 'TRANSIENT_ERROR': Temporary card error, media loading issue, network drop, or timeout.
+    """
+    combined = (str(error_msg) + " " + str(page_text)).lower()
+    quota_patterns = [
+        "reached your usage limit",
+        "you have not been charged",
+        "الحدّ الأقصى للاستخدام",
+        "لقد بلغت الحدّ الأقصى",
+        "quota exceeded",
+        "rate limit exceeded",
+    ]
+    if any(p in combined for p in quota_patterns):
+        return "FATAL_QUOTA"
+
+    policy_patterns = [
+        "policy violation",
+        "safety guidelines",
+        "terms of service",
+        "violates terms",
+        "content guidelines",
+        "copyright",
+        "infringement",
+        "blocked by safety",
+        "sensitive content",
+        "harmful content",
+        "مخالفة سياسة",
+        "إرشادات الأمان",
+        "سياسات المحتوى",
+    ]
+    for p in policy_patterns:
+        if p in combined:
+            return "POLICY_VIOLATION"
+
+    return "TRANSIENT_ERROR"
+
+
 def card_spawn_handshake(
     page: Any,
     pre_card_count: int,
@@ -801,7 +845,7 @@ def card_spawn_handshake(
 
 
 def build_dual_mode_prompt(
-    item: dict[str, Any] | Any, attach_success: bool = True
+    item: dict[str, Any] | Any, attach_success: bool = True, run_dir: str | None = None
 ) -> tuple[str, str]:
     """Builds prompt using Dual-Mode S.S.L.C.M. & L.A.D. formula.
 
@@ -836,15 +880,46 @@ def build_dual_mode_prompt(
 
     try:
         from youtube_automation.prompts.prompt_enhancer import enhance_diffusion_prompt, build_mode_a_prompt
+        from youtube_automation.prompts.niche_engine import load_channel_profile
+
+        channel_profile = load_channel_profile(run_dir)
         master_prompt = raw_dict.get("master_setup_prompt") or raw_dict.get("socratic_prompt")
         if not master_prompt:
-            subj = raw_dict.get("visual_concept") or raw_dict.get("subject") or ""
-            if subj:
-                direction = raw_dict.get("spatial_direction", "centered focal composition")
-                setting = raw_dict.get("setting", "SCENE_ISOLATED_WHITE_ENV")
-                master_prompt = build_mode_a_prompt(subj, spatial_direction=direction, setting=setting)
+            vp = raw_dict.get("visual_prompt", {}) if isinstance(raw_dict.get("visual_prompt"), dict) else {}
+            subj = (
+                raw_dict.get("visual_concept")
+                or raw_dict.get("subject")
+                or vp.get("subject")
+                or vp.get("subject_details")
+                or ""
+            )
+            act = raw_dict.get("action") or vp.get("action") or vp.get("subject_action_increment") or ""
+            if subj and act:
+                full_subject_text = f"{subj}, {act}"
             else:
-                master_prompt = enhance_diffusion_prompt(raw_dict)
+                full_subject_text = subj or act or "educational diagram presenting conceptual science"
+
+            direction = (
+                raw_dict.get("spatial_direction")
+                or raw_dict.get("composition")
+                or vp.get("composition")
+                or "centered focal composition"
+            )
+            setting = (
+                raw_dict.get("setting")
+                or raw_dict.get("scene_setting")
+                or vp.get("setting")
+                or vp.get("environment_coordinates")
+                or "SCENE_LIGHT_LIMBO_ENV"
+            )
+            niche = raw_dict.get("niche") or channel_profile.niche or "GENERAL_EXPLAINER"
+            master_prompt = build_mode_a_prompt(
+                full_subject_text,
+                spatial_direction=direction,
+                setting=setting,
+                niche=niche,
+                channel_profile=channel_profile,
+            )
     except ImportError:
         master_prompt = (
             raw_dict.get("master_setup_prompt")
@@ -880,6 +955,11 @@ def build_dual_mode_prompt(
             if isinstance(raw_dict.get("visual_prompt"), dict)
             else ""
         )
+        or (
+            raw_dict.get("visual_prompt", {}).get("action", "")
+            if isinstance(raw_dict.get("visual_prompt"), dict)
+            else ""
+        )
         or raw_dict.get("action", "")
     )
     spatial_dir = raw_dict.get("spatial_direction", "centered")
@@ -887,6 +967,10 @@ def build_dual_mode_prompt(
         spatial_dir = "centered"
 
     delta_target = str(visual_delta or "").strip().rstrip(".")
+    if not delta_target:
+        # Fallback to Mode A if no surgical delta could be extracted
+        return "A", master_prompt
+
     try:
         from youtube_automation.prompts.prompt_enhancer import build_mode_b_prompt
         lad_prompt = build_mode_b_prompt(delta_target, spatial_dir)
@@ -1322,7 +1406,10 @@ def setup_flow_ui(
             print("  Found 'New project' button. Clicking...", flush=True)
             new_project_btn.scroll_into_view_if_needed()
             new_project_btn.click(force=True)
-            page.wait_for_timeout(4000)
+            for _ in range(15):
+                page.wait_for_timeout(1000)
+                if "project" in page.url and "404" not in page.url:
+                    break
         else:
             print("  Already inside a workspace project or direct UI ready.", flush=True)
 
@@ -1403,49 +1490,37 @@ def _retry_gemini_call(
             raise
         except Exception as e:
             last_exc = e
-            err_msg = str(e).lower()
-            is_validation = any(
-                k in err_msg
-                for k in [
-                    "missing",
-                    "exhausted",
-                    "validation",
-                    "schema violation",
-                    "forbidden term",
-                    "chunkplanningerror",
-                ]
+            print(
+                f"  [RETRY GEMINI] {label} failed (attempt {attempt}/{retries}): {e}. "
+                "Resetting session tracker, opening fresh Gemini chat, and retrying..."
             )
-            if is_validation:
-                print(
-                    f"  [RETRY VALIDATION] {label} failed (attempt {attempt}/{retries}): {e}. "
-                    "Retrying in same chat (no new chat, preserves context)..."
-                )
+            try:
+                gemini_page.bring_to_front()
                 try:
-                    gemini_page.bring_to_front()
-                    time.sleep(2)
+                    from gemini_controller import reset_session_tracker
+                    reset_session_tracker()
                 except Exception:
                     pass
-            else:
-                print(
-                    f"  [RETRY BROWSER] {label} failed (attempt {attempt}/{retries}): {e}. "
-                    "Reloading Gemini page and retrying..."
-                )
-                try:
-                    gemini_page.bring_to_front()
-                    gemini_page.reload(wait_until="domcontentloaded", timeout=45000)
-                    gemini_page.bring_to_front()
-                    time.sleep(3)
-                except Exception as reload_err:
-                    print(f"  Gemini page reload during retry failed: {reload_err}")
+                gemini_page.goto("https://gemini.google.com/app", wait_until="domcontentloaded", timeout=45000)
+                gemini_page.bring_to_front()
+                time.sleep(3)
+            except Exception as reload_err:
+                print(f"  Gemini page reset during retry failed: {reload_err}")
     raise RuntimeError(f"{label} failed after {retries} attempts: {last_exc}")
+
 
 
 # ==========================================
 # MAIN ORCHESTRATOR
 # ==========================================
-def main() -> None:
+def main(run_folder: str | None = None) -> None:
     """Main CLI execution loop for Google Flow visual generation."""
-    batch_queue = scan_batch_folders()
+    if run_folder is not None:
+        batch_queue = [run_folder]
+    elif len(sys.argv) > 1 and os.path.isdir(sys.argv[1]):
+        batch_queue = [sys.argv[1]]
+    else:
+        batch_queue = scan_batch_folders()
     if not batch_queue:
         print("No active folders found.")
         return
@@ -1664,9 +1739,14 @@ def main() -> None:
                         flow_page, target_flow_model, target_flow_count, saved_project_url
                     )
 
-                    if "project" in active_project_url:
+                    if "project" in active_project_url and "404" not in active_project_url:
                         with open(url_checkpoint_file, "w", encoding="utf-8") as f:
                             f.write(active_project_url)
+                    elif os.path.exists(url_checkpoint_file):
+                        try:
+                            os.remove(url_checkpoint_file)
+                        except Exception:
+                            pass
 
                     # Pre-flight character and scene builder
                     try:
@@ -1690,6 +1770,7 @@ def main() -> None:
                             pass
 
                     executed_generations_count = 0
+                    frame_limit = int(os.environ.get("FLOW_FRAME_LIMIT", "0") or "0")
                     prev_prompt_text = ""
                     prev_idx = None
                     ts_counts: dict[str, int] = {}
@@ -1746,8 +1827,17 @@ def main() -> None:
                                 flow_page, target_flow_model, target_flow_count, active_project_url
                             )
 
+                        if "project" in flow_page.url and "404" not in flow_page.url:
+                            active_project_url = flow_page.url
+                            try:
+                                with open(url_checkpoint_file, "w", encoding="utf-8") as f:
+                                    f.write(active_project_url)
+                            except Exception:
+                                pass
+
                         print(f"Rendering Frame {idx} ({image_name})...")
                         success = False
+                        last_attempt_error = ""
                         try:
                             for attempt in range(1, 4):
                                 try:
@@ -1802,7 +1892,7 @@ def main() -> None:
                                             batch_count=batch_num,
                                         )
                                         mode, payload_text = build_dual_mode_prompt(
-                                            prompt_item, attach_success=attached
+                                            prompt_item, attach_success=attached, run_dir=subfolder
                                         )
                                         if mode == "A" and not payload_text:
                                             payload_text = natural_prompt
@@ -1810,7 +1900,7 @@ def main() -> None:
                                     else:
                                         clear_attached_prompt_chips(flow_page)
                                         mode, payload_text = build_dual_mode_prompt(
-                                            prompt_item, attach_success=False
+                                            prompt_item, attach_success=False, run_dir=subfolder
                                         )
                                         if not payload_text:
                                             payload_text = natural_prompt
@@ -1935,7 +2025,7 @@ def main() -> None:
 
                                     # ── Card-Spawn Handshake ──────────────────────────────────────
                                     card_spawned = card_spawn_handshake(
-                                        flow_page, pre_card_count, timeout_seconds=45.0
+                                        flow_page, pre_card_count, timeout_seconds=45.0, pre_image_srcs=pre_image_srcs
                                     )
                                     if not card_spawned:
                                         box_text = ""
@@ -1952,7 +2042,7 @@ def main() -> None:
                                             )
                                             flow_page.keyboard.press("Enter")
                                             card_spawned = card_spawn_handshake(
-                                                flow_page, pre_card_count, timeout_seconds=15.0
+                                                flow_page, pre_card_count, timeout_seconds=15.0, pre_image_srcs=pre_image_srcs
                                             )
 
                                     if not card_spawned:
@@ -1969,7 +2059,7 @@ def main() -> None:
                                     last_activity_time = time.time()
                                     active_card = flow_page.locator(
                                         "flow-grid-tile-container, flow-image-tile, div[data-card-index], .generation-card, [role='article']"
-                                    ).last
+                                    ).first
                                     hard_ceiling_time = start_gen_time + 360  # 6-minute absolute ceiling
 
                                     while time.time() - start_gen_time < max_wait_seconds:
@@ -1982,12 +2072,13 @@ def main() -> None:
                                         for err_idx in range(error_locators.count()):
                                             if error_locators.nth(err_idx).is_visible():
                                                 error_msg = error_locators.nth(err_idx).inner_text()
+                                                err_cat = classify_flow_error(error_msg)
                                                 print(
-                                                    f"  ⚠️ Google Flow rejected the prompt: {error_msg}"
+                                                    f"  ⚠️ Google Flow rejected the prompt [{err_cat}]: {error_msg}"
                                                 )
                                                 dump_diagnostic_artifact(flow_page, idx, attempt, subfolder)
                                                 raise Exception(
-                                                    "Generation failed due to API rejection or UI error."
+                                                    f"Google Flow API rejection ({err_cat}): {error_msg}"
                                                 )
 
                                         failed_media_locator = flow_page.get_by_text(
@@ -2063,25 +2154,23 @@ def main() -> None:
                                             last_activity_time = time.time()
 
                                         new_workspace_imgs = []
-                                        candidate_scope = active_card if active_card.is_visible() else flow_page
-                                        for loc in candidate_scope.locator("img").all():
+                                        card_imgs = flow_page.locator("flow-image-tile img, flow-grid-tile-container img, img").all()
+                                        for loc in card_imgs:
                                             try:
                                                 src = loc.get_attribute("src")
-                                                if src and src not in pre_image_srcs:
-                                                    if loc.is_visible():
-                                                        box = loc.bounding_box()
-                                                        if (
-                                                            box
-                                                            and box["x"] > 200
-                                                            and box["width"] > 180
-                                                            and box["height"] > 120
+                                                if src and src not in pre_image_srcs and loc.is_visible():
+                                                    box = loc.bounding_box()
+                                                    if (
+                                                        box
+                                                        and box["width"] > 180
+                                                        and box["height"] > 120
+                                                    ):
+                                                        if loc.evaluate(
+                                                            "el => el.complete && (el.naturalWidth > 180 || el.clientWidth > 180)"
                                                         ):
-                                                            if loc.evaluate(
-                                                                "el => el.complete && (el.naturalWidth > 180 || el.clientWidth > 180)"
-                                                            ):
-                                                                new_workspace_imgs.append(
-                                                                    (box["y"], box["x"], loc)
-                                                                )
+                                                            new_workspace_imgs.append(
+                                                                (box["y"], box["x"], loc)
+                                                            )
                                             except Exception:
                                                 pass
 
@@ -2234,34 +2323,75 @@ def main() -> None:
                                         break
 
                                 except PlaywrightTimeoutError:
+                                    last_attempt_error = "Playwright Timeout Error"
                                     print("  ⚠️ Playwright Timeout Error.")
                                 except Exception as e:
+                                    last_attempt_error = str(e)
                                     print(f"  ⚠️ Error: {e}")
 
                                 if not success and attempt < 3:
                                     print("  🔄 Clearing UI error state before retry...")
                                     flow_page.wait_for_timeout(2000)
                                     try:
-                                        flow_page.goto(
-                                            active_project_url, wait_until="domcontentloaded", timeout=15000
-                                        )
+                                        if "project" in active_project_url and "404" not in active_project_url:
+                                            flow_page.goto(
+                                                active_project_url, wait_until="domcontentloaded", timeout=15000
+                                            )
+                                        else:
+                                            flow_page.reload(wait_until="domcontentloaded", timeout=15000)
                                     except Exception:
-                                        pass
+                                        try:
+                                            flow_page.reload(wait_until="domcontentloaded", timeout=15000)
+                                        except Exception:
+                                            pass
                                     # Wait for SPA hydration before next attempt
                                     dismiss_blocking_flow_modals(flow_page)
                                     wait_for_flow_input_box(flow_page, timeout_seconds=15.0)
                                     flow_page.wait_for_timeout(1000)
 
                             if not success:
-                                if accounts_enabled:
+                                err_cat = classify_flow_error(last_attempt_error)
+                                print(
+                                    f"\n[DIAGNOSTIC] Frame {idx} failure analysis: category={err_cat}, details='{last_attempt_error}'"
+                                )
+                                if err_cat == "POLICY_VIOLATION":
                                     print(
-                                        "\n[FAILOVER ALERT] Flow rendering failed 3 times. Rotating account..."
+                                        f"  ⚠️ [POLICY / SAFETY REJECTION] Prompt for Frame {idx} was rejected by Google Flow moderation/safety filter.\n"
+                                        f"     INVESTIGATION CONFIRMED: This is NOT an account quota limit! Preserving active profile.\n"
+                                        f"     Account will NOT be rotated, preventing false failover cascade."
                                     )
-                                    safe_failover_teardown(browser, context)
-                                    failover_triggered = True
-                                    break
+                                    print(f"❌ Skipping Frame {idx} due to prompt policy/moderation filter.")
+                                elif err_cat == "FATAL_QUOTA":
+                                    if accounts_enabled:
+                                        print(
+                                            f"\n[FAILOVER ALERT] Confirmed account quota exhaustion ('{last_attempt_error}'). Rotating account..."
+                                        )
+                                        safe_failover_teardown(browser, context)
+                                        failover_triggered = True
+                                        break
+                                    else:
+                                        print(
+                                            f"🛑 [FATAL QUOTA] Account quota limit reached and account switching is disabled. Halting."
+                                        )
+                                        sys.exit(1)
                                 else:
-                                    print(f"❌ Frame {idx} failed completely. Skipping.")
+                                    print(
+                                        f"  ⚠️ [TRANSIENT ERROR] Frame {idx} failed after 3 attempts with transient error ('{last_attempt_error}').\n"
+                                        f"     INVESTIGATION CONFIRMED: Account quota is NOT exhausted! Preserving active profile.\n"
+                                        f"     Resetting workspace checkpoint and attempting fresh workspace initialization..."
+                                    )
+                                    if os.path.exists(url_checkpoint_file):
+                                        try:
+                                            os.remove(url_checkpoint_file)
+                                        except Exception:
+                                            pass
+                                    try:
+                                        active_project_url = setup_flow_ui(
+                                            flow_page, target_flow_model, target_flow_count, None
+                                        )
+                                    except Exception:
+                                        pass
+                                    print(f"❌ Frame {idx} skipped due to transient errors.")
                         except Exception as e:
                             print(f"[RECOVERY] Framework error: {e}")
                             consecutive_failures += 1
@@ -2280,6 +2410,12 @@ def main() -> None:
                                 "\n[SYSTEM] Profile rotated. Restarting browser session for current subfolder...\n"
                             )
                             time.sleep(3)
+                            break
+
+                        if frame_limit > 0 and executed_generations_count >= frame_limit:
+                            print(
+                                f"\n[LIMIT] Reached FLOW_FRAME_LIMIT={frame_limit}. Halting test batch."
+                            )
                             break
 
                 if not failover_triggered:

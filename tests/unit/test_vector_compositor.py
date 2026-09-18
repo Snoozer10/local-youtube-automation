@@ -2,13 +2,11 @@
 
 import os
 from pathlib import Path
+
 from PIL import Image
 
 from youtube_automation.video.vector_compositor import (
     composite_vector_overlays,
-    draw_callout_badge,
-    draw_directional_arrow,
-    draw_focus_brackets,
 )
 
 

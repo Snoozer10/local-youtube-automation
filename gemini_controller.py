@@ -117,11 +117,11 @@ def ensure_persistent_gemini_session(page, current_start_idx: int, planner_model
     else:
         # Reuse existing chat - ensure input box still live, no new chat
         log(f"[session] reusing chat (last={_last_session_start_index}, cur={current_start_idx}, threshold={get_session_reset_threshold()}, model={planner_model})")
-        # Light health check: input box must exist, not generating
+        # Light health check: input box must exist, no error state
         try:
-            from gemini_utils import find_input_box as _fib
-            if _fib(page) is None:
-                log("[session] input box missing on reuse, forcing new chat")
+            from gemini_utils import check_gemini_error_state as _ces, find_input_box as _fib
+            if _fib(page) is None or _ces(page):
+                log("[session] input box missing or error state on reuse, forcing new chat")
                 ok = open_ephemeral_session(page, planner_model)
                 if ok:
                     _last_session_start_index = current_start_idx
@@ -130,6 +130,7 @@ def ensure_persistent_gemini_session(page, current_start_idx: int, planner_model
         except Exception:
             pass
         return True
+
 
 def reset_session_tracker():
     global _last_session_start_index, _last_session_model
@@ -276,7 +277,9 @@ def wait_for_gemini_turn_completion(
     while time.time() - start < timeout_seconds:
         if check_gemini_error_state(page):
             log("[turn] Gemini error card detected during wait.")
+            reset_session_tracker()
             return ""
+
 
         try:
             mounted = page.locator(_LAST_RESPONSE_SELECTOR).count() > 0

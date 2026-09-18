@@ -373,3 +373,47 @@ When reviewing visual prompt iterations side-by-side, comparison viewers must ma
    - Support seamless fallback to `socratic_master_frames/` for frames outside the local chunk.
    - Automatically initialize rendering at the first available local frame (`initIdx = frames.findIndex(f => f.in_local_dir && f.canary_exists)`) so opening a chunk viewer immediately lands on relevant frames rather than empty preceding slots.
 
+## 21. Quota Saturation vs Prompt Policy & Moderation Disambiguation
+
+During batch image generation, execution harnesses can encounter generation stoppages. Automated recovery must strictly distinguish **Account Quota Saturation** from **Prompt Moderation / Policy Rejections**:
+
+### 1. The Cascading Failover Pitfall
+If an automation script mistakes a prompt policy block (e.g. sensitive keyword, bio-fluid analogy, or copyright trigger) for account quota exhaustion, it immediately rotates to the next Chrome profile. However, because the prompt itself triggered the block, the new profile fails on the exact same prompt. This triggers a cascading loop that rapidly rotates through and exhausts all authenticated profiles without generating the frame.
+
+### 2. Failure Classification Matrix
+
+| Failure Category | Trigger Signatures / DOM Text | Root Cause | Correct Recovery Action |
+| :--- | :--- | :--- | :--- |
+| **Fatal Account Quota** | `الحدّ الأقصى للاستخدام`, `reached your usage limit`, `quota exceeded`, `you have not been charged` | Account daily burst or credit budget exhausted | Rotate Chrome profile (`rotate_profile_index`) or halt batch |
+| **Safety / Policy Filter** | `safety guidelines`, `إرشادات الأمان`, `prompt violates policy`, `policy violation`, `content guidelines` | Diffusion model blocked sensitive/copyright tokens | Rephrase prompt (lexical softening), strip trigger words, or bypass frame |
+| **Transient Card Error** | `تعذَّر إكمال المعالجة`, `failed to generate`, `couldn't generate`, `network error` | Temporary worker stall or dropped WebSocket chunk | Reload page and re-inject on same profile (Attempts 1–3) |
+
+### 3. Diagnostic Protocol
+Always capture DOM text from `active_card` and inspect the error message string before deciding to trigger account rotation. If the error text does not match fatal quota signatures, avoid profile rotation.
+
+## 22. Resilient Gap-Skipping and Deterministic Backfill Architecture
+
+In large batch visual runs (100+ frames), transient worker latency or card spawn timeouts must never abort the entire batch:
+
+1. **Transient Queue Delays vs Fatal Quota**:
+   - Card spawn timeouts (>45s) on Google Flow represent transient queue congestion or SPA dashboard navigation delays, not fatal quota exhaustion.
+   - The generation harness flags these frames as `TRANSIENT_ERROR`, preserves the active profile, resets the project workspace, and continues sequentially.
+
+2. **Automated Single-Pass Backfill**:
+   - Tracking completed frame indices in `pipeline_manifest.json` and verifying physical assets on disk enables an automated, fast single-pass backfill.
+   - Checking `if os.path.exists(save_path) and os.path.getsize(save_path) > 100: continue` allows the backfill runner to skip all 95%+ of existing frames instantaneously and target only missing frames.
+
+## 23. YouTube Thumbnail Packaging: Synergy, Critique & OCR Collision Recovery
+
+In Phase 9 packaging, thumbnails are generated directly via Gemini Pro and Imagen with an autonomous quality gate:
+
+1. **Title + Visual Synergy**:
+   - Thumbnails must never repeat words from the candidate titles in `titles.txt`. The title provides the curiosity premise while the visual delivers an emotional reaction or narrative subversion.
+2. **Autonomous Self-Critique Matrix**:
+   - In a single conversational session, Gemini Pro rates generated concept pairs on a 1–10 scale across synergy, curiosity gap, mobile scan readability, and emotional impact, selecting the top winning concepts.
+3. **Two-Tier OCR Text-Gate Recovery Circuit**:
+   - Newly rendered thumbnail bitmaps are evaluated immediately using `check_text_collision(filepath)`.
+   - If pseudo-Latin text artifacts or MSER edge clusters are detected on Attempt 1, the corrupt image is purged from disk, and re-synthesized on Attempt 2 with `STRENGTHENED_NEGATIVE_PROMPT`.
+
+
+

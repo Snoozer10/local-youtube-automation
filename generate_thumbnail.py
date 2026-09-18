@@ -563,7 +563,10 @@ def main():
     print(" THUMBNAIL: YouTube Thumbnail Generation Pipeline")
     print("=" * 60)
 
-    folder = get_latest_run_folder()
+    if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]):
+        folder = os.path.abspath(sys.argv[1])
+    else:
+        folder = get_latest_run_folder()
     if not folder:
         print("No youtube_runs folder found.")
         sys.exit(1)
@@ -581,7 +584,9 @@ def main():
 
     model_name = get_config_value("THUMBNAIL_MODEL", get_config_value("REFINE_MODEL", "Pro"))
     browser_type = get_config_value("BROWSER_TYPE", "chrome")
-    profile_index = int(get_config_value("ACTIVE_PROFILE_INDEX", "1"))
+    raw_profile = get_config_value("ACTIVE_PROFILE_INDEX", "1")
+    match = re.search(r"\d+", str(raw_profile))
+    profile_index = int(match.group(0)) if match else 1
     cdp_port = int(get_config_value("CDP_PORT", "9222"))
 
     prompts_path = os.path.join(folder, "thumbnail_prompts.json")

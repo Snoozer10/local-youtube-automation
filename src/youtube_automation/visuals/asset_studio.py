@@ -132,6 +132,16 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
                 "Visual rule: Studio substrate plate only. Zero human figures, zero 3D CGI, zero text."
             ),
         },
+        "HOST_STUDIO_DESK": {
+            "name": "SCENE_HOST_STUDIO_ENV",
+            "scene_prompt": (
+                "2D graphic vector animation explainer studio presenter desk plate. "
+                "Clean educational studio presenter desk resting on neutral studio limbo ground (#F8F8FA), "
+                "uniform 3px deep charcoal (#2D3444) contour linework, flat 2-step cel-shading, zero gradients, "
+                "clean 16:9 widescreen composition bounded inside coordinates X: 180 to 1740, Y: 90 to 980, "
+                "leaving 10% peripheral bleed padding. Visual rule: Empty studio desk plate only. Zero text, zero 3D CGI."
+            ),
+        },
         "AHWA_STUDIO": {
             "name": "SCENE_AHWA_STUDIO_ENV",
             "scene_prompt": (
