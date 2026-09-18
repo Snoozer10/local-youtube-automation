@@ -472,19 +472,30 @@ def main():
         clear_audacity_temp_data()
         print("  Launching Audacity instance...")
         subprocess.Popen([executable_path])
-        time.sleep(3.0)
+        # Extended grace period: mod-script-pipe requires Audacity to fully initialise
+        # its plugin/module layer before the named pipes appear. 6s covers cold-boot
+        # scenarios where the pipe would not appear within the old 3s window.
+        time.sleep(6.0)
 
         w_pipe, r_pipe = None, None
-        for _attempt in range(30):
+        # 80 attempts x 1.0s = 80s total connection window.
+        # Audacity cold-start with mod-script-pipe can take 10-20s; 80s gives
+        # generous headroom and eliminates the need for the user to pre-open Audacity.
+        for _attempt in range(80):
             try:
                 w_pipe = open(r"\\.\pipe\ToSrvPipe", "w", encoding="utf-8")
                 r_pipe = open(r"\\.\pipe\FromSrvPipe", encoding="utf-8")
                 break
             except Exception:
-                time.sleep(0.5)
+                if _attempt % 10 == 9:
+                    print(f"  [WAIT] Audacity pipe not ready yet ({_attempt + 1}/80)... still waiting")
+                time.sleep(1.0)
 
         if not w_pipe or not r_pipe:
-            raise ConnectionError("Could not connect to Audacity Named Pipes!")
+            raise ConnectionError(
+                "Could not connect to Audacity Named Pipes after 80s! "
+                "Verify Audacity.exe is installed and mod-script-pipe=1 is in audacity.cfg."
+            )
         print("  Audacity Named Pipes connected successfully.")
         # Pre-flight handshake to ensure Audacity GUI and scripting thread are actively responding
         print("  Executing initial handshake...")

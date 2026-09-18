@@ -150,3 +150,48 @@ def test_sync_audio_manifest_schema_and_monotonicity(tmp_path: Path):
     assert c1["id"] == "001"
     assert c1["duration"] == 3.250
     assert c1["visual_keyframe_id"] == "scene_001"
+
+
+def test_sanitize_script_text_strips_metadata():
+    from youtube_automation.audio.tts_generator import sanitize_script_text
+
+    raw = """
+    Casting Report Option A: أحمد الغندور
+    Markdown TTS BLOCK 1 of 7 — Intro
+    Target Word Count: 100 words | Pacing: 160 WPM
+    1. Voice Profile Anchor
+    Voice Persona: Al-Daheeh
+    2. Expressive Script Block
+    "[tone: STREET_LOGIC] بص يا سيدي كلنا بنسأل نفس السؤال."
+    """
+    cleaned = sanitize_script_text(raw)
+    assert "Casting Report" not in cleaned
+    assert "Voice Persona" not in cleaned
+    assert "Target Word Count" not in cleaned
+    assert "[tone: street_logic]" in cleaned
+    assert "بص يا سيدي كلنا بنسأل نفس السؤال" in cleaned
+
+
+def test_deterministic_partitioning_and_coverage(tmp_path: Path):
+    from youtube_automation.audio.tts_generator import (
+        calculate_script_coverage,
+        partition_script_to_chapters,
+    )
+
+    # Create dummy tts_payload.json with 10 paragraphs
+    payload = {
+        "paragraphs": [
+            {"index": i, "tts_text": f"هذا هو المقطع رقم {i} للتجربة والاختبار السريع في باقة النت."}
+            for i in range(1, 11)
+        ]
+    }
+    (tmp_path / "tts_payload.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    full_text = "\n\n".join(p["tts_text"] for p in payload["paragraphs"])
+    chapters = partition_script_to_chapters(str(tmp_path), full_text, max_words_per_chapter=30)
+    assert len(chapters) > 1
+
+    manifest = {"chapters": chapters}
+    coverage = calculate_script_coverage(manifest, full_text)
+    assert coverage >= 0.95
+

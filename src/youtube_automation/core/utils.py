@@ -324,6 +324,8 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
         "--disable-backgrounding-occluded-windows",
         "--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling",
         "--disable-background-media-suspend",
+        "--disable-quic",
+        "--host-resolver-rules=MAP aistudio.google.com 142.251.154.2",
         "--no-first-run",
         "--no-default-browser-check",
         "--hide-crash-restore-bubble",

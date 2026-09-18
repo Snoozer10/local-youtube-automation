@@ -1510,9 +1510,9 @@ def _build_audio_filter_chain(
         audio_inputs.extend(
             ["-stream_loop", "-1", "-i", os.path.abspath(bgm_path).replace("\\", "/")]
         )
-        # Lowers music volume under voice automatically
+        # Lowers music volume under voice and carves -4.5dB voice pocket notch (1.2kHz - 3.2kHz)
         filter_parts.append(
-            f"[{bgm_idx}:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=0.15[bgm_raw];"
+            f"[{bgm_idx}:a]aformat=sample_rates=48000:channel_layouts=stereo,equalizer=f=2200:t=q:w=1.5:g=-4.5,volume=0.15[bgm_raw];"
             f"[bgm_raw][1:a]sidechaincompress=threshold=0.08:ratio=6:attack=200:release=800[bgm_ducked];"
         )
         sfx_labels.append("[bgm_ducked]")

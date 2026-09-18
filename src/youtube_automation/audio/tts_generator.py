@@ -524,21 +524,59 @@ def humanize_text_input(page, textbox, text):
 
 def sanitize_script_text(text):
     """
-    Cleans up raw markdown code fences, strips control keywords, and enforces
-    strict lowercase formatting on all TTS tags ([tone:...], [pace:...], [pause:...])
+    Cleans up raw markdown code fences, strips casting reports, breakdown headers,
+    voice profile anchors, and control keywords, leaving only the pure expressive script text.
+    Enforces strict lowercase formatting on all TTS tags ([tone:...], [pace:...], [pause:...])
     to prevent AI Studio from reading English letters out loud.
     """
+    if not text:
+        return ""
+
     # 1. Strip Markdown code blocks
     text = re.sub(r"```[a-zA-Z0-9_-]*\n(.*?)\n```", r"\1", text, flags=re.DOTALL)
     text = text.replace("```", "")
 
-    # 2. Enforce Speech Tag Armor (Force lowercase on all bracket tags)
+    # 2. Extract expressive script block if embedded inside casting/structure reports
+    script_block_match = re.search(
+        r'(?:Expressive Script Block|2\.\s*Expressive Script Block)\s*[\r\n]+["“]?(.*?)["”]?$',
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    if script_block_match:
+        text = script_block_match.group(1)
+    else:
+        # Check quotes containing Arabic
+        quote_match = re.search(r'["“]([\u0600-\u06FF\[].*?)["”]', text, flags=re.DOTALL)
+        if quote_match and len(quote_match.group(1)) > 50:
+            text = quote_match.group(1)
+
+    # 3. Strip metadata headers that might leak into TTS prompt
+    metadata_patterns = [
+        r"#+\s+.*",
+        r"(?i)markdown\s*",
+        r"(?i)TTS\s*BLOCK\s*\d+\s*of\s*\d+.*",
+        r"(?i)Target\s*Word\s*Count:.*",
+        r"(?i)Pacing:.*",
+        r"(?i)Voice\s*Persona:.*",
+        r"(?i)Age\s*/\s*Gender:.*",
+        r"(?i)Voice\s*Archetype:.*",
+        r"(?i)Active\s*Register:.*",
+        r"(?i)Acoustic\s*Space:.*",
+        r"(?i)Casting\s*Report.*",
+        r"(?i)Breakdown\s*Structure.*",
+        r"(?i)1\.\s*Voice\s*Profile\s*Anchor.*",
+        r"(?i)2\.\s*Expressive\s*Script\s*Block.*",
+    ]
+    for pat in metadata_patterns:
+        text = re.sub(pat, "", text)
+
+    # 4. Enforce Speech Tag Armor (Force lowercase on all bracket tags)
     def lowercase_tts_tags(match):
         return match.group(0).lower()
 
     text = re.sub(r"\[(tone|pace|pause)\s*:[^\]]+\]", lowercase_tts_tags, text, flags=re.IGNORECASE)
 
-    # 3. Strip control triggers
+    # 5. Strip control triggers
     lines = text.split("\n")
     cleaned_lines = []
 
@@ -548,7 +586,85 @@ def sanitize_script_text(text):
             continue
         cleaned_lines.append(line)
 
-    return "\n".join(cleaned_lines).strip()
+    clean_res = "\n".join(cleaned_lines).strip().strip('"').strip("“").strip("”")
+    return clean_res
+
+
+def clean_text_for_speech(raw_text: str) -> str:
+    """Convenience alias for sanitize_script_text with speech tag stripping option."""
+    return sanitize_script_text(raw_text)
+
+
+def calculate_script_coverage(manifest, transcript_text: str) -> float:
+    """Calculates word-level coverage of manifest chapters against the reference script."""
+    if not transcript_text or not manifest.get("chapters"):
+        return 0.0
+    script_words = len(re.findall(r"[\u0600-\u06FF]{2,}", transcript_text))
+    if script_words == 0:
+        return 1.0
+    all_chap_text = " ".join(c.get("text", "") for c in manifest["chapters"])
+    clean_text = sanitize_script_text(all_chap_text)
+    chap_words = len(re.findall(r"[\u0600-\u06FF]{2,}", clean_text))
+    return chap_words / float(script_words)
+
+
+def partition_script_to_chapters(latest_run: str, transcript_text: str, max_words_per_chapter: int = 220) -> list:
+    """Deterministically partitions the refined script or tts_payload into balanced chapters.
+    Guarantees 100% script coverage and eliminates chat truncation / meta-talk risks.
+    """
+    payload_path = os.path.join(latest_run, "tts_payload.json")
+    paragraphs = []
+    if os.path.exists(payload_path):
+        try:
+            with open(payload_path, encoding="utf-8") as f:
+                data = json.load(f)
+            raw_paras = data.get("paragraphs", [])
+            for p in raw_paras:
+                t = p.get("tts_text") or p.get("text", "")
+                if t.strip():
+                    paragraphs.append(t.strip())
+        except Exception:
+            pass
+
+    if not paragraphs:
+        paragraphs = [p.strip() for p in re.split(r"\n\s*\n", transcript_text) if p.strip()]
+
+    chapters = []
+    current_paras = []
+    current_words = 0
+    voice_folder = os.path.join(latest_run, "voice_chapters")
+    os.makedirs(voice_folder, exist_ok=True)
+
+    for p in paragraphs:
+        p_words = len(p.split())
+        if current_words + p_words > max_words_per_chapter and current_paras:
+            chap_num = len(chapters) + 1
+            chap_text = "\n\n".join(current_paras)
+            audio_path = os.path.join(voice_folder, f"Chapter_{chap_num}.wav")
+            chapters.append({
+                "chapter_num": chap_num,
+                "text": chap_text,
+                "audio_file": audio_path,
+                "status": "PENDING",
+            })
+            current_paras = [p]
+            current_words = p_words
+        else:
+            current_paras.append(p)
+            current_words += p_words
+
+    if current_paras:
+        chap_num = len(chapters) + 1
+        chap_text = "\n\n".join(current_paras)
+        audio_path = os.path.join(voice_folder, f"Chapter_{chap_num}.wav")
+        chapters.append({
+            "chapter_num": chap_num,
+            "text": chap_text,
+            "audio_file": audio_path,
+            "status": "PENDING",
+        })
+
+    return chapters
 
 
 def get_latest_run_folder(runs_path="youtube_runs"):
@@ -1318,17 +1434,46 @@ def main():
     with open(transcript_path, encoding="utf-8") as f:
         transcript_text = f.read().strip()
 
-    # Smart auto-detection of Gemini completeness from manifest
-    is_gemini_ready = check_is_gemini_complete(manifest, transcript_text)
-    if is_gemini_ready and not manifest.get("gemini_completed"):
+    # Smart auto-detection of Gemini completeness and coverage validation
+    payload_path = os.path.join(latest_run, "tts_payload.json")
+    coverage = calculate_script_coverage(manifest, transcript_text)
+
+    # If manifest chapters are truncated (< 85% script coverage) or empty, fall back to deterministic partitioning
+    if manifest.get("chapters") and coverage < 0.85:
+        print(
+            f"[COVERAGE ALERT] Existing manifest chapters only cover {coverage:.1%} of script (<85%). "
+            f"Invalidating truncated chapters and falling back to deterministic partitioning..."
+        )
+        manifest["chapters"] = partition_script_to_chapters(latest_run, transcript_text)
         manifest["gemini_completed"] = True
         save_manifest(latest_run, manifest)
+        sync_audio_manifest(latest_run, manifest)
+    elif not manifest.get("chapters"):
+        if os.path.exists(payload_path):
+            print("[AUTONOMOUS PARTITION] Slicing script deterministically from tts_payload.json (100% coverage)...")
+            manifest["chapters"] = partition_script_to_chapters(latest_run, transcript_text)
+            manifest["gemini_completed"] = True
+            save_manifest(latest_run, manifest)
+            sync_audio_manifest(latest_run, manifest)
+        else:
+            is_gemini_ready = check_is_gemini_complete(manifest, transcript_text)
+            if is_gemini_ready and not manifest.get("gemini_completed"):
+                manifest["gemini_completed"] = True
+                save_manifest(latest_run, manifest)
 
     print(f"Target Video Folder: {latest_run}")
     print("Verified input files. Connecting to Browser debugging session...")
 
     # Main Playwright Outer Recovery Loop
+    outer_cycle_count = 0
+    MAX_OUTER_CYCLES = 10
     while True:
+        outer_cycle_count += 1
+        if outer_cycle_count > MAX_OUTER_CYCLES:
+            raise RuntimeError(
+                f"[DEADLOCK CIRCUIT BREAKER] Exceeded maximum outer recovery cycles ({MAX_OUTER_CYCLES}). "
+                "Halting to prevent infinite loop. Check network and UI selectors."
+            )
         failover_triggered = False
 
         try:
@@ -1673,12 +1818,17 @@ def main():
                             print(
                                 "[SAFETY CHECK] Correcting tab navigation to Speech Playground..."
                             )
-                            tab1_speech.goto(
-                                f"https://aistudio.google.com/generate-speech?model={target_tts_model}",
-                                wait_until="domcontentloaded",
-                            )
-                            time.sleep(3)
-                            reapply_speech_settings(tab1_speech, voice_config)
+                            try:
+                                tab1_speech.goto(
+                                    f"https://aistudio.google.com/generate-speech?model={target_tts_model}",
+                                    wait_until="domcontentloaded",
+                                    timeout=30000,
+                                )
+                                time.sleep(3)
+                                reapply_speech_settings(tab1_speech, voice_config)
+                            except Exception as nav_err:
+                                print(f"[WARNING] Speech Playground navigation warning: {nav_err}")
+                                time.sleep(2)
 
                         reload_limit = int(get_config_value("TTS_PROACTIVE_RELOAD_INTERVAL", "40"))
                         if chapters_since_reload >= reload_limit:
@@ -1723,12 +1873,20 @@ def main():
                             "textarea[aria-label='Enter a prompt']"
                         ).first
                         if not speech_input.is_visible():
-                            print("Speech Playground input box was hidden. Retrying context...")
+                            print("Speech Playground input box was hidden. Re-applying speech settings to dismiss splash...")
+                            reapply_speech_settings(tab1_speech, voice_config)
                             time.sleep(2)
-                            continue
+                            speech_input = tab1_speech.locator(
+                                "textarea[aria-label='Enter a prompt']"
+                            ).first
+                            if not speech_input.is_visible():
+                                main.attempt_count = getattr(main, "attempt_count", 0) + 1
+                                time.sleep(2)
+                                continue
 
-                        print(f"Entering Chapter {chap_num} script text into AI Studio...")
-                        humanize_text_input(tab1_speech, speech_input, chap_text)
+                        clean_text = sanitize_script_text(chap_text)
+                        print(f"Entering Chapter {chap_num} script text into AI Studio ({len(clean_text)} chars)...")
+                        humanize_text_input(tab1_speech, speech_input, clean_text)
 
                         # Dynamic delay scaled to text length
                         text_length = len(chap_text)
@@ -1888,6 +2046,23 @@ def main():
                                     os.remove(target_dest)
                                 except Exception:
                                     pass
+                                # If HTTP 403 was detected from alkalimakersuite, trigger account rotation immediately
+                                if latest_alkali_state.get("is_403"):
+                                    if accounts_enabled:
+                                        print(
+                                            f"\n[FAILOVER ALERT] Quota saturated / HTTP 403 confirmed by duplicate download on Chapter {chap_num}. "
+                                            "Switching immediately to next active account profile..."
+                                        )
+                                        rotate_profile_index()
+                                        kill_cdp_chrome()
+                                        failover_triggered = True
+                                        break
+                                    else:
+                                        print(
+                                            "\n[FATAL ERROR] Quota saturated (HTTP 403) and SWITCH_ACCOUNTS_ENABLED is false. Halting."
+                                        )
+                                        sys.exit(1)
+
                                 main.attempt_count = getattr(main, "attempt_count", 0) + 1
                                 continue
 
@@ -2018,8 +2193,10 @@ __all__ = [
     "GMEM_MOVEABLE",
     "MANIFEST_FILE_NAME",
     "RESPONSE_SELECTOR",
+    "calculate_script_coverage",
     "check_ai_studio_errors",
     "check_is_gemini_complete",
+    "clean_text_for_speech",
     "current_mouse_pos",
     "ensure_speech_playground_tab",
     "extract_total_blocks_count",
@@ -2036,6 +2213,7 @@ __all__ = [
     "kernel32",
     "load_or_create_manifest",
     "main",
+    "partition_script_to_chapters",
     "probe_audio_file",
     "read_voice_options",
     "reapply_speech_settings",

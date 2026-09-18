@@ -101,6 +101,10 @@ def build_ken_burns_filter(
         z_expr = f"min(1.03,1.0+0.03*(clip(on,0,{frames})/max(1,{frames})))"
         x_expr = safe_center_x
         y_expr = safe_center_y
+    elif "linear_pull" in camera_action:
+        z_expr = f"max(1.0,1.03-0.03*(clip(on,0,{frames})/max(1,{frames})))"
+        x_expr = safe_center_x
+        y_expr = safe_center_y
     else:  # static or static_hold (handles static clips & animations disabled)
         if duration >= 3.5:
             # Audit §6.4 & User Directive: Zero static dead-holds (>=3.5s).
