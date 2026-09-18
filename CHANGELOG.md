@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Table Delimiter Parsing in Gemini SPA**: Updated Markdown table parser in `roadmap_orchestrator.py` to support both tab (`\t`) and pipe (`|`) delimiters from rendered HTML `<table>` elements.
 - **Angular CDK Asset Drawer Handshake**: Implemented bidirectional wheel scrolling (`-600`, `+600`) and single-click auto-attach detection in `summon_character_chip`.
 - **FFmpeg Thread Thrash Guard**: Capped parallel video encoding workers to 1 on 4-core systems to prevent CPU thread context-switch thrash.
+- **Type Hint Latent NameError Guard (`ken_burns.py`)**: Imported `Any` from `typing` in `derive_multishot_crop` to prevent latent runtime `NameError` under non-evaluated type-hinting environments.
+- **Test Suite Code Quality & Invariant Parity (`tests/unit/`)**: Resolved 43 Ruff errors across unit tests (import order, unused imports, ambiguous variable `l` -> `line`, and explicit `zip(..., strict=...)` guards).
+- **Package Manifest Version Synchronization**: Synchronized package version to `4.4.0` across `pyproject.toml`, `GEMINI.md`, and `CHANGELOG.md`.
 
 ### Verified
 - **Autonomous 10-Phase Production Milestone (197 / 200, 98.5% Pass)**: Executed full autonomous production run on `vIqTRyX-cq0` (*What Do Animals Think Of Humans*):
@@ -39,6 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Flow visuals: 139/139 PNG frames on disk, 139 unique SHA-256 hashes (zero collisions, zero text leaks).
   - Broadcast video: 161.4 MB master (1080p, 602.267s, **exact 0.00s A/V drift**).
   - High-CTR thumbnails: 2 winning variants verified via automated OCR collision gates.
+
+## [4.3.0] - 2026-09-12
 
 ### Added
 - **Google Flow SPA Hydration Recovery**: Added `wait_for_flow_input_box` with 15s deadline pumping CDP WebSocket transport via `page.wait_for_timeout(300)` instead of `time.sleep()`.

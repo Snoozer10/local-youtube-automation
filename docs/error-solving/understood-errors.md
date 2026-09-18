@@ -271,6 +271,21 @@
 - **Solution**: Check `if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]): folder = os.path.abspath(sys.argv[1])` before falling back to `get_latest_run_folder()`.
 - **Prevention**: CLI scripts in multi-project pipelines must always accept explicit directory paths via `sys.argv[1]` and prioritize them over directory timestamp sorting.
 
+### CI Quality Gate Asymmetry & Test Suite Linting Omission
+- **Cause**: Running localized linting (`ruff check src/ exercises/ tools/`) while CI workflow (`.github/workflows/ci.yml:40`) specifically gated on `ruff check tests/unit`. Test files accumulated 43 lint errors (unsorted imports, unused imports, ambiguous variables `l`, missing `strict=` on `zip`), causing CI to abort with status `UNSTABLE` before running unit tests.
+- **Solution**: Replicate the exact CI matrix locally prior to opening PRs (`ruff check tests/unit --fix`, rename `l` to `line`, add explicit `strict=True`/`strict=False` to `zip()` calls).
+- **Prevention**: Pre-PR checklist must always inspect `.github/workflows/*.yml` and execute the exact CI commands locally before pushing or creating a PR.
+
+### Delayed Type Evaluation Masking Undefined Types (F821)
+- **Cause**: In `src/youtube_automation/video/ken_burns.py:134`, `derive_multishot_crop` annotated `-> dict[str, Any]` without importing `from typing import Any`. Because `from __future__ import annotations` turns type annotations into lazy string literals in Python 3.11, standard module imports and unit tests passed without raising `NameError`. However, static linting and runtime reflection (`typing.get_type_hints`) fail with `F821 Undefined name 'Any'`.
+- **Solution**: Explicitly import `Any` from `typing` at the top of the module, and run repo-wide static analysis (`ruff check .`).
+- **Prevention**: Never assume passing tests guarantee valid type names when `from __future__ import annotations` is enabled; always enforce static linting across all modified modules.
+
+### Speculative PR Branch Pushing & Unmonitored CI Status Badges
+- **Cause**: Pushing follow-up commits (such as continuity ledger or documentation updates) to an active PR branch without verifying the CI status of the prior commit. If the prior commit had failing CI, every subsequent commit pushed while broken records a permanent red `x` badge in GitHub commit history.
+- **Solution**: Monitor CI to completion using `gh pr checks <id> --watch` or `gh run list --branch <branch>`. Only push subsequent commits once the current HEAD is verified green.
+- **Prevention**: Enforce a strict "one commit + CI watch" gate on PR branches: verify `status: COMPLETED, conclusion: SUCCESS` before pushing follow-up commits.
+
 ## Known Failure Modes
 ### Monolithic All-or-Nothing Batch Halts on Transient Web Queue Delays
 - **What looks correct**: Halting the entire generation process or switching Google accounts whenever a single frame fails after 3 attempts.
@@ -281,6 +296,16 @@
 - **What looks correct**: Trusting negative prompt strings in image generation queries without physical verification of downloaded images.
 - **Why it's wrong**: Modern diffusion models frequently disregard negative tokens when composing complex narrative scenes with objects (books, boxes, signs, monitors). Latin pseudo-words or blurred typography leak into the output unnoticed, ruining professional YouTube packaging.
 - **Correct approach**: Treat prompt negative tokens as advisory and post-generation OCR verification as mandatory. Gate all thumbnail outputs through a hard zero-text inspection pass.
+
+### Arbitrary Directory Subsetting in Local Lint Commands
+- **What looks correct**: Running `ruff check src/` or passing only production code folders to save execution time.
+- **Why it's wrong**: Omitting `tests/unit/`, tools, and root facade shims allows syntax, style, and import bugs to slip through into CI and release packaging.
+- **Correct approach**: Always execute `ruff check .` across the entire workspace before committing.
+
+### Assuming Import Success Guarantees Type Annotation Correctness
+- **What looks correct**: Relying on `python -c "import module"` or standard test runs to catch missing types when `from __future__ import annotations` is imported.
+- **Why it's wrong**: Python PEP 563 converts annotations into strings without evaluating them at runtime, completely masking missing imports until external tools or reflection inspect the types.
+- **Correct approach**: Run static linters (`ruff check .`) or type checkers (`mypy`) that evaluate the AST and detect undefined symbols regardless of PEP 563 stringification.
 
 
 
