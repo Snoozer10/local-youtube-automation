@@ -905,6 +905,13 @@ def refine_paragraph(
 
 
 def main():
+    # Adaptive writing has its own validated per-channel refinement contract.
+    requested_folder = sys.argv[1] if len(sys.argv) > 1 else get_latest_run_folder()
+    if requested_folder and os.path.isfile(os.path.join(requested_folder, "episode_brief.json")):
+        from youtube_automation.production.writing import verify_written_episode
+        verify_written_episode(requested_folder)
+        print("[ADAPTIVE] Channel-aware refinement already verified; preserving its voice and tone.")
+        return
     print("=" * 60)
     print(" refinement: Arabic Script Refinement via Gemini")
     print("=" * 60)
@@ -927,7 +934,7 @@ def main():
         print("Could not verify or start Chrome debugging session. Exiting.")
         return
 
-    folder = get_latest_run_folder()
+    folder = requested_folder
     if not folder:
         print("No youtube_runs folder found.")
         sys.exit(1)

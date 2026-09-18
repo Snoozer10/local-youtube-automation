@@ -41,7 +41,7 @@ ACCENT_SPRING_GREEN: str = "#00E676"
 STYLE_DNA_TEXT: str = (
     "2D graphic vector animation explainer style, uniform 3px deep charcoal (#2D3444) contour linework, "
     "flat 2-step cel-shading with razor-sharp shadow edges, zero gradients, 1-2-3 shape hierarchy, "
-    "clean 16:9 widescreen composition strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980, "
+    "clean 16:9 widescreen composition with the subject clear of the frame edges, "
     "leaving 10% peripheral bleed padding, "
     "Palette: 60% base ground (#F8F8FA), 30% charcoal lines (#2D3444), 10% kinetic accents (Cyan #00E5FF, Amber #FFB300, Spring Green #00E676, Codec-Safe Red #EB191E)"
 )
@@ -128,7 +128,7 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
                 "2D graphic vector animation explainer studio substrate plate. "
                 "Neutral studio table ground (#F8F8FA) with aluminum diagnostic clipboard, clean uniform illumination, zero gradients. "
                 "Uniform 3px deep charcoal (#2D3444) contour outlines, flat 2-step cel-shading, 1-2-3 shape hierarchy, "
-                "clean 16:9 widescreen composition strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980, leaving 10% peripheral bleed padding. "
+                "clean 16:9 widescreen composition with the subject clear of the frame edges, leaving 10% peripheral bleed padding. "
                 "Visual rule: Studio substrate plate only. Zero human figures, zero 3D CGI, zero text."
             ),
         },
@@ -138,7 +138,7 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
                 "2D graphic vector animation explainer studio presenter desk plate. "
                 "Clean educational studio presenter desk resting on neutral studio limbo ground (#F8F8FA), "
                 "uniform 3px deep charcoal (#2D3444) contour linework, flat 2-step cel-shading, zero gradients, "
-                "clean 16:9 widescreen composition bounded inside coordinates X: 180 to 1740, Y: 90 to 980, "
+                "clean 16:9 widescreen composition with essential subjects clear of frame edges, "
                 "leaving 10% peripheral bleed padding. Visual rule: Empty studio desk plate only. Zero text, zero 3D CGI."
             ),
         },
@@ -147,7 +147,7 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
             "scene_prompt": (
                 "2D animation layout background plate of a cozy Cairo studio. "
                 "Warm dark mahogany desk (#2A2420), stacked encyclopedias, retro CRT monitor, Egyptian glass teacup with mint, warm 3200K tungsten lighting with razor-sharp shadow falloff. "
-                "Uniform 3px deep charcoal (#2D3444) vector outlines, flat 2-step cel-shading, 1-2-3 shape hierarchy, open central staging area strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980 with 10% bleed padding, 16:9 widescreen. "
+                "Uniform 3px deep charcoal (#2D3444) vector outlines, flat 2-step cel-shading, 1-2-3 shape hierarchy, open central staging area with the subject clear of the frame edges with 10% bleed padding, 16:9 widescreen. "
                 "Visual rule: Empty background plate only. Zero characters, zero 3D CGI."
             ),
         },
@@ -176,7 +176,7 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
             "scene_prompt": (
                 "2D animation layout plate of a scientific drafting desk setup. "
                 "Orthographic cyan drafting placard resting flat on the studio workbench (#F8F8FA), vector HUD schematics, coordinate grid lines. "
-                "High-contrast vector illumination, uniform 3px deep charcoal (#2D3444) outlines, clean 16:9 widescreen composition bounded within coordinates X: 180 to 1740, Y: 90 to 980. "
+                "High-contrast vector illumination, uniform 3px deep charcoal (#2D3444) outlines, clean 16:9 widescreen composition with essential subjects clear of frame edges. "
                 "Visual rule: Drafting placard setup only. Zero full-screen dark navy void, zero text, zero human characters."
             ),
         },
@@ -185,7 +185,7 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
             "scene_prompt": (
                 "2D animation layout plate of a historical archival desk setup. "
                 "Framed archival document and miniature portrait resting flat on the studio workbench (#F8F8FA), clean studio illumination. "
-                "Uniform 3px deep charcoal (#2D3444) contour linework, flat 2-step cel-shading, clean 16:9 widescreen composition bounded within coordinates X: 180 to 1740, Y: 90 to 980. "
+                "Uniform 3px deep charcoal (#2D3444) contour linework, flat 2-step cel-shading, clean 16:9 widescreen composition with essential subjects clear of frame edges. "
                 "Visual rule: Archival desk placard plate only. Zero full-screen crimson wallpaper, zero characters, zero 3D CGI."
             ),
         },

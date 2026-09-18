@@ -73,7 +73,7 @@ class PipelineConfig:
 # (fix: module-level call previously raised NameError at import time).
 
 
-def get_config_value(target_key, default_val=""):
+def get_config_value(target_key: str, default_val: str = "") -> str:
     """Reads a KEY=VALUE pair from environment variables (.env), stripping accidental quotes."""
     val = os.getenv(target_key)
     if val is not None:

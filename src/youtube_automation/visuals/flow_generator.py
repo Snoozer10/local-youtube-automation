@@ -1514,13 +1514,24 @@ def _retry_gemini_call(
 # MAIN ORCHESTRATOR
 # ==========================================
 def main(run_folder: str | None = None) -> None:
+    selected = run_folder or (sys.argv[1] if len(sys.argv) > 1 else None)
+    if selected and os.path.isfile(os.path.join(selected, "episode_brief.json")):
+        from youtube_automation.production.ledger import leased_resource, resource_database
+        with leased_resource(resource_database(), "browser"):
+            return _main(selected)
+    return _main(run_folder)
+
+
+def _main(run_folder: str | None = None) -> None:
     """Main CLI execution loop for Google Flow visual generation."""
     if run_folder is not None:
         batch_queue = [run_folder]
-    elif len(sys.argv) > 1 and os.path.isdir(sys.argv[1]):
+    elif len(sys.argv) > 1:
+        if not os.path.isdir(sys.argv[1]):
+            raise ValueError("Explicit Flow run directory does not exist")
         batch_queue = [sys.argv[1]]
     else:
-        batch_queue = scan_batch_folders()
+        batch_queue = [folder for folder in scan_batch_folders() if not os.path.isfile(os.path.join(folder, "episode_brief.json"))]
     if not batch_queue:
         print("No active folders found.")
         return
@@ -1631,7 +1642,17 @@ def main(run_folder: str | None = None) -> None:
 
                     storyboard_prompts = []
 
-                    if sentences:
+                    adaptive_plan = adaptive_brief = None
+                    if os.path.exists(os.path.join(subfolder, "episode_brief.json")):
+                        from pathlib import Path
+
+                        from youtube_automation.production.briefs import browser_ask
+                        from youtube_automation.production.contracts import fingerprint
+                        from youtube_automation.production.flow import prepare_flow
+                        adaptive_plan, adaptive_brief = prepare_flow(Path(subfolder), browser_ask(gemini_page, target_planner_model))
+                        manifest = PipelineManifest.load_or_create(subfolder, fingerprint(adaptive_plan))
+                        storyboard_prompts = parse_json_prompts(prompts_file)
+                    elif sentences:
                         transcript_text = "\n".join(
                             f"[{ts}] {s}" for ts, s in zip(timestamps, sentences, strict=False)
                         )
@@ -1748,26 +1769,27 @@ def main(run_folder: str | None = None) -> None:
                         except Exception:
                             pass
 
-                    # Pre-flight character and scene builder
-                    try:
-                        setup_flow_characters_and_scenes(
-                            flow_page,
-                            subfolder=subfolder,
-                            profile_index=str(current_profile_idx),
-                        )
-                    except Exception as preset_err:
-                        print(
-                            f"  ⚠️ Character/Scene preset setup failed (continuing without "
-                            f"presets): {preset_err}"
-                        )
+                    if not adaptive_plan:
+                        # Pre-flight character and scene builder
                         try:
-                            capture_debug_state(flow_page, "char_preset_setup_fail", subfolder)
-                        except Exception:
-                            pass
-                        try:
-                            flow_page.goto(active_project_url, wait_until="domcontentloaded")
-                        except Exception:
-                            pass
+                            setup_flow_characters_and_scenes(
+                                flow_page,
+                                subfolder=subfolder,
+                                profile_index=str(current_profile_idx),
+                            )
+                        except Exception as preset_err:
+                            print(
+                                f"  ⚠️ Character/Scene preset setup failed (continuing without "
+                                f"presets): {preset_err}"
+                            )
+                            try:
+                                capture_debug_state(flow_page, "char_preset_setup_fail", subfolder)
+                            except Exception:
+                                pass
+                            try:
+                                flow_page.goto(active_project_url, wait_until="domcontentloaded")
+                            except Exception:
+                                pass
 
                     executed_generations_count = 0
                     frame_limit = int(os.environ.get("FLOW_FRAME_LIMIT", "0") or "0")
@@ -1807,9 +1829,20 @@ def main(run_folder: str | None = None) -> None:
                             occ = 1
                             image_name = f"sentence_{idx}.png"
 
+                        adaptive_shot = None
+                        if adaptive_plan:
+                            from youtube_automation.production.shots import Shot
+                            adaptive_shot = Shot.model_validate(prompt_item.raw_payload["adaptive_shot"])
+                            image_name = f"{adaptive_shot.asset_id}.png"
                         save_path = os.path.join(image_dir, image_name)
+                        if adaptive_shot:
+                            from youtube_automation.production.assets import accepted_asset
+                            cached = accepted_asset(Path(subfolder), adaptive_shot, adaptive_brief)
+                            reusable = cached is not None
+                        else:
+                            reusable = os.path.exists(save_path) and os.path.getsize(save_path) > 100
 
-                        if os.path.exists(save_path) and os.path.getsize(save_path) > 100:
+                        if reusable:
                             print(f"[SKIP] Frame {idx} ({image_name}) exists.")
                             prev_prompt_text = prompt_text
                             prev_idx = idx
@@ -1882,7 +1915,19 @@ def main(run_folder: str | None = None) -> None:
                                         except Exception:
                                             pass
 
-                                    if attach_count > 0:
+                                    if adaptive_shot:
+                                        from youtube_automation.production.flow import (
+                                            attach_exact_reference,
+                                        )
+                                        from youtube_automation.production.shots import (
+                                            generation_prompt,
+                                        )
+                                        clear_attached_prompt_chips(flow_page)
+                                        if adaptive_shot.reference_asset_id:
+                                            attach_exact_reference(flow_page, Path(subfolder), adaptive_shot.reference_asset_id)
+                                        payload_text = generation_prompt(adaptive_shot, adaptive_brief)
+                                        mode = "B" if adaptive_shot.reference_asset_id else "A"
+                                    elif attach_count > 0:
                                         raw_count_str = re.sub(r"\D", "", target_flow_count)
                                         batch_num = int(raw_count_str) if raw_count_str else 1
                                         attached = attach_previous_images_to_prompt(
@@ -1931,10 +1976,10 @@ def main(run_folder: str | None = None) -> None:
                                                 vp = raw_item.get("visual_prompt", {})
                                                 if isinstance(vp, dict):
                                                     subject_details = str(
-                                                        vp.get("subject_details", "")
+                                                        vp.get("subject") or vp.get("subject_details", "")
                                                     )
                                                     env_coords = str(
-                                                        vp.get("environment_coordinates", "")
+                                                        vp.get("setting") or vp.get("environment_coordinates", "")
                                                     )
 
                                             is_absent_subject = subject_details.upper().startswith(
@@ -1976,8 +2021,9 @@ def main(run_folder: str | None = None) -> None:
                                                         flow_page.wait_for_timeout(1000)
                                                         break
 
-                                    payload_text = enforce_arabic_in_prompt(payload_text)
-                                    payload_text = purge_subtitle_phrases(payload_text)
+                                    if not adaptive_shot:
+                                        payload_text = enforce_arabic_in_prompt(payload_text)
+                                        payload_text = purge_subtitle_phrases(payload_text)
 
                                     dismiss_blocking_flow_modals(flow_page)
                                     input_box = wait_for_flow_input_box(flow_page, timeout_seconds=15.0)
@@ -2300,6 +2346,11 @@ def main(run_folder: str | None = None) -> None:
                                                         raise Exception(
                                                             f"Stale scrape collision detected for {image_name} (hash: {file_hash[:12]}). Reloading."
                                                         )
+                                                    if adaptive_shot:
+                                                        from youtube_automation.production.assets import (
+                                                            register_asset,
+                                                        )
+                                                        register_asset(Path(subfolder), adaptive_shot, adaptive_brief, Path(current_save_path), source_url=img_locator.get_attribute("src") or "", project_url=flow_page.url)
                                                     download_attempt_success = True
                                         else:
                                             print(
@@ -2416,6 +2467,10 @@ def main(run_folder: str | None = None) -> None:
                                 f"\n[LIMIT] Reached FLOW_FRAME_LIMIT={frame_limit}. Halting test batch."
                             )
                             break
+
+                    if adaptive_plan and not failover_triggered:
+                        from youtube_automation.production.flow import verify_generated_assets
+                        verify_generated_assets(Path(subfolder), adaptive_plan, adaptive_brief)
 
                 if not failover_triggered:
                     print("\n✅ All topics processed successfully. Exiting.")

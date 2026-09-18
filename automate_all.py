@@ -1,3 +1,4 @@
+import argparse
 import html
 import json
 import os
@@ -454,7 +455,23 @@ def input_gemini_prompt(page, text):
 
 
 # Main orchestrator
-def main():
+def main(argv=None):
+    selected = list(argv or [])
+    if any(arg == "--channel-profile" or arg.startswith("--channel-profile=") for arg in selected):
+        from youtube_automation.production.ledger import leased_resource, resource_database
+        with leased_resource(resource_database(), "browser"):
+            return _main(selected)
+    return _main(selected)
+
+
+def _main(argv=None):
+    parser = argparse.ArgumentParser(description="Extract and adapt scripts; channel mode is opt-in")
+    parser.add_argument("--channel-profile", help="Explicit saved adaptive channel JSON")
+    args = parser.parse_args(argv or [])
+    channel = None
+    if args.channel_profile:
+        from youtube_automation.production.contracts import load_channel
+        channel = load_channel(args.channel_profile)
     prompt_p1, prompt_p3 = read_prompts()
 
     urls_file = "youtube_urls.txt"
@@ -512,6 +529,9 @@ def main():
 
             video_title = get_video_title(video_id)
             cleaned_title = clean_filename(video_title)
+            if channel:
+                from youtube_automation.production.contracts import fingerprint
+                cleaned_title = f"{channel.channel_id}--{video_id}--{fingerprint(channel)[:12]}"
             run_folder = os.path.join(runs_folder, cleaned_title)
             os.makedirs(run_folder, exist_ok=True)
 
@@ -529,7 +549,7 @@ def main():
             doc2_title = f"{cleaned_title} - Translation"
             doc2_path = os.path.join(run_folder, f"{doc2_title}.docx")
 
-            if os.path.exists(final_file_path) and os.path.exists(doc2_path):
+            if not channel and os.path.exists(final_file_path) and os.path.exists(doc2_path):
                 try:
                     with open(final_file_path, encoding="utf-8") as f:
                         if f.read().strip():
@@ -573,6 +593,15 @@ def main():
                 # -------------------------------------------------------------
                 # STEP 2: Paragraph Breaking (Gemini Phase 1)
                 # -------------------------------------------------------------
+                if channel:
+                    from youtube_automation.production.briefs import browser_ask, ensure_brief
+                    from youtube_automation.production.writing import write_episode
+                    ask = browser_ask(gemini_page, get_config_value("SCRIPT_TRANSLATOR_MODEL", "Pro"))
+                    brief = ensure_brief(run_folder, channel, ask)
+                    write_episode(run_folder, brief, ask)
+                    print(f"[ADAPTIVE] Complete channel-aware writing saved: {run_folder}")
+                    continue
+
                 breaked_text = ""
                 if os.path.exists(paragraphs_file_path):
                     try:
@@ -879,6 +908,8 @@ def main():
                     encoding="utf-8",
                 ) as error_file:
                     error_file.write(f"URL: {url}\nError: {ex}\n")
+                if channel:
+                    raise RuntimeError(f"Adaptive writing incomplete for {url}") from ex
                 continue
 
         print("\n=============================================")
@@ -887,4 +918,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

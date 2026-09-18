@@ -16,6 +16,10 @@ An enterprise-grade, fully autonomous multimedia pipeline that transforms a sing
 
 ---
 
+## Adaptive multi-channel production (opt-in)
+
+The new staged workflow analyzes raw scripts against an explicitly selected channel before translation, then plans narration-aligned stills and selective local overlays. It requires preview review before activating a master. See the [usage guide](tasks/adaptive-visual-usage.md), [architecture plan](tasks/adaptive-visual-plan.md), and [implementation checklist](tasks/adaptive-visual-tasks.md) for supported commands and remaining live-validation gates.
+
 ## Table of Contents
 
 - [🤔 What Is This Pipeline?](#-what-is-this-pipeline)

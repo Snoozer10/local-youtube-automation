@@ -297,6 +297,8 @@ def process_folder(folder: str, step_timeout: int = 7200) -> bool:
 
     Returns True if completed successfully or skipped, False on failure.
     """
+    if os.path.isfile(os.path.join(folder, "episode_brief.json")):
+        raise ValueError("Adaptive runs require adaptive_production.py stages and explicit editorial review")
     video_title = os.path.basename(os.path.normpath(folder))
     state = get_pipeline_state(folder)
 
@@ -440,7 +442,7 @@ def main():
         if os.path.isdir(os.path.join(runs_dir, d))
     ]
 
-    valid_folders = [f for f in folders if os.path.exists(os.path.join(f, "final_output.txt"))]
+    valid_folders = [f for f in folders if os.path.exists(os.path.join(f, "final_output.txt")) and not os.path.isfile(os.path.join(f, "episode_brief.json"))]
 
     if not valid_folders:
         print("No valid video folders found to process. Exiting.")

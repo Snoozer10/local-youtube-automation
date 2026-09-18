@@ -85,11 +85,11 @@ NICHE_PRESETS: dict[str, NichePreset] = {
 }
 
 SPATIAL_LAYOUT_PRESETS: dict[str, str] = {
-    "CENTERED_HERO": "centered focal composition strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 920, leaving 10% peripheral bleed padding",
-    "LEFT_TO_RIGHT_FLOW": "dynamic directional composition with input catalyst on screen-left (X: 180 to 680), mechanical process in center, and output outcome on screen-right (X: 1240 to 1740)",
+    "CENTERED_HERO": "centered focal composition with the subject clear of the frame edges, leaving 10% peripheral bleed padding",
+    "LEFT_TO_RIGHT_FLOW": "dynamic directional composition with input catalyst on screen-left, mechanical process in center, and output outcome on screen-right",
     "SPLIT_COMPARATIVE": "split-screen dual composition with bilateral comparative panels on screen-left and screen-right divided by a clean vertical baseline",
-    "RULE_OF_THIRDS_LEFT": "asymmetric composition anchored on the left third (X: 200 to 750), balanced by data telemetry in the opposite two-thirds",
-    "RULE_OF_THIRDS_RIGHT": "asymmetric composition anchored on the right third (X: 1150 to 1700), balanced by conceptual schematics on the left",
+    "RULE_OF_THIRDS_LEFT": "asymmetric composition anchored on the left third, balanced by data telemetry in the opposite two-thirds",
+    "RULE_OF_THIRDS_RIGHT": "asymmetric composition anchored on the right third, balanced by conceptual schematics on the left",
 }
 
 TELEMETRY_PRESETS: dict[str, str] = {

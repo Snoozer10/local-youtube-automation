@@ -124,11 +124,13 @@ def main():
     print("=============================================")
 
     # 1. Locate the latest run directory dynamically
-    latest_run = get_latest_run_folder()
+    latest_run = sys.argv[1] if len(sys.argv) > 1 else get_latest_run_folder()
     if not latest_run:
         print("Error: No active run folders found in 'youtube_runs/'.")
         sys.exit(1)
 
+    if not os.path.isdir(latest_run):
+        raise ValueError("Explicit stitching run directory does not exist")
     print(f"Target Video Folder: '{latest_run}'")
 
     # 2. Determine target chapters directory (Polished Chapters vs Raw Voice Chapters fallback)

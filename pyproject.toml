@@ -54,6 +54,7 @@ dev = [
 
 [tool.setuptools]
 py-modules = [
+    "adaptive_production",
     "run_agency",
     "automate_all",
     "refine_script",

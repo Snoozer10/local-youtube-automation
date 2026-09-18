@@ -79,6 +79,9 @@ Default section order:
 
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
+- Use `GEMINI.md` as current project guidance where older instructions here differ.
+- Adaptive production selects a saved channel, analyzes raw scripts before translation, and uses stills plus selective local animation. Track progress in `tasks/adaptive-visual-tasks.md`.
+
 ## Ownership & Domain Boundaries
 
 - `src/youtube_automation/`: Authoritative modular domain packages conforming to PEP 517/518:
@@ -91,6 +94,7 @@ When the user requests a durable behavior change, record it here or in the relev
   - `browser`: Playwright Chrome DevTools Protocol (CDP) client loopback binding (`127.0.0.1:9222`), tab lifecycle hygiene, and Gemini web UI controllers (`cdp_client.py`, `gemini_utils.py`).
   - `visuals`: Google Flow image generation, continuity character asset studio, base64 extraction, and OCR text collision gates (`flow_generator.py`, `asset_studio.py`, `image_extractor.py`, `text_gate.py`).
   - `video`: FFmpeg hardware video compositing (Intel QSV / NVENC / CPU fallback), Ken Burns dynamic smoothstep pan-and-zoom transformation, filtergraph generation, and ASS subtitle burning (`compiler.py`, `encoder.py`, `ken_burns.py`, `filter_graph.py`, `subtitles.py`).
+  - `production`: Opt-in adaptive channel briefs, editorial shot plans, preserved asset receipts, fenced resource leases, local rendering and explicit preview approval. See its child contract.
   - `orchestrator`: Pipeline stage orchestration and batch execution coordination.
   - Note on visual engines:
     - `flow_image_generator.py` (and `src/youtube_automation/visuals/flow_generator.py`) is the primary visual engine. Prompts are governed by `roadmap_orchestrator.py`, `prompt_planner.py`, and `asset_studio.py` (`FLOW_ASSET_PRESETS`).
@@ -107,7 +111,8 @@ When the user requests a durable behavior change, record it here or in the relev
 
 ## Child DOX Index
 
-- No child AGENTS.md files are currently required; root `AGENTS.md` serves as the authoritative DOX rail for the unified repository tree.
+- `tasks/AGENTS.md`: implementation plans, checklists and verification evidence.
+- `src/youtube_automation/production/AGENTS.md`: adaptive channel/episode contracts and editorial production.
 - Domain scopes governed directly by root contracts:
   - `src/youtube_automation/` (`core`, `audio`, `speech`, `timeline`, `nlp`, `prompts`, `browser`, `visuals`, `video`, `orchestrator`)
   - `exercises/` (pedagogy scaffold & pre-flight diagnostic drills)

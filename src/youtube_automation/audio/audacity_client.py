@@ -375,6 +375,9 @@ def sync_polished_audio_manifest(latest_run, silence_padding_sec=0.300):
 
 
 def main():
+    latest_run = sys.argv[1] if len(sys.argv) > 1 else get_latest_run_folder()
+    if not latest_run or not os.path.isdir(latest_run):
+        raise ValueError("Audio processing requires an existing run directory")
     print("=============================================")
     print("Starting Autonomous Audacity Audio Polishing")
     print("=============================================")
@@ -403,10 +406,6 @@ def main():
         print("[WARNING] No preset file found! Audacity will rely on default internal macros.")
 
     # 1. Locate Run Folder
-    latest_run = get_latest_run_folder()
-    if not latest_run:
-        print("Error: No active run folder detected.")
-        sys.exit(1)
 
     print(f"Target Video Folder: {latest_run}")
 

@@ -2106,6 +2106,11 @@ def main(run_folder: str | list | None = None):
     print(f"Target Video Folder: {latest_run}")
 
     config = load_video_config("video_config.txt")
+    if os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
+        from youtube_automation.production.render import render_plan
+        print(render_plan(latest_run, config))
+        return
+
     anim_enabled = config["ENABLE_ANIMATIONS"]
     subs_enabled = config["ENABLE_SUBTITLES"]
 

@@ -1385,10 +1385,18 @@ def main():
     # Fetch target LLM model for Tab 2
     target_llm_model = get_config_value("VOICE_GENERATOR_MODEL", "Flash-Lite")
 
-    latest_run = get_latest_run_folder()
+    latest_run = sys.argv[1] if len(sys.argv) > 1 else get_latest_run_folder()
     if not latest_run:
         print("Error: No active run folders found in 'youtube_runs/'.")
         sys.exit(1)
+
+    adaptive_brief = None
+    if os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
+        from youtube_automation.production.contracts import load_brief
+        from youtube_automation.production.writing import verify_written_episode
+        verify_written_episode(latest_run)
+        adaptive_brief = load_brief(latest_run)
+        voice_options["voice"] = adaptive_brief.channel.voice
 
     # File selection logic for transcript input
     refined_primary = os.path.join(latest_run, "refined_script.txt")
@@ -1430,6 +1438,15 @@ def main():
 
     with open(prompt_path, encoding="utf-8") as f:
         tts_prompt = f.read().strip()
+
+    if adaptive_brief:
+        tts_prompt = (
+            "Read the supplied script exactly, as one narrator, without adding commentary. "
+            f"Language: {adaptive_brief.channel.language}; dialect: {adaptive_brief.channel.dialect}; "
+            f"delivery: {adaptive_brief.channel.tone}. Preserve names, numbers and uncertainty."
+        )
+        if voice_config.get("voice") != adaptive_brief.channel.voice:
+            raise ValueError("Cached voice manifest conflicts with selected channel voice")
 
     with open(transcript_path, encoding="utf-8") as f:
         transcript_text = f.read().strip()
