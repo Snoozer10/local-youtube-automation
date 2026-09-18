@@ -1,0 +1,85 @@
+"""Prompts domain package: Pydantic schemas, Socratic curation, and validation."""
+
+from youtube_automation.prompts.niche_engine import (
+    NICHE_PRESETS,
+    SPATIAL_LAYOUT_PRESETS,
+    TELEMETRY_PRESETS,
+    ChannelProfile,
+    NichePreset,
+    get_niche_preset,
+    load_channel_profile,
+)
+from youtube_automation.prompts.notebooklm_client import NotebookLMClient
+from youtube_automation.prompts.notebooklm_discover import (
+    DEFAULT_RESEARCH_QUERIES,
+    NotebookLMDiscoverEngine,
+)
+from youtube_automation.prompts.prompt_enhancer import (
+    SOCRATIC_CAMERA_DNA,
+    SOCRATIC_LIGHTING_DNA,
+    SOCRATIC_NEGATIVE_PROMPT,
+    SOCRATIC_STYLE_DNA,
+    enhance_diffusion_prompt,
+    enhance_frame_item,
+    enhance_visual_prompt,
+    transform_prompts_file,
+    transform_roadmap_jsonl,
+)
+from youtube_automation.prompts.research_cache import ResearchCache
+from youtube_automation.prompts.socratic_engine import (
+    CuratedVisualPromptPayload,
+    EpistemicClass,
+    LayoutClassification,
+    ResearchClusterDossier,
+    SemioticTopology,
+    SocraticCurationEngine,
+    SocraticDialogueTurn,
+)
+from youtube_automation.prompts.validator import (
+    STRICT_NEGATIVE_PROMPT,
+    FrameItem,
+    SequenceMetadata,
+    VisualPrompt,
+    enforce_arabic_in_prompt,
+    flatten_visual_prompt_to_diffusion_text,
+    purge_subtitle_phrases,
+    verify_pipeline_integrity,
+)
+
+__all__ = [
+    "ChannelProfile",
+    "CuratedVisualPromptPayload",
+    "DEFAULT_RESEARCH_QUERIES",
+    "EpistemicClass",
+    "FrameItem",
+    "LayoutClassification",
+    "NICHE_PRESETS",
+    "NichePreset",
+    "NotebookLMClient",
+    "NotebookLMDiscoverEngine",
+    "ResearchCache",
+    "ResearchClusterDossier",
+    "SOCRATIC_CAMERA_DNA",
+    "SOCRATIC_LIGHTING_DNA",
+    "SOCRATIC_NEGATIVE_PROMPT",
+    "SOCRATIC_STYLE_DNA",
+    "SPATIAL_LAYOUT_PRESETS",
+    "SemioticTopology",
+    "SocraticCurationEngine",
+    "SocraticDialogueTurn",
+    "STRICT_NEGATIVE_PROMPT",
+    "SequenceMetadata",
+    "TELEMETRY_PRESETS",
+    "VisualPrompt",
+    "enforce_arabic_in_prompt",
+    "enhance_diffusion_prompt",
+    "enhance_frame_item",
+    "enhance_visual_prompt",
+    "flatten_visual_prompt_to_diffusion_text",
+    "get_niche_preset",
+    "load_channel_profile",
+    "purge_subtitle_phrases",
+    "transform_prompts_file",
+    "transform_roadmap_jsonl",
+    "verify_pipeline_integrity",
+]

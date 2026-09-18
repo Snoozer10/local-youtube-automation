@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from typing import Any
 
 
 def fix_arabic_srt(input_path, output_path):
@@ -27,17 +28,21 @@ def build_subtitle_style_string(config: dict) -> str:
 
 
 def build_dynamic_ass_subtitles(
-    raw_transcript_path: str, output_ass_path: str, config: dict, total_duration: float = 0.0
+    raw_transcript_path: str,
+    output_ass_path: str,
+    config: dict,
+    total_duration: float = 0.0,
+    scene_graph: Any = None,
 ):
     """
     Generates broadcast-grade Advanced SubStation Alpha (.ass) subtitles with
-    dynamic active-word color highlights and Arabic typography shaping.
+    dynamic active-word color highlights and Arabic typography shaping (Cairo / Tajawal).
     """
     if not os.path.exists(raw_transcript_path):
         return None
 
-    font_name = config.get("SUB_FONT_NAME", "Arial")
-    font_size = int(config.get("SUB_FONT_SIZE", 32))
+    font_name = config.get("SUB_FONT_NAME", "Cairo, Tajawal, Segoe UI, Arial")
+    font_size = int(config.get("SUB_FONT_SIZE", 34))
     # ASS uses BGR hex format (&H00BBGGRR)
     primary_color = "&H00FFFFFF"  # Crisp White
     highlight_color = "&H003EB0FF"  # Warm Amber (#E09F3E in BGR)
@@ -54,6 +59,8 @@ ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,{font_name},{font_size},{primary_color},&H000000FF,{outline_color},&H80000000,1,0,0,0,100,100,0,0,1,3.8,2.0,2,60,60,{margin_v},1
+Style: TopicTitle,Cairo,54,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,4.0,2.0,8,60,60,100,1
+Style: CalloutBadge,Tajawal,40,&H00E09F3E,&H000000FF,&H001E1E24,&H80000000,1,0,0,0,100,100,0,0,1,3.0,1.5,5,40,40,40,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

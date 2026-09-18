@@ -13,7 +13,6 @@ from typing import Any
 
 from gemini_controller import (
     ensure_persistent_gemini_session,
-    get_session_reset_threshold,
     inject_prompt_via_cdp,
     jitter_delay,
     log,
@@ -46,21 +45,38 @@ _MIN_LEGACY_ROADMAP_CHARS = 150
 _STUCK_PLACEHOLDERS = frozenset({"analyzing", "thinking"})
 _INDEX_DIGITS_RE = re.compile(r"\d+")
 
-_COLUMN_SEMANTICS = "\n".join(
-    [
-        "COLUMN SEMANTICS:",
-        "Sequence Type options: STANDALONE | PROGRESSIVE_BUILD_SET | REACTION_PUNCHLINE_SET | "
-        "HISTORICAL_PARODY | SCIENTIFIC_BLUEPRINT | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM "
-        "| SKEPTIC_SPLIT",
-        "Layout Classification options: AHWA_STUDIO | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM_DESK "
-        "| RETRO_BLUEPRINT | HISTORICAL_MUSEUM | ISOLATED_WHITE",
-        "Camera Specification options: zoom_in | zoom_out | pan_left | pan_right | tilt_up "
-        "| tilt_down | static",
-        "Style: clean 2D vector animation, balanced 16:9 staging with subject centered; never "
-        "write subtitle/margin notes; Color & Selective Arabic Text holds Arabic ONLY for key "
-        "punchlines or academic seals, otherwise NONE, zero Latin words.",
-    ]
-)
+def get_column_semantics(profile: Any | None = None) -> str:
+    """Derives column semantics and style instructions dynamically from channel profile and niche preset."""
+    try:
+        from youtube_automation.prompts.niche_engine import get_niche_preset
+        niche_preset = get_niche_preset(getattr(profile, "niche", "GENERAL_EXPLAINER") if profile else "GENERAL_EXPLAINER")
+    except Exception:
+        niche_preset = None
+
+    niche_name = niche_preset.name if niche_preset else "General Educational Explainer"
+    style_desc = (
+        f"Style: {niche_name} visual explainer, clean 2D vector animation staging, flat 2-step cel-shading, zero gradients. "
+        "Visual Concept & Composition MUST be written in English. "
+        "Color & Selective Arabic Text holds Arabic ONLY for key punchlines, otherwise NONE, zero Latin words."
+    )
+
+    return "\n".join(
+        [
+            "COLUMN SEMANTICS:",
+            "Sequence Type options: STANDALONE | PROGRESSIVE_BUILD_SET | PROGRESSIVE_BUILD "
+            "| COMPARATIVE_SPLIT | PUNCHLINE_STANDALONE | EVIDENTIARY_ARCHIVAL | REACTION_PUNCHLINE_SET "
+            "| HISTORICAL_PARODY | SCIENTIFIC_BLUEPRINT | ARCHIVAL_DOSSIER | COMPARATIVE_DIAGRAM "
+            "| SKEPTIC_SPLIT | EXPLAINER_DECK | PRESENTATION_SLIDE",
+            "Layout Classification options: KEYNOTE_SLATE | EXPLAINER_DECK | COMPARATIVE_DIAGRAM_DESK "
+            "| RETRO_BLUEPRINT | HISTORICAL_MUSEUM | ISOLATED_WHITE | HOST_STUDIO_DESK | AHWA_STUDIO | ARCHIVAL_DOSSIER",
+            "Camera Specification options: zoom_in | zoom_out | pan_left | pan_right | tilt_up "
+            "| tilt_down | static",
+            style_desc,
+        ]
+    )
+
+
+_COLUMN_SEMANTICS = get_column_semantics(None)
 
 
 @dataclass(frozen=True)
@@ -113,9 +129,18 @@ def split_transcript_into_windows(sentences: list[str], window_size: int = 25) -
 
 
 def parse_markdown_table_line(line: str) -> list[str]:
-    """Resiliently split one markdown table row; [] for separators and non-row lines."""
+    """Resiliently split one table row (markdown pipe-separated or rendered HTML tab-separated)."""
     stripped = line.strip()
-    if not stripped.startswith("|") or "---" in stripped:
+    if "---" in stripped:
+        return []
+    if "\t" in stripped:
+        cells = [cell.strip() for cell in stripped.split("\t")]
+        while cells and cells[0] == "":
+            cells.pop(0)
+        while cells and cells[-1] == "":
+            cells.pop()
+        return cells
+    if not stripped.startswith("|"):
         return []
     cells = [cell.strip() for cell in stripped.split("|")]
     while cells and cells[0] == "":
@@ -131,14 +156,14 @@ def parse_roadmap_rows(md_text: str) -> list[RoadmapRow]:
     lowered_columns = [column.lower() for column in ROADMAP_COLUMNS]
     # Debug: log raw response stats
     total_lines = len(md_text.splitlines())
-    pipe_lines = [l for l in md_text.splitlines() if l.strip().startswith("|")]
-    log(f"[roadmap] parse_roadmap_rows: total_lines={total_lines} pipe_lines={len(pipe_lines)} md_len={len(md_text)}")
+    table_lines = [line for line in md_text.splitlines() if line.strip().startswith("|") or "\t" in line]
+    log(f"[roadmap] parse_roadmap_rows: total_lines={total_lines} table_lines={len(table_lines)} md_len={len(md_text)}")
     for line in md_text.splitlines():
         cells = parse_markdown_table_line(line)
         if not cells:
             continue
         if [cell.lower() for cell in cells[: len(ROADMAP_COLUMNS)]] == lowered_columns:
-            log(f"[roadmap] header row detected, skipping")
+            log("[roadmap] header row detected, skipping")
             continue
         if len(cells) < len(ROADMAP_COLUMNS):
             # FIX: accept 7 columns by padding missing Color column (common Gemini truncation)
@@ -158,25 +183,47 @@ def parse_roadmap_rows(md_text: str) -> list[RoadmapRow]:
         # Debug per-row success
         log(f"[roadmap] parsed row index={row.index} ts={row.timestamp} seq={row.sequence_type} layout={row.layout_classification}")
         by_index[row.index] = row
-    log(f"[roadmap] parse_roadmap_rows: parsed {len(by_index)} unique rows from {len(pipe_lines)} pipe lines")
+    log(f"[roadmap] parse_roadmap_rows: parsed {len(by_index)} unique rows from {len(table_lines)} table lines")
     return [by_index[index] for index in sorted(by_index)]
 
 
 def build_page_prompt(
-    window: list[str], start_idx: int, end_idx: int, anchor_row: RoadmapRow | None
+    window: list[str],
+    start_idx: int,
+    end_idx: int,
+    anchor_row: RoadmapRow | None = None,
+    overlap_rows: list[RoadmapRow] | None = None,
+    profile: Any | None = None,
 ) -> str:
     """Build the single-turn page envelope per roadmap spec section 2.1."""
+    try:
+        from youtube_automation.prompts.niche_engine import get_niche_preset
+        niche_preset = get_niche_preset(getattr(profile, "niche", "GENERAL_EXPLAINER") if profile else "GENERAL_EXPLAINER")
+    except Exception:
+        niche_preset = None
+
+    channel_title = getattr(profile, "channel_name", "VISUAL ROADMAP ARCHITECT")
+    niche_title = niche_preset.name if niche_preset else "General Educational Explainer"
+
     lines: list[str] = [
-        "[SYSTEM DIRECTIVE: VISUAL ROADMAP ARCHITECT]",
+        f"[SYSTEM DIRECTIVE: {channel_title}]",
+        f"Educational Niche: {niche_title}",
         f"Generate roadmap entries ONLY for Script Indices {start_idx} through {end_idx}.",
     ]
     if anchor_row is not None:
         lines.append(f'CONTINUITY ANCHOR (Index {start_idx - 1}): "{anchor_row.visual_concept}"')
+    if overlap_rows:
+        lines.append("")
+        lines.append("[PREVIOUS CONTEXT BUFFER (Last 2 Spans for Boundary Continuity)]:")
+        for orow in overlap_rows:
+            lines.append(
+                f"- Index {orow.index} ({orow.sequence_type}): \"{orow.visual_concept}\""
+            )
     lines.append("")
     lines.append(
         f"Strict Constraint: Output MUST start at Index {start_idx} and end at Index {end_idx}."
     )
-    if anchor_row is not None:
+    if anchor_row is not None or overlap_rows:
         lines.append(
             f"Output format: Raw Markdown Table rows only, do not repeat headers: {_HEADER_ROW}"
         )
@@ -185,7 +232,19 @@ def build_page_prompt(
             f"Output format: Raw Markdown Table rows only with this exact header: {_HEADER_ROW}"
         )
     lines.append("")
-    lines.append(_COLUMN_SEMANTICS)
+    lines.append(get_column_semantics(profile))
+    lines.append("")
+    lines.append("DIRECTING RULES:")
+    lines.append("- Group related sentences into 2 to 4 beat continuous animation sequences: first beat PROGRESSIVE_BUILD_SET, subsequent beats PROGRESSIVE_BUILD maintaining the exact same subject and scene.")
+    lines.append("- Dynamic 5-Shot Scale: Cycle camera framing (EWS -> MS -> ECU -> ISO -> CU).")
+
+    host_mode = getattr(profile, "host_mode", "CUSTOM_AVATAR") if profile else "CUSTOM_AVATAR"
+    if host_mode == "NONE":
+        lines.append("- Host Staging: Host avatar is DISABLED (0% host). Dedicate 100% of rows to subject-centric diagrams.")
+    else:
+        lines.append("- Host Staging: Use host presenter in at most 20-30% of rows (for opening hooks and major pivots). Dedicate 70-80% to subject-centric diagrams.")
+
+    lines.append("- Visual Concept & Composition MUST be written strictly in ENGLISH. Color & Selective Arabic Text holds Arabic ONLY for key punchlines, otherwise NONE.")
     lines.append("")
     lines.append("SCRIPT LINES:")
     for offset, sentence in enumerate(window):
@@ -253,12 +312,20 @@ def generate_master_roadmap(
     window_size: int = 25,
     planner_model: str = "Flash-Lite",
     max_page_repairs: int = 2,
+    profile: Any | None = None,
 ) -> list[RoadmapRow]:
     """Generate the full roadmap page-by-page with per-page checkpointed persistence."""
     folder_path = Path(folder)
     total = len(sentences)
     if total == 0:
         raise RuntimeError("Cannot generate a roadmap for an empty transcript.")
+
+    if profile is None:
+        try:
+            from youtube_automation.prompts.niche_engine import load_channel_profile
+            profile = load_channel_profile(str(folder_path))
+        except Exception:
+            profile = None
 
     manifest.set_roadmap_totals(total)
     manifest.set_roadmap_status(PhaseStatus.IN_PROGRESS)
@@ -267,6 +334,7 @@ def generate_master_roadmap(
     windows = split_transcript_into_windows(sentences, window_size)
     collected: dict[int, RoadmapRow] = {}
     previous_last: RoadmapRow | None = None
+    previous_overlap: list[RoadmapRow] = []
 
     jsonl_path = folder_path / ROADMAP_JSONL_FILENAME
     if jsonl_path.exists():
@@ -280,6 +348,8 @@ def generate_master_roadmap(
         expected_indices = set(range(start_idx, end_idx + 1))
         if expected_indices.issubset(collected.keys()):
             previous_last = collected[end_idx]
+            prev_indices = sorted([idx for idx in collected.keys() if idx <= end_idx])
+            previous_overlap = [collected[idx] for idx in prev_indices[-2:]]
             manifest.mark_roadmap_page_complete(page_number, end_idx)
             log(
                 f"[roadmap] page {page_number}/{len(windows)} reused from checkpoint "
@@ -295,10 +365,14 @@ def generate_master_roadmap(
             previous_last,
             planner_model,
             max_page_repairs,
+            overlap_rows=previous_overlap if previous_overlap else None,
+            profile=profile,
         )
         for row in page_rows:
             collected[row.index] = row
         previous_last = page_rows[-1]
+        prev_indices = sorted(collected.keys())
+        previous_overlap = [collected[idx] for idx in prev_indices[-2:]]
         _atomic_rewrite_files(folder_path, sorted(collected.values(), key=lambda item: item.index))
         manifest.mark_roadmap_page_complete(page_number, end_idx)
         manifest.save()
@@ -435,9 +509,13 @@ def _generate_page(
     anchor_row: RoadmapRow | None,
     planner_model: str,
     max_page_repairs: int,
+    overlap_rows: list[RoadmapRow] | None = None,
+    profile: Any | None = None,
 ) -> list[RoadmapRow]:
     span = f"{start_idx}-{end_idx}"
-    payload = build_page_prompt(window, start_idx, end_idx, anchor_row)
+    payload = build_page_prompt(
+        window, start_idx, end_idx, anchor_row, overlap_rows=overlap_rows, profile=profile
+    )
     # Session persistence: reuse chat within threshold, only new chat every N lines
     if not ensure_persistent_gemini_session(gemini_page, start_idx, planner_model):
         raise RuntimeError(f"[roadmap] failed to ensure persistent session for page {span}.")
@@ -479,28 +557,22 @@ def _generate_page(
         # Final lenient salvage: try to extract any 7+ cell rows that were skipped, pad and accept
         log(f"[roadmap] page {span} exhausted after {repairs_used} repairs; attempting lenient salvage for {missing}")
         # Dump raw for offline debug
-        try:
-            from pathlib import Path as _P
-            import json as _js, tempfile as _tf, os as _os
-            # Find folder from manifest if available? Use current folder via manifest path parent
-            # Fallback: log raw to console for now
-            log(f"[roadmap] salvage raw tail for {span}: {response[-1000:]!r}")
-        except Exception:
-            pass
+        log(f"[roadmap] salvage raw tail for {span}: {response[-1000:]!r}")
         # If still missing after salvage, raise but do NOT trigger outer new-chat loop for minor 1-2 missing
         # Instead, try to synthesize missing rows from anchor or script lines
         if len(missing) <= 2 and len(merged) >= len(expected_indices) - 2:
             log(f"[roadmap] page {span} minor missing {missing}, will pad with defaults to avoid new-chat loop")
             for idx in missing:
                 # Synthesize minimal row from anchor or defaults
+                fallback_layout = "HOST_STUDIO_DESK" if getattr(profile, "host_mode", "CUSTOM_AVATAR") != "NONE" else "KEYNOTE_SLATE"
                 fallback = RoadmapRow(
                     index=idx,
                     timestamp=f"[{idx:02d}:00]",
                     script_line=f"Index {idx} (fallback)",
                     sequence_type="STANDALONE",
-                    layout_classification="AHWA_STUDIO",
+                    layout_classification=fallback_layout,
                     camera_specification="static",
-                    visual_concept="Fallback: Host in studio (auto-padded due to parse miss)",
+                    visual_concept="Fallback: Educational diagram plate (auto-padded due to parse miss)",
                     color_and_arabic_text="NONE",
                 )
                 merged[idx] = fallback
@@ -511,3 +583,127 @@ def _generate_page(
                 f"unresolved indices: {missing}. Raw preview: {response[:500]!r}"
             )
     return [merged[index] for index in sorted(merged)]
+
+
+def build_scene_graph_from_roadmap(
+    rows: list[RoadmapRow],
+    timeline_path_or_dict: str | Path | dict[str, Any],
+    video_title: str = "Video Storyboard",
+) -> Any:
+    """Build a Pydantic SceneGraph from roadmap rows and timeline spans with bijective sync."""
+    from src.youtube_automation.timeline.scene_graph import MacroScene, SceneBeat, SceneGraph
+
+    if isinstance(timeline_path_or_dict, (str, Path)):
+        timeline_data = json.loads(Path(timeline_path_or_dict).read_text(encoding="utf-8"))
+    else:
+        timeline_data = timeline_path_or_dict
+
+    spans = timeline_data.get("spans", [])
+    spans_by_idx = {s["index"]: s for s in spans}
+
+    sorted_rows = sorted(rows, key=lambda r: r.index)
+    total_spans = len(sorted_rows)
+
+    def _map_archetype(seq: str) -> str:
+        seq_upper = seq.upper()
+        if "PROGRESSIVE" in seq_upper or "BUILD" in seq_upper:
+            return "PROGRESSIVE_BUILD"
+        if "COMPARATIVE" in seq_upper or "SPLIT" in seq_upper or "SKEPTIC" in seq_upper:
+            return "COMPARATIVE_SPLIT"
+        if (
+            "ARCHIVAL" in seq_upper
+            or "BLUEPRINT" in seq_upper
+            or "EVIDENTIARY" in seq_upper
+            or "HISTORICAL" in seq_upper
+        ):
+            return "EVIDENTIARY_ARCHIVAL"
+        return "PUNCHLINE_STANDALONE"
+
+    scenes: list[MacroScene] = []
+    current_beats: list[SceneBeat] = []
+    current_archetype: str | None = None
+    current_anchor: str = ""
+    scene_counter = 1
+
+    for row in sorted_rows:
+        span_idx = row.index - 1 if sorted_rows[0].index == 1 else row.index
+        span = spans_by_idx.get(span_idx, {})
+        duration = float(span.get("duration", 3.0))
+        timestamp = row.timestamp or f"{span.get('start', 0.0):.2f}"
+
+        arch = _map_archetype(row.sequence_type)
+        is_new_scene = False
+        if current_archetype is None:
+            is_new_scene = True
+        elif arch != current_archetype and arch != "PROGRESSIVE_BUILD":
+            is_new_scene = True
+        elif len(current_beats) >= 6:
+            is_new_scene = True
+
+        if is_new_scene and current_beats:
+            scenes.append(
+                MacroScene(
+                    scene_id=f"scene_{scene_counter:03d}",
+                    domain_niche="Science & Epistemology",
+                    scene_archetype=current_archetype,  # type: ignore
+                    chromatic_domain="TECHNICAL_SLATE",
+                    start_timestamp=current_beats[0].timestamp,
+                    end_timestamp=current_beats[-1].timestamp,
+                    continuity_anchor=current_anchor,
+                    camera_rig="orthographic flat 2D projection, fixed perspective",
+                    beats=current_beats,
+                )
+            )
+            scene_counter += 1
+            current_beats = []
+
+        if not current_beats:
+            current_archetype = arch
+            current_anchor = row.visual_concept
+
+        overlay_text = (
+            row.color_and_arabic_text
+            if row.color_and_arabic_text not in ("NONE", "", "none")
+            else None
+        )
+        beat = SceneBeat(
+            beat_index=len(current_beats) + 1,
+            timeline_span_index=span_idx,
+            timestamp=timestamp,
+            duration_seconds=duration,
+            script_line=row.script_line,
+            visual_delta=row.visual_concept,
+            spatial_direction="centered",
+            master_setup_prompt=row.visual_concept,
+            surgical_delta_prompt=(
+                f"In the attached scene, maintain identical background, desk, and lighting. "
+                f"Add {row.visual_concept} centered."
+            ),
+            arabic_overlay_text=overlay_text,
+            overlay_type="TITLE_CARD" if overlay_text else None,
+            sha256_hash=None,
+            render_status="PENDING",
+        )
+        current_beats.append(beat)
+
+    if current_beats and current_archetype:
+        scenes.append(
+            MacroScene(
+                scene_id=f"scene_{scene_counter:03d}",
+                domain_niche="Science & Epistemology",
+                scene_archetype=current_archetype,  # type: ignore
+                chromatic_domain="TECHNICAL_SLATE",
+                start_timestamp=current_beats[0].timestamp,
+                end_timestamp=current_beats[-1].timestamp,
+                continuity_anchor=current_anchor,
+                camera_rig="orthographic flat 2D projection, fixed perspective",
+                beats=current_beats,
+            )
+        )
+
+    return SceneGraph(
+        video_title=video_title,
+        total_scenes=len(scenes),
+        total_spans=total_spans,
+        scenes=scenes,
+    )

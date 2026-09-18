@@ -41,8 +41,9 @@ _LATIN_LETTER_PATTERN = re.compile(r"[A-Za-z]")
 
 STRICT_NEGATIVE_PROMPT = (
     "no text, no subtitles, no letters, no watermark, no signature, no caption, "
-    "no typography, no calligraphy, no vector, no cel-shading, no 3px, "
-    "no burned-in subtitles, no lower thirds, no on-screen text"
+    "no typography, no calligraphy, "
+    "no burned-in subtitles, no lower thirds, no on-screen text, "
+    "no 24mm lens, no wide-angle lens, no fisheye, no barrel distortion, no keystone distortion"
 )
 
 
@@ -119,7 +120,7 @@ def purge_subtitle_phrases(text: str) -> str:
     return " ".join(text.split()).strip(" ,.-")
 
 
-def flatten_visual_prompt_to_diffusion_text(vp: Any) -> str:
+def flatten_visual_prompt_to_diffusion_text(vp: Any, sequence_type: str = "STANDALONE") -> str:
     """
     Transforms a structured visual_prompt dictionary into an elevated,
     high-salience, production-grade diffusion prompt for Google Flow / Imagen 3.
@@ -180,12 +181,18 @@ def flatten_visual_prompt_to_diffusion_text(vp: Any) -> str:
         prompt_parts.append(f"Scene Setting: {env.rstrip('.')}.")
 
     # 5. Clean Composition (Strictly textless framing with preset default)
-    if layout:
-        prompt_parts.append(f"Composition: {layout.rstrip('.')}.")
+    if sequence_type == "EXPLAINER_DECK":
+        if layout:
+            prompt_parts.append(f"Composition: {layout.rstrip('.')}. Clean presentation layout, typography callouts positioned in top/middle.")
+        else:
+            prompt_parts.append("Composition: Clean presentation layout, balanced 16:9 widescreen framing, typography callouts positioned in top/middle.")
     else:
-        prompt_parts.append(
-            "Composition: Balanced 16:9 widescreen framing, sharp central subject focus."
-        )
+        if layout:
+            prompt_parts.append(f"Composition: {layout.rstrip('.')}.")
+        else:
+            prompt_parts.append(
+                "Composition: Balanced 16:9 widescreen framing, sharp central subject focus."
+            )
 
     # 6. Lighting & Chromatic Palette
     if accent:
@@ -226,10 +233,11 @@ def flatten_visual_prompt_to_diffusion_text(vp: Any) -> str:
         )
 
     # Deterministic Negative Prompt Injection (ADR 0003 & Spec #12)
+    deck_negative = ", no text in lower-third, no burned subtitles, no bottom captions" if sequence_type == "EXPLAINER_DECK" else ""
     if user_negative:
-        combined_negative = f"{user_negative}, {STRICT_NEGATIVE_PROMPT}"
+        combined_negative = f"{user_negative}, {STRICT_NEGATIVE_PROMPT}{deck_negative}"
     else:
-        combined_negative = STRICT_NEGATIVE_PROMPT
+        combined_negative = f"{STRICT_NEGATIVE_PROMPT}{deck_negative}"
     prompt_parts.append(f"Negative Prompt: {combined_negative}.")
 
     return " ".join(prompt_parts)
@@ -400,8 +408,9 @@ def _auto_clean_item(item: dict[str, Any]) -> None:
             if "marginalia" not in cleaned.lower() and "margins of the" not in cleaned.lower():
                 # Remove stray safe-margin remnants that purge didn't catch
                 import re as _re2
-                cleaned = _re2.sub(r"(?i)\b\d+%\s*bottom\s*safe\s*margin\b[^.]*", "", cleaned)
-                cleaned = _re2.sub(r"(?i)\bsafe\s*margin\b", "", cleaned)
+                cleaned = _re2.sub(r"(?i)\b\d+%\s*bottom\s*safe(?:ty)?\s*margin\b[^.]*", "", cleaned)
+                cleaned = _re2.sub(r"(?i)\bsafe(?:ty)?\s*margin\b", "", cleaned)
+
             visual_prompt[key] = " ".join(cleaned.split()).strip(" ,.-")
     overlay = visual_prompt.get("text_overlay_arabic", "NONE")
     if isinstance(overlay, str):
@@ -450,8 +459,8 @@ def _collect_schema_and_content_violations(
         # Flag subtitle (including plural subtitles) as forbidden - used for subtitle overlays
         if _re.search(r"\bsubtitles?\b", dump):
             violations.append(f"{label}: forbidden term 'subtitle' detected in payload.")
-        # Flag margin as separate word (left margin band) but allow marginalia/margins (legitimate blueprint terms)
-        if _re.search(r"\bmargin\b", dump):
+        # Flag margin as separate word (left margin band) but allow marginalia/margins and bleed margin
+        if _re.search(r"(?<!bleed\s)\bmargin\b", dump):
             violations.append(f"{label}: forbidden term 'margin' detected in payload.")
 
         visual_prompt = item.get("visual_prompt")
@@ -469,12 +478,17 @@ def _collect_schema_and_content_violations(
             anchor = visual_prompt.get("style_anchor", "")
             if anchor:
                 anchor_lower = str(anchor).lower()
-                missing_keywords = [
-                    kw for kw in ("3px", "vector", "cel-shading") if kw not in anchor_lower
-                ]
-                if missing_keywords:
-                    joined = ", ".join(missing_keywords)
-                    violations.append(f"{label}: style_anchor missing required keyword(s): {joined}.")
+                is_socratic = any(
+                    k in anchor_lower
+                    for k in ("da vinci", "sketchbook", "archival", "socratic")
+                )
+                if not is_socratic:
+                    missing_keywords = [
+                        kw for kw in ("3px", "vector", "cel-shading") if kw not in anchor_lower
+                    ]
+                    if missing_keywords:
+                        joined = ", ".join(missing_keywords)
+                        violations.append(f"{label}: style_anchor missing required keyword(s): {joined}.")
 
 
 def _collect_ordering_violations(items: list[dict[str, Any]], violations: list[str]) -> None:

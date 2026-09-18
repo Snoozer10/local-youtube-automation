@@ -100,3 +100,212 @@
 - **Solution**: (1) Poll with `wait_for_flow_input_box(page, timeout_seconds=15.0)` using `page.wait_for_timeout(300)` between retries. (2) Add `--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling` and `--disable-background-timer-throttling` to Chrome launch flags in `utils.py`. (3) Replace all `time.sleep()` in Playwright polling loops with `page.wait_for_timeout(ms)`. (4) Scope generation watchdog to `active_card` (last child container) to avoid false-positive loading detection from historical cards.
 - **Prevention**: Never check SPA-mounted DOM elements immediately after navigation; always poll with a deadline. Never use `time.sleep()` in Playwright greenlet event loops. Scope DOM queries to the newest container to avoid cross-card interference.
 
+### Google Flow Cross-Origin Canvas Tainting & Blank Image Extraction
+- **What looks correct**: Falling back to `ctx.drawImage(img, 0, 0)` and `canvas.toDataURL('image/png')` when in-page `fetch()` fails due to CORS or CDN credentials restrictions.
+- **Why it's wrong**: In Google Flow's React SPA, generated images are served from `flow-content.google/image/...` or GPU-backed WebGL contexts. Drawing cross-origin hardware-accelerated images onto an untainted canvas produces an entirely transparent/black image. When serialized as PNG, this empty buffer generates a 23,581-byte file that passes standard `min_size_kb=20` validation despite containing zero visible pixels (`extrema = ((0, 0), (0, 0), (0, 0), (0, 0))`).
+- **Correct approach**: (1) Prioritize Playwright's `page.request.get(absolute_src)` network stream before any in-page fetch or canvas fallback, as Playwright's APIRequestContext runs outside the browser's CORS sandbox and inherits full session authentication to stream raw high-resolution binaries directly. (2) In `validate_image_file()`, inspect Pillow's `img.getextrema()` to reject files where all channels are `(0, 0)`. (3) Rely on atomic de-hovered Playwright element screenshots (`locator.screenshot()`) as the ultimate fallback.
+
+### Subprocess Pipe Stdout Block Buffering on Windows
+- **Cause**: On Windows, when standard output (`sys.stdout`) is redirected to a subprocess pipe or log file (`sys.stdout.isatty() == False`), the Python C runtime defaults to 4KB/8KB block buffering instead of line buffering. Status logs and print statements appear completely empty in real-time until buffer flush or process exit.
+- **Solution**: Explicitly configure `sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)` and `sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)` at module entry, and invoke python runners with `-u` and `-X utf8`.
+- **Prevention**: Never rely on default stdout buffering when streaming long-running task progress to file descriptors; always enforce line-buffering.
+
+### Google Flow Angular Material Component Hierarchy & Context Menu Matching
+- **Cause**: Google Flow uses custom Angular Material tags (`flow-grid-tile-container`, `flow-image-tile`, `flow-ingredient-chip`). Generic CSS selectors (`div[data-card-index]`, `.generation-card`) evaluate to 0 elements, causing card spawn handshakes to fail. Furthermore, right-click context menus are portaled to `div.cdk-overlay-container`, and the Arabic label for "Add to Favorites" (`إضافة إلى "المفضّلة"`) shares a common substring with "Add to Prompt" (`الإضافة إلى الطلب`). Using loose substring matching triggers the wrong menu action.
+- **Solution**: (1) Target `flow-grid-tile-container` (with fallback to `flow-image-tile` and `div[data-card-index]`). (2) Query `div.cdk-overlay-container` directly and use exact regex `(add to prompt|الإضافة إلى الطلب|إضافة إلى الطلب)` to click the prompt ingredient option. (3) Attach the newest previous primary card (`primary_cards[-count_to_attach:]`) instead of the oldest.
+- **Prevention**: Inspect live SPA DOM component hierarchies and exact localization strings rather than assuming legacy or translated generic names.
+
+### Benchmark Progress False PASS on Missing Render Artifacts
+- **Cause**: In benchmark progress loops, checking `not has_collision and upper_clear` when `save_image_path` does not exist on disk evaluates to `True` if collision defaults are false and clear defaults are true, falsely logging 0-byte non-existent images as `status: PASS`.
+- **Solution**: Strictly assert `os.path.exists(save_image_path) and os.path.getsize(save_image_path) > 0` before allowing a `status: PASS` and counting completed frames.
+- **Prevention**: Physical disk artifact existence must always be a precondition for pass status in file processing pipelines.
+
+### Google Flow Global Quota Regex False Positive from Historical Tile Glitches
+- **Cause**: In Google Flow, when an individual tile fails to render or load an image, it renders transient failure text (`تعذَّر إكمال المعالجة` / `تعذَّر تحميل الصورة`). If `check_flow_quota_or_errors()` scans the whole page DOM without scoping to the active card, this historical failed tile remains in the DOM forever, causing all subsequent frames to immediately fail during `card_spawn_handshake` with a false-positive `RuntimeError`.
+- **Solution**: (1) Scope card-level generation failure patterns (`couldn't generate`, `failed to generate`, `تعذَّر إكمال المعالجة`) strictly to `target_locator` (the active card container). (2) In global unscoped checks (`target_locator=None`), match only true fatal account-level quota exhaustion or policy locks (`الحدّ الأقصى للاستخدام`, `reached your usage limit`, `policy violation`).
+- **Prevention**: Never query transient card-level error text across the whole document root; separate global account quota checks from scoped card rendering checks.
+
+### Google Flow Grid Prepending & Reverse Candidate Scraper Order
+- **Cause**: Google Flow's project workspace prepends newly generated cards/tiles to the top of the feed (lowest `y` coordinate). When sorting candidate images by bounding box `y` and picking `candidates[-1]`, the scraper mistakenly selects the bottom-most, oldest historical images on the page rather than the newly generated asset. This triggers stale scrape collisions in the SHA-256 ledger.
+- **Solution**: Sort candidate images ascending by `y` and pick `candidates[0]` (the top-most, newest prepended tile), verifying that its hash is not in the recent rolling ledger.
+- **Prevention**: In web scrapers targeting reverse-chronological feeds, verify whether new items are prepended or appended before selecting candidates by coordinate sorting.
+
+### Google Flow Cookie Consent Banner Pointer Event Interception
+- **Cause**: Google's cookie notification bar (`#glue-cookie-notification-bar-1`) floats at the bottom of the viewport directly over the prompt input textarea and submit button. Any attempt to click the generate button or focus the input box fails or triggers pointer interception exceptions.
+- **Solution**: Add an automated dismissal routine in `dismiss_blocking_flow_modals()` targeting `.glue-cookie-notification-bar__accept` to click and accept cookies before input interaction.
+- **Prevention**: Always intercept and dismiss sticky bottom cookie/consent banners during browser setup.
+
+### Google Flow Angular CDK Character Drawer Virtualization & Auto-Dismiss Attachment Handshake
+- **Cause**: In Google Flow's ingredient drawer (`div.cdk-overlay-container`), the Character preset list under `الشخصيات` (`Characters`) uses a virtualized list where assets outside the initial view (such as `CHARACTER_HOST_MAIN`) remain unmounted until scroll triggers occur. Furthermore, clicking a character button (`button.asset-item`) can immediately attach the character chip directly into the prompt box and dismiss the overlay. If the summoning automation strictly waits for a secondary detail confirmation button (`الإضافة إلى الطلب` / `Add to prompt`) that was already closed upon direct attach, it times out or issues an `Escape` keypress that cancels or deselects the attached chip, falsely reporting `FAILED/SKIPPED`.
+- **Solution**: (1) Add two-way mouse wheel scroll pumping (`overlay_pane.hover()`, `page.mouse.wheel(0, -600)`, `page.mouse.wheel(0, 600)`) to force Angular CDK to mount all project characters. (2) Assert prompt bar chip count before and after clicking `char_btn` to detect single-click auto-attach. (3) If the detail panel is opened, click `Add to prompt`, and finally verify that the chip count increased before returning `True`.
+- **Prevention**: Always account for virtualized DOM rendering in dropdowns/drawers and verify the true destination state (prompt bar chips) rather than assuming a mandatory multi-step modal interaction.
+
+### Over-Neutralization Aesthetic Degradation & Sequential Frame Character Discontinuity
+- **Cause**: Blanket surface noun stripping and aggressive prompt neutralization (e.g., converting scientific diagrams, chalkboard equations, and brass instruments into generic phrases like "blank unmarked wooden board with zero writing" or "clean unwritten white paper sheet") drained visual storytelling interest and stripped characters out of sequential explanation scenes (e.g. Frame 14 had the host, but Frame 15 jumped to a sterile wooden board, breaking visual continuity).
+- **Solution**: (1) Enforce sequential character continuity across adjacent thematic beats (e.g., Frames 14 & 15 both feature Al-Daheeh host with consistent `centered medium close-up shot, clean centered 16:9 widescreen framing` and summoned `CHARACTER_HOST_MAIN` preset chips). (2) Respect human visual review by restoring baseline explainer prompts for technical analogies (Frames 3, 12, 29, 33, 34, 44, 49) where baseline compositional density was superior.
+- **Prevention**: In prompt transformation pipelines, never neutralize surface nouns so aggressively that semantic context and sequential character anchors are destroyed.
+
+### Google Flow Account Quota Wall & Runner Failover Defect
+- **Cause**: Google Flow free accounts enforce a daily/burst generation limit (~20–25 renders per session). When saturated, Flow displays `لقد بلغت الحدّ الأقصى للاستخدام. يُرجى إعادة المحاولة لاحقًا.` across all subsequent prompts. In earlier canary runner code, fatal quota errors caught in the per-frame retry loop logged the error, marked the frame as FAIL, and blindly iterated through all remaining frames, burning 3 futile reload attempts per frame and marking the entire batch as failed.
+- **Solution**: (1) Implement `is_fatal_flow_quota_error()` matching fatal quota exhaustion strings (`الحدّ الأقصى للاستخدام`, `reached your usage limit`, `quota exceeded`). (2) Break immediately from the batch execution loop on fatal quota rather than iterating over remaining frames, preserving all existing completed frames on disk. (3) Support multi-account failover via Chrome profile rotation (`rotate_profile_index()` cycling Profile 1 -> Profile 2 -> Profile 3 -> Profile 4) on port 9222.
+- **Prevention**: Fatal resource saturation must immediately halt batch iteration or trigger authenticated account rotation; never allow quota locks to cascade into failure cascades across remaining jobs.
+
+### Google Flow Conversational Agent Interception & UI Mode Desynchronization
+- **Cause**: In Google Flow, an "Agent" toggle mode (`button:has-text('Agent')`) can be enabled on the prompt bar or a side chat panel can be open. In Agent mode, submitting text prompts triggers a conversational video generation confirmation modal ("Would you like me to kick off this 1 video generation, costing 15 credits? Approve / Reject") instead of directly generating images.
+- **Solution**: Implement `dismiss_blocking_agent_and_modals()` to: (1) click "Reject" on any conversational confirmation prompt, (2) close the agent side panel via `close_btn`, and (3) detect if the "Agent" pill button is active (`backgroundColor` is white or `aria-pressed='true'`) and click it to toggle Agent mode OFF, restoring pure Nano Banana 2 image generation.
+- **Prevention**: In multi-modal browser web automation, always assert and enforce the target operational mode before injecting generation prompts.
+
+### Chrome CDP Tab Selection Broad Substring Misrouting
+- **Cause**: In `run_canary_benchmark.py`, the CDP tab discovery logic used `if "flow" in page.url or "google.com" in page.url:` to locate the active Google Flow page. Because Google accounts frequently have `gemini.google.com` or `aistudio.google.com` open in the same Chrome debug profile, matching `"google.com"` inadvertently bound `flow_page` to Gemini, causing the generator to attempt Flow DOM interactions inside Gemini's web interface.
+- **Solution**: Strictly prioritize exact domain matches (`"flow.google"` or `"/flow"`) in tab resolution, and assert `if "flow" not in flow_page.url: flow_page.goto("https://flow.google.com/")`.
+- **Prevention**: Never use generic root domains (e.g. `google.com`, `microsoft.com`) for sub-service tab matching in browser automation when multiple sibling tools share the same top-level domain.
+### Google Flow Multi-Account Rotation Character Preset Library Scope & Graceful Mode A Fallback
+- **Cause**: Google Flow maintains custom character presets (`CHARACTER_HOST_MAIN`, `CHARACTER_CLERK_BUREAUCRAT`, etc.) strictly scoped to individual Google accounts and specific workspace projects. When multi-account rotation occurs (e.g. rotating from Profile 2/3 to a fresh Profile 4 account due to quota saturation), the new account library does not inherit previously created character presets; the Characters tab in the asset drawer (`div.cdk-overlay-container`) reports `No assets found.`. If an automation runner attempts `summon_character_chip()`, it fails to find the character card and logs `FAILED/SKIPPED`. Furthermore, the asset drawer button in Flow's English UI uses `aria-label="Add ingredients to the prompt box"`, while Arabic uses `aria-label="إضافة المكوّنات"`.
+- **Solution**: (1) Harden the asset drawer locator in `flow_generator.py` to match both English and Arabic labels: `button[aria-label*='Add ingredient' i], button[aria-label*='إضافة المكوّنات' i], button[aria-label*='Add asset' i], button[aria-label*='إضافة مورد' i], button:has-text('add')`. (2) Design an automated fallback in `build_dual_mode_prompt`: whenever `summon_character_chip` returns `False`, automatically fall back to **Mode A (Master Setup)** where `expand_asset_tokens()` injects the complete 2D cartoon visual DNA description (e.g., *Al-Daheeh Egyptian cartoon educational host, dark curly hair, black round glasses, animated expressive comedic facial expression, 2D graphic vector animation style, clean white background #FFFFFF*). (3) For cross-account consistency, run the pre-flight routine `setup_flow_characters_and_scenes` when bootstrapping a newly rotated profile so character presets are created in the target account's `/characters` library.
+- **Prevention**: In multi-account rotating architectures, never assume that account-scoped cloud entities (presets, saved assets, templates) exist in freshly rotated profiles; always implement graceful text-based fallback and automated pre-flight asset initialization.
+
+### Comparison Studio Viewer Baseline Path Collision after Socratic Consolidation
+- **Cause**: Prior to video compilation (`compile_video.py`), newly generated Socratic frames were consolidated into `generated_images/` while original baseline frames were safely backed up to `generated_images_baseline/`. However, `viewer_generator.py` hardcoded the baseline image relative URL to `../generated_images/{fname}`. When opening `studio_viewer.html` in `generated_images/` or any chunk subfolder (`chunk_1_images/` through `chunk_6_images/`), both the left panel (Baseline) and right panel (Socratic Canary) loaded the exact same Socratic frame from `generated_images/`, causing all viewers to preview identical duplicate images.
+- **Solution**: (1) In `build_frame_records()`, inspect whether `generated_images_baseline/` exists in `run_dir` and prioritize it as the authoritative baseline directory, falling back to `generated_images/` only when no backup directory exists. (2) Compute all baseline and canary image links dynamically using `os.path.relpath(target_path, html_dir)` so relative paths are always mathematically valid regardless of viewer location. (3) Support seamless fallback to `socratic_master_frames/` for frames outside a local chunk folder. (4) Add interactive dropdown filters for chunks (`Chunk 1: Frames 1–50`, etc.), enhanced frames, and restored frames, automatically initializing the viewer at the first local chunk frame (`initIdx = frames.findIndex(f => f.in_local_dir && f.canary_exists)`).
+### Linear Push Pushpop & Division-by-Zero in Procedural Kinematics
+- **Cause**: Standard linear interpolation formulas like `((on-1)/(d-1))` evaluate to negative values at frame `on=0` (triggering an instantaneous -1 pop in libavfilter) and crash with zero division when a clip duration is 1 frame (`d=1`).
+- **Solution**: Enforce zero-safe clamped evaluation `min(1.03, 1.0 + 0.03 * (clip(on, 0, N) / max(1, N)))` for all holds >= 3.5s.
+- **Prevention**: In video filtergraph mathematical expressions, always clamp frame indices with `clip(on, 0, N)` and guard denominators with `max(1, N)`.
+
+### Hardware Video Encoder Stepped Scale Punch Macroblocking
+- **Cause**: On hardware video encoders (such as Intel QSV `h264_qsv` with `lookahead=0` and `format=nv12`), attempting to execute instantaneous scale jumps within a single continuous clip causes severe P-frame macroblocking and PTS timeline desync.
+- **Solution**: Subdivide long holds (>= 4.0s) at the detected audio transient into two discrete clips (`static_hold` setup + `scale_punch` close-up) in `prepare_synchronized_timeline`, preserving identical asset occurrence integers and anchoring vertical elevation to upper-third eye-line ($Y=360\text{px}$).
+- **Prevention**: Never perform stepped filter transitions inside a single hardware-encoded stream; always subdivide into discrete clips across clean keyframe boundaries.
+
+### In-Place `timeline.json` Modification Sidecar Desynchronization
+- **Cause**: Updating `timeline.json` without updating the `.sha256` sidecars causes `verify_shim()` to fail with `ValueError: Stale timeline shim detected`.
+- **Solution**: Always invoke `save_timeline_and_shims()` or atomically re-calculate `timeline_sha` and rewrite all 4 sidecar files (`image_timestamps.txt.sha256`, `timestamped_transcript.txt.sha256`, etc.).
+- **Prevention**: Never edit canonical timeline JSON without synchronously regenerating and validating its cryptographic sidecars.
+
+### Runtime State Profile Index String vs Integer Mismatch
+- **Cause**: `runtime_state.json` stores `ACTIVE_PROFILE_INDEX` as the full string `"Profile 4"` (written by `rotate_profile_index()` during multi-account failover). Scripts that read via `get_runtime_state()` and pass directly to `int()` crash with `ValueError: invalid literal for int() with base 10: 'Profile 4'`. Scripts using `get_config_value()` (reads `.env`, always `"2"`) are unaffected.
+- **Solution**: Extract digit via `re.search(r"\d+", str(raw))` with fallback default — matching the canonical pattern in `utils.py:rotate_profile_index()`.
+- **Prevention**: Never call `int()` directly on `get_runtime_state("ACTIVE_PROFILE_INDEX", ...)`. Always use `re.search(r"\d+", str(raw))` to handle both `"2"` and `"Profile 2"` forms.
+
+### Audacity Named Pipe Cold-Boot Timeout (Zero-Touch Pipeline Failure)
+- **Cause**: `launch_audacity_session()` waited only 3s grace + 30×0.5s = 15s retry before raising `ConnectionError`. On a cold-boot where `mod-script-pipe` loads from scratch, the pipe takes 10–20s to appear — beyond the 15s budget. Users were required to pre-open Audacity manually, breaking zero-touch automation.
+- **Solution**: Increase grace period to 6s and retry to 80×1.0s (80s total). `ensure_audacity_script_pipe_enabled()` already writes `mod-script-pipe=1` to `audacity.cfg` before launch. Only the polling window was too short.
+- **Prevention**: For daemon processes loading plugins at startup, always allow 60–80s for IPC endpoints to become available. Log wait progress every N attempts so the pipeline log remains informative and the user can distinguish a slow-boot from a true failure.
+
+### Google AI Studio QUIC Protocol & Dead Edge IP Navigation Timeouts
+- **Cause**: Browser navigations to `https://aistudio.google.com/generate-speech` failed with `ERR_QUIC_PROTOCOL_ERROR` (ISP drops UDP port 443 packets) and `ERR_CONNECTION_TIMED_OUT` (local DNS resolved `aistudio.google.com` to `142.250.181.206`, an unroutable Google IP on local networks, while Google frontends like `142.251.154.2` respond in 50ms).
+- **Solution**: Add Chrome launch flags `--disable-quic` and `--host-resolver-rules="MAP aistudio.google.com 142.251.154.2"` into `launch_browser_with_profile()` in `utils.py`.
+- **Prevention**: In automation targeting third-party web apps over CDP, never rely on default OS DNS or opportunistic QUIC. Pin domain host mappings to verified healthy frontends and disable UDP HTTP/3 when running in restricted ISP networks.
+
+### LLM Script Truncation and Conversational Meta-Banter Contamination in TTS
+- **Cause**: Dumping an entire multi-thousand-word transcript into an LLM chat prompt causes the model to hallucinate arbitrary chapter partitions (e.g. planning only 7 blocks and jumping from Paragraph 12 to Paragraph 40, losing 66% of the script). Additionally, conversational prompts like "how would you like to proceed?" can be refined into spoken dialogue.
+- **Solution**: (1) Partition chapters deterministically from `tts_payload.json` into ~180-220 word chunks (100% coverage guaranteed). (2) Enforce an automated script coverage gate ($\ge 85\%$) in `calculate_script_coverage()`. (3) Add regex metadata stripping in `sanitize_script_text()` to purge markdown headers, casting reports, and conversational chatter before text enters the TTS prompt box.
+- **Prevention**: Never trust an LLM chat agent to reliably chunk large text corpora without physical word coverage assertion. Prefer deterministic chunking using structured pre-tokenized payloads (`tts_payload.json`).
+
+### Phase 1 Script Transcreation English Chatter Contamination & Dropped Hook
+- **Cause**: In `automate_all.py`, the transcreation loop injected each paragraph as `f"paragraph {i} outof {total_paragraphs} paragraphs of the script:\n\n{paragraph}"`. On Paragraph 1, Gemini interpreted the prompt as an editorial critique request and responded with English chat review ("That is a fantastic hook... Since this is just the first of 19 paragraphs, how would you like to proceed?"). On Paragraph 19, Gemini included an English preamble and outro question ("Do you want to add a classic sign-off..."). Because `automate_all.py` lacked an Arabic language ratio check and chatter sanitizer, it appended the English text directly to `final_output.txt`, causing Paragraph 1 to be completely lost and contaminating the script.
+- **Solution**: (1) Enforce strict imperative command armor: `DIRECTIVE: Transcreate Paragraph {i}... Output ONLY the Arabic transcreated text. Do NOT include any English preamble, commentary, review feedback, or questions.`. (2) Implement `is_valid_arabic_transcreation()` requiring $\ge 35\%$ Arabic characters (`[\u0600-\u06FF]`), triggering an immediate clean reset fallback if non-Arabic chatter is returned. (3) Implement `sanitize_gemini_chatter()` to strip preambles, sign-off questions, and markdown quotes.
+- **Prevention**: In LLM text transformation pipelines, never ingest turn responses without validating positive target-script language density ($\ge 35\%$ Arabic) and purging conversational meta-text.
+
+### Google Flow Active Card Selection Order (.first vs .last)
+- **Cause**: In `flow_generator.py`, selecting the active generation tile via `.locator(...).last` selects the card at the bottom of the feed. In Google Flow, newly submitted generation tiles are **prepended to the TOP** of the feed (lowest $y$-coordinate). Consequently, `.last` locked onto historical cards whose image `src` attributes were already in `pre_image_srcs`, causing the script to miss the newly rendered top cards and falsely assume rendering had stalled for 120s.
+- **Solution**: Change `active_card` selection to `.first`, query candidate images across `flow-image-tile img, flow-grid-tile-container img, img`, filter `src not in pre_image_srcs`, sort ascending by `(y, x)`, and select `candidates[0]`.
+- **Prevention**: In web application feeds that prepend new cards at the top, never select the active item using `.last`; always assert top-of-feed sorting (`.first` or sort by `(y, x)` ascending).
+
+### Google Flow Stale Workspace URL Checkpoint 404 Cascading Failover
+- **Cause**: When switching accounts or after project deletion, `flow_workspace_url_profile_X.txt` retains the old project UUID. Navigating to a project from a different profile lands on `https://flow.google.com/404?reason=project`. On retry attempts, navigating back to `active_project_url` without checking for `"404"` re-navigates to the 404 page where the prompt input box does not exist, triggering cascading attempt failures.
+- **Solution**: (1) In `setup_flow_ui`, if the saved project URL fails health checks, delete the stale checkpoint immediately and create a fresh project from the homepage. (2) When clicking "New project", wait explicitly for `"project"` in `page.url` before returning. (3) During retry loops, if `active_project_url` is invalid or 404, fall back to `flow_page.reload()`.
+- **Prevention**: Always validate that restored workspace URLs resolve to active, healthy projects; clean up stale serialized pointers immediately upon navigation failure.
+
+### Mode B Empty Surgical Delta Attention Vacuum
+- **Cause**: In `build_dual_mode_prompt`, when `visual_delta` was resolved only from top-level `raw_dict["action"]` (while the actual delta was nested inside `raw_dict["visual_prompt"]["action"]`), `delta_target` evaluated to an empty string. This produced a malformed Mode B prompt: `"In the attached reference image, maintain identical subject, background, and lighting. Add  centered."`, causing Google Flow to reject or fail image generation.
+- **Solution**: Check nested `raw_dict.get("visual_prompt", {}).get("action")` and `subject_action_increment`. If `delta_target` is empty, immediately fallback to Mode A (Master Setup) with full visual DNA instead of submitting a hollow Mode B delta.
+- **Prevention**: Never emit relative differential instructions without validating that a positive, non-empty delta target exists.
+
+### False Account Rotation on Transient Non-Quota Errors
+- **Cause**: Treating any 3-attempt failure as a fatal error triggering account failover (`rotate_profile_index()`). When a UI selector misses or a transient network glitch occurs, rotating accounts burns healthy profiles while inheriting the exact same UI issue on the next profile.
+- **Solution**: Strictly isolate fatal quota strings (`الحدّ الأقصى للاستخدام` / `reached your usage limit`) via `classify_flow_error()`. For transient errors (`TRANSIENT_ERROR`), preserve the active profile, reset the workspace checkpoint, re-initialize from the homepage, and continue.
+- **Prevention**: Account rotation mechanisms must require cryptographic or exact string proof of quota exhaustion before triggering irreversible profile switching.
+
+## Known Failure Modes
+### Blind Ingestion of Conversational LLM Responses in Code Generation/Translation
+- **What looks correct**: Checking `if response and not is_safety_blocked(response): output.append(response)`.
+- **Why it's wrong**: Chat models frequently return polite commentary, review praise, or clarification questions ("How would you like to proceed?") when prompts lack negative prohibition armor, poisoning downstream stages or dropping source content.
+- **Correct approach**: Validate linguistic/schema density, apply regex conversational sanitizers, and re-prompt with strict imperatives if the model outputs conversational meta-text.
+
+### Scoping Progress / Loading Checks Globally Across Google Flow Page
+- **What looks correct**: Checking `flow_page.locator("[role='progressbar']").is_visible()` to determine if generation is still in progress.
+- **Why it's wrong**: Modern complex SPAs like Google Flow often have global status spinners, header sync indicators, or sidebar elements with `role="progressbar"`. Global checks cause `is_loading` to evaluate to `True` forever, preventing the script from recognizing that candidate images have completed rendering.
+### Hardcoded Persona & Substrate Entanglement in Diffusion Pipelines
+- **Cause**: Embedding character names, cultural dialect relics, or specific studio fixtures (`Al-Daheeh`, `Ahwa cafe`, `tea cup`, `Abo Hmeed`) directly into root-level prompt builder utilities and fallback branches. When producing videos for new topics or other channels (science, finance, history), the prompt builder continues injecting these hardcoded persona tokens, contaminating the generated visuals.
+- **Solution**: (1) Decouple persona, substrate, and chromatic palette into a dynamic `ChannelProfile` and `NICHE_PRESETS` registry (`science_tech`, `finance_economics`, `history_geopolitics`, `philosophy_essay`, `general_explainer`). (2) Support `host_mode: "NONE"` for pure conceptual graphics without human figures. (3) Remove all hardcoded persona fallback strings from `flow_generator.py` and `prompt_enhancer.py`.
+- **Prevention**: Never hardcode character or cultural environment constants into general diffusion compiler utilities; pass them dynamically from channel profiles or storyboard roadmap definitions.
+
+### Contradictory Typography Instructions in Diffusion Prompt Planning Preambles
+- **What looks correct**: Instructing the LLM to output quoted text examples (e.g., "STAGE 1", "CLASSIFIED", "OPTION A vs OPTION B") to provide clean typographic labeling in educational diagrams.
+- **Why it's wrong**: Diffusion models (such as Imagen 3/Nano Banana) struggle with multi-character text rendering, frequently outputting warped, garbled, or pseudo-Latin letterforms. These illegible glyphs degrade production quality and trigger OCR text collision gates.
+- **Correct approach**: Enforce a `STRICT ZERO-TEXT INVARIANT` in prompt planner preambles. Instruct the LLM to convey technical processes purely through non-linguistic data telemetry: abstract proportion bars, percentage glyphs (e.g. 75%), node linkages, directional trajectory arrows, and comparative split quadrants.
+
+### Gemini Web HTML Rendered Table Tab-Delimitation vs Pipe Assumptions
+- **Cause**: In `roadmap_orchestrator.py:parse_markdown_table_line`, the parser asserted `if not stripped.startswith("|"): return []`. When Gemini web generates a markdown table, the Angular SPA UI automatically renders it into a native HTML `<table>` element. Playwright's `el.innerText` standard converts table cells inside `<tr>` into horizontal tab-delimited (`\t`) text rather than retaining markdown pipes (`|`). Consequently, `parse_markdown_table_line` discarded all 25 rows, logging 0 rows parsed and falsely triggering empty turn failures and retry loops.
+- **Solution**: Update `parse_markdown_table_line` to detect and split by `\t` if present, while retaining pipe-delimited (`|`) support for unrendered or code-fenced markdown.
+- **Prevention**: Never assume browser `innerText` contains source markdown syntax when an SPA automatically formats markdown into rich HTML elements; support both raw markdown tokens and rendered whitespace/tab conventions.
+
+### Over-Specified Diffusion Specs in Text Planning Prompts Triggering Multi-Modal Refusal
+- **Cause**: In `roadmap_orchestrator.py`, dumping low-level diffusion model coordinates (`X: 180 to 1740, Y: 90 to 980`), hex codes (`#2D3444`, `#F8F8FA`), and pixel specs into the table generation prompt caused Gemini Flash's guardrail classifiers to misinterpret the request as a multi-modal image rendering task rather than a text table planning task. Gemini responded with refusal cards: `"أنا مجرد ذكاء اصطناعي مستند إلى النصوص ولا أستطيع المساعدة في ذلك."` ("I am just a text-based AI and cannot help with that.") or `"I seem to be encountering an error. Can I try something else for you?"`.
+- **Solution**: Keep roadmap prompt directives concise, high-level, and focused on narrative/staging concepts (e.g. shot scale, continuous animation arcs, subject focus). Reserve exact pixel coordinates, hex palettes, and diffusion negative tokens for downstream diffusion compilers (`prompt_enhancer.py`, `flow_generator.py`).
+- **Prevention**: In multi-stage agentic pipelines, isolate diffusion-specific syntax to diffusion stages; never pollute upstream text planning LLMs with rendering engine parameters.
+
+### Google Flow Initial Queue Stall Bypass & Single-Pass Gap Backfill
+- **Cause**: In Google Flow web automation, cold-starting fresh projects or submitting prompt cards during backend queue congestion occasionally exceeds the 45s card-spawn deadline (`Card spawn timed out after 45s. Forcing reload...`). If a runner treats transient queue stalls as fatal crashes or gets stuck in infinite retry loops on a single frame, the entire multi-hour batch halts.
+- **Solution**: (1) Allow transient 3-attempt queue timeouts to log as `TRANSIENT_ERROR`, preserve active account profiles (quota not exhausted), recycle the workspace into a fresh healthy project, and safely bypass the blocked frame. (2) Track completed frames in `pipeline_manifest.json` and persist valid PNGs on disk. (3) After completing the main sequential pass, launch a dedicated single-pass backfill that uses disk-existence skipping (`if os.path.exists(save_path) and os.path.getsize(save_path) > 100: continue`) to render only the missing frames.
+- **Prevention**: In long-running batch diffusion generation, decouple frame progression from transient API latency by adopting resilient gap-skipping with deterministic post-batch backfill sweeps.
+
+### Thumbnail Text Collision Self-Healing & Strengthened Negative Prompt Retry
+- **Cause**: In generative thumbnail workflows, asking Gemini Imagen for high-contrast webcomic or visual assets frequently results in subtle text artifacts embedded into scene props, backgrounds, or character attire (e.g. garbled Latin signage or MSER edge candidate clusters). If ingested uncritically, these contaminated plates degrade click-through rates and violate channel zero-text typography standards.
+- **Solution**: (1) Immediately scan newly downloaded thumbnail bitmaps with `check_text_collision(filepath)`. (2) If text or MSER contours are detected on Attempt 1, purge the contaminated file from disk, log the detection coordinates, and automatically retry on Attempt 2 appending `STRENGTHENED_NEGATIVE_PROMPT`. (3) If Attempt 2 also fails, dump debug telemetry (`dump_text_collision_debug`) and purge the corrupt image.
+- **Prevention**: Always enforce an automated post-generation OCR text collision gate on candidate thumbnails with deterministic negative prompt retry armor.
+
+### Deterministic Target Folder Resolution in CLI Automation Entrypoints
+- **Cause**: Helper scripts like `generate_thumbnail.py` previously relied exclusively on `get_latest_run_folder(runs_path)`. When running automated batch scripts or processing specific historical runs, any background file access or file modification in an unrelated run folder causes `os.path.getmtime` to misidentify the target directory, processing the wrong video project.
+- **Solution**: Check `if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]): folder = os.path.abspath(sys.argv[1])` before falling back to `get_latest_run_folder()`.
+- **Prevention**: CLI scripts in multi-project pipelines must always accept explicit directory paths via `sys.argv[1]` and prioritize them over directory timestamp sorting.
+
+### CI Quality Gate Asymmetry & Test Suite Linting Omission
+- **Cause**: Running localized linting (`ruff check src/ exercises/ tools/`) while CI workflow (`.github/workflows/ci.yml:40`) specifically gated on `ruff check tests/unit`. Test files accumulated 43 lint errors (unsorted imports, unused imports, ambiguous variables `l`, missing `strict=` on `zip`), causing CI to abort with status `UNSTABLE` before running unit tests.
+- **Solution**: Replicate the exact CI matrix locally prior to opening PRs (`ruff check tests/unit --fix`, rename `l` to `line`, add explicit `strict=True`/`strict=False` to `zip()` calls).
+- **Prevention**: Pre-PR checklist must always inspect `.github/workflows/*.yml` and execute the exact CI commands locally before pushing or creating a PR.
+
+### Delayed Type Evaluation Masking Undefined Types (F821)
+- **Cause**: In `src/youtube_automation/video/ken_burns.py:134`, `derive_multishot_crop` annotated `-> dict[str, Any]` without importing `from typing import Any`. Because `from __future__ import annotations` turns type annotations into lazy string literals in Python 3.11, standard module imports and unit tests passed without raising `NameError`. However, static linting and runtime reflection (`typing.get_type_hints`) fail with `F821 Undefined name 'Any'`.
+- **Solution**: Explicitly import `Any` from `typing` at the top of the module, and run repo-wide static analysis (`ruff check .`).
+- **Prevention**: Never assume passing tests guarantee valid type names when `from __future__ import annotations` is enabled; always enforce static linting across all modified modules.
+
+### Speculative PR Branch Pushing & Unmonitored CI Status Badges
+- **Cause**: Pushing follow-up commits (such as continuity ledger or documentation updates) to an active PR branch without verifying the CI status of the prior commit. If the prior commit had failing CI, every subsequent commit pushed while broken records a permanent red `x` badge in GitHub commit history.
+- **Solution**: Monitor CI to completion using `gh pr checks <id> --watch` or `gh run list --branch <branch>`. Only push subsequent commits once the current HEAD is verified green.
+- **Prevention**: Enforce a strict "one commit + CI watch" gate on PR branches: verify `status: COMPLETED, conclusion: SUCCESS` before pushing follow-up commits.
+
+## Known Failure Modes
+### Monolithic All-or-Nothing Batch Halts on Transient Web Queue Delays
+- **What looks correct**: Halting the entire generation process or switching Google accounts whenever a single frame fails after 3 attempts.
+- **Why it's wrong**: Transient network hiccups or backend diffusion queue spikes on Google Flow do not indicate account quota exhaustion. Aborting the entire batch stops progress on dozens of pending frames, while rotating accounts burns fresh profiles unnecessarily.
+- **Correct approach**: Distinguish transient queue delays from fatal quota exhaustion (`الحدّ الأقصى للاستخدام` / `reached your usage limit`). Skip transiently stalled frames to let the remaining 95%+ of the batch complete smoothly, then backfill the small handful of missing frames in a fast 2-minute targeted sweep.
+
+### Silent Text Artifact Bleed in AI Thumbnail Generation
+- **What looks correct**: Trusting negative prompt strings in image generation queries without physical verification of downloaded images.
+- **Why it's wrong**: Modern diffusion models frequently disregard negative tokens when composing complex narrative scenes with objects (books, boxes, signs, monitors). Latin pseudo-words or blurred typography leak into the output unnoticed, ruining professional YouTube packaging.
+- **Correct approach**: Treat prompt negative tokens as advisory and post-generation OCR verification as mandatory. Gate all thumbnail outputs through a hard zero-text inspection pass.
+
+### Arbitrary Directory Subsetting in Local Lint Commands
+- **What looks correct**: Running `ruff check src/` or passing only production code folders to save execution time.
+- **Why it's wrong**: Omitting `tests/unit/`, tools, and root facade shims allows syntax, style, and import bugs to slip through into CI and release packaging.
+- **Correct approach**: Always execute `ruff check .` across the entire workspace before committing.
+
+### Assuming Import Success Guarantees Type Annotation Correctness
+- **What looks correct**: Relying on `python -c "import module"` or standard test runs to catch missing types when `from __future__ import annotations` is imported.
+- **Why it's wrong**: Python PEP 563 converts annotations into strings without evaluating them at runtime, completely masking missing imports until external tools or reflection inspect the types.
+- **Correct approach**: Run static linters (`ruff check .`) or type checkers (`mypy`) that evaluate the AST and detect undefined symbols regardless of PEP 563 stringification.
+
+
+

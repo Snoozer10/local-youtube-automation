@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -219,9 +220,12 @@ def kill_cdp_chrome(port: int | str = 9222):
 
 
 def map_profile_index(num_str):
-    """Maps a human numeric index to Chrome's native Profile directory names."""
+    """Maps a human numeric index or explicit directory name to Chrome's native Profile directory names."""
+    raw = str(num_str).strip()
+    if raw.startswith("Profile ") or raw == "Default":
+        return raw
     try:
-        num = int(str(num_str).strip())
+        num = int(raw)
         if num <= 1:
             return "Default"
         else:
@@ -320,6 +324,8 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
         "--disable-backgrounding-occluded-windows",
         "--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling",
         "--disable-background-media-suspend",
+        "--disable-quic",
+        "--host-resolver-rules=MAP aistudio.google.com 142.251.154.2",
         "--no-first-run",
         "--no-default-browser-check",
         "--hide-crash-restore-bubble",
@@ -383,11 +389,14 @@ def set_runtime_state(key: str, value: str) -> None:
 
 def rotate_profile_index() -> int:
     """Increments the active profile index in runtime state and fires alerts."""
-    current_idx = int(get_runtime_state("ACTIVE_PROFILE_INDEX", "1"))
+    raw = get_runtime_state("ACTIVE_PROFILE_INDEX", "1")
+    match = re.search(r"\d+", str(raw))
+    current_idx = int(match.group(0)) if match else 1
     new_idx = current_idx + 1
     if new_idx > 5:
         new_idx = 2
-    set_runtime_state("ACTIVE_PROFILE_INDEX", str(new_idx))
+    new_val = f"Profile {new_idx}" if str(raw).strip().startswith("Profile ") else str(new_idx)
+    set_runtime_state("ACTIVE_PROFILE_INDEX", new_val)
 
     logger.warning(
         f"[FAILOVER SYSTEM] Rotated ACTIVE_PROFILE_INDEX from {current_idx} to {new_idx} in runtime state."

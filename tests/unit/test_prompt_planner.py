@@ -223,6 +223,30 @@ class TestBuildCompactPreamble:
         assert "Cozy Cairo studio." in scene_line
         assert "mint tea." in scene_line
 
+    def test_dynamic_profile_overrides_host_preset(self) -> None:
+        from youtube_automation.prompts.niche_engine import ChannelProfile
+        profile = ChannelProfile(
+            channel_name="Science Explained",
+            niche="SCIENCE_TECH",
+            host_mode="CUSTOM_AVATAR",
+            host_avatar_description="female astrophysicist in lab coat with wire glasses",
+        )
+        preamble = pp.build_compact_preamble(_preset_fixtures(), profile=profile)
+        assert "female astrophysicist in lab coat" in preamble
+        assert "Ahmed El-Ghandour" not in preamble
+
+    def test_host_mode_none_omits_host_character(self) -> None:
+        from youtube_automation.prompts.niche_engine import ChannelProfile
+        profile = ChannelProfile(
+            channel_name="Documentary Studio",
+            niche="SCIENCE_TECH",
+            host_mode="NONE",
+        )
+        preamble = pp.build_compact_preamble(_preset_fixtures(), profile=profile)
+        assert "HOST:" not in preamble
+        assert "GOVERNMENT_CLERK:" in preamble
+
+
 
 class TestBuildChunkPayload:
     def _payload(self) -> str:

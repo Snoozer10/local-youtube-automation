@@ -19,7 +19,12 @@ from .filter_graph import (  # noqa: F401
     build_chunk_filter_graph,
     get_sorted_images,
 )
-from .ken_burns import AudioSyncAligner, build_ken_burns_filter  # noqa: F401
+from .ken_burns import (  # noqa: F401
+    AudioSyncAligner,
+    AudioTransientDetector,
+    build_ken_burns_filter,
+    derive_multishot_crop,
+)
 from .subtitles import (  # noqa: F401
     build_dynamic_ass_subtitles,
     build_subtitle_style_string,
@@ -289,6 +294,18 @@ class CheckpointManager:
 
 
 def get_audio_duration(audio_path, timeout: float = 60.0) -> float:
+    """Returns exact audio duration. Prefers sample-exact WAV header calculation; falls back to ffprobe."""
+    if str(audio_path).lower().endswith(".wav") and os.path.exists(audio_path):
+        try:
+            import wave
+            with wave.open(audio_path, "rb") as wf:
+                frames = wf.getnframes()
+                rate = wf.getframerate()
+                if rate > 0:
+                    return frames / float(rate)
+        except Exception:
+            pass
+
     cmd = [
         "ffprobe",
         "-v",
@@ -575,6 +592,92 @@ def load_manual_overrides(txt_path="manual_animations.txt"):
     return overrides
 
 
+def enrich_timeline_kinetics(run_folder: str, fps: int = 30) -> dict:
+    """Enriches timeline.json with kinetic metadata (punch_frame, drift_type, eye_line_elevation,
+    camera_action) via AudioTransientDetector and updates SHA-256 sidecars atomically.
+    """
+    from timeline_engine import TIMELINE_FILENAME, save_timeline_and_shims
+
+    timeline_path = os.path.join(run_folder, TIMELINE_FILENAME)
+    if not os.path.exists(timeline_path):
+        raise FileNotFoundError(f"timeline.json not found in {run_folder}")
+
+    with open(timeline_path, encoding="utf-8") as f:
+        timeline_data = json.load(f)
+
+    # Priority audio path resolution
+    polished_audio = os.path.join(run_folder, "audacity_voice", "full_episode_voice.wav")
+    raw_audio = os.path.join(run_folder, "full_episode_voice.wav")
+    audio_path = polished_audio if os.path.exists(polished_audio) else raw_audio
+
+    detector = None
+    if os.path.exists(audio_path):
+        try:
+            detector = AudioTransientDetector(wav_path=audio_path, sample_rate=16000)
+        except Exception as e:
+            print(f"  [WARN] Could not initialize AudioTransientDetector: {e}")
+
+    spans = timeline_data.get("spans", [])
+    punches_count = 0
+    pushes_count = 0
+    holds_count = 0
+
+    for s in spans:
+        start_sec = float(s.get("start", 0.0))
+        end_sec = float(s.get("end", start_sec))
+        dur = float(s.get("duration", end_sec - start_sec))
+        fc = int(s.get("frame_count", round(dur * fps)))
+
+        s["eye_line_elevation"] = 360
+
+        punch_info = None
+        if detector and dur >= 4.0 and fc >= 60:
+            punch_info = detector.find_best_scale_punch_frame(
+                span_start_sec=start_sec,
+                span_end_sec=end_sec,
+                fps=fps,
+                edge_clearance_sec=0.6,
+            )
+
+        if punch_info and 18 <= punch_info["relative_frame"] <= fc - 18:
+            s["punch_frame"] = punch_info["relative_frame"]
+            s["punch_sec"] = punch_info["adjusted_punch_time"]
+            s["camera_action"] = "scale_punch"
+            s["drift_type"] = "scale_punch_125"
+            punches_count += 1
+        else:
+            s["punch_frame"] = None
+            s["punch_sec"] = None
+            if dur >= 3.5:
+                s["camera_action"] = "linear_push"
+                s["drift_type"] = "linear_push_103"
+                pushes_count += 1
+            else:
+                s["camera_action"] = "static_hold"
+                s["drift_type"] = "static_hold"
+                holds_count += 1
+
+    # Recalculate spans_sha256
+    spans_bytes = json.dumps(spans, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    spans_sha = hashlib.sha256(spans_bytes).hexdigest()
+    timeline_data.setdefault("checksums", {})["spans_sha256"] = spans_sha
+
+    # Persist timeline.json and all 4 sidecars atomically
+    save_timeline_and_shims(timeline_data, run_folder, export_srt=True)
+
+    print(
+        f"  [KINETICS ENRICHED] {len(spans)} spans annotated: {punches_count} Scale Punches, "
+        f"{pushes_count} Linear Pushes, {holds_count} Static Holds. Sidecars synchronized."
+    )
+    return {
+        "total_spans": len(spans),
+        "scale_punches": punches_count,
+        "linear_pushes": pushes_count,
+        "static_holds": holds_count,
+        "spans_sha256": spans_sha,
+    }
+
+
 def parse_image_timeline(run_folder: str) -> list:
     """Parses transcript timestamps with sub-second float precision, preferring canonical timeline.json."""
     timeline_path = os.path.join(run_folder, "timeline.json")
@@ -634,11 +737,132 @@ def prepare_synchronized_timeline(
 ) -> list:
     """
     ACOUSTICALLY SNAPPED ZERO-DRIFT TIMELINE:
-    Snaps cutpoints to natural speech silence troughs using AudioSyncAligner,
+    If image_blocks are canonical spans from timeline.json (containing 'span'),
+    bypasses acoustic re-snapping and comedic grouping, directly preserving
+    pre-quantized frame_count, start_frame, and end_frame with strict monotonic continuity.
+    Otherwise, snaps cutpoints to natural speech silence troughs using AudioSyncAligner,
     eliminates leading audio dead-air, and enforces sample-exact monotonic frame bounds.
     """
     if not image_blocks:
         return []
+
+    # 1. Canonical timeline ingestion bypass
+    if all(isinstance(b, dict) and "span" in b for b in image_blocks):
+        final_timeline = []
+        fps_float = float(fps)
+        total_audio_frames = max(1, int(round(audio_duration * fps_float)))
+        num_blocks = len(image_blocks)
+
+        # Degenerate-input guard: fold surplus blocks if blocks exceed available audio frames
+        if num_blocks > total_audio_frames:
+            image_blocks = image_blocks[:total_audio_frames]
+            num_blocks = len(image_blocks)
+
+        transient_detector = (
+            AudioTransientDetector(wav_path=audio_path, sample_rate=16000)
+            if audio_path and os.path.exists(audio_path)
+            else None
+        )
+
+        name_counts: dict[str, int] = {}
+        current_frame = 0
+
+        for idx, b in enumerate(image_blocks):
+            span = b["span"]
+            name = str(b.get("name", "clip"))
+
+            # Track 1-based occurrence per timestamp name to prevent asset resolution clobbering
+            name_counts[name] = name_counts.get(name, 0) + 1
+            occurrence = b.get("occurrence") or name_counts[name]
+
+            start_frame = current_frame
+
+            if idx == num_blocks - 1:
+                end_frame = total_audio_frames
+            else:
+                raw_end = span.get("end_frame")
+                if raw_end is not None:
+                    ideal_end = int(raw_end)
+                else:
+                    ideal_end = int(round(float(span.get("end", b.get("raw_sec", b["sec"]))) * fps_float))
+
+                remaining = num_blocks - 1 - idx
+                end_frame = max(start_frame + 1, min(ideal_end, total_audio_frames - remaining))
+
+            frame_count = max(1, end_frame - start_frame)
+            current_frame = end_frame
+            span_dur = frame_count / fps_float
+
+            # Check for sub-beat scale punch subdivision on long holds (>=4.0s, >=60 frames)
+            punch_info = None
+            if transient_detector and span_dur >= 4.0 and frame_count >= 60:
+                span_start_sec = start_frame / fps_float
+                span_end_sec = end_frame / fps_float
+                punch_info = transient_detector.find_best_scale_punch_frame(
+                    span_start_sec=span_start_sec,
+                    span_end_sec=span_end_sec,
+                    fps=fps,
+                    edge_clearance_sec=0.6,
+                )
+
+            if punch_info and 18 <= punch_info["relative_frame"] <= frame_count - 18:
+                rel_f = punch_info["relative_frame"]
+                split_frame = start_frame + rel_f
+                hold_frames = rel_f
+                punch_frames = frame_count - rel_f
+
+                # Sub-shot 1: Static Hold setup
+                final_timeline.append(
+                    {
+                        "name": name,
+                        "sec": start_frame / fps_float,
+                        "end_sec": split_frame / fps_float,
+                        "start_frame": start_frame,
+                        "end_frame": split_frame,
+                        "frame_count": hold_frames,
+                        "duration": hold_frames / fps_float,
+                        "occurrence": occurrence,
+                        "span": span,
+                        "text": b.get("text", span.get("text", "")),
+                        "camera_action": "static_hold",
+                    }
+                )
+                # Sub-shot 2: Scale Punch reaction (shares same occurrence so same image resolves)
+                final_timeline.append(
+                    {
+                        "name": name,
+                        "sec": split_frame / fps_float,
+                        "end_sec": end_frame / fps_float,
+                        "start_frame": split_frame,
+                        "end_frame": end_frame,
+                        "frame_count": punch_frames,
+                        "duration": punch_frames / fps_float,
+                        "occurrence": occurrence,
+                        "span": span,
+                        "text": b.get("text", span.get("text", "")),
+                        "camera_action": "scale_punch",
+                    }
+                )
+            else:
+                final_timeline.append(
+                    {
+                        "name": name,
+                        "sec": start_frame / fps_float,
+                        "end_sec": end_frame / fps_float,
+                        "start_frame": start_frame,
+                        "end_frame": end_frame,
+                        "frame_count": frame_count,
+                        "duration": span_dur,
+                        "occurrence": occurrence,
+                        "span": span,
+                        "text": b.get("text", span.get("text", "")),
+                        "camera_action": span.get("camera_action")
+                        or ("linear_push" if span_dur >= 3.5 else "static_hold"),
+                    }
+                )
+        return final_timeline
+
+    # 2. Legacy / ad-hoc fallback with acoustic snapping
     # Anchors the first image to 0.0s to cover intro music/silence before speech
     image_blocks[0]["sec"] = 0.0
     # 1. Initialize Acoustic Snapper
@@ -1286,9 +1510,9 @@ def _build_audio_filter_chain(
         audio_inputs.extend(
             ["-stream_loop", "-1", "-i", os.path.abspath(bgm_path).replace("\\", "/")]
         )
-        # Lowers music volume under voice automatically
+        # Lowers music volume under voice and carves -4.5dB voice pocket notch (1.2kHz - 3.2kHz)
         filter_parts.append(
-            f"[{bgm_idx}:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=0.15[bgm_raw];"
+            f"[{bgm_idx}:a]aformat=sample_rates=48000:channel_layouts=stereo,equalizer=f=2200:t=q:w=1.5:g=-4.5,volume=0.15[bgm_raw];"
             f"[bgm_raw][1:a]sidechaincompress=threshold=0.08:ratio=6:attack=200:release=800[bgm_ducked];"
         )
         sfx_labels.append("[bgm_ducked]")
@@ -1909,6 +2133,11 @@ def main(run_folder: str | list | None = None):
 
     images_dir = os.path.join(latest_run, "generated_images")
 
+    # 0. Enrich timeline with kinetic metadata and synchronize sidecars if timeline.json exists
+    timeline_json_path = os.path.join(latest_run, "timeline.json")
+    if os.path.exists(timeline_json_path):
+        enrich_timeline_kinetics(latest_run, fps=config["OUTPUT_FPS"])
+
     # 1. Parse timeline blocks from transcript
     raw_image_blocks = parse_image_timeline(latest_run)
 
@@ -1961,4 +2190,4 @@ if __name__ == "__main__":
 
 
 
-__all__ = ['_probe_encoder', '_build_encoder_config', 'detect_hardware_encoder', 'build_ken_burns_filter', 'AudioSyncAligner', 'fix_arabic_srt', 'build_subtitle_style_string', 'build_dynamic_ass_subtitles', 'build_chunk_filter_graph', 'get_sorted_images', '_resolve_image_path', 'load_video_config', 'CheckpointManager', 'get_audio_duration', 'validate_post_encode', 'get_latest_run_folder', '_parse_pre_planned_prompts_txt', '_parse_flow_prompts_cameras', 'load_ai_camera_decisions', 'load_manual_overrides', 'parse_image_timeline', 'prepare_synchronized_timeline', 'validate_assets', '_extract_loudnorm_measured', '_measure_loudnorm', '_build_chunk_ffmpeg_cmd', '_effective_clip_timeout', '_resolve_chunk_workers', '_execute_chunk_ffmpeg', 'render_chunk', 'SFXEngine', '_build_audio_filter_chain', '_execute_final_assembly', 'assemble_final_video', 'export_proxy_ladder', '_signature_drift_reason', '_checkpoint_resume_gate', '_render_all_chunks_parallel', 'run_chunked_compile', 'verify_master_video', 'main']
+__all__ = ['_probe_encoder', '_build_encoder_config', 'detect_hardware_encoder', 'build_ken_burns_filter', 'derive_multishot_crop', 'AudioSyncAligner', 'AudioTransientDetector', 'fix_arabic_srt', 'build_subtitle_style_string', 'build_dynamic_ass_subtitles', 'build_chunk_filter_graph', 'get_sorted_images', '_resolve_image_path', 'load_video_config', 'CheckpointManager', 'get_audio_duration', 'validate_post_encode', 'get_latest_run_folder', '_parse_pre_planned_prompts_txt', '_parse_flow_prompts_cameras', 'load_ai_camera_decisions', 'load_manual_overrides', 'enrich_timeline_kinetics', 'parse_image_timeline', 'prepare_synchronized_timeline', 'validate_assets', '_extract_loudnorm_measured', '_measure_loudnorm', '_build_chunk_ffmpeg_cmd', '_effective_clip_timeout', '_resolve_chunk_workers', '_execute_chunk_ffmpeg', 'render_chunk', 'SFXEngine', '_build_audio_filter_chain', '_execute_final_assembly', 'assemble_final_video', 'export_proxy_ladder', '_signature_drift_reason', '_checkpoint_resume_gate', '_render_all_chunks_parallel', 'run_chunked_compile', 'verify_master_video', 'main']

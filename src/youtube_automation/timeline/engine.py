@@ -545,3 +545,15 @@ def load_timeline_or_shim(run_folder: str) -> list[dict[str, Any]]:
     if blocks:
         blocks[0]["sec"] = 0.0
     return blocks
+
+
+def get_wav_duration(wav_path: str) -> float:
+    """Computes exact audio duration directly from WAV header sample count and sample rate."""
+    import wave
+    with wave.open(wav_path, "rb") as wf:
+        frames = wf.getnframes()
+        rate = wf.getframerate()
+        if rate <= 0:
+            raise ValueError(f"Invalid WAV sample rate: {rate}")
+        return frames / float(rate)
+

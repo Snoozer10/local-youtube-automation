@@ -116,6 +116,8 @@ apm_modules/
 /flow_*.png
 /create_shims.py
 /tools/dev_scratch/
+/scratch/
+/docs/incidents/
 
 # Backups & Editor Artifacts
 *.bak

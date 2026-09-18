@@ -1,8 +1,8 @@
 # 🎬 Autonomous YouTube Video Production Pipeline
 
-### *Transcreate any YouTube video into a broadcast-ready Arabic documentary in the Al-Daheeh (الدحيح) style — zero cloud bills, zero API keys.*
+### *Autonomous, broadcast-grade educational YouTube studio producing high-retention explainer videos — zero cloud bills, zero API keys.*
 
-An enterprise-grade, fully autonomous media pipeline that turns a single YouTube URL into a complete, high-retention Arabic documentary: 30/70 Al-Daheeh script transcreation, studio-grade TTS, DSP mastering, word-level subtitle sync, Imagen 3 visuals, and a 1440p Ken Burns master video.
+An enterprise-grade, fully autonomous multimedia pipeline that transforms a single YouTube URL into a complete, broadcast-ready educational documentary: conversational script transcreation across adaptive channel niches, studio-grade TTS with multi-account failover, Win32 Named Pipe DSP mastering, word-level subtitle sync, Google Flow continuity visuals, and hardware-accelerated video compositing with procedural Ken Burns kinematics.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-CDP%20Automation-2EAD33?style=for-the-badge&logo=playwright&logoColor=white)](https://playwright.dev/)
@@ -38,22 +38,22 @@ Traditional AI media pipelines depend on fragile, costly API tiers — token quo
 
 Input is a single YouTube URL. Output is:
 
-- **Al-Daheeh Arabic script** — strict 30/70 code-switching (30% academic Fusha : 70% Cairene Amiya), 1-3-1 Gary Provost cadence, comedic dead-air markers, phonetic Tashkeel diacritics
+- **Adaptive conversational script** — natural dialect code-switching (30% academic precision : 70% engaging conversational phrasing), 1-3-1 Gary Provost cadence, rhythmic dead-air markers, and phonetic Tashkeel diacritics configured via the Dynamic Niche Engine.
 - **Studio-mastered voice** — Gemini 2.5 Pro TTS chapters stitched losslessly, then DSP-processed in Audacity via Windows Named Pipes
 - **Zero-drift subtitles** — Faster-Whisper word timestamps aligned against the script with `difflib.SequenceMatcher`, split into 3–6 word chunks for mobile reading
-- **Continuity-chained visuals** — Imagen 3 frames driven by a Gemini master roadmap with multi-frame DOM-level reference chaining
-- **A 1440p master video** — hardware-accelerated Ken Burns camera engine with EBU R128 dual-pass loudness normalization
+- **Continuity-chained visuals** — Google Flow frames driven by an Inverted Pyramid master roadmap with Two-Substrate Studio grounds (`#2A2420` Ahwa wood vs `#F8F8FA` neutral limbo)
+- **A 1440p/1080p master video** — hardware-accelerated Ken Burns camera engine featuring AudioTransientDetector with +33.3ms optical lag compensation and EBU R128 dual-pass loudness normalization
 
 ---
 
 ## ⭐ Core Architectural Philosophy
 
 1. **CDP Web-Browser Orchestration** — Connects natively over Chrome DevTools Protocol (`localhost:9222`) to automate authenticated sessions in Google Gemini Web App, Google AI Studio Speech Playground, and Google Flow.
-2. **The Al-Daheeh Linguistic Engine** — Implements the strict 30/70 code-switching rule, recursive callbacks, comedic dead-air markers (`...`), and phonetic Tashkeel for TTS vocalization.
+2. **The Dynamic Multi-Niche Linguistic Engine** — Implements an adaptive conversational code-switching rule, dynamic channel profiles (`GENERAL_EXPLAINER`, `SCIENCE_TECH`, `FINANCE_ECONOMICS`, `HISTORY_GEOPOLITICS`, `PHILOSOPHY_ESSAY`, `CULTURE_COMEDY`), and phonetic Tashkeel for neural vocalization.
 3. **Autonomous Named-Pipe DSP** — Controls Audacity via Windows IPC Named Pipes (`\\.\pipe\ToSrvPipe`) to apply multiband compression, noise gating, EQ curves, and silence truncation without manual GUI interaction.
 4. **Zero-Drift ASR & Cadence Pacing** — Faster-Whisper with GPU/CPU fallbacks, voice-activity detection (VAD), and `difflib.SequenceMatcher` lexical alignment to match every spoken syllable with sub-second visual frame transitions.
-5. **Multi-Frame Continuity Chaining** — Directs Google Flow / Imagen 3 with global master roadmaps, JSON keyframe matrices, and DOM-level reference chip injection for frame-to-frame consistency.
-6. **Hardware-Accelerated Compositing** — FFmpeg Ken Burns camera engine (Push-in, Pull-out, Pan, Tilt, Static) with automatic failover across Intel QuickSync (`h264_qsv`), NVIDIA (`h264_nvenc`), and multi-threaded CPU (`libx264`) rendering at 1440p/1080p with EBU R128 dual-pass loudness normalization.
+5. **Multi-Frame Continuity Chaining** — Directs Google Flow with global master roadmaps, JSON keyframe matrices, top-of-feed $(y, x)$ card sorting, and DOM-level reference chip injection for frame-to-frame consistency.
+6. **Hardware-Accelerated Compositing** — FFmpeg Ken Burns camera engine (Push-in, Pull-out, Pan, Tilt, Static, Scale Punch) with automatic failover across Intel QuickSync (`h264_qsv`), NVIDIA (`h264_nvenc`), and multi-threaded CPU (`libx264`) rendering with proxy ladder generation (1080p/720p).
 7. **Stateful Checkpoint & Failover Engine** — Resumes instantly at the exact paragraph, voice chapter, or visual frame upon interruption, paired with multi-profile browser cycling and Telegram push notifications.
 
 ---
@@ -202,60 +202,56 @@ The supervisor state machine drives all eleven stages, rotates browser profiles 
 
 ## 🛠️ Pipeline Reference
 
-### Phase-by-phase breakdown
+### Canonical 10-Phase Pipeline Breakdown
 
-| Phase | Script | Primary function | Input file(s) | Generated asset(s) | Checkpoint / state |
-| :---- | :----- | :--------------- | :------------ | :----------------- | :----------------- |
-| **01** | `automate_all.py` | Fetches YouTube captions, chunks narrative paragraphs, and transcreates them into Al-Daheeh Egyptian dialect. | `youtube_urls.txt`, `prompt.txt`, `prompt_phase3.txt` | `raw_transcript.txt`, `breaked_paragraphs.txt`, `final_output.txt`, `.docx` | `checkpoint.json` |
-| **02** | `refine_script.py` | Injects 1-3-1 sentence cadence, "Abo Hmeed" skeptic interjections, running jokes, and phonetic Tashkeel. | `final_output.txt`, `refine_prompt.txt`, `daheeh_config.json` | `refined_script.txt`, `refined_script.docx` | `refine_checkpoint.json` |
-| **03** | `generate_voice.py` | Dual-browser TTS: directional markup in Gemini Chat, studio audio in AI Studio Speech. | `refined_script.txt`, `TTS_PROMPT.txt`, `voice_option_notes.txt` | `voice_chapters/Chapter_*.wav` | `voice_generation_manifest.json` |
-| **04** | `stitch_chapters.py` | Losslessly concatenates chapter WAV tracks into a unified master audio file. | `voice_chapters/Chapter_*.wav` | `full_episode_voice.wav` | Direct file verification |
-| **05** | `automate_audacity.py` | Windows Named Pipes DSP: EQ curves, compression, noise gating, silence truncation. | `full_episode_voice.wav`, `YouTube_Voice_Optimizer.txt` | `audacity_voice/full_episode_voice.wav` | `audacity_checkpoint.json` |
-| **06** | `faster_whisper_transcribe_audio.py` | GPU-accelerated ASR with VAD, mapping word timestamps to 3–6 word visual chunks. | `audacity_voice/full_episode_voice.wav`, `transcribe_config.txt` | `image_timestamps.txt`, `timestamped_transcript.txt`, `.srt` | Direct output validation |
-| **07** | `correct_transcript_spelling.py` | Aligns Whisper output against `refined_script.txt` via `difflib.SequenceMatcher` to eliminate ASR misspellings. | `timestamped_transcript.txt`, `refined_script.txt` | Corrected `.txt` and `.srt` files | In-place file alignment |
-| **08** | `flow_image_generator.py` | Builds a Master Visual Roadmap + `flow_prompts.json` and drives Google Flow with multi-frame continuity. | `image_timestamps.txt`, `master_roadmap.txt`, `flow_prompts.json` | `generated_images/*.png`, `generated_images_duplicates/` | `flow_workspace_url_profile_*.txt` |
-| **08b** | `script_image_generator.py` | *Alternative generator:* direct Gemini Web UI image production with relative hover-download automation. | `pre_planned_prompts.txt`, `visual_style.txt`, `visuals_plan.txt` | `generated_images/*.png` | `planning_checkpoint.json` |
-| **09** | `fix_timestamps.py` | Validates and aligns timeline brackets between `image_timestamps.txt` and `flow_prompts.json`. | `image_timestamps.txt`, `flow_prompts.json` | Synchronized `flow_prompts.json` | Direct JSON overwrite |
-| **10** | `generate_thumbnail.py` | Analyzes candidate titles, extracts 2D webcomic concepts, scores via self-critique, generates top variants. | `titles.txt`, `refined_script.txt` | `thumbnails/title_*_thumbnail.png` | `thumbnail_critique.json` |
-| **11** | `compile_video.py` | Hardware-accelerated Ken Burns compiler with EBU R128 dual-pass audio and subtitle burn-in. | `generated_images/*.png`, `full_episode_voice.wav`, `video_config.txt` | 🎬 `youtube_ready_video.mp4` | `compile_checkpoint.json` |
+| Phase | Script / Entrypoint | Primary Function | Input File(s) | Generated Asset(s) | Checkpoint / State |
+| :---- | :------------------ | :--------------- | :------------ | :----------------- | :----------------- |
+| **01** | `automate_all.py` | Captions ingestion & conversational transcreation across adaptive channel niches. Enforces $\ge 35\%$ script ratio gate. | `youtube_urls.txt`, `prompt.txt`, `prompt_phase3.txt` | `raw_transcript.txt`, `breaked_paragraphs.txt`, `final_output.txt`, `.docx` | `checkpoint.json` |
+| **02** | `refine_script.py` | Injects 1-3-1 sentence cadence, comedic timing, niche-specific hooks, and phonetic Tashkeel diacritics. | `final_output.txt`, `refine_prompt.txt`, `daheeh_config.json` | `refined_script.txt`, `refined_script.docx`, `tts_payload.json` | `refine_checkpoint.json` |
+| **03** | `generate_voice.py` | AI Studio Speech Playground neural synthesis (`gemini-2.5-pro-preview-tts`) with automated HTTP 403 multi-account failover. | `refined_script.txt`, `tts_payload.json` | `voice_chapters/Chapter_*.wav` | `voice_generation_manifest.json` |
+| **04** | `automate_audacity.py` | Win32 Named Pipes DSP: 5-step broadcast chain (EQ curve, compression, noise gating, silence truncation, EBU R128). | `voice_chapters/Chapter_*.wav` | `polished_chapters/Chapter_*.wav` | `audio_manifest.json` |
+| **05** | `stitch_chapters.py` | Losslessly concatenates chapter WAV tracks into a unified master audio file with strict format homogeneity assertions ($\Delta = 0.000\text{s}$). | `polished_chapters/Chapter_*.wav` | `full_episode_voice.wav` | Direct sample count verification |
+| **06** | `faster_whisper_transcribe_audio.py` | Faster-Whisper ASR alignment with VAD pause snapping & sequence-matcher spelling correction, building immutable `timeline.json` SSOT. | `full_episode_voice.wav`, `refined_script.txt` | `timeline.json`, `timeline.json.sha256`, `timestamped_transcript.srt` | Cryptographic SHA-256 sidecar |
+| **07** | `roadmap_orchestrator.py` & `flow_image_generator.py` | Paged 25-row storyboard planning and Google Flow visual synthesis featuring Universal 6-Part Prompt Grammar, Two-Substrate Studio grounds, and gap-skipping. | `timeline.json`, `refined_script.txt` | `master_roadmap.jsonl`, `flow_prompts.json`, `generated_images/*.png`, `studio_viewer.html` | `pipeline_manifest.json` |
+| **08** | `fix_timestamps.py` | Synchronizes timeline anchors between transcript chunks and prompt schema while strictly enforcing read-only SSOT on `timeline.json`. | `generated_images/`, `flow_prompts.json` | Updated `flow_prompts.json`, `image_timestamps.txt.sha256` | Strict Read-Only SSOT |
+| **09** | `compile_video.py` | Hardware-accelerated Ken Burns video compositor (Intel QSV / NVENC / CPU) featuring AudioTransientDetector with +33.3ms optical lag, discrete scale punches, and proxy ladders (1080p/720p). | `timeline.json`, `generated_images/*.png`, `full_episode_voice.wav` | 🎬 `youtube_ready_video.mp4`, 1080p & 720p proxies | `compile_checkpoint.json` |
+| **10** | `generate_thumbnail.py` | High-CTR YouTube thumbnail packaging: 5 curiosity gap archetypes, 1-second mobile scan rule, and automated two-tier OCR text collision gate. | `titles.txt`, `refined_script.txt` | `thumbnails/title_*_thumbnail.png`, `thumbnail_critique.json` | `thumbnail_prompts.json` |
 
 ### Granular CLI & modular execution
 
 Every step runs independently. Checkpoint files allow seamless restarts from the last successful operation:
 
 ```bash
-# 1. Extract YouTube transcript and perform 30/70 Al-Daheeh transcreation
+# 1. Extract YouTube transcript and perform conversational transcreation
 python automate_all.py
 
-# 2. Refine Arabic script (cadence, Egyptian humor, Tashkeel diacritics)
+# 2. Refine script (1-3-1 cadence, humor/hooks, Tashkeel diacritics)
 python refine_script.py
 
-# 3. Synthesize chapter-by-chapter AI Studio voice tracks
+# 3. Synthesize chapter-by-chapter AI Studio voice tracks (with HTTP 403 failover)
 python generate_voice.py
 
-# 4. Stitch audio chapters into master track
-python stitch_chapters.py
-
-# 5. Apply DSP mastering macros in Audacity via Named Pipes
+# 4. Apply DSP mastering chain in Audacity via Win32 Named Pipes
 python automate_audacity.py
 
-# 6. Generate zero-drift timestamped transcripts via Faster-Whisper
+# 5. Losslessly stitch audio chapters into master track (exact 0.00s delta)
+python stitch_chapters.py
+
+# 6. Generate zero-drift canonical timeline.json via Faster-Whisper & spelling corrector
 python faster_whisper_transcribe_audio.py
 
-# 7. Correct ASR spelling mistakes against refined script
-python correct_transcript_spelling.py
-
-# 8. Render AI visual frames via Google Flow / Imagen 3
+# 7. Plan storyboard roadmap and render visual frames via Google Flow
+python roadmap_orchestrator.py
 python flow_image_generator.py
 
-# 9. Verify and inject timeline timestamps into prompt schema
+# 8. Verify and inject timeline timestamps into prompt schema (Read-Only SSOT)
 python fix_timestamps.py
 
-# 10. Generate high-CTR 2D webcomic thumbnails
-python generate_thumbnail.py
+# 9. Compile hardware-accelerated Ken Burns master video and proxy ladders
+python compile_video.py "youtube_runs/<Folder_Name>"
 
-# 11. Compile hardware-accelerated Ken Burns 1440p master video
-python compile_video.py
+# 10. Generate high-CTR thumbnails with automated OCR collision gate
+python generate_thumbnail.py "youtube_runs/<Folder_Name>"
 ```
 
 ### Batch processing (default supervisor mode)

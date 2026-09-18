@@ -278,6 +278,13 @@ def apply_tashkeel_from_config(text: str) -> str:
     return DialectTashkeelEngine.get_instance().transform(text)
 
 
+def sanitize_solo_narrator_text(raw_text: str) -> str:
+    """Strips any accidental conversational speaker tags or co-host prefixes."""
+    pattern = r"(?m)^\s*(?:الراوي|أحمد|المتحدث|أبو حميد|شخص \d+|Speaker \d+|Host|Narrator):\s*"
+    cleaned = re.sub(pattern, "", raw_text)
+    return cleaned.strip()
+
+
 def clean_refined_paragraph(text):
     """
     Extracts the clean Arabic paragraph using <final_script> XML boundaries,
@@ -316,6 +323,8 @@ def clean_refined_paragraph(text):
     for pat in metadata_line_patterns:
         text = re.sub(pat, "", text, flags=re.MULTILINE)
 
+    text = sanitize_solo_narrator_text(text)
+
     # 3. Clean line by line: Drop lines with heavy Latin/English script
     clean_lines = []
     for line in text.splitlines():
@@ -327,7 +336,7 @@ def clean_refined_paragraph(text):
         total_chars = max(1, len(re.findall(r"\S", l_str)))
         if (latin_chars / total_chars) > 0.35:
             continue
-        clean_lines.append(l_str)
+        clean_lines.append(sanitize_solo_narrator_text(l_str))
 
     combined = " ".join(clean_lines)
 
@@ -341,6 +350,8 @@ def clean_refined_paragraph(text):
     )
     combined = re.sub(r"\([A-Za-z0-9\s\-_,\.\'&]+\)", "", combined)
     combined = re.sub(r"\s+", " ", combined).strip()
+
+    combined = sanitize_solo_narrator_text(combined)
 
     # 5. Robust Multi-Sentence De-duplication:
     # If Gemini drafted beats and then output the unified paragraph without tags,
@@ -378,6 +389,11 @@ def validate_refinement_quality(text, is_outro=False):
     """
     if not text or len(text.strip()) < 30:
         return False, "Response is too short or empty."
+
+    # 0. Check for unstripped speaker prefixes
+    speaker_pattern = r"(?m)^\s*(?:الراوي|أحمد|المتحدث|أبو حميد|شخص \d+|Speaker \d+|Host|Narrator):"
+    if re.search(speaker_pattern, text):
+        return False, "Detected unstripped speaker prefixes or multi-character dialogue."
 
     # 1. Check for forbidden formal Fusha connectors
     banned_fusha = [
@@ -898,9 +914,9 @@ def main():
     max_retries = CONFIG.max_retries
     switch_accounts = CONFIG.switch_accounts
     browser_type = CONFIG.browser_type
-    profile_index = int(
-        get_runtime_state("ACTIVE_PROFILE_INDEX", get_config_value("ACTIVE_PROFILE_INDEX", "2"))
-    )
+    _raw_profile = get_runtime_state("ACTIVE_PROFILE_INDEX", get_config_value("ACTIVE_PROFILE_INDEX", "2"))
+    _match = re.search(r"\d+", str(_raw_profile))
+    profile_index = int(_match.group(0)) if _match else 2
 
     print(
         f"[CONFIG] Active Profile Index: {profile_index} | Browser: {browser_type} | Model: {model_name}"

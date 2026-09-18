@@ -29,3 +29,11 @@ The pre-flight drill must:
 1. Probe whether the named pipe exists without hanging the process.
 2. In mock tests: simulate the duplex pipe pair to verify protocol framing.
 3. In hardware drill runs: probe real hardware and skip with `@pytest.mark.skipif` if Audacity is not currently active.
+
+## 4. Cold-Boot Polling Window & Module Initialization
+On Windows systems where Audacity 3.x is cold-booted via subprocess (`subprocess.Popen([executable_path])`), wxWidgets and the dynamic `mod-script-pipe` module require 10–20 seconds to initialize the pipe server.
+A naive 3s grace + 15s polling window prematurely fails with a connection error. The hardened client implements:
+- Initial startup grace: 6.0 seconds.
+- Extended retry loop: 80 attempts at 1.0s interval (80s total connection budget).
+- Heartbeat logging: Progress output emitted every 10 attempts to keep the supervisor informed.
+

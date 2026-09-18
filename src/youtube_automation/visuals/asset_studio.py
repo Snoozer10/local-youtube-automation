@@ -30,6 +30,22 @@ def log(msg: str) -> None:
 # ==========================================
 # ASSET PRESETS (CHARACTERS & SCENES)
 # ==========================================
+LIGHT_LIMBO_SUBSTRATE: str = "#F8F8FA"
+AHWA_STUDIO_GROUND: str = "#2A2420"
+STRUCTURAL_CHARCOAL: str = "#2D3444"
+CODEC_SAFE_RED: str = "#EB191E"
+ACCENT_ELECTRIC_CYAN: str = "#00E5FF"
+ACCENT_AMBER: str = "#FFB300"
+ACCENT_SPRING_GREEN: str = "#00E676"
+
+STYLE_DNA_TEXT: str = (
+    "2D graphic vector animation explainer style, uniform 3px deep charcoal (#2D3444) contour linework, "
+    "flat 2-step cel-shading with razor-sharp shadow edges, zero gradients, 1-2-3 shape hierarchy, "
+    "clean 16:9 widescreen composition strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980, "
+    "leaving 10% peripheral bleed padding, "
+    "Palette: 60% base ground (#F8F8FA), 30% charcoal lines (#2D3444), 10% kinetic accents (Cyan #00E5FF, Amber #FFB300, Spring Green #00E676, Codec-Safe Red #EB191E)"
+)
+
 FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
     "CHARACTERS": {
         "HOST": {
@@ -38,13 +54,13 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
                 "Character Visual DNA: Ahmed El-Ghandour (Al-Daheeh). "
                 "Anatomy: Voluminous dark curly afro hair, thin round wire-rim glasses, animated hazel eyes, expressive comedic eyebrows, light stubble. "
                 "Outfit: Matte charcoal-grey pullover hoodie (#2B2D42), black relaxed joggers, clean white minimal sneakers. "
-                "Rendering Invariant: 2D graphic vector animation style, uniform 3px black contour outlines, flat 2-step cel-shading."
+                "Rendering Invariant: 2D graphic vector animation style, uniform 3px black contour outlines, flat 2-step cel-shading, 1-2-3 shape hierarchy."
             ),
             "portrait_prompt": (
                 "Studio character visual development bust portrait of Ahmed El-Ghandour (Al-Daheeh) in a 2D graphic vector animation explainer style. "
                 "Chest-up framing with 15% upper headroom: thin circular wire-rim glasses, wide energetic comic eyes, wild voluminous curly black afro hair, expressive eyebrows, light comedic stubble. "
                 "Wearing an unbranded matte charcoal-grey pullover hoodie (#2B2D42). "
-                "Rendering: Crisp 3px black vector contour outlines, vibrant flat 2-step cel-shading, high-contrast studio illumination, pure solid seamless white background (#FFFFFF). "
+                "Rendering: Crisp 3px black vector contour outlines, vibrant flat 2-step cel-shading, 1-2-3 shape hierarchy, Da Vinci Sfumato chiaroscuro lighting against desaturated negative space, pure solid seamless white background (#FFFFFF). "
                 "Visual rule: Clean 2D animation art only. Zero 3D CGI, zero photorealism, zero gradients, zero shadows on backdrop."
             ),
             "body_prompt": (
@@ -52,7 +68,7 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
                 "Horizontal 3-view orthographic lineup: full-body front view, 3/4 dynamic perspective view, and side profile view. "
                 "Character: Ahmed El-Ghandour (Al-Daheeh) in 2D graphic vector animated style. "
                 "Biometrics & Wardrobe: Circular wireframe glasses, voluminous dark curly afro hair, matte charcoal-grey pullover hoodie (#2B2D42), relaxed black joggers, minimal white canvas sneakers. "
-                "Technical constraints: Aligned eye-lines and identical proportions across all 3 views, crisp 3px black vector contour lines, flat 2-step cel-shading, pure solid seamless white background (#FFFFFF). "
+                "Technical constraints: Aligned eye-lines and identical proportions across all 3 views, crisp 3px black vector contour lines, flat 2-step cel-shading, 1-2-3 shape hierarchy, pure solid seamless white background (#FFFFFF). "
                 "Visual rule: Studio model turnaround sheet only. Zero 3D render, zero photorealism, zero floor shadows, zero background props."
             ),
         },
@@ -106,12 +122,32 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
         },
     },
     "SCENES": {
+        "LIGHT_LIMBO": {
+            "name": "SCENE_LIGHT_LIMBO_ENV",
+            "scene_prompt": (
+                "2D graphic vector animation explainer studio substrate plate. "
+                "Neutral studio table ground (#F8F8FA) with aluminum diagnostic clipboard, clean uniform illumination, zero gradients. "
+                "Uniform 3px deep charcoal (#2D3444) contour outlines, flat 2-step cel-shading, 1-2-3 shape hierarchy, "
+                "clean 16:9 widescreen composition strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980, leaving 10% peripheral bleed padding. "
+                "Visual rule: Studio substrate plate only. Zero human figures, zero 3D CGI, zero text."
+            ),
+        },
+        "HOST_STUDIO_DESK": {
+            "name": "SCENE_HOST_STUDIO_ENV",
+            "scene_prompt": (
+                "2D graphic vector animation explainer studio presenter desk plate. "
+                "Clean educational studio presenter desk resting on neutral studio limbo ground (#F8F8FA), "
+                "uniform 3px deep charcoal (#2D3444) contour linework, flat 2-step cel-shading, zero gradients, "
+                "clean 16:9 widescreen composition bounded inside coordinates X: 180 to 1740, Y: 90 to 980, "
+                "leaving 10% peripheral bleed padding. Visual rule: Empty studio desk plate only. Zero text, zero 3D CGI."
+            ),
+        },
         "AHWA_STUDIO": {
             "name": "SCENE_AHWA_STUDIO_ENV",
             "scene_prompt": (
                 "2D animation layout background plate of a cozy Cairo studio. "
-                "Wooden desk, stacked encyclopedias, retro CRT monitor, Egyptian glass teacup with mint, warm 3200K tungsten lighting. "
-                "Crisp 3px black vector outlines, flat cel-shading, open central staging area, 16:9 widescreen. "
+                "Warm dark mahogany desk (#2A2420), stacked encyclopedias, retro CRT monitor, Egyptian glass teacup with mint, warm 3200K tungsten lighting with razor-sharp shadow falloff. "
+                "Uniform 3px deep charcoal (#2D3444) vector outlines, flat 2-step cel-shading, 1-2-3 shape hierarchy, open central staging area strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980 with 10% bleed padding, 16:9 widescreen. "
                 "Visual rule: Empty background plate only. Zero characters, zero 3D CGI."
             ),
         },
@@ -138,19 +174,19 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
         "RETRO_BLUEPRINT": {
             "name": "SCENE_RETRO_BLUEPRINT_ENV",
             "scene_prompt": (
-                "2D animation layout background plate of a high-tech retro scientific blueprint canvas. "
-                "Midnight navy background (#0A1128), glowing cyan (#00F0FF) vector HUD schematics, coordinate grid lines, mathematical formulas. "
-                "High-contrast vector illumination, sharp clean linework, 16:9 widescreen. "
-                "Visual rule: Technical blueprint background only. Zero human characters."
+                "2D animation layout plate of a scientific drafting desk setup. "
+                "Orthographic cyan drafting placard resting flat on the studio workbench (#F8F8FA), vector HUD schematics, coordinate grid lines. "
+                "High-contrast vector illumination, uniform 3px deep charcoal (#2D3444) outlines, clean 16:9 widescreen composition bounded within coordinates X: 180 to 1740, Y: 90 to 980. "
+                "Visual rule: Drafting placard setup only. Zero full-screen dark navy void, zero text, zero human characters."
             ),
         },
         "HISTORICAL_MUSEUM": {
             "name": "SCENE_HISTORICAL_MUSEUM_ENV",
             "scene_prompt": (
-                "2D animation layout background plate of a grand Baroque museum gallery. "
-                "Deep crimson damask wallpaper (#540B0E), carved gold gilded picture frames, parquet floor, top-down spotlighting. "
-                "Rich 2D cel-shaded animation art, sharp black vector contours, 16:9 widescreen. "
-                "Visual rule: Museum gallery background plate only. Zero characters, zero 3D CGI."
+                "2D animation layout plate of a historical archival desk setup. "
+                "Framed archival document and miniature portrait resting flat on the studio workbench (#F8F8FA), clean studio illumination. "
+                "Uniform 3px deep charcoal (#2D3444) contour linework, flat 2-step cel-shading, clean 16:9 widescreen composition bounded within coordinates X: 180 to 1740, Y: 90 to 980. "
+                "Visual rule: Archival desk placard plate only. Zero full-screen crimson wallpaper, zero characters, zero 3D CGI."
             ),
         },
         "ISOLATED_WHITE": {
@@ -159,6 +195,16 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
                 "2D animation layout minimalist clean studio cyclorama background plate. "
                 "Pure solid seamless white canvas (#FFFFFF), high-key balanced studio lighting, zero clutter. "
                 "Visual rule: Empty solid white background only. Zero characters, zero props, zero gradients."
+            ),
+        },
+        "KEYNOTE_SLATE": {
+            "name": "SCENE_KEYNOTE_SLATE_ENV",
+            "scene_prompt": (
+                "2D graphic vector explainer presentation background plate. "
+                "Matte dark charcoal canvas (#1E2026) with subtle geometric grid overlay. "
+                "Dual floating container cards with soft drop shadows, clean 3px vector outlines, "
+                "generous negative space in the lower 25% for video subtitles, 16:9 widescreen. "
+                "Visual rule: Presentation graphic plate only. Zero characters, zero 3D CGI."
             ),
         },
     },

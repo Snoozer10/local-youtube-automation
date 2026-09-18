@@ -20,7 +20,7 @@ We had literal-word prompts causing low relevance and text collisions. We lock m
 
 ## Consequences
 
-- Style consistency via `visual_style.txt` preset fallback, not LLM hallucination; validator owns negative + Arabic gate deterministically.
+- Style consistency via `STYLE_DNA_TEXT` and `FLOW_ASSET_PRESETS` in Python modules, not `visual_style.txt` (which is legacy and used only by `script_image_generator.py`); validator owns negative + Arabic gate deterministically.
 - Subject tracking handles coreference and chapter-scale reappearance without cloud SDKs.
 - Chunk-boundary padding prevents context-blind first spans.
 

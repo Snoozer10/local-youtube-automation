@@ -92,6 +92,9 @@ When the user requests a durable behavior change, record it here or in the relev
   - `visuals`: Google Flow image generation, continuity character asset studio, base64 extraction, and OCR text collision gates (`flow_generator.py`, `asset_studio.py`, `image_extractor.py`, `text_gate.py`).
   - `video`: FFmpeg hardware video compositing (Intel QSV / NVENC / CPU fallback), Ken Burns dynamic smoothstep pan-and-zoom transformation, filtergraph generation, and ASS subtitle burning (`compiler.py`, `encoder.py`, `ken_burns.py`, `filter_graph.py`, `subtitles.py`).
   - `orchestrator`: Pipeline stage orchestration and batch execution coordination.
+  - Note on visual engines:
+    - `flow_image_generator.py` (and `src/youtube_automation/visuals/flow_generator.py`) is the primary visual engine. Prompts are governed by `roadmap_orchestrator.py`, `prompt_planner.py`, and `asset_studio.py` (`FLOW_ASSET_PRESETS`).
+    - `script_image_generator.py` is the legacy alternative generator, exclusively owning `prompts/visual_style.txt` and `prompts/visuals_plan.txt`.
 - Root entrypoint facade shims: Transparent `_FacadeProxy` shims at the repository root (`compile_video.py`, `flow_image_generator.py`, `generate_voice.py`, `automate_audacity.py`, `stitch_chapters.py`, `faster_whisper_transcribe_audio.py`, `correct_transcript_spelling.py`, `fix_timestamps.py`, `text_gate.py`, `timeline_engine.py`, `validator.py`, `json_sanitizer.py`, `utils.py`, `gemini_utils.py`) ensuring zero regressions for legacy CLI invocation and dynamic bidirectional monkeypatch synchronization.
 - `exercises/`: Formulative pedagogy scaffold and pre-flight diagnostic drills:
   - `01-audio-dsp`: Audio chapter slicing, speech tag armoring, and live Audacity Named Pipe IPC validation.

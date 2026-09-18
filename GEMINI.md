@@ -1,6 +1,6 @@
 ---
 project_name: "youtube-automation-pipeline"
-version: "4.3.0"
+version: "4.4.0"
 tech_stack:
   - "python"
   - "playwright"
@@ -31,7 +31,7 @@ generator: "gemini-context-engineer/v4.0.0"
 # Project Context: youtube-automation-pipeline
 
 ## 🎯 Project Overview
-Automated video pipeline emulating the Egyptian/Khaleeji Arabic "Al-Daheeh" educational persona. Transcreates transcripts, synthesizes neural voiceovers, applies Audacity DSP, aligns speech via Faster-Whisper, orchestrates Gemini prompts via CDP, harvests visuals via Google Flow, and renders 1440p video via FFmpeg. Features PEP 517/518 packages in `src/youtube_automation/`, backward-compatible `_FacadeProxy` root shims, and pre-flight diagnostic drills in `exercises/`.
+Autonomous, broadcast-grade educational YouTube studio producing high-retention explainer videos powered by a dynamic multi-niche engine (`GENERAL_EXPLAINER`, `SCIENCE_TECH`, `FINANCE_ECONOMICS`, `HISTORY_GEOPOLITICS`, `PHILOSOPHY_ESSAY`, `CULTURE_COMEDY`). Transcreates transcripts with engaging conversational dialect and sentence cadence, synthesizes neural voiceovers with multi-account quota failover, applies Audacity DSP via Win32 Named Pipes, aligns speech via Faster-Whisper, orchestrates Gemini prompts via CDP loopback, harvests visuals via Google Flow with Two-Substrate Studio grounds, and renders broadcast video with procedural Ken Burns kinematics via FFmpeg. Features PEP 517/518 packages in `src/youtube_automation/`, backward-compatible `_FacadeProxy` root shims, and pre-flight diagnostic drills in `exercises/`.
 
 ## 🏗️ Architecture & Component Mapping
 
@@ -48,13 +48,17 @@ Automated video pipeline emulating the Egyptian/Khaleeji Arabic "Al-Daheeh" educ
 | Audio Synthesis & DSP | [audio/](src/youtube_automation/audio/) | [generate_voice](generate_voice.py), [audacity](automate_audacity.py), [stitch](stitch_chapters.py) | AI Studio TTS, Win32 Named Pipes DSP, lossless WAV stitch |
 | Speech & Lexical Sync | [speech/](src/youtube_automation/speech/) | [transcribe](faster_whisper_transcribe_audio.py), [spellcheck](correct_transcript_spelling.py) | Faster-Whisper ASR, Silero VAD pause snap, monotonic spellcheck |
 | Timeline SSOT | [timeline/](src/youtube_automation/timeline/) | [timeline_engine](timeline_engine.py), [fix_timestamps](fix_timestamps.py) | Canonical timeline.json, SHA-256 sidecars, timestamp repair |
-| Visual Generation | [visuals/](src/youtube_automation/visuals/) | [flow_generator](flow_image_generator.py), [text_gate](text_gate.py) | Google Flow UI automation, continuity studio, OCR text gate |
+| Visual Generation | [visuals/](src/youtube_automation/visuals/) | [flow_generator](flow_image_generator.py), [text_gate](text_gate.py) | Google Flow UI automation, continuity studio, OCR text gate (upper-80% safe zone) |
 | Hardware Video Render | [video/](src/youtube_automation/video/) | [compile_video](compile_video.py) | FFmpeg compositor, QSV (lookahead=0, nv12), Ken Burns, ASS |
 | Browser CDP Engine | [browser/](src/youtube_automation/browser/) | [cdp_client](src/youtube_automation/browser/cdp_client.py), [gemini_utils](gemini_utils.py) | Port 9222 loopback binding, tab hygiene, Gemini web controls |
 | Core Primitives | [core/](src/youtube_automation/core/) | [utils](utils.py) | Atomic disk writes, process lifecycle, profile rotation |
 | Prompt & NLP Engines | [nlp/](src/youtube_automation/nlp/), [prompts/](src/youtube_automation/prompts/) | [json_sanitizer](json_sanitizer.py), [validator](validator.py) | Multi-tier LLM JSON repair, 8-part prompt validation |
-| Pipeline Orchestrator | [orchestrator/](src/youtube_automation/orchestrator/) | [run_agency](run_agency.py), [roadmap](roadmap_orchestrator.py) | Batch scheduling, 25-row paged visual storyboard |
+| Pipeline Orchestrator | [orchestrator/](src/youtube_automation/orchestrator/) | [run_agency](run_agency.py), [roadmap](roadmap_orchestrator.py) | Batch scheduling, 25-row paged visual storyboard, 5-shot scale cycle |
 | Pedagogy & Diagnostics | [exercises/](exercises/) | [lint_exercises](tools/lint_exercises.py), [run.bat](run.bat) | 3-tier pedagogy drills (01-audio, 03-browser, 05-video) |
+
+> **Visual Engines Architecture & Ownership**:
+> - `flow_image_generator.py` (and `src/youtube_automation/visuals/flow_generator.py`) is the primary visual engine. Prompts are governed by `roadmap_orchestrator.py`, `prompt_planner.py`, and `asset_studio.py` (`FLOW_ASSET_PRESETS`, `STYLE_DNA_TEXT`).
+> - `script_image_generator.py` is the legacy alternative generator, exclusively owning `prompts/visual_style.txt` and `prompts/visuals_plan.txt`.
 
 ### Domain Lexicon & Ubiquitous Language
 | Term | Canonical Meaning | Forbidden Synonyms / Overloaded Usage |
@@ -90,6 +94,13 @@ Automated video pipeline emulating the Egyptian/Khaleeji Arabic "Al-Daheeh" educ
 - **Anti-Sycophancy**: Disagree with false user premises; never offer performative agreement.
 - **Surgical Changes Only**: Modify strictly what is requested; avoid unrequested style churn.
 - **Plausibility Is Not Correctness**: Untested code is assumed broken; verify with compiler, linter, or tests.
+
+### Directives on User Examples & Open Scopes
+
+1. **Illustrative Baselines:** When the user provides examples, treat them as directional seeds rather than an exhaustive or binding list.
+2. **Critical Evaluation:** Do not assume the user's proposed tools, libraries, or patterns are optimal. If a suggestion introduces anti-patterns, latency, or unnecessary complexity, explicitly challenge the premise and suggest the superior industry standard.
+3. **Controlled Exploration:** When the user indicates an open-ended goal, identify the governing category or core objective. Propose the top 2–3 best-fit solutions ranked by reliability and simplicity, clearly stating the trade-offs of each.
+4. **No Silent Drift:** Never use open-ended prompts as permission to add unrequested dependencies or modify out-of-scope files. Expand the concept, but keep the operational blast radius strictly bounded.
 
 ### Technical & Environmental Invariants
 - **Intel QSV Compositing**: `QSV_LOOKAHEAD=0` (no lookahead with sw frames); `format=nv12` filter required for `h264_qsv` (yuv420p crashes); CFR frame math (`round(dur * fps)`); CLI >1000 chars written to `-filter_complex_script`.
@@ -128,6 +139,24 @@ Automated video pipeline emulating the Egyptian/Khaleeji Arabic "Al-Daheeh" educ
 | `#9` | Repo Cleanup & Consolidation | Done | `#8` | `python tools/lint_exercises.py && python -m pytest tests/ -v` |
 | `#10` | Flow Generator Hardening v2 | Done | `#9` | `python -m py_compile src/youtube_automation/visuals/flow_generator.py && python -m pytest exercises/03-browser-cdp/03.03-flow-hydration-recovery/solution/test_exercise.py -v` |
 | `#11` | Full Production Run (293 frames) | Done | `#10` | 293 PNGs in `generated_images/` + `youtube_ready_video.mp4` (1334.50s, 0.01s A/V drift) |
+| `#12` | Creative Refinement (Plan v4) | Done | `#11` | `python tools/lint_exercises.py && python -m pytest tests/unit -v` (414 passed) |
+| `#13` | NotebookLM Discover & Socratic Curation | Done | `#12` | `python -m pytest tests/unit/test_notebooklm_discover.py tests/unit/test_socratic_engine.py -v` (424 passed) |
+| `#14` | Socratic Prompt Operationalization & Canary Benchmark | Done | `#13` | `python tools/lint_exercises.py && python -m pytest tests/unit -v` (445 passed) |
+| `#16` | Socratic Visual Studio Phase 2 Rollout (Chunk 1: Frames 1-50) | Done | `#15` | `python tools/run_canary_benchmark.py --frames 1-50 --output-dir "youtube_runs/Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!/chunk_1_images"` (50/50 PASS, 0 collisions) |
+| `#17` | Socratic Visual Studio Phase 2 Rollout (Chunk 2: Frames 51-100) | Done | `#16` | `python tools/run_canary_benchmark.py --frames 51-100 --output-dir "youtube_runs/Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!/chunk_2_images"` (50/50 PASS, 0 collisions) |
+| `#18` | Socratic Visual Studio Phase 2 Rollout (Chunk 3: Frames 101-150) | Done | `#17` | `python tools/run_canary_benchmark.py --frames 101-150 --output-dir "youtube_runs/Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!/chunk_3_images"` (50/50 PASS, 0 collisions) |
+| `#19` | Socratic Visual Studio Phase 2 Rollout (Chunk 4: Frames 151-200) | Done | `#18` | `python tools/run_canary_benchmark.py --frames 151-200 --output-dir "youtube_runs/Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!/chunk_4_images"` (50/50 PASS, 0 collisions) |
+| `#20` | Socratic Visual Studio Phase 2 Rollout (Chunk 5: Frames 201-250) | Done | `#19` | `python tools/run_canary_benchmark.py --frames 201-250 --output-dir "youtube_runs/Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!/chunk_5_images"` (50/50 PASS, 0 collisions) |
+| `#21` | Socratic Visual Studio Phase 2 Rollout (Chunk 6: Frames 251-293) | Done | `#20` | `python tools/run_canary_benchmark.py --frames 251-293 --output-dir "youtube_runs/Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!/chunk_6_images"` (43/43 PASS, 0 collisions) |
+| `#22` | Socratic Visual Studio Phase 2 Rollout (Full Episode Master Studio: 293/293) | Done | `#21` | All 6 chunks (Frames 1-293) complete on disk, 293/293 unique SHA-256 hashes, 100% OCR text gate pass |
+| `#23` | Socratic Master Video Compilation (1080p, 22.24m) | Done | `#22` | `python compile_video.py` (232.62 MB, 1334.50s, 0.01s A/V drift, 1080p & 720p proxies verified) |
+| `#24` | Studio Viewer Baseline Collision Fix & Chunk Scaffolding | Done | `#23` | `python -m pytest tests/unit/test_viewer_generator.py -v` (11/11 viewers regenerated & verified) |
+| `#25` | Long-Form 16:9 Broadcast Refactoring (Tiers 1, 2, 3) | Done | `#24` | `python -m pytest tests/unit -v` (500/500 PASS), `python tools/lint_exercises.py` (35/35 PASS), `compile_video.py` (40,035 frames, 1334.50s, 0.01s drift) |
+| `#26` | Option B Disambiguated 7-Frame Rollout | Done | `#25` | `python tools/run_canary_benchmark.py --force-overwrite --frames 16,18,20,33,34,44,49 --output-dir "youtube_runs/Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!/canary_disambiguated_7"` (7/7 PASS, 0 collisions, 0 text leaks) |
+| `#27` | Phase 7B Full Visual Production (What Do Animals Think Of Humans) | Done | `#26` | 139 PNGs in `generated_images/` (100% complete, 139 unique SHA-256 hashes, 0 collisions, `studio_viewer.html` generated, 520 tests passing) |
+
+| `#28` | Hardware Video Compilation (What Do Animals Think Of Humans) | Done | `#27` | `compile_video.py` (161.4 MB master, 1080p proxy 86.1 MB, 720p proxy 43.7 MB, 602.27s duration, 0.00s A/V drift, 211 synchronized clips) |
+| `#29` | High-CTR YouTube Thumbnail Packaging (What Do Animals Think Of Humans) | Done | `#28` | `python generate_thumbnail.py` (2 winning variants on disk, 100% OCR text gate pass, MSER collision self-healing verified) |
 
 ### Known Failure Modes & Project Learnings
 - [LEARNING-001]: NEVER enable `look_ahead` on Intel QSV (`h264_qsv`) with sw-decoded frames; ALWAYS enforce `QSV_LOOKAHEAD=0`.
@@ -142,3 +171,38 @@ Automated video pipeline emulating the Egyptian/Khaleeji Arabic "Al-Daheeh" educ
 - [LEARNING-010]: NEVER use a generic error regex in the generation watchdog; ALWAYS include `reached your usage limit|you have not been charged` — Flow quota errors render as card text, not `[role='alert']`, causing 120s silent stalls if undetected.
 - [LEARNING-011]: NEVER check for progressbar immediately after pressing Enter; ALWAYS use a Card-Spawn Handshake (record pre-submit card count, poll ≤20s for count increase) to distinguish queue latency from true stall — prevents false double-submission re-triggers.
 - [LEARNING-012]: NEVER scope `.animate-pulse` / skeleton checks globally; ALWAYS scope to `active_card` (last card locator) to avoid false "still loading" signals from historical generation cards re-animating on scroll.
+- [LEARNING-013]: NEVER attempt to query a modal-closing element while submitting in NotebookLM Web Discover; ALWAYS monitor the Sources panel where candidate cards stage for `+ Import` and verify count increments atomically.
+- [LEARNING-014]: ALWAYS use `-X utf8` and set `PYTHONIOENCODING=utf-8` on Windows when invoking subprocess runners to avoid charmap codec `UnicodeEncodeError` on emoji/Unicode status logs.
+- [LEARNING-015]: NEVER rely on in-page canvas fallbacks (`ctx.drawImage`) when extracting cross-origin images in Google Flow; ALWAYS prioritize Playwright's `page.request.get()` network stream (inheriting browser session cookies and bypassing CORS), and validate that `img.getextrema()` is not all zeros to reject blank/tainted canvas artifacts.
+- [LEARNING-016]: NEVER match card-level transient errors (`تعذَّر إكمال المعالجة`, `failed to generate`) globally across the page DOM in Flow; ALWAYS scope card checks to `active_card` via `target_locator` to prevent historical failed tiles from causing false-positive quota crashes on subsequent frames. Global checks must strictly target fatal account strings (`الحدّ الأقصى للاستخدام`, `reached your usage limit`).
+- [LEARNING-017]: NEVER sort candidate images with `candidates[-1]` in Google Flow; Google Flow prepends new cards to the TOP of the feed (lowest `y`). ALWAYS sort ascending by `y` and select `candidates[0]` to avoid selecting stale historical cards at the bottom of the feed.
+- [LEARNING-018]: ALWAYS dismiss sticky Google cookie consent banners (`.glue-cookie-notification-bar__accept`) before prompt submission; otherwise the banner overlays the bottom input bar and intercepts pointer events.
+- [LEARNING-019]: NEVER extract bare `subject_details` fragments for Mode A prompts in dual-mode builders; ALWAYS call `enhance_diffusion_prompt(raw_dict)` to guarantee the full 2D vector style DNA, isolated white canvas directive (`#FFFFFF`), and negative token filters are submitted to the diffusion model.
+- [LEARNING-020]: NEVER submit raw character constant identifiers (e.g. `CHARACTER_SKEPTIC_ABO_HMEED`) in diffusion prompts; ALWAYS expand them via `expand_asset_tokens()` into explicit 2D cartoon animation descriptions to prevent models from generating photorealistic street/person photos from token strings.
+- [LEARNING-021]: In Google Flow, every generation prompt produces a pair of 2 candidate variants side-by-side in the top row (`y: 59`, `x: 32` and `x: 680.5`). When scraping the newly rendered image, ALWAYS sort ascending by `(y, x)` and pick `candidates[0]`, ensuring `pre_image_srcs` captures all visible tiles to avoid selecting unconsumed variant siblings on subsequent frames.
+- [LEARNING-022]: In Google Flow's Angular CDK drawer, character asset lists are virtualized (cards unmount outside active scroll window) and clicking an asset card can auto-dismiss the overlay while directly attaching the chip to the prompt bar. ALWAYS pump bidirectional wheel scrolls (-600, +600) to mount assets, and verify destination chip presence before and after clicking char_btn rather than strictly waiting for a secondary detail confirmation button.
+- [LEARNING-023]: In Chrome DevTools Protocol tab selection, NEVER use broad parent domains (e.g. "google.com") to locate application tabs; ALWAYS match specific subdomains ("flow.google", "/flow") to avoid inadvertently binding to sibling Google tabs (gemini.google.com, aistudio.google.com).
+- [LEARNING-024]: In Google Flow, NEVER inject prompts while conversational "Agent" mode is active; ALWAYS ensure Agent mode is toggled OFF (dismiss agent side-panel and ensure the Agent pill button is inactive/grey) to prevent conversational video approval modals from intercepting direct image generation.
+- [LEARNING-025]: In batch image generation runners, NEVER allow account quota saturation ("الحدّ الأقصى للاستخدام") to cause cascading per-frame reload attempt failures across pending frames; ALWAYS halt the batch immediately or invoke multi-account profile rotation (rotate_profile_index), preserving existing completed frames on disk.
+- [LEARNING-026]: In multi-account rotation architectures, Google Flow Character Presets are strictly account- and project-scoped; ALWAYS implement autonomous fallback to Mode A Master Setup with expanded character visual DNA (expand_asset_tokens) when summon_character_chip reports FAILED/SKIPPED.
+- [LEARNING-027]: In comparison viewer generators, NEVER hardcode baseline image URLs (e.g. `../generated_images/{fname}`); when videos are compiled, `generated_images/` contains consolidated candidate assets while baselines reside in `generated_images_baseline/`. ALWAYS dynamically resolve `generated_images_baseline/` priority and compute relative image links via `os.path.relpath(target, html_dir)`.
+- [LEARNING-028]: In procedural Ken Burns linear push drift filters, NEVER use unconstrained interpolation like `((on-1)/(d-1))`; ALWAYS use zero-safe clamped evaluation `min(1.03, 1.0 + 0.03 * (clip(on, 0, N) / max(1, N)))` to prevent fatal negative pops at `on=0` and division-by-zero crashes when duration `d=1`.
+- [LEARNING-029]: In canonical timeline synchronization with hardware video encoders (e.g. Intel QSV with lookahead=0), NEVER attempt mid-stream stepped scale punches within a single FFmpeg clip; ALWAYS subdivide long holds (>= 4.0s) into discrete setup (`static_hold`) and reaction (`scale_punch`) sub-shots while preserving identical asset occurrence integers and anchoring vertical elevation to upper-third eye-line ($Y=360px$).
+- [LEARNING-030]: In Gemini prompt planning preambles, NEVER instruct the LLM to output quoted text examples (e.g. "STAGE 1", "CLASSIFIED"); ALWAYS enforce `STRICT ZERO-TEXT INVARIANT` with non-linguistic data telemetry (proportional bars, percentage glyphs, node linkages) to prevent warped pseudo-Latin text leaks.
+- [LEARNING-031]: In Google Flow Mode B previous image attachment, NEVER slice primary cards from the bottom of the feed (`primary_cards[-count:]`); Google Flow prepends newly generated cards to the top of the feed (`lowest Y`). ALWAYS slice from the top (`primary_cards[:count]`) and reverse to attach true chronological previous frames.
+- [LEARNING-032]: In Gemini web Markdown table parsing, NEVER assume table rows are pipe-delimited (`|`); Gemini SPA renders tables into native HTML `<table>` elements where browser `innerText` converts cells to tab-delimited (`\t`) strings. ALWAYS support both `|` and `\t` row delimiters in table line parsers.
+- [LEARNING-033]: In Gemini web prompt construction for text-only tasks (e.g. storyboards and roadmaps), NEVER include diffusion model hex codes, pixel coordinates (`X: 180 to 1740`), or render specs; Gemini web's multi-modal safety filter misinterprets them as image generation/manipulation requests and responds with refusal cards ("I am just a text-based AI and cannot help with that." / "I seem to be encountering an error.").
+- [LEARNING-034]: In Playwright CDP connection (`chromium.connect_over_cdp`), NEVER leave inactive or heavy tabs (e.g. idle AI Studio or stalled SPAs) open in the browser; an unresponsive renderer thread hangs Playwright's initial target attachment handshake indefinitely. ALWAYS query `http://127.0.0.1:9222/json/list` and prune idle/dead tabs prior to connecting.
+- [LEARNING-035]: In high-volume Google Flow image generation batches (100+ frames), NEVER treat transient card-spawn queue timeouts (>45s) as fatal account quota exhaustion; ALWAYS log as `TRANSIENT_ERROR`, preserve active account profiles, recycle the workspace into a fresh project, and execute an automated single-pass gap backfill sweep (`if os.path.exists(save_path): continue`) after the main sequential pass.
+- [LEARNING-036]: In AI thumbnail generation, NEVER ingest raw diffusion outputs without an automated OCR text collision check; ALWAYS verify bitmaps via `check_text_collision`, purge contaminated images on Attempt 1, and retry with `STRENGTHENED_NEGATIVE_PROMPT` to prevent distorted pseudo-Latin typography leaks.
+- [LEARNING-037]: In automation CLI entrypoints, NEVER rely exclusively on directory modification timestamps (`get_latest_run_folder`); ALWAYS support explicit target directory arguments via `sys.argv[1]` to prevent race conditions when running concurrent or historical batch jobs.
+- [LEARNING-038]: In CI and PR release readiness, NEVER assume local checks are sufficient without reading `.github/workflows/*.yml`; ALWAYS inspect the exact CI workflow commands (e.g. `ruff check tests/unit` before `pytest`) and replicate the full CI matrix locally before creating or updating a PR.
+- [LEARNING-039]: In repository static analysis, NEVER scope linting only to a subset of directories (e.g. `src/`, `exercises/`, `tools/`); ALWAYS execute `ruff check .` across the entire workspace (including `tests/unit/` and root `.py` facade shims) to catch latent formatting and typing violations before CI.
+- [LEARNING-040]: In Python modules using `from __future__ import annotations`, NEVER assume code without import errors is cleanly typed; delayed evaluation strings (`dict[str, Any]`) will NOT fail at import time even if `Any` is undefined (`F821`), but will crash during runtime reflection (`typing.get_type_hints`). ALWAYS run static analysis (`ruff check .` / `mypy`) to verify all referenced types are explicitly imported.
+- [LEARNING-041]: In multi-file version releases, NEVER bump the version in `CHANGELOG.md` in isolation; ALWAYS atomically synchronize version numbers across all package manifests and project descriptors (`pyproject.toml`, `GEMINI.md`, `CHANGELOG.md`) in the same commit.
+- [LEARNING-042]: In GitHub PR workflows, NEVER push speculative follow-up commits to an active PR branch before verifying the prior commit's status check; ALWAYS monitor `gh pr checks <id>` or `gh run list` to ensure the current commit is green to avoid generating consecutive red `x` commit status badges on GitHub.
+- [LEARNING-043]: In `CHANGELOG.md` version maintenance, NEVER prepend a new release section without verifying historical version boundary integrity; ALWAYS validate with `tools/extract_release_notes.py <tag>` to prevent version bleed (omitting intermediate version headers like `## [4.3.0]`) and duplicate section headers.
+
+
+
+
