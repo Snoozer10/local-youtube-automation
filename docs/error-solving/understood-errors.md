@@ -182,3 +182,105 @@
 - **Solution**: Always invoke `save_timeline_and_shims()` or atomically re-calculate `timeline_sha` and rewrite all 4 sidecar files (`image_timestamps.txt.sha256`, `timestamped_transcript.txt.sha256`, etc.).
 - **Prevention**: Never edit canonical timeline JSON without synchronously regenerating and validating its cryptographic sidecars.
 
+### Runtime State Profile Index String vs Integer Mismatch
+- **Cause**: `runtime_state.json` stores `ACTIVE_PROFILE_INDEX` as the full string `"Profile 4"` (written by `rotate_profile_index()` during multi-account failover). Scripts that read via `get_runtime_state()` and pass directly to `int()` crash with `ValueError: invalid literal for int() with base 10: 'Profile 4'`. Scripts using `get_config_value()` (reads `.env`, always `"2"`) are unaffected.
+- **Solution**: Extract digit via `re.search(r"\d+", str(raw))` with fallback default — matching the canonical pattern in `utils.py:rotate_profile_index()`.
+- **Prevention**: Never call `int()` directly on `get_runtime_state("ACTIVE_PROFILE_INDEX", ...)`. Always use `re.search(r"\d+", str(raw))` to handle both `"2"` and `"Profile 2"` forms.
+
+### Audacity Named Pipe Cold-Boot Timeout (Zero-Touch Pipeline Failure)
+- **Cause**: `launch_audacity_session()` waited only 3s grace + 30×0.5s = 15s retry before raising `ConnectionError`. On a cold-boot where `mod-script-pipe` loads from scratch, the pipe takes 10–20s to appear — beyond the 15s budget. Users were required to pre-open Audacity manually, breaking zero-touch automation.
+- **Solution**: Increase grace period to 6s and retry to 80×1.0s (80s total). `ensure_audacity_script_pipe_enabled()` already writes `mod-script-pipe=1` to `audacity.cfg` before launch. Only the polling window was too short.
+- **Prevention**: For daemon processes loading plugins at startup, always allow 60–80s for IPC endpoints to become available. Log wait progress every N attempts so the pipeline log remains informative and the user can distinguish a slow-boot from a true failure.
+
+### Google AI Studio QUIC Protocol & Dead Edge IP Navigation Timeouts
+- **Cause**: Browser navigations to `https://aistudio.google.com/generate-speech` failed with `ERR_QUIC_PROTOCOL_ERROR` (ISP drops UDP port 443 packets) and `ERR_CONNECTION_TIMED_OUT` (local DNS resolved `aistudio.google.com` to `142.250.181.206`, an unroutable Google IP on local networks, while Google frontends like `142.251.154.2` respond in 50ms).
+- **Solution**: Add Chrome launch flags `--disable-quic` and `--host-resolver-rules="MAP aistudio.google.com 142.251.154.2"` into `launch_browser_with_profile()` in `utils.py`.
+- **Prevention**: In automation targeting third-party web apps over CDP, never rely on default OS DNS or opportunistic QUIC. Pin domain host mappings to verified healthy frontends and disable UDP HTTP/3 when running in restricted ISP networks.
+
+### LLM Script Truncation and Conversational Meta-Banter Contamination in TTS
+- **Cause**: Dumping an entire multi-thousand-word transcript into an LLM chat prompt causes the model to hallucinate arbitrary chapter partitions (e.g. planning only 7 blocks and jumping from Paragraph 12 to Paragraph 40, losing 66% of the script). Additionally, conversational prompts like "how would you like to proceed?" can be refined into spoken dialogue.
+- **Solution**: (1) Partition chapters deterministically from `tts_payload.json` into ~180-220 word chunks (100% coverage guaranteed). (2) Enforce an automated script coverage gate ($\ge 85\%$) in `calculate_script_coverage()`. (3) Add regex metadata stripping in `sanitize_script_text()` to purge markdown headers, casting reports, and conversational chatter before text enters the TTS prompt box.
+- **Prevention**: Never trust an LLM chat agent to reliably chunk large text corpora without physical word coverage assertion. Prefer deterministic chunking using structured pre-tokenized payloads (`tts_payload.json`).
+
+### Phase 1 Script Transcreation English Chatter Contamination & Dropped Hook
+- **Cause**: In `automate_all.py`, the transcreation loop injected each paragraph as `f"paragraph {i} outof {total_paragraphs} paragraphs of the script:\n\n{paragraph}"`. On Paragraph 1, Gemini interpreted the prompt as an editorial critique request and responded with English chat review ("That is a fantastic hook... Since this is just the first of 19 paragraphs, how would you like to proceed?"). On Paragraph 19, Gemini included an English preamble and outro question ("Do you want to add a classic sign-off..."). Because `automate_all.py` lacked an Arabic language ratio check and chatter sanitizer, it appended the English text directly to `final_output.txt`, causing Paragraph 1 to be completely lost and contaminating the script.
+- **Solution**: (1) Enforce strict imperative command armor: `DIRECTIVE: Transcreate Paragraph {i}... Output ONLY the Arabic transcreated text. Do NOT include any English preamble, commentary, review feedback, or questions.`. (2) Implement `is_valid_arabic_transcreation()` requiring $\ge 35\%$ Arabic characters (`[\u0600-\u06FF]`), triggering an immediate clean reset fallback if non-Arabic chatter is returned. (3) Implement `sanitize_gemini_chatter()` to strip preambles, sign-off questions, and markdown quotes.
+- **Prevention**: In LLM text transformation pipelines, never ingest turn responses without validating positive target-script language density ($\ge 35\%$ Arabic) and purging conversational meta-text.
+
+### Google Flow Active Card Selection Order (.first vs .last)
+- **Cause**: In `flow_generator.py`, selecting the active generation tile via `.locator(...).last` selects the card at the bottom of the feed. In Google Flow, newly submitted generation tiles are **prepended to the TOP** of the feed (lowest $y$-coordinate). Consequently, `.last` locked onto historical cards whose image `src` attributes were already in `pre_image_srcs`, causing the script to miss the newly rendered top cards and falsely assume rendering had stalled for 120s.
+- **Solution**: Change `active_card` selection to `.first`, query candidate images across `flow-image-tile img, flow-grid-tile-container img, img`, filter `src not in pre_image_srcs`, sort ascending by `(y, x)`, and select `candidates[0]`.
+- **Prevention**: In web application feeds that prepend new cards at the top, never select the active item using `.last`; always assert top-of-feed sorting (`.first` or sort by `(y, x)` ascending).
+
+### Google Flow Stale Workspace URL Checkpoint 404 Cascading Failover
+- **Cause**: When switching accounts or after project deletion, `flow_workspace_url_profile_X.txt` retains the old project UUID. Navigating to a project from a different profile lands on `https://flow.google.com/404?reason=project`. On retry attempts, navigating back to `active_project_url` without checking for `"404"` re-navigates to the 404 page where the prompt input box does not exist, triggering cascading attempt failures.
+- **Solution**: (1) In `setup_flow_ui`, if the saved project URL fails health checks, delete the stale checkpoint immediately and create a fresh project from the homepage. (2) When clicking "New project", wait explicitly for `"project"` in `page.url` before returning. (3) During retry loops, if `active_project_url` is invalid or 404, fall back to `flow_page.reload()`.
+- **Prevention**: Always validate that restored workspace URLs resolve to active, healthy projects; clean up stale serialized pointers immediately upon navigation failure.
+
+### Mode B Empty Surgical Delta Attention Vacuum
+- **Cause**: In `build_dual_mode_prompt`, when `visual_delta` was resolved only from top-level `raw_dict["action"]` (while the actual delta was nested inside `raw_dict["visual_prompt"]["action"]`), `delta_target` evaluated to an empty string. This produced a malformed Mode B prompt: `"In the attached reference image, maintain identical subject, background, and lighting. Add  centered."`, causing Google Flow to reject or fail image generation.
+- **Solution**: Check nested `raw_dict.get("visual_prompt", {}).get("action")` and `subject_action_increment`. If `delta_target` is empty, immediately fallback to Mode A (Master Setup) with full visual DNA instead of submitting a hollow Mode B delta.
+- **Prevention**: Never emit relative differential instructions without validating that a positive, non-empty delta target exists.
+
+### False Account Rotation on Transient Non-Quota Errors
+- **Cause**: Treating any 3-attempt failure as a fatal error triggering account failover (`rotate_profile_index()`). When a UI selector misses or a transient network glitch occurs, rotating accounts burns healthy profiles while inheriting the exact same UI issue on the next profile.
+- **Solution**: Strictly isolate fatal quota strings (`الحدّ الأقصى للاستخدام` / `reached your usage limit`) via `classify_flow_error()`. For transient errors (`TRANSIENT_ERROR`), preserve the active profile, reset the workspace checkpoint, re-initialize from the homepage, and continue.
+- **Prevention**: Account rotation mechanisms must require cryptographic or exact string proof of quota exhaustion before triggering irreversible profile switching.
+
+## Known Failure Modes
+### Blind Ingestion of Conversational LLM Responses in Code Generation/Translation
+- **What looks correct**: Checking `if response and not is_safety_blocked(response): output.append(response)`.
+- **Why it's wrong**: Chat models frequently return polite commentary, review praise, or clarification questions ("How would you like to proceed?") when prompts lack negative prohibition armor, poisoning downstream stages or dropping source content.
+- **Correct approach**: Validate linguistic/schema density, apply regex conversational sanitizers, and re-prompt with strict imperatives if the model outputs conversational meta-text.
+
+### Scoping Progress / Loading Checks Globally Across Google Flow Page
+- **What looks correct**: Checking `flow_page.locator("[role='progressbar']").is_visible()` to determine if generation is still in progress.
+- **Why it's wrong**: Modern complex SPAs like Google Flow often have global status spinners, header sync indicators, or sidebar elements with `role="progressbar"`. Global checks cause `is_loading` to evaluate to `True` forever, preventing the script from recognizing that candidate images have completed rendering.
+### Hardcoded Persona & Substrate Entanglement in Diffusion Pipelines
+- **Cause**: Embedding character names, cultural dialect relics, or specific studio fixtures (`Al-Daheeh`, `Ahwa cafe`, `tea cup`, `Abo Hmeed`) directly into root-level prompt builder utilities and fallback branches. When producing videos for new topics or other channels (science, finance, history), the prompt builder continues injecting these hardcoded persona tokens, contaminating the generated visuals.
+- **Solution**: (1) Decouple persona, substrate, and chromatic palette into a dynamic `ChannelProfile` and `NICHE_PRESETS` registry (`science_tech`, `finance_economics`, `history_geopolitics`, `philosophy_essay`, `general_explainer`). (2) Support `host_mode: "NONE"` for pure conceptual graphics without human figures. (3) Remove all hardcoded persona fallback strings from `flow_generator.py` and `prompt_enhancer.py`.
+- **Prevention**: Never hardcode character or cultural environment constants into general diffusion compiler utilities; pass them dynamically from channel profiles or storyboard roadmap definitions.
+
+### Contradictory Typography Instructions in Diffusion Prompt Planning Preambles
+- **What looks correct**: Instructing the LLM to output quoted text examples (e.g., "STAGE 1", "CLASSIFIED", "OPTION A vs OPTION B") to provide clean typographic labeling in educational diagrams.
+- **Why it's wrong**: Diffusion models (such as Imagen 3/Nano Banana) struggle with multi-character text rendering, frequently outputting warped, garbled, or pseudo-Latin letterforms. These illegible glyphs degrade production quality and trigger OCR text collision gates.
+- **Correct approach**: Enforce a `STRICT ZERO-TEXT INVARIANT` in prompt planner preambles. Instruct the LLM to convey technical processes purely through non-linguistic data telemetry: abstract proportion bars, percentage glyphs (e.g. 75%), node linkages, directional trajectory arrows, and comparative split quadrants.
+
+### Gemini Web HTML Rendered Table Tab-Delimitation vs Pipe Assumptions
+- **Cause**: In `roadmap_orchestrator.py:parse_markdown_table_line`, the parser asserted `if not stripped.startswith("|"): return []`. When Gemini web generates a markdown table, the Angular SPA UI automatically renders it into a native HTML `<table>` element. Playwright's `el.innerText` standard converts table cells inside `<tr>` into horizontal tab-delimited (`\t`) text rather than retaining markdown pipes (`|`). Consequently, `parse_markdown_table_line` discarded all 25 rows, logging 0 rows parsed and falsely triggering empty turn failures and retry loops.
+- **Solution**: Update `parse_markdown_table_line` to detect and split by `\t` if present, while retaining pipe-delimited (`|`) support for unrendered or code-fenced markdown.
+- **Prevention**: Never assume browser `innerText` contains source markdown syntax when an SPA automatically formats markdown into rich HTML elements; support both raw markdown tokens and rendered whitespace/tab conventions.
+
+### Over-Specified Diffusion Specs in Text Planning Prompts Triggering Multi-Modal Refusal
+- **Cause**: In `roadmap_orchestrator.py`, dumping low-level diffusion model coordinates (`X: 180 to 1740, Y: 90 to 980`), hex codes (`#2D3444`, `#F8F8FA`), and pixel specs into the table generation prompt caused Gemini Flash's guardrail classifiers to misinterpret the request as a multi-modal image rendering task rather than a text table planning task. Gemini responded with refusal cards: `"أنا مجرد ذكاء اصطناعي مستند إلى النصوص ولا أستطيع المساعدة في ذلك."` ("I am just a text-based AI and cannot help with that.") or `"I seem to be encountering an error. Can I try something else for you?"`.
+- **Solution**: Keep roadmap prompt directives concise, high-level, and focused on narrative/staging concepts (e.g. shot scale, continuous animation arcs, subject focus). Reserve exact pixel coordinates, hex palettes, and diffusion negative tokens for downstream diffusion compilers (`prompt_enhancer.py`, `flow_generator.py`).
+- **Prevention**: In multi-stage agentic pipelines, isolate diffusion-specific syntax to diffusion stages; never pollute upstream text planning LLMs with rendering engine parameters.
+
+### Google Flow Initial Queue Stall Bypass & Single-Pass Gap Backfill
+- **Cause**: In Google Flow web automation, cold-starting fresh projects or submitting prompt cards during backend queue congestion occasionally exceeds the 45s card-spawn deadline (`Card spawn timed out after 45s. Forcing reload...`). If a runner treats transient queue stalls as fatal crashes or gets stuck in infinite retry loops on a single frame, the entire multi-hour batch halts.
+- **Solution**: (1) Allow transient 3-attempt queue timeouts to log as `TRANSIENT_ERROR`, preserve active account profiles (quota not exhausted), recycle the workspace into a fresh healthy project, and safely bypass the blocked frame. (2) Track completed frames in `pipeline_manifest.json` and persist valid PNGs on disk. (3) After completing the main sequential pass, launch a dedicated single-pass backfill that uses disk-existence skipping (`if os.path.exists(save_path) and os.path.getsize(save_path) > 100: continue`) to render only the missing frames.
+- **Prevention**: In long-running batch diffusion generation, decouple frame progression from transient API latency by adopting resilient gap-skipping with deterministic post-batch backfill sweeps.
+
+### Thumbnail Text Collision Self-Healing & Strengthened Negative Prompt Retry
+- **Cause**: In generative thumbnail workflows, asking Gemini Imagen for high-contrast webcomic or visual assets frequently results in subtle text artifacts embedded into scene props, backgrounds, or character attire (e.g. garbled Latin signage or MSER edge candidate clusters). If ingested uncritically, these contaminated plates degrade click-through rates and violate channel zero-text typography standards.
+- **Solution**: (1) Immediately scan newly downloaded thumbnail bitmaps with `check_text_collision(filepath)`. (2) If text or MSER contours are detected on Attempt 1, purge the contaminated file from disk, log the detection coordinates, and automatically retry on Attempt 2 appending `STRENGTHENED_NEGATIVE_PROMPT`. (3) If Attempt 2 also fails, dump debug telemetry (`dump_text_collision_debug`) and purge the corrupt image.
+- **Prevention**: Always enforce an automated post-generation OCR text collision gate on candidate thumbnails with deterministic negative prompt retry armor.
+
+### Deterministic Target Folder Resolution in CLI Automation Entrypoints
+- **Cause**: Helper scripts like `generate_thumbnail.py` previously relied exclusively on `get_latest_run_folder(runs_path)`. When running automated batch scripts or processing specific historical runs, any background file access or file modification in an unrelated run folder causes `os.path.getmtime` to misidentify the target directory, processing the wrong video project.
+- **Solution**: Check `if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]): folder = os.path.abspath(sys.argv[1])` before falling back to `get_latest_run_folder()`.
+- **Prevention**: CLI scripts in multi-project pipelines must always accept explicit directory paths via `sys.argv[1]` and prioritize them over directory timestamp sorting.
+
+## Known Failure Modes
+### Monolithic All-or-Nothing Batch Halts on Transient Web Queue Delays
+- **What looks correct**: Halting the entire generation process or switching Google accounts whenever a single frame fails after 3 attempts.
+- **Why it's wrong**: Transient network hiccups or backend diffusion queue spikes on Google Flow do not indicate account quota exhaustion. Aborting the entire batch stops progress on dozens of pending frames, while rotating accounts burns fresh profiles unnecessarily.
+- **Correct approach**: Distinguish transient queue delays from fatal quota exhaustion (`الحدّ الأقصى للاستخدام` / `reached your usage limit`). Skip transiently stalled frames to let the remaining 95%+ of the batch complete smoothly, then backfill the small handful of missing frames in a fast 2-minute targeted sweep.
+
+### Silent Text Artifact Bleed in AI Thumbnail Generation
+- **What looks correct**: Trusting negative prompt strings in image generation queries without physical verification of downloaded images.
+- **Why it's wrong**: Modern diffusion models frequently disregard negative tokens when composing complex narrative scenes with objects (books, boxes, signs, monitors). Latin pseudo-words or blurred typography leak into the output unnoticed, ruining professional YouTube packaging.
+- **Correct approach**: Treat prompt negative tokens as advisory and post-generation OCR verification as mandatory. Gate all thumbnail outputs through a hard zero-text inspection pass.
+
+
+

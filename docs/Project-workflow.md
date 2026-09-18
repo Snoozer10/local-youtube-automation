@@ -48,31 +48,41 @@ Every phase writes stateful progress to `youtube_runs/<Cleaned_Title>/`:
 youtube_runs/<Cleaned_Title>/
 ├── raw_transcript.txt                   # Raw YouTube caption dump
 ├── breaked_paragraphs.txt               # Structured narrative paragraphs
-├── final_output.txt                     # Phase 1 30/70 transcreated Arabic
-├── refined_script.txt                   # Phase 2 Al-Daheeh polished script
+├── final_output.txt                     # Phase 1 transcreated conversational Arabic
+├── refined_script.txt                   # Phase 2 polished script with Tashkeel
 ├── refined_script.docx                  # Formatted Word Document
-├── master_roadmap.txt                   # Visual Scene Continuity Blueprint
+├── tts_payload.json                     # Atomic paragraph payload for voice synthesis
+├── master_roadmap.jsonl                 # Paged 25-row scene graph roadmap
 ├── flow_prompts.json                    # Google Flow keyframe metadata
 ├── voice_generation_manifest.json       # Chapter synthesis manifest & status
+├── audio_manifest.json                  # Re-timed DSP chapter durations
 ├── full_episode_voice.wav               # Stitched master voice track
+├── timeline.json                        # Canonical Single Source of Truth (SSOT)
+├── timeline.json.sha256                 # Fail-closed cryptographic checksum
 ├── timestamped_transcript.txt           # Sentence-level timestamp timeline
 ├── timestamped_transcript.srt           # Full video subtitle timeline
 ├── image_timestamps.txt                 # Exact sync anchors for images
-├── subtitle_chunks.srt                  # 3-word staccato subtitle clips
+├── image_timestamps.txt.sha256          # Image timestamp checksum sidecar
 ├── audacity_voice/
 │   └── full_episode_voice.wav           # DSP-mastered voice track
 ├── voice_chapters/
 │   ├── Chapter_1.wav                    # Sectional audio synthesis
+│   └── Chapter_2.wav
+├── polished_chapters/
+│   ├── Chapter_1.wav                    # Sectional DSP-mastered audio
 │   └── Chapter_2.wav
 ├── generated_images/
 │   ├── 00_00.png                        # Frame-accurate scene assets
 │   ├── 00_05.png
 │   └── 00_12_2.png                      # Multi-frame continuity duplicates
 ├── thumbnails/
-│   ├── title_1_thumbnail.png            # Winning 2D webcomic thumbnail
-│   └── title_2_thumbnail.png
-├── pipeline.json                        # Master supervisor state machine
-└── 🎬 youtube_ready_video.mp4           # Final 1440p Master Video
+│   ├── title_1_thumbnail.png            # High-CTR winning thumbnail
+│   └── title_3_thumbnail.png
+├── studio_viewer.html                   # Interactive side-by-side comparison studio
+├── compile_checkpoint.json              # Render state tracking
+├── youtube_ready_video.mp4              # Final Master Video
+├── youtube_ready_video_1080p.mp4        # 1080p high-bitrate proxy stream
+└── youtube_ready_video_720p.mp4         # 720p mobile-optimized proxy stream
 ```
 
 ---
@@ -102,14 +112,14 @@ youtube_runs/<Cleaned_Title>/
 
 ---
 
-### ADR-003: Al-Daheeh 30/70 Dialect & Prosody Architecture
+### ADR-003: Conversational Explainer Dialect & Dynamic Prosody Architecture
 
 - **Status:** Accepted
 - **Context:** Literal English-to-Arabic translations produce robotic, unengaging "translatese" that causes viewer retention drop-off.
-- **Decision:** Enforce a two-stage linguistic pipeline:
-  1. `automate_all.py` (Phase 3): Transcreates into 30% Academic Fusha (jargon, universities, dates) and 70% Cairene Amiya (verbs, analogies).
-  2. `refine_script.py` (Phase 2): Applies the 1-3-1 Gary Provost sentence cadence, "Abo Hmeed" skeptic interruptions, and phonetic Tashkeel from `daheeh_config.json`.
-  3. `generate_voice.py`: Injects TTS prosody tags (`[tone: street_logic]`, `[tone: expert_drop]`, `[pause: comedic_halt]`).
+- **Decision:** Enforce an adaptive two-stage linguistic pipeline:
+  1. `automate_all.py` (Phase 1): Transcreates into natural conversational Arabic with 30% academic precision and 70% engaging colloquial phrasing, governed by an automated $\ge 35\%$ Arabic ratio gate.
+  2. `refine_script.py` (Phase 2): Applies 1-3-1 Gary Provost sentence cadence, comedic timing, skeptical interjections, and phonetic Tashkeel diacritics.
+  3. `generate_voice.py` (Phase 3): Injects neural TTS prosody tags (`[tone: street_logic]`, `[tone: expert_drop]`, `[pause: comedic_halt]`).
 
 ---
 
@@ -118,7 +128,7 @@ youtube_runs/<Cleaned_Title>/
 - **Status:** Accepted
 - **Context:** Generating isolated image prompts produces inconsistent character designs, erratic lighting, and disjointed backgrounds across continuous scenes.
 - **Decision:**
-  1. Gemini constructs a `master_roadmap.txt` and `flow_prompts.json` with explicit `sequence_type` (`PROGRESSIVE_BUILD_SET`, `HISTORICAL_PARODY`, `CAMERA_ZOOM_SEQUENCE`).
+  1. Gemini constructs a `master_roadmap.jsonl` and `flow_prompts.json` with explicit sequence semantics.
   2. For subsequent frames in a sequence, `flow_image_generator.py` locates the previous generated image card in the workspace DOM, clicks **"Add to prompt"**, and injects delta-motion directives with baseline references.
   3. Images are extracted via native Playwright viewport screenshots (bypassing CORS/tainted canvas locks) with Base64 fetch fallback.
 
@@ -131,9 +141,8 @@ youtube_runs/<Cleaned_Title>/
 - **Decision:**
   1. `compile_video.py` pre-calculates exact integer frame counts for every clip (`total_frames = audio_duration * fps`), forcing clip 0 to frame 0.
    2. Renders batches of clips (chunk size: `CHUNK_SIZE`, default 20) to temporary MP4s via `-filter_complex_script` to prevent 32 KB Windows CLI argument overflow.
-   3. Probe-detects hardware encoders with automatic cascading fallback. **Actual probe order is NVENC first, with QSV gated behind ≤1080p** (Broadwell HD5500 instability at higher resolutions), then CPU:
+   3. Probe-detects hardware encoders with automatic cascading fallback:
       $$\text{NVIDIA (\texttt{h264\_nvenc})} \longrightarrow \text{Intel QuickSync (\texttt{h264\_qsv}}, \leq 1080\texttt{p}\texttt{)} \longrightarrow \text{CPU (\texttt{libx264})}$$
-      A mid-render hardware failure falls back to `libx264` only.
    4. Always forces `QSV_LOOKAHEAD=0` and pixel format normalization (`format=nv12` for QSV, `format=yuv420p` for CPU/NVENC).
 
 ---
@@ -142,9 +151,51 @@ youtube_runs/<Cleaned_Title>/
 
 - **Status:** Accepted
 - **Context:** Speech-to-text models (Whisper) often phonetically misspell Egyptian colloquial slang or specialized scientific terminology.
-- **Decision:** `correct_transcript_spelling.py` runs `difflib.SequenceMatcher` (with `autojunk=False` — mandatory for Arabic, whose high-frequency function words would otherwise be misclassified as junk on ≥200-word sequences) over the raw ASR tokens against the ground-truth `refined_script.txt`, replacing misspelled words while preserving millisecond-accurate timestamps across `.txt` and `.srt` files.
+- **Decision:** `correct_transcript_spelling.py` runs `difflib.SequenceMatcher` (with `autojunk=False`) over the raw ASR tokens against the ground-truth `refined_script.txt`, replacing misspelled words while preserving millisecond-accurate timestamps across `.txt` and `.srt` files.
 
 ---
+
+### ADR-007: Dynamic Multi-Niche Architecture & Channel Profile Decoupling
+
+- **Status:** Accepted
+- **Context:** Hardcoding persona elements directly into prompt generators prevented the studio from creating content for varied channels, niches, and formats.
+- **Decision:** Implement `src/youtube_automation/prompts/niche_engine.py` declaring extensible `NICHE_PRESETS` (`GENERAL_EXPLAINER`, `SCIENCE_TECH`, `FINANCE_ECONOMICS`, `HISTORY_GEOPOLITICS`, `PHILOSOPHY_ESSAY`, `CULTURE_COMEDY`) and modular `ChannelProfile` configurations supporting customizable host modes (`NONE`, `CUSTOM_AVATAR`, `DOCUMENTARY_OBSERVER`).
+- **Consequences:**
+  - ✅ Universal reuse across diverse YouTube educational niches.
+  - ✅ Complete elimination of hardcoded character and cafe tropes.
+
+---
+
+### ADR-008: Long-Form 16:9 Widescreen Universal 6-Part Prompt Grammar & Two-Substrate Model
+
+- **Status:** Accepted
+- **Context:** Unconstrained diffusion prompts caused 15-cut retinal luminance whiplash, warped Latin text leaks, and perspective distortion.
+- **Decision:**
+  1. Adopt the Universal 6-Part Grammar (Master Style Anchor, Orthographic 2D Camera Model, 16:9 Foveal Safe Envelope, Substrate Ground, Semantic Data Entity, Codec-Safe Accents).
+  2. Implement Two-Substrate Studio Grounds: `#2A2420` dark mahogany workbench for host studio shots and `#F8F8FA` neutral drafting limbo desk for technical plates.
+  3. Enforce 60-30-10 chromatic attention law and strict zero-text invariant with non-linguistic data telemetry (ratio bars, waveforms, node linkages).
+
+---
+
+### ADR-009: Audio-Transient-Gated Procedural Kinematics & Upper-Third Eye-Line Pinning
+
+- **Status:** Accepted
+- **Context:** Random pan/zoom movements produce ocular fatigue and desynchronization with voice emphasis.
+- **Decision:**
+  1. Deploy `AudioTransientDetector` using short-time RMS energy flux and adaptive surge gating ($\ge 4.5\text{ dB}$).
+  2. Enforce +33.3ms (1-frame) optical lag compensation aligning visual camera actions with human cross-modal perception (auditory ~140ms vs visual ~180ms).
+  3. Pin discrete scale punches (zoom 1.25) to upper-third eye-line elevation ($Y=360\text{px}$) with zero-safe clamped drift on long holds ($\ge 3.5\text{s}$).
+
+---
+
+### ADR-010: Top-of-Feed Sorting, Angular CDK Auto-Attach & Resilient Gap-Skipping
+
+- **Status:** Accepted
+- **Context:** Google Flow UI prepends new generation cards to the top of the feed (lowest $y$), unmounts virtualized asset cards in the Angular CDK drawer, and occasionally experiences transient queue latency.
+- **Decision:**
+  1. Always sort candidate images ascending by $(y, x)$ to select newly generated top-row cards.
+  2. Inject bidirectional wheel scrolls (`-600`, `+600`) to mount virtualized drawer items and detect single-click auto-attachment.
+  3. Implement resilient gap-skipping with a single-pass deterministic post-batch backfill sweep, eliminating false account failovers on non-fatal queue timeouts.
 
 ## 🔌 Inter-Process Communication (IPC) Protocol
 
