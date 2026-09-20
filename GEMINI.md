@@ -216,6 +216,9 @@ Autonomous, broadcast-grade educational YouTube studio producing high-retention 
 - [LEARNING-041]: In multi-file version releases, NEVER bump the version in `CHANGELOG.md` in isolation; ALWAYS atomically synchronize version numbers across all package manifests and project descriptors (`pyproject.toml`, `GEMINI.md`, `CHANGELOG.md`) in the same commit.
 - [LEARNING-042]: In GitHub PR workflows, NEVER push speculative follow-up commits to an active PR branch before verifying the prior commit's status check; ALWAYS monitor `gh pr checks <id>` or `gh run list` to ensure the current commit is green to avoid generating consecutive red `x` commit status badges on GitHub.
 - [LEARNING-043]: In `CHANGELOG.md` version maintenance, NEVER prepend a new release section without verifying historical version boundary integrity; ALWAYS validate with `tools/extract_release_notes.py <tag>` to prevent version bleed (omitting intermediate version headers like `## [4.3.0]`) and duplicate section headers.
+- [LEARNING-044]: In comparison and studio viewers, NEVER iterate solely over an optional prompt dictionary (e.g. `socratic_map.keys()`); ALWAYS implement a 5-tier cascade with index unioning across Socratic prompts, baseline prompts, roadmaps, timeline spans, and disk files, normalizing 0-based timeline spans to 1-based prompt arrays to prevent empty viewers or off-by-one desync.
+- [LEARNING-045]: In web media synchronization suites pairing video proxies with uncompressed master WAV audio, NEVER allow both media tags to play unmuted; ALWAYS enforce single-source audio with `videoProxy.muted = true` to prevent phase-delayed acoustic flange and echo.
+
 
 
 

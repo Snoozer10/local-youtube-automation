@@ -1,41 +1,33 @@
 - Goal (incl. success criteria): Comprehensive architectural overhaul, upgrade, and repair of `studio_viewer.html` and `tools/viewer_generator.py`. Success criteria:
   (1) Multi-agent grilling session completed with specialized sub-agents and full debate report recorded;
   (2) Diagnose root cause of failure (empty frames in runs lacking `flow_prompts_socratic.json`, 0-based vs 1-based span index misalignment, hardcoded constants);
-  (3) Formal implementation plan artifact created at `studio_viewer_overhaul_plan.md` and `docs/superpowers/plans/2026-09-20-studio-viewer-overhaul.md` for user review;
-  (4) Evolve studio into broadcast NLE inspection suite (audio/video sync, split curtain wipe slider, pan/zoom, broadcast/platform safe zones, dynamic chunks);
-  (5) Validate with 100% passing tests and regenerate viewers across all runs upon user approval.
+  (3) Formal implementation plan artifact created at `studio_viewer_overhaul_plan.md` and `docs/superpowers/plans/2026-09-20-studio-viewer-overhaul.md`;
+  (4) Dedicated branch created (`feat/studio-viewer-overhaul`) isolating changes from concurrent prompt engineering;
+  (5) 5-tier data cascade with two-pass span alignment implemented;
+  (6) Broadcast NLE inspection engine implemented (single-source audio, video/audio sync, debounced scrubber, 60fps RAF loop with $O(\log N)$ binary search, 3-frame lookahead pre-decoder, split curtain wipe slider with forced geometric normalization, synchronized 1x-5x pan/zoom, broadcast SVG safe zones, diff mode, Cairo/Tajawal Arabic RTL typography, and CLI range compressor);
+  (7) 100% passing tests (9/9 unit tests) and all candidate viewers regenerated across both production runs.
 - Constraints/Assumptions:
   - Windows 11 PowerShell environment; UTF-8 encodings.
   - Zero external CDN dependencies for offline air-gapped resiliency.
   - Backward compatibility: preserve `build_frame_records` and `generate_comparison_viewer_html` function signatures.
-  - Plan must be explicitly reviewed and approved by user before execution.
+  - Branch isolation on `feat/studio-viewer-overhaul`.
 - Key decisions:
-  - Revert premature code changes to keep workspace clean prior to plan approval.
   - Universal 5-Tier Priority Cascade with Index Unioning to guarantee zero empty frames.
-  - Tri-Tier Media Clock Authority (Video 720p -> Audio WAV -> Virtual Clock) with 60fps RAF loop and $O(\log N)$ binary search.
+  - Two-Pass Timestamp-Validated Span Alignment mapping 0-based `timeline.json` spans to 1-based prompt arrays.
+  - Single-Source Audio Policy: `videoProxy.muted = true` while uncompressed master WAV audio plays simultaneously to prevent acoustic echo.
+  - Forced geometric normalization (`position: absolute; width: 100%; height: 100%; object-fit: cover;`) in split wipe viewport to eliminate aspect ratio / layout shifts.
 - State:
   - Done:
-    - Reverted premature edits to `tools/viewer_generator.py`; baseline tests passing (3/3).
-    - Multi-agent grilling session completed (Round 1 Challenges + Round 2 Cross-Examination by `adversarial_griller`).
-    - Implemented 5 lethal vulnerability hardenings in the plan (Two-Pass Alignment, Debounced Scrub + Single-Source Audio, 3-Frame Lookahead Pre-decoder, Forced Geometric Normalization, 3-Tier CI/CD Matrix).
-    - Incorporated user directive: added Task 0 for dedicated git branch creation (`feat/studio-viewer-overhaul`) to isolate work from concurrent prompt engineering session.
-    - Updated Implementation Plan Artifact to v3 (`studio_viewer_overhaul_plan.md` and `docs/superpowers/plans/2026-09-20-studio-viewer-overhaul.md`).
-    - Full Grilling Report artifact updated (`studio_viewer_grilling_report.md`).
-    - **Adaptive Multi-Channel Prompt Engineering Upgrade (`feat/adaptive-prompt-engineering`)**:
-      - Audited OpenCode implementation across Tasks 1-4; diagnosed 4 critical defects (skipped consumer turn wiring in `refine_script.py`, leaked metadata headers with German `bereit` in turn files, missing legacy aliases in `loader.py`, unstarted Tasks 5 & 6).
-      - Surgically remediated all defects: wired `refine_paragraph` to `loader.turn("refine", "lean/full")`, cleaned ack tokens and xml_tags, added `NAME_ALIASES` in `loader.py`, purged rogue turn metadata.
-      - Implemented Task 5 (`tests/unit/test_prompt_contracts.py` with 9 passing contract tests).
-      - Completed Task 6 closeout: updated `understood-errors.md`, `README.md`, `GEMINI.md`, and `.superpowers/sdd/.../progress.md`.
-      - Full test suite passing: 571/571 unit tests green; pedagogy exercise linter 35/35 clean.
-      - **Live Browser E2E Verification Test (`tools/test_live_prompt_turn.py`)**:
-        - Connected to Chrome Profile 2 on port 9222 via Playwright CDP and monitored live with `browser-cdp` MCP.
-        - Calibration handshake confirmed with exact token `مستعد`.
-        - Content turn formatted via `loader.turn("refine", "full", ...)` executed live on Gemini.
-        - Verified 4-beat Gary Provost musical rhythm (`تلات قلوب؟` -> `تخيل يا فنان لو الميكروباص...` -> `قلبين بِيصِيهَا للخياشيم...` -> `هُوبَّا، وقفة.`), XML fencing (`<final_script>`), Tashkeel injection, category slang rotation, and zero metadata leakage.
-        - Live screenshots captured and results persisted to `debug_snapshots/live_prompt_verification_result.json`.
-  - Now: Live E2E verification complete and verified. Ready for next instructions.
-  - Next: User review of prompt engineering live test proof and studio viewer overhaul plan.
-  - Historical Archive:
+    - **Multi-Agent Internal Grilling Session**: Completed Round 1 and Round 2 with `adversarial_griller`, `studio_systems_architect`, and `studio_ui_director`.
+    - **Implementation Plan**: Produced v3 plan at `studio_viewer_overhaul_plan.md` and `docs/superpowers/plans/2026-09-20-studio-viewer-overhaul.md`.
+    - **Branch Isolation**: Created and checked out `feat/studio-viewer-overhaul`.
+    - **Task 1 (Data Layer & Alignment)**: Implemented 5-tier cascade, two-pass span alignment, image dimension inspector, and relative path resolution. (Commit: `b79c29f`).
+    - **Task 2 (Broadcast NLE Frontend)**: Implemented single-source audio, media scrubber, 60fps RAF loop with binary search, 3-frame lookahead pre-decoder, split curtain wipe slider, pan/zoom, broadcast SVG safe zones, diff blend mode, and CLI range compressor. (Commit: `3d007b6`).
+    - **Task 3 (Full Run Regeneration & Validation)**: Regenerated all viewers across `What Do Animals Think Of Humans` (139 frames verified) and `Terrence Howard` (293 frames verified). (Commit: `5ebe72d`).
+    - **Test Coverage**: 9/9 unit tests passing (`tests/unit/test_viewer_generator.py`); exercise scaffold linter 35/35 passing.
+  - Now: Overhaul complete and all evidence verified. Ready for user presentation and review.
+  - Next: User inspection of `studio_viewer.html` in browser; merge `feat/studio-viewer-overhaul` into working branch when approved.
+- Historical Archive:
     1. Phase 1 & 2: Script Translation & 110-paragraph Al-Daheeh transcreation complete.
     2. Root Cause Analysis & Prevention: Documented in docs/error-solving/understood-errors.md.
     3. Chapter Harvesting: 100% complete (57 chapters, 110 paragraphs, 3,679 words).

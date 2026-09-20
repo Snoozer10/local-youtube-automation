@@ -312,10 +312,15 @@
 - **Solution**: Strip metadata blocks from all turn templates in `prompts/turns/`; ensure `loader.turn()` defensively detects and strips residual `<<<PROMPT_META_*>>>` blocks; restrict metadata headers strictly to root system prompts (`phase1`, `phase3`, `refine`, `tts`).
 - **Prevention**: Distinguish system prompt initialization from active user conversation turns; user turns must never contain system metadata blocks.
 
-### Breaking Prompt File Renames Without Backward-Compatible Aliases
-- **Cause**: Renaming prompt files (`prompt.txt` -> `phase1.txt`, `refine_prompt.txt` -> `refine.txt`, etc.) causes hard crashes (`PromptError`) for any consumer or test using legacy filenames.
-- **Solution**: Implement transparent `NAME_ALIASES` in `loader.py` that automatically resolves legacy names to canonical files.
-- **Prevention**: When standardizing file names across a pipeline, always provide legacy alias maps in loader layers.
+### Studio Viewer Empty Frames & 0-Based Span Index Misalignment
+- **Cause**: In `tools/viewer_generator.py`, iterating strictly over `socratic_map.keys()` caused production runs without Socratic prompts (e.g. `What Do Animals Think Of Humans`) to generate empty viewers (`const frames = [];`). Naively unioning `timeline.json` 0-based span indices (`0..N-1`) with 1-based prompt indices (`1..N`) introduced a phantom frame 0, desynchronizing all downstream frames.
+- **Solution**: Implement a 5-Tier Priority Cascade with Index Unioning and Two-Pass Timestamp-Validated Span Alignment: chronometric matching via `start_time <= ts < end_time` followed by uniform index offset mapping (`span_idx = frame_idx - 1`).
+- **Prevention**: In multi-source media metadata ingestion, never iterate over a single optional source; union all candidate indices and normalize 0-based timeline spans to 1-based prompt arrays.
+
+### Dual-Audio Phase Echo in Browser Media Synchronization
+- **Cause**: Embedding both uncompressed master audio (`<audio id="master-audio">`) and video preview proxy (`<video id="video-proxy">`) in web inspection suites without muting the video element causes simultaneous playback of AAC and WAV audio streams, creating phase-delayed acoustic echo and flange artifacts.
+- **Solution**: Strictly enforce single-source audio: set `videoProxy.muted = true` as an immutable DOM property and drive audio exclusively through the master WAV element.
+- **Prevention**: In video/audio paired HTML5 web tools, always mute the video element when playing external high-fidelity audio stems.
 
 
 
