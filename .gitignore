@@ -128,3 +128,4 @@ apm_modules/
 
 # Local adaptive resource leases and journals
 .runtime/
+.playwright-mcp/
