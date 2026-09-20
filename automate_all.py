@@ -473,7 +473,7 @@ def _main(argv=None):
     if args.channel_profile:
         from youtube_automation.production.contracts import load_channel
         channel = load_channel(args.channel_profile)
-    prompt_p1, prompt_p3, safety_disclaimer = read_prompts(channel)
+    prompt_p1, prompt_p3, safety_disclaimer = read_prompts() if channel is None else ("", "", "")
 
     urls_file = "youtube_urls.txt"
     if not os.path.exists(urls_file):

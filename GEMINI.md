@@ -43,6 +43,8 @@ Autonomous, broadcast-grade educational YouTube studio producing high-retention 
 - Browser and encoder leases fence short publication operations. Immutable final filenames precede atomic activation pointers; byte-verified clip caches include render/tool recipes. These are primitives, not a finished durable stage scheduler; legacy/audio tools do not all participate.
 - A master requires a current preview and explicit approval bound to plan, assets, audio and render settings. `active_master.json` identifies the accepted file. Three reviewed 60–90 second pilots precede full episodes.
 - `run_agency.py` excludes adaptive runs. Use the staged CLI until the remaining scheduler/audio ownership/reference restoration gates pass. Live UI behavior, Arabic readability, crop semantics and artistic quality are not established by offline tests.
+- Adaptive narration partitions the validated refined script into exact, content-bound chapters using the selected channel voice. It does not apply the legacy Egyptian comedy TTS rewrite; completed WAVs require their recorded MD5 on resume. Manifest write failures must propagate.
+- Adaptive thumbnails consume the selected brief, use a shared browser lease, require a real full-frame OCR pass, preserve content-addressed accepted images, and verify an input-bound receipt before skipping work. Generated images reserve space for optional local typography. Legacy thumbnails retain their existing webcomic path.
 - No DNS, network-adapter or system network configuration changes are part of this workflow.
 
 ## 🏗️ Architecture & Component Mapping

@@ -266,7 +266,8 @@ def test_media_assets_resolution(tmp_path: Path):
 
 def test_resolution_mismatch_detection(tmp_path: Path):
     """Verifies that differing image resolutions trigger resolution mismatch warnings."""
-    import struct, zlib
+    import struct
+    import zlib
 
     def make_png(width: int, height: int) -> bytes:
         sig = b"\x89PNG\r\n\x1a\n"

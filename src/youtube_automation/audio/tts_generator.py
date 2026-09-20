@@ -165,7 +165,7 @@ def save_manifest(latest_run, manifest_data):
                 os.remove(tmp_path)
             except OSError:
                 pass
-        print(f"[MANIFEST WARNING] Failed to write manifest checkpoint: {e}")
+        raise OSError(f"Failed to write manifest checkpoint: {manifest_path}") from e
 
 
 def probe_audio_file(file_path):
@@ -332,7 +332,7 @@ def sync_audio_manifest(latest_run, manifest, silence_padding_sec=DEFAULT_SILENC
             os.fsync(f.fileno())
         os.replace(tmp_path, audio_manifest_path)
     except Exception as e:
-        print(f"[WARNING] Could not atomically write {AUDIO_MANIFEST_FILE_NAME}: {e}")
+        raise OSError(f"Could not atomically write {AUDIO_MANIFEST_FILE_NAME}") from e
 
     return manifest_payload
 
@@ -1426,41 +1426,38 @@ def main():
     os.makedirs(voice_folder, exist_ok=True)
     print(f"[OUTPUT] Voice chapters will be saved inside: '{voice_folder}'")
 
-    # Load or initialize the persistent manifest JSON
+    # Invalid adaptive checkpoints must never be reset to an empty manifest.
+    if adaptive_brief and os.path.isfile(get_manifest_path(latest_run)):
+        with open(get_manifest_path(latest_run), encoding="utf-8") as handle:
+            json.load(handle)
     manifest = load_or_create_manifest(latest_run, voice_options)
-    sync_audio_manifest(latest_run, manifest)
+    if not adaptive_brief:
+        sync_audio_manifest(latest_run, manifest)
     voice_config = manifest.get("voice_config", voice_options)
     target_tts_model = voice_config.get("model", "gemini-2.5-pro-preview-tts")
 
-    try:
-        # Use default config for {config:*} placeholders; pass channel fields as vars_ for {persona}, {language}, {dialect}, {tone}, etc.
-        tts_prompt = loader.render("tts")
-    except loader.PromptError as e:
-        print(f"Error loading TTS prompt: {e}")
-        sys.exit(1)
-
     if adaptive_brief:
-        ch = adaptive_brief.channel
-        # Pass channel fields as vars_ for template placeholders
-        tts_prompt = loader.render(
-            "tts",
-            persona=ch.name,
-            language=ch.language,
-            dialect=ch.dialect,
-            tone=ch.tone,
-            age="30s",  # default, can be overridden if channel adds age field
-            gender="male",  # default
-            archetype="Narrator",  # default
-        )
-        if voice_config.get("voice") != ch.voice:
+        if voice_config.get("voice") != adaptive_brief.channel.voice:
             raise ValueError("Cached voice manifest conflicts with selected channel voice")
+        # The validated refined script itself is the voice source. A second Gemini
+        # rewriting pass would change facts and impose the legacy channel persona.
+        tts_prompt = ""
+    else:
+        tts_prompt = loader.render("tts")
 
     with open(transcript_path, encoding="utf-8") as f:
         transcript_text = f.read().strip()
 
-    # Smart auto-detection of Gemini completeness and coverage validation
+    if adaptive_brief:
+        from youtube_automation.production.narration import prepare_manifest
+
+        manifest = prepare_manifest(latest_run, manifest, adaptive_brief, transcript_text)
+        save_manifest(latest_run, manifest)
+        sync_audio_manifest(latest_run, manifest)
+
+    # Legacy Gemini harvesting still uses its own coverage and fallback policy.
     payload_path = os.path.join(latest_run, "tts_payload.json")
-    coverage = calculate_script_coverage(manifest, transcript_text)
+    coverage = 1.0 if adaptive_brief else calculate_script_coverage(manifest, transcript_text)
 
     # If manifest chapters are truncated (< 85% script coverage) or empty, fall back to deterministic partitioning
     if manifest.get("chapters") and coverage < 0.85:

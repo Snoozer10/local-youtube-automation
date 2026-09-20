@@ -12,6 +12,8 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 - Device entrypoints acquire the installation-wide browser or encoder lease. Short artifact activation runs under publication_guard; never hold its SQLite transaction during browser calls or encoding.
 - Accepted image copies and final videos use content-derived names. active_master.json is the only adaptive master activation pointer.
 - Approval requires a current preview and binds its plan, assets, audio and render recipe.
+- Adaptive narration derives chapters from validated refined writing and requires an exact script/channel/voice recipe plus matching WAV digest for completed chapters.
+- Adaptive thumbnails derive prompts from the selected brief, accept landscape images only after full-frame OCR passes, and require a content-bound receipt to skip generation. Missing OCR blocks acceptance. Their browser work uses the shared resource lease.
 
 ## Work Guidance
 - New adaptive execution is opt-in until reviewed pilots pass.

@@ -2,7 +2,7 @@
 
 Plan: [adaptive-visual-plan.md](adaptive-visual-plan.md). Usage: [adaptive-visual-usage.md](adaptive-visual-usage.md). Checked means implemented with the evidence below; live aesthetic checks remain separate.
 
-Current state: staged adaptive implementation and offline verification complete for the checked items. Unattended full production is NOT complete. No live generation or historical regeneration has been launched. Three actual channel profiles are requested for pilot setup.
+Current state: staged adaptive implementation and offline verification complete for the checked items. Unattended full production is NOT complete. No live generation or historical regeneration has been launched. Three actual channel profiles are requested for pilot setup. The newer merged branch adds prompt loading, voice and viewer changes; the current verification record below supersedes the older baseline.
 
 ## A. Branch and baseline
 - [x] A1 Fetch origin/master, verify clean worktree and PR #20 merge, create requested branch from dad17b3.
@@ -27,7 +27,7 @@ Current state: staged adaptive implementation and offline verification complete 
 - [x] C4 Deterministic policy resolution and bounded response repair; no analysis-generated executable code/selectors.
 - [x] C5 Atomic brief persistence with source/profile hashes; validated resume only.
 - [x] C6 Integrate before restructuring/translation; adapt refinement while preserving channel language/voice.
-- [ ] C7 Propagate resolved brief to roadmap, planner, Flow and thumbnails.
+- [x] C7 Propagate resolved brief to adaptive shot planning, Flow and thumbnail prompts; adaptive runs bypass the legacy roadmap.
 - [x] C8 Test contrasting channel policies, whole-script section coverage, invalid profiles and changed input hashes. Semantic accuracy on mixed-topic live scripts remains part of G4.
 
 ## D. Editorial shot planning (depends on C)
@@ -68,16 +68,16 @@ Current state: staged adaptive implementation and offline verification complete 
 
 | Item | Implemented | Remaining acceptance |
 |---|---|---|
-| C7 | Adaptive shot planner replaces legacy roadmap for adaptive runs; Flow consumes the brief. | Channel-aware thumbnail packaging; its current legacy prompt is not an adaptive consumer. |
+| C7 | Adaptive shot planner replaces legacy roadmap; Flow and thumbnail prompts consume the resolved brief. Thumbnails use content-bound accepted-image receipts and preserve legacy behavior for legacy runs. | Live visual quality, optional local thumbnail typography and editorial selection remain G4/G5. |
 | D6 | Multi-span hold, multiple shots in one span, pagination, references and exact frame boundaries tested. | Live idiom and close-up interpretation on real narration. |
 | E2 | Exact URL/project lookup plus decoded pixel identity and chip count; missing/wrong-project references block. | Successful live attachment and automatic restoration after project/account changes. |
 | E3 | Bounded focal coordinates/zoom, even dimensions, maximum 2x source enlargement. | Subject-aware crop protection using actual accepted image geometry and review. |
 | E4 | Explicit holds, pushes, pulls, pans, local label/arrow/highlight timing; ASS Arabic encoding. | Visual Arabic shaping/font/margins and local overlay motion/readability on pilot frames. |
-| F2 | Shared browser leases on adaptive URL writing, analysis/planning/Flow; encoder lease on both renderer entrypoints. | TTS, clipboard and Audacity ownership/leases; legacy processes do not share these locks. |
+| F2 | Shared browser leases on adaptive URL writing, analysis/planning/Flow and thumbnails; encoder lease on both renderer entrypoints. | TTS, clipboard and Audacity ownership/leases; legacy processes do not share these locks. |
 | F3 | Hashed writing caches, brief/source/profile validation, asset model recipes, immutable accepted copies, clip byte hashes and renderer/tool recipes. | Full dependency-driven selective stage retries; changed source/profile with existing downstream output currently requires a fresh run. |
 | F4 | Verify assets/timing/approval and unchanged inputs before atomic master activation; content-derived final filenames preserve old masters. | Crash injection across all publication boundaries and explicit reconciliation of interrupted stages. |
 | F5 | Competing claims, lease expiry, stale publication, corrupted writing/clip caches, missing exact references and stale approval tested. | Process-level crash/restart suite and all missing-output variants. |
-| F6 | Explicit audio run arguments, adaptive supervisor isolation, correct polished-audio path, bounded new renderer subprocesses. | Legacy Audacity cleanup, process ownership, persistence error propagation and physical chapter-offset audit. |
+| F6 | Explicit audio run arguments, adaptive supervisor isolation, correct polished-audio path, bounded new renderer subprocesses. Adaptive narration partitions the verified script without a second rewrite; completed WAVs require matching MD5. Voice and audio manifest write failures now propagate. | Legacy Audacity cleanup, process ownership, remaining persistence surfaces and physical chapter-offset audit. |
 | G4–G6 | Offline synthetic renders only. | User channel profiles, three live 60–90 second pilots, actual editorial feedback and subsequent full episodes. |
 
 ## Verification evidence
@@ -91,3 +91,4 @@ Current state: staged adaptive implementation and offline verification complete 
 - Interrupted activation injection: failure while writing the new preview pointer leaves the previous pointer and accepted master hash intact. Per-invocation scratch files prevent expired workers from sharing pending video/filter files.
 - Separate real FFmpeg hold test: all 12 decoded frame hashes identical on a detailed synthetic source.
 - No Gemini/Flow/TTS/Audacity production session launched, network settings changed, historical run regenerated, remote branch pushed, PR opened or release published by these checks.
+- After the user's merge, a fresh baseline passed 577 unit tests. The current full unit suite passed **588 tests** (2026-09-20). Workspace Ruff, production-package mypy (13 files) and exercise structural lint all passed. The thumbnail browser test uses fakes; no live Gemini/Flow/TTS/Audacity run or aesthetic pilot was performed.

@@ -41,7 +41,7 @@ For existing URL extraction, `automate_all.py --channel-profile "channels/scienc
 
 ## Narration and canonical timing
 
-The existing audio tools now accept an explicit run directory: `generate_voice.py`, `automate_audacity.py`, `stitch_chapters.py`, and `faster_whisper_transcribe_audio.py`. Keep the selected run identical across stages. Voice and transcription consume the saved channel; transcription records the actual audio path relative to that run, including the polished audio subfolder.
+The existing audio tools now accept an explicit run directory: `generate_voice.py`, `automate_audacity.py`, `stitch_chapters.py`, and `faster_whisper_transcribe_audio.py`. Keep the selected run identical across stages. Voice and transcription consume the saved channel; transcription records the actual audio path relative to that run, including the polished audio subfolder. Adaptive voice generation partitions the validated `refined_script.txt` directly into chapters and uses the selected channel voice. It does not run the legacy Egyptian comedy TTS rewrite. A resume blocks if the script/channel recipe or a completed WAV digest differs from its checkpoint.
 
 Audio process ownership, Audacity cleanup and cross-device leases are still tracked work. This feature does not establish safe concurrent audio execution. Do not run the legacy batch supervisor over adaptive runs: it excludes them, and direct `process_folder` calls reject them before changing state. Use a 60–90 second pilot script and validate its narration/timeline before generating visual assets.
 
@@ -59,6 +59,10 @@ Gemini and Flow use the existing authenticated browser/CDP setup. No new cloud S
 Review `adaptive_review/index.html` and the video path inside `adaptive_preview.json`. Confirm subject relevance, factual meaning, consistent identities, meaningful cuts, crops, local Arabic labels and restrained motion. Contact sheets contain original assets; the rendered preview is necessary to review crops and overlays. Shape/font availability and mobile readability require visual inspection.
 
 An edit attaches only the receipt's exact source URL in the same Flow project, verifies its decoded pixel hash, and checks the attachment chip. Missing references block generation. Automatic restoration into a new project/account is not implemented. Provider UI changes and live attachment behavior remain unverified.
+
+## Thumbnail packaging
+
+For an adaptive run with validated writing, `venv/Scripts/python.exe generate_thumbnail.py "youtube_runs/pilot-science"` uses the channel brief for title concepts and image prompts. It uses the shared browser lease, saves accepted landscape images under `thumbnails/accepted/`, and records their paths, hashes and passed OCR gate in `adaptive_thumbnail_receipt.json`. Missing OCR or detected bitmap text blocks acceptance. A repeat verifies the receipt and skips browser work. Changed script, brief, titles or model requires a fresh run. The old webcomic thumbnail path remains for legacy runs. Text is reserved as negative space in the generated bitmap; optional local typography and visual quality still need pilot review.
 
 ## Explicit approval and master activation
 
@@ -83,4 +87,4 @@ Approval requires a current rendered preview. Changes to the plan, assets, audio
 
 ## Remaining rollout gates
 
-Adaptive thumbnail packaging, automatic reference restoration, semantic subject crop checks, complete audio/clipboard ownership, durable stage scheduling and the prior reliability backlog remain in the checklist. Three contrasting channel pilots and user acceptance precede full-episode production. No historical production runs have been regenerated as part of these implementation checks.
+Automatic reference restoration, semantic subject crop checks, complete audio/clipboard ownership, durable stage scheduling and the prior reliability backlog remain in the checklist. Three contrasting channel pilots and user acceptance precede full-episode production. No historical production runs have been regenerated as part of these implementation checks.
