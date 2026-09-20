@@ -34,6 +34,51 @@ def test_hold_and_focal_motion():
     assert "1.25" not in moving
 
 
+def test_motion_needs_visible_travel_and_pan_preserves_focal_subject():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="requires zoom above 1"):
+        fixture_shot(motion="pan_right")
+    with pytest.raises(ValueError, match="No safe pan travel"):
+        camera_filter(fixture_shot(motion="pan_right", zoom=1.05, focal_x=0.01), 640, 360, 30)
+    graph = camera_filter(fixture_shot(motion="pan_left", zoom=1.05), 640, 360, 30)
+    assert "0.75*iw/zoom" in graph
+    assert "0.25*iw/zoom" in graph
+
+
+def test_real_aspect_crop_keeps_off_center_subject(tmp_path):
+    import shutil
+    import subprocess
+
+    import pytest
+    from PIL import Image, ImageDraw
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("Real FFmpeg unavailable")
+    cases = [
+        ((640, 480), (280, 435, 360, 475), {"focal_y": 0.92}),
+        ((800, 360), (745, 140, 795, 220), {"focal_x": 0.96}),
+    ]
+    for index, (source_size, subject_box, focal) in enumerate(cases):
+        source = tmp_path / f"off-center-{index}.png"
+        image = Image.new("RGB", source_size, "black")
+        ImageDraw.Draw(image).rectangle(subject_box, fill="red")
+        image.save(source)
+        graph = camera_filter(fixture_shot(end_frame=1, **focal), 640, 360, 30, source_size)
+        result = subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", str(source), "-vf", graph, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+            capture_output=True,
+            timeout=30,
+            check=True,
+        )
+        frame = Image.frombytes("RGB", (640, 360), result.stdout)
+        red_pixels = sum(
+            1 for red, green, blue in frame.getdata() if red > 150 and green < 80 and blue < 80
+        )
+        assert red_pixels > 1000
+
+
 def test_arabic_overlay_is_local_and_escapes_ass_commands():
     shot = fixture_shot(
         overlays=[Overlay(kind="label", start_frame=30, end_frame=60, text="عين القط {\\pos(0,0)}")]

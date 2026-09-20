@@ -45,6 +45,7 @@ Autonomous, broadcast-grade educational YouTube studio producing high-retention 
 - `run_agency.py` excludes adaptive runs. Use the staged CLI until the remaining scheduler/audio ownership/reference restoration gates pass. Live UI behavior, Arabic readability, crop semantics and artistic quality are not established by offline tests.
 - Adaptive narration partitions the validated refined script into exact, content-bound chapters using the selected channel voice. It does not apply the legacy Egyptian comedy TTS rewrite; completed WAVs require their recorded MD5 on resume. Manifest write failures must propagate.
 - Adaptive thumbnails consume the selected brief, use a shared browser lease, require a real full-frame OCR pass, preserve content-addressed accepted images, and verify an input-bound receipt before skipping work. Generated images reserve space for optional local typography. Legacy thumbnails retain their existing webcomic path.
+- Adaptive rendering now applies the shot focal point during source aspect-ratio cropping and constrains pans to keep that focal point in view. A camera recipe change requires new cached clips, preview and approval. Geometry tests do not prove semantic subject recognition; review actual preview frames.
 - No DNS, network-adapter or system network configuration changes are part of this workflow.
 
 ## 🏗️ Architecture & Component Mapping

@@ -28,10 +28,16 @@ def file_digest(path: str | Path) -> str:
     return hasher.hexdigest()
 
 
-def pixel_digest(path: str | Path) -> str:
+def image_identity(path: str | Path) -> tuple[tuple[int, int], str]:
     with Image.open(path) as image:
         image.load()
-        return hashlib.sha256(str(image.size).encode() + image.convert("RGB").tobytes()).hexdigest()
+        return image.size, hashlib.sha256(
+            str(image.size).encode() + image.convert("RGB").tobytes()
+        ).hexdigest()
+
+
+def pixel_digest(path: str | Path) -> str:
+    return image_identity(path)[1]
 
 
 def validate_background(path: str | Path) -> tuple[int, int]:
@@ -72,6 +78,9 @@ def read_receipt(root: Path, asset_id: str) -> dict[str, Any]:
         raise ValueError("Asset receipt escapes its run")
     if receipt["asset_id"] != asset_id or file_digest(image) != receipt["sha256"]:
         raise ValueError("Asset receipt content mismatch")
+    dimensions, pixels = image_identity(image)
+    if list(dimensions) != receipt.get("dimensions") or pixels != receipt.get("pixel_sha256"):
+        raise ValueError("Asset receipt image geometry or pixels changed")
     if receipt["technical_status"] != "verified":
         raise ValueError("Asset has not passed technical validation")
     return receipt

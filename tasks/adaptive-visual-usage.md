@@ -57,6 +57,7 @@ venv/Scripts/python.exe adaptive_production.py preview --run-dir "youtube_runs/p
 Gemini and Flow use the existing authenticated browser/CDP setup. No new cloud SDK or API key is introduced; the browser services still need network access. Background OCR requires working Tesseract. Missing OCR, assets, references or frame coverage block the stage.
 
 Review `adaptive_review/index.html` and the video path inside `adaptive_preview.json`. Confirm subject relevance, factual meaning, consistent identities, meaningful cuts, crops, local Arabic labels and restrained motion. Contact sheets contain original assets; the rendered preview is necessary to review crops and overlays. Shape/font availability and mobile readability require visual inspection.
+The review table shows each shot's focal point and zoom. The renderer uses that point for the initial aspect crop and confines pans to travel that keeps it visible. Push/pull/pan with zoom 1 and pans without safe travel now fail planning/render validation; choose a hold or revise the composition. Re-preview and approve after a camera recipe change because cached clips and approval lineage are invalidated.
 
 An edit attaches only the receipt's exact source URL in the same Flow project, verifies its decoded pixel hash, and checks the attachment chip. Missing references block generation. Automatic restoration into a new project/account is not implemented. Provider UI changes and live attachment behavior remain unverified.
 

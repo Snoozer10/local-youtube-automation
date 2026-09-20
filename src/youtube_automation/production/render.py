@@ -56,8 +56,31 @@ def probe_video(
     return video
 
 
-def camera_filter(shot: Shot, width: int, height: int, fps: int) -> str:
+def framed_focal(
+    shot: Shot, width: int, height: int, source_size: tuple[int, int] | None
+) -> tuple[float, float]:
+    """Keep the chosen subject point aligned after the source aspect-ratio crop."""
+    if source_size is None:
+        return shot.focal_x, shot.focal_y
+    source_width, source_height = source_size
+    if min(source_width, source_height, width, height) <= 0:
+        raise ValueError("Source and output dimensions must be positive")
+    scale = max(2 * width / source_width, 2 * height / source_height)
+    scaled_width, scaled_height = source_width * scale, source_height * scale
+
+    def adjusted(focal: float, scaled: float, target: int) -> float:
+        crop = 2 * target
+        offset = min(max(scaled * focal - crop / 2, 0), max(0, scaled - crop))
+        return min(1.0, max(0.0, (scaled * focal - offset) / crop))
+
+    return adjusted(shot.focal_x, scaled_width, width), adjusted(shot.focal_y, scaled_height, height)
+
+
+def camera_filter(
+    shot: Shot, width: int, height: int, fps: int, source_size: tuple[int, int] | None = None
+) -> str:
     frames = shot.end_frame - shot.start_frame
+    focal_x, focal_y = framed_focal(shot, width, height, source_size)
     t = f"clip(on,0,{max(1, frames - 1)})/{max(1, frames - 1)}"
     ease = f"(({t})*({t})*(3-2*({t})))"
     zoom = str(float(shot.zoom))
@@ -65,15 +88,23 @@ def camera_filter(shot: Shot, width: int, height: int, fps: int) -> str:
         zoom = f"1+({shot.zoom}-1)*{ease}"
     elif shot.motion == "pull":
         zoom = f"{shot.zoom}-({shot.zoom}-1)*{ease}"
-    x = f"clip(iw*{shot.focal_x}-iw/zoom/2,0,iw-iw/zoom)"
-    y = f"clip(ih*{shot.focal_y}-ih/zoom/2,0,ih-ih/zoom)"
-    if shot.motion == "pan_left":
-        x = f"(iw-iw/zoom)*(1-{ease})"
-    elif shot.motion == "pan_right":
-        x = f"(iw-iw/zoom)*{ease}"
+    x = f"clip(iw*{focal_x}-iw/zoom/2,0,iw-iw/zoom)"
+    y = f"clip(ih*{focal_y}-ih/zoom/2,0,ih-ih/zoom)"
+    if shot.motion in {"pan_left", "pan_right"}:
+        viewport = 1 / shot.zoom
+        travel = 1 - viewport
+        safe_start = min(travel, max(0, focal_x - 0.75 * viewport))
+        safe_end = min(travel, max(0, focal_x - 0.25 * viewport))
+        if safe_end - safe_start < 0.005:
+            raise ValueError(f"No safe pan travel around the focal subject in {shot.shot_id}; use hold")
+        left = f"clip(iw*{focal_x}-0.75*iw/zoom,0,iw-iw/zoom)"
+        right = f"clip(iw*{focal_x}-0.25*iw/zoom,0,iw-iw/zoom)"
+        x = f"{right}+({left}-{right})*{ease}" if shot.motion == "pan_left" else f"{left}+({right}-{left})*{ease}"
     return (
         f"scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase:flags=lanczos,"
-        f"crop={width * 2}:{height * 2},"
+        f"crop={width * 2}:{height * 2}:"
+        f"x='clip(iw*{shot.focal_x}-{width},0,iw-{width * 2})':"
+        f"y='clip(ih*{shot.focal_y}-{height},0,ih-{height * 2})',"
         f"zoompan=z='{zoom}':x='{x}':y='{y}':d={frames}:s={width}x{height}:fps={fps},"
         f"trim=end_frame={frames},setpts=PTS-STARTPTS,setsar=1"
     )
@@ -172,7 +203,7 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
         ["ffmpeg", "-version"], capture_output=True, text=True, timeout=15, check=True
     ).stdout.splitlines()[0]
     inputs = {
-        "renderer_version": 2,
+        "renderer_version": 3,
         "tool": tool_version,
         "plan": fingerprint(plan),
         "assets": asset_hashes,
@@ -210,7 +241,7 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
         if shot.overlays:
             atomic_text(work / ass_name, overlay_ass(shot, width, height, plan.fps))
         for attempt in range(2):
-            filters = camera_filter(shot, width, height, plan.fps)
+            filters = camera_filter(shot, width, height, plan.fps, (iw, ih))
             if shot.overlays:
                 filters += f",ass={ass_name}"
             filters += ",format=" + ("nv12" if encoder["video_codec"] == "h264_qsv" else "yuv420p")

@@ -75,6 +75,8 @@ class Shot(Contract):
             raise ValueError("A generated edit requires an explicit reference asset")
         if self.operation == "generate" and self.reference_asset_id:
             raise ValueError("Use an explicit edit operation when attaching a reference")
+        if self.motion != "hold" and self.zoom <= 1:
+            raise ValueError("Camera motion requires zoom above 1 to produce visible travel")
         return self
 
 
@@ -157,6 +159,8 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         "Each shot must communicate a specific point. Do not illustrate filler idioms literally or invent numerical evidence. "
         "Use actual subject scenes, details or purposeful diagrams according to channel policy. "
         "No mandatory camera cycles or progressive sequences. Holds are allowed. "
+        "Push, pull and pan require zoom above 1; if there is no safe focal travel, choose hold. "
+        "Set the focal point on the subject in the intended source composition so aspect crops preserve it. "
         "Use English subject/state/setting/composition for image generation. Local overlay labels use channel language. "
         "Describe a single visible state, not an impossible temporal action in a still. "
         "Prefer reuse of the same asset with local overlays/crops when that conveys the change. "

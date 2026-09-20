@@ -14,6 +14,7 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 - Approval requires a current preview and binds its plan, assets, audio and render recipe.
 - Adaptive narration derives chapters from validated refined writing and requires an exact script/channel/voice recipe plus matching WAV digest for completed chapters.
 - Adaptive thumbnails derive prompts from the selected brief, accept landscape images only after full-frame OCR passes, and require a content-bound receipt to skip generation. Missing OCR blocks acceptance. Their browser work uses the shared resource lease.
+- Render aspect crops must use the selected focal point and accepted source dimensions before zoom/pan. Non-hold motion needs visible safe travel; changing the camera recipe invalidates cached clips and approval.
 
 ## Work Guidance
 - New adaptive execution is opt-in until reviewed pilots pass.

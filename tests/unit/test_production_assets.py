@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from PIL import Image
 
@@ -24,3 +26,33 @@ def test_corrupt_image_is_not_accepted(tmp_path):
     path.write_bytes(b"not an image" * 200)
     with pytest.raises(OSError):
         assets.validate_background(path)
+
+
+def test_asset_receipt_geometry_must_match_accepted_pixels(tmp_path):
+    accepted = tmp_path / "accepted_assets"
+    receipts = tmp_path / "asset_receipts"
+    accepted.mkdir()
+    receipts.mkdir()
+    image = accepted / "asset.png"
+    Image.new("RGB", (640, 360), "blue").save(image)
+    payload = {
+        "asset_id": "asset",
+        "path": "accepted_assets/asset.png",
+        "sha256": assets.file_digest(image),
+        "pixel_sha256": assets.pixel_digest(image),
+        "dimensions": [640, 360],
+        "technical_status": "verified",
+        "version": 1,
+    }
+    path = receipts / "asset.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert assets.read_receipt(tmp_path, "asset")["dimensions"] == [640, 360]
+    payload["dimensions"] = [1920, 1080]
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="geometry or pixels changed"):
+        assets.read_receipt(tmp_path, "asset")
+    payload["dimensions"] = [640, 360]
+    payload["pixel_sha256"] = "0" * 64
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="geometry or pixels changed"):
+        assets.read_receipt(tmp_path, "asset")
