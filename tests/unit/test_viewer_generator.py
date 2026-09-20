@@ -303,4 +303,91 @@ def test_resolution_mismatch_detection(tmp_path: Path):
     assert "1920x1080 vs 1792x1024" in records[0]["resolution_mismatch"]
 
 
+def test_dynamic_scaffolding_in_generated_html(tmp_path: Path):
+    """Verifies that generated HTML includes the payload script, media elements, wipe viewport, and zero hardcoded '293'."""
+    run_dir = tmp_path / "dynamic_scaffold_run"
+    run_dir.mkdir()
+    gen_dir = run_dir / "generated_images"
+    gen_dir.mkdir()
+
+    # Create dummy audio and video
+    (run_dir / "full_episode_voice.wav").write_bytes(b"RIFF dummy wav")
+    (run_dir / "youtube_ready_video_720p.mp4").write_bytes(b"dummy mp4")
+
+    # Create 3 frames
+    prompts = [
+        {"index": i, "timestamp": f"[00:{i*5:02d}]", "enhanced_prompt": f"Frame {i} prompt"}
+        for i in range(1, 4)
+    ]
+    (run_dir / "flow_prompts_socratic.json").write_text(json.dumps(prompts), encoding="utf-8")
+
+    for i in range(1, 4):
+        (gen_dir / f"00_{i*5:02d}.png").write_bytes(b"fake image")
+
+    out_file = run_dir / "studio_viewer.html"
+    generate_comparison_viewer_html(str(run_dir), output_html=str(out_file))
+
+    assert out_file.exists()
+    html_text = out_file.read_text(encoding="utf-8")
+
+    # 1. Payload Script & JSON
+    assert '<script id="studio-data" type="application/json">' in html_text
+    assert '"media":' in html_text
+    assert '"frames":' in html_text
+
+    # 2. Single-source audio invariant
+    assert 'videoProxy.muted = true' in html_text
+    assert '<video id="video-proxy" preload="metadata" muted' in html_text
+    assert '<audio id="master-audio"' in html_text
+
+    # 3. Split Curtain Wipe & Diff Viewports
+    assert 'id="wipe-viewport"' in html_text
+    assert 'id="wipe-handle"' in html_text
+    assert 'id="diff-viewport"' in html_text
+
+    # 4. Safe Zones
+    assert 'id="safe-zones-overlay"' in html_text or 'safe-zones-svg' in html_text
+    assert 'ACTION SAFE (90%)' in html_text
+    assert 'TITLE SAFE (80%)' in html_text
+
+    # 5. Range Compressor & Scrubbing
+    assert 'compressRanges' in html_text
+    assert 'id="scrubber-track"' in html_text
+
+    # 6. ZERO hardcoded "293" in select options
+    assert 'Show All Frames (293)' not in html_text
+    assert 'Frames 251–293' not in html_text
+
+
+def test_relative_path_disk_audit(tmp_path: Path):
+    """Verifies that nested chunk viewer HTML correctly resolves parent baseline and master frames."""
+    run_dir = tmp_path / "chunk_audit_run"
+    run_dir.mkdir()
+    baseline_dir = run_dir / "generated_images_baseline"
+    baseline_dir.mkdir()
+    chunk_dir = run_dir / "chunk_1_images"
+    chunk_dir.mkdir()
+
+    (baseline_dir / "00_00.png").write_bytes(b"baseline_0")
+    (chunk_dir / "00_00.png").write_bytes(b"chunk_0")
+
+    (run_dir / "flow_prompts.json").write_text(
+        json.dumps([{"index": 1, "timestamp": "[00:00]", "prompt": "Baseline prompt"}]), encoding="utf-8"
+    )
+
+    records = build_frame_records(str(run_dir), str(chunk_dir), html_dir=str(chunk_dir))
+    assert len(records) == 1
+    assert records[0]["baseline_image"] == "../generated_images_baseline/00_00.png"
+    assert records[0]["canary_image"] == "00_00.png"
+
+    # Generate HTML inside chunk directory
+    chunk_html = chunk_dir / "studio_viewer.html"
+    generate_comparison_viewer_html(str(run_dir), str(chunk_dir), output_html=str(chunk_html))
+
+    assert chunk_html.exists()
+    content = chunk_html.read_text(encoding="utf-8")
+    assert '../generated_images_baseline/00_00.png' in content
+
+
+
 
