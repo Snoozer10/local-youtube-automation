@@ -531,7 +531,7 @@ def generate_comparison_viewer_html(
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>⚡ Socratic Comparison Studio (NLE Suite)</title>
+<title>⚡ Socratic Visual Prompt Comparison Studio (NLE Suite)</title>
 <style>
 :root {
   --bg-primary: #0b0e14;
