@@ -8,9 +8,106 @@ with Arabic spoken subtitles, prompt diffs, and interactive keyboard navigation.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from typing import Any
+
+
+def parse_timestamp_seconds(ts_str: str | None) -> float | None:
+    """Parses a timestamp string like '[01:23.450]' or '01:23' into seconds as float."""
+    if not ts_str:
+        return None
+    cleaned = str(ts_str).replace("[", "").replace("]", "").strip()
+    parts = cleaned.split(":")
+    try:
+        if len(parts) == 2:
+            return float(parts[0]) * 60.0 + float(parts[1])
+        elif len(parts) == 3:
+            return float(parts[0]) * 3600.0 + float(parts[1]) * 60.0 + float(parts[2])
+        elif len(parts) == 1 and parts[0]:
+            return float(parts[0])
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
+def format_visual_prompt(prompt_data: Any) -> str:
+    """Formats visual prompt data (string or dict) into clean, human-readable text."""
+    if not prompt_data:
+        return ""
+    if isinstance(prompt_data, str):
+        return prompt_data.strip()
+    if isinstance(prompt_data, dict):
+        if prompt_data.get("enhanced_prompt"):
+            return str(prompt_data["enhanced_prompt"]).strip()
+        lines = []
+        for k in ["subject", "action", "setting", "style", "composition", "lighting", "visual_delta"]:
+            val = prompt_data.get(k)
+            if val:
+                lines.append(f"{k.capitalize()}: {val}")
+        if lines:
+            return "\n".join(lines)
+        return json.dumps(prompt_data, ensure_ascii=False, indent=2)
+    return str(prompt_data)
+
+
+def inspect_image_dimensions(file_path: str | None) -> tuple[int, int] | None:
+    """Extracts width and height of an image file without external dependencies."""
+    if not file_path or not os.path.exists(file_path):
+        return None
+    try:
+        with open(file_path, "rb") as f:
+            header = f.read(32)
+            if len(header) >= 24 and header[:8] == b"\x89PNG\r\n\x1a\n" and header[12:16] == b"IHDR":
+                w = int.from_bytes(header[16:20], "big")
+                h = int.from_bytes(header[20:24], "big")
+                return (w, h)
+    except Exception:
+        pass
+    try:
+        from PIL import Image  # type: ignore
+        with Image.open(file_path) as img:
+            return img.size
+    except Exception:
+        pass
+    return None
+
+
+def resolve_media_assets(run_dir: str, html_dir: str) -> dict[str, Any]:
+    """Resolves relative paths for master audio and video proxy files."""
+    audio_candidates = [
+        os.path.join(run_dir, "full_episode_voice.wav"),
+        os.path.join(run_dir, "audacity_voice", "full_episode_voice.wav"),
+        os.path.join(run_dir, "voice.wav"),
+        os.path.join(run_dir, "master_audio.wav"),
+        os.path.join(run_dir, "full_voice.mp3"),
+    ]
+    video_candidates = [
+        os.path.join(run_dir, "youtube_ready_video_720p.mp4"),
+        os.path.join(run_dir, "youtube_ready_video_1080p.mp4"),
+        os.path.join(run_dir, "youtube_ready_video.mp4"),
+        os.path.join(run_dir, "video_preview.mp4"),
+    ]
+
+    audio_rel = None
+    for ac in audio_candidates:
+        if os.path.exists(ac):
+            audio_rel = os.path.relpath(ac, html_dir).replace("\\", "/")
+            break
+
+    video_rel = None
+    for vc in video_candidates:
+        if os.path.exists(vc):
+            video_rel = os.path.relpath(vc, html_dir).replace("\\", "/")
+            break
+
+    return {
+        "audio_path": audio_rel,
+        "video_path": video_rel,
+        "has_audio": audio_rel is not None,
+        "has_video": video_rel is not None,
+    }
 
 
 def load_roadmap_script_lines(run_dir: str) -> dict[int, str]:
@@ -59,25 +156,38 @@ def build_frame_records(
     baseline_items: list[dict[str, Any]] = []
 
     if os.path.exists(socratic_file):
-        with open(socratic_file, encoding="utf-8") as f:
-            socratic_items = json.load(f)
+        try:
+            with open(socratic_file, encoding="utf-8") as f:
+                socratic_items = json.load(f)
+        except Exception:
+            pass
     if os.path.exists(baseline_file):
-        with open(baseline_file, encoding="utf-8") as f:
-            baseline_items = json.load(f)
+        try:
+            with open(baseline_file, encoding="utf-8") as f:
+                baseline_items = json.load(f)
+        except Exception:
+            pass
 
-    baseline_map = {it.get("index"): it for it in baseline_items if isinstance(it, dict)}
+    socratic_map = {int(it["index"]): it for it in socratic_items if isinstance(it, dict) and "index" in it}
+    baseline_map = {int(it["index"]): it for it in baseline_items if isinstance(it, dict) and "index" in it}
     script_lines = load_roadmap_script_lines(run_dir)
 
     # Ingest canonical timeline spans for kinetic camera actions and eye-line tags
     timeline_file = os.path.join(run_dir, "timeline.json")
-    timeline_spans: dict[int, dict[str, Any]] = {}
+    timeline_spans_list: list[dict[str, Any]] = []
+    timeline_spans_by_idx: dict[int, dict[str, Any]] = {}
     if os.path.exists(timeline_file):
         try:
             with open(timeline_file, encoding="utf-8") as tf:
                 td = json.load(tf)
                 for s in td.get("spans", []):
-                    if isinstance(s, dict) and "index" in s:
-                        timeline_spans[int(s["index"])] = s
+                    if isinstance(s, dict):
+                        timeline_spans_list.append(s)
+                        if "index" in s:
+                            try:
+                                timeline_spans_by_idx[int(s["index"])] = s
+                            except (ValueError, TypeError):
+                                pass
         except Exception:
             pass
 
@@ -87,21 +197,127 @@ def build_frame_records(
         os.path.join(run_dir, "generated_images") if baseline_dir_name != "generated_images" else None,
     ]
     master_socratic_dirs = [d for d in master_socratic_candidates if d and os.path.exists(d)]
+    # Two-Pass Timestamp-Validated Span Alignment metadata
+    is_spans_zero_based = (min(timeline_spans_by_idx.keys()) == 0) if timeline_spans_by_idx else False
+    prompt_indices = sorted(set(socratic_map.keys()) | set(baseline_map.keys()))
+    min_prompt_idx = min(prompt_indices) if prompt_indices else 1
+    has_uniform_offset = (
+        is_spans_zero_based
+        and min_prompt_idx == 1
+        and len(timeline_spans_by_idx) == len(prompt_indices)
+    )
+
+    # 5-Tier Priority Cascade with Index Unioning:
+    all_indices: set[int] = set()
+    all_indices.update(socratic_map.keys())
+    all_indices.update(baseline_map.keys())
+    all_indices.update(script_lines.keys())
+
+    if prompt_indices:
+        if has_uniform_offset:
+            # 0-based spans map 1:1 to 1-based prompts: span s corresponds to prompt s + 1.
+            # prompt_indices already defines the canonical frame universe.
+            pass
+        elif is_spans_zero_based and min_prompt_idx == 1:
+            for s_idx in timeline_spans_by_idx.keys():
+                all_indices.add(s_idx + 1)
+        else:
+            all_indices.update(timeline_spans_by_idx.keys())
+    else:
+        if is_spans_zero_based:
+            for s_idx in timeline_spans_by_idx.keys():
+                all_indices.add(s_idx + 1)
+        else:
+            all_indices.update(timeline_spans_by_idx.keys())
+
+    # Check physical disk scans if indices are empty or partial
+    for d in [gen_path, canary_path] + master_socratic_dirs:
+        if os.path.exists(d):
+            for fn in os.listdir(d):
+                if fn.lower().endswith((".png", ".jpg", ".webp")):
+                    stem = os.path.splitext(fn)[0]
+                    if stem.isdigit():
+                        idx_cand = int(stem)
+                        if idx_cand == 0 and min_prompt_idx >= 1 and (prompt_indices or script_lines):
+                            continue
+                        all_indices.add(idx_cand)
+                    elif stem.startswith("sentence_") and stem[9:].isdigit():
+                        idx_cand = int(stem[9:])
+                        if idx_cand == 0 and min_prompt_idx >= 1 and (prompt_indices or script_lines):
+                            continue
+                        all_indices.add(idx_cand)
+
+    if not all_indices:
+        return []
+
+    sorted_indices = sorted(all_indices)
 
     records: list[dict[str, Any]] = []
-    for s_it in socratic_items:
-        if not isinstance(s_it, dict):
-            continue
-        idx = s_it.get("index", 0)
-        ts = s_it.get("timestamp", "")
+    for idx in sorted_indices:
+        s_it = socratic_map.get(idx, {})
+        b_it = baseline_map.get(idx, {})
+
+        # Determine timestamp string
+        ts = s_it.get("timestamp") or b_it.get("timestamp") or ""
+        ts_sec = parse_timestamp_seconds(ts)
+
+        # Two-Pass Span Alignment:
+        t_span = None
+        # Pass 1: Chronometric match if timestamp exists
+        if ts_sec is not None and timeline_spans_list:
+            for sp in timeline_spans_list:
+                s_start = float(sp.get("start_time", 0.0) or 0.0)
+                s_end = float(sp.get("end_time", s_start + 3.0) or (s_start + 3.0))
+                if s_start <= ts_sec < s_end:
+                    t_span = sp
+                    break
+
+        # Pass 2: Strict Index fallback
+        if t_span is None and timeline_spans_by_idx:
+            if has_uniform_offset:
+                t_span = timeline_spans_by_idx.get(idx - 1) or timeline_spans_by_idx.get(idx)
+            else:
+                t_span = timeline_spans_by_idx.get(idx)
+
+        # Calculate timing numbers
+        if t_span:
+            start_time = float(t_span.get("start_time", 0.0) or 0.0)
+            duration = float(t_span.get("duration", 0.0) or 0.0)
+            if duration <= 0.0 and "end_time" in t_span:
+                duration = max(0.1, float(t_span["end_time"]) - start_time)
+            elif duration <= 0.0:
+                duration = 3.0
+            end_time = float(t_span.get("end_time", start_time + duration))
+            start_frame = int(t_span.get("start_frame", round(start_time * 30)))
+            end_frame = int(t_span.get("end_frame", round(end_time * 30)))
+            frame_count = int(t_span.get("frame_count", max(1, end_frame - start_frame)))
+        else:
+            start_time = round((idx - 1) * 3.0, 3) if idx >= 1 else 0.0
+            duration = 3.0
+            end_time = round(start_time + duration, 3)
+            start_frame = round(start_time * 30)
+            end_frame = round(end_time * 30)
+            frame_count = max(1, end_frame - start_frame)
+
+        if not ts:
+            m = int(start_time // 60)
+            s = int(start_time % 60)
+            ts = f"[{m:02d}:{s:02d}]"
+
         clean_ts = ts.replace("[", "").replace("]", "").replace(":", "_").strip() if ts else f"sentence_{idx}"
         fname = f"{clean_ts}.png"
-
-        b_it = baseline_map.get(idx, {})
 
         # Baseline resolution
         abs_baseline = os.path.join(gen_path, fname)
         baseline_exists = os.path.exists(abs_baseline)
+        if not baseline_exists:
+            for alt_name in [f"sentence_{idx}.png", f"{idx:02d}.png", f"{idx}.png"]:
+                cand = os.path.join(gen_path, alt_name)
+                if os.path.exists(cand):
+                    abs_baseline = cand
+                    baseline_exists = True
+                    break
+
         if baseline_exists:
             baseline_img_rel = os.path.relpath(abs_baseline, target_html_dir).replace("\\", "/")
         else:
@@ -110,6 +326,14 @@ def build_frame_records(
         # Canary / Socratic resolution
         abs_canary = os.path.join(canary_path, fname)
         in_local_dir = os.path.exists(abs_canary)
+        if not in_local_dir:
+            for alt_name in [f"sentence_{idx}.png", f"{idx:02d}.png", f"{idx}.png"]:
+                cand = os.path.join(canary_path, alt_name)
+                if os.path.exists(cand):
+                    abs_canary = cand
+                    in_local_dir = True
+                    break
+
         canary_exists = in_local_dir
         canary_img_rel = fname
 
@@ -121,6 +345,12 @@ def build_frame_records(
             # Check fallback in master socratic directories
             for m_dir in master_socratic_dirs:
                 cand_file = os.path.join(m_dir, fname)
+                if not os.path.exists(cand_file):
+                    for alt_name in [f"sentence_{idx}.png", f"{idx:02d}.png", f"{idx}.png"]:
+                        c2 = os.path.join(m_dir, alt_name)
+                        if os.path.exists(c2):
+                            cand_file = c2
+                            break
                 if os.path.exists(cand_file):
                     active_canary_file = cand_file
                     canary_exists = True
@@ -129,10 +359,17 @@ def build_frame_records(
             if not active_canary_file:
                 canary_img_rel = os.path.relpath(abs_canary, target_html_dir).replace("\\", "/")
 
-        s_prompt = s_it.get("enhanced_prompt") or str(s_it.get("visual_prompt", ""))
-        b_prompt = str(b_it.get("visual_prompt", ""))
+        s_prompt_data = s_it.get("enhanced_prompt") or s_it.get("visual_prompt") or s_it.get("prompt")
+        if not s_prompt_data and s_it:
+            s_prompt_data = s_it
+        s_prompt = format_visual_prompt(s_prompt_data)
 
-        archetype = s_it.get("layout_classification", "STANDALONE")
+        b_prompt_data = b_it.get("visual_prompt") or b_it.get("prompt")
+        if not b_prompt_data and b_it:
+            b_prompt_data = b_it
+        b_prompt = format_visual_prompt(b_prompt_data)
+
+        archetype = s_it.get("layout_classification") or b_it.get("layout_classification", "STANDALONE")
         features = []
         if "1-2-3 shape hierarchy" in s_prompt:
             features.append("1-2-3 Shape Hierarchy")
@@ -145,20 +382,34 @@ def build_frame_records(
         if "negative prompt:" in s_prompt.lower():
             features.append("Latent Neg Filter")
 
-        t_span = timeline_spans.get(idx)
+        punch_frame = None
+        camera_action = "static_hold"
+        eye_line = None
         if t_span:
-            if t_span.get("punch_frame"):
-                features.append(f"⚡ Scale Punch (125% @ frame +{t_span['punch_frame']})")
-            elif float(t_span.get("duration", 0) or 0) >= 3.5:
+            punch_frame = t_span.get("punch_frame")
+            camera_action = t_span.get("camera_action", "static_hold")
+            eye_line = t_span.get("eye_line_elevation")
+            if punch_frame:
+                features.append(f"⚡ Scale Punch (125% @ frame +{punch_frame})")
+            elif camera_action == "linear_push" or float(t_span.get("duration", 0) or 0) >= 3.5:
                 features.append("🎥 Linear Push (103%)")
             else:
                 features.append("⏱️ Static Hold (100%)")
-            if t_span.get("eye_line_elevation"):
-                features.append("👁️ Eye-Line Lock (Y=360px)")
+            if eye_line:
+                features.append(f"👁️ Eye-Line Lock (Y={eye_line}px)")
+
+        # Inspect dimensions
+        base_dims = inspect_image_dimensions(abs_baseline) if baseline_exists else None
+        canary_dims = inspect_image_dimensions(active_canary_file) if canary_exists else None
+        res_mismatch = None
+        if base_dims and canary_dims and base_dims != canary_dims:
+            ar_base = base_dims[0] / max(1, base_dims[1])
+            ar_canary = canary_dims[0] / max(1, canary_dims[1])
+            if abs(ar_base - ar_canary) > 0.01:
+                res_mismatch = f"{base_dims[0]}x{base_dims[1]} vs {canary_dims[0]}x{canary_dims[1]}"
 
         sha256_hash = None
         if canary_exists and active_canary_file and os.path.exists(active_canary_file):
-            import hashlib
             try:
                 with open(active_canary_file, "rb") as cf:
                     sha256_hash = hashlib.sha256(cf.read()).hexdigest()
@@ -167,7 +418,6 @@ def build_frame_records(
 
         baseline_hash = None
         if baseline_exists and os.path.exists(abs_baseline):
-            import hashlib
             try:
                 with open(abs_baseline, "rb") as bf:
                     baseline_hash = hashlib.sha256(bf.read()).hexdigest()
@@ -182,15 +432,24 @@ def build_frame_records(
             else:
                 is_enhanced = True
         elif canary_exists:
-            is_enhanced = True
+            is_enhanced = bool(s_prompt)
 
         records.append({
             "index": idx,
             "timestamp": ts,
             "clean_ts": clean_ts,
+            "start_time": round(start_time, 3),
+            "end_time": round(end_time, 3),
+            "duration": round(duration, 3),
+            "start_frame": start_frame,
+            "end_frame": end_frame,
+            "frame_count": frame_count,
+            "punch_frame": punch_frame,
+            "camera_action": camera_action,
+            "eye_line_elevation": eye_line,
             "archetype": archetype,
             "sequence_type": s_it.get("sequence_type", "STANDALONE"),
-            "script_line": script_lines.get(idx, ""),
+            "script_line": script_lines.get(idx) or (t_span.get("text") if t_span else "") or "",
             "baseline_image": baseline_img_rel,
             "canary_image": canary_img_rel,
             "canary_exists": canary_exists,
@@ -201,9 +460,12 @@ def build_frame_records(
             "baseline_prompt": b_prompt,
             "socratic_prompt": s_prompt,
             "features": features,
-            "status": "READY" if canary_exists else "PENDING",
+            "status": "RESTORED" if is_restored else ("ENHANCED" if is_enhanced else ("READY" if canary_exists else "PENDING")),
             "sha256_hash": sha256_hash,
             "baseline_hash": baseline_hash,
+            "dimensions_baseline": f"{base_dims[0]}x{base_dims[1]}" if base_dims else None,
+            "dimensions_canary": f"{canary_dims[0]}x{canary_dims[1]}" if canary_dims else None,
+            "resolution_mismatch": res_mismatch,
         })
 
     # Detect duplicate hashes across frames
