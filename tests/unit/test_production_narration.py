@@ -8,7 +8,11 @@ from pathlib import Path
 import pytest
 
 from youtube_automation.production.contracts import Analysis, Brief, Channel, fingerprint
-from youtube_automation.production.narration import prepare_manifest, split_chapters
+from youtube_automation.production.narration import (
+    prepare_manifest,
+    require_unpolished_run,
+    split_chapters,
+)
 
 
 def make_brief(*, voice="Nova"):
@@ -127,3 +131,16 @@ def test_manifest_write_failure_is_propagated(tmp_path, monkeypatch):
     with pytest.raises(OSError, match="Failed to write manifest checkpoint"):
         tts_generator.save_manifest(str(tmp_path), {"new": True})
     assert original.read_text(encoding="utf-8") == '{"old": true}'
+
+
+def test_voice_rerun_cannot_overwrite_polished_offsets(tmp_path):
+    require_unpolished_run(tmp_path)
+    polished = tmp_path / "polished_chapters"
+    polished.mkdir()
+    (polished / "Chapter_1.wav").write_bytes(b"candidate")
+    with pytest.raises(ValueError, match="already has polished"):
+        require_unpolished_run(tmp_path)
+    (polished / "Chapter_1.wav").unlink()
+    (tmp_path / "full_episode_voice.wav").write_bytes(b"accepted master")
+    with pytest.raises(ValueError, match="already has polished"):
+        require_unpolished_run(tmp_path)

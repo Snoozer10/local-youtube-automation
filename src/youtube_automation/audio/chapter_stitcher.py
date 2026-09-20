@@ -7,6 +7,7 @@ across sequential audio chapters.
 import os
 import re
 import sys
+import tempfile
 import wave
 
 # Windows console hardening: guarantee UTF-8 for Arabic output even when piped.
@@ -109,21 +110,32 @@ def stitch_files(file_list, output_path):
                 f"{cur} != reference {ref} (rate, channels, width)."
             )
 
-    with wave.open(output_path, "wb") as output_file:
-        output_file.setparams(params)
-        for path in file_list:
-            with wave.open(path, "rb") as input_file:
-                # Write frames from each chapter directly — zero frames added or dropped.
-                output_file.writeframes(input_file.readframes(input_file.getnframes()))
+    fd, temporary = tempfile.mkstemp(suffix=".wav", dir=os.path.dirname(os.path.abspath(output_path)))
+    os.close(fd)
+    expected_frames = 0
+    try:
+        with wave.open(temporary, "wb") as output_file:
+            output_file.setparams(params)
+            for path in file_list:
+                with wave.open(path, "rb") as input_file:
+                    frames = input_file.getnframes()
+                    # Write frames from each chapter directly — zero frames added or dropped.
+                    output_file.writeframes(input_file.readframes(frames))
+                    expected_frames += frames
+        with wave.open(temporary, "rb") as stitched:
+            if stitched.getnframes() != expected_frames:
+                raise ValueError("Stitched master frame count differs from its chapters")
+        from youtube_automation.production.ledger import publication_guard
+
+        with publication_guard():
+            os.replace(temporary, output_path)
+    finally:
+        if os.path.exists(temporary):
+            os.remove(temporary)
     return output_path
 
 
 def main():
-    print("=============================================")
-    print("Starting Standalone Audio Chapter Stitcher")
-    print("=============================================")
-
-    # 1. Locate the latest run directory dynamically
     latest_run = sys.argv[1] if len(sys.argv) > 1 else get_latest_run_folder()
     if not latest_run:
         print("Error: No active run folders found in 'youtube_runs/'.")
@@ -131,7 +143,41 @@ def main():
 
     if not os.path.isdir(latest_run):
         raise ValueError("Explicit stitching run directory does not exist")
+    if os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
+        if len(sys.argv) <= 1:
+            raise ValueError("Adaptive stitching requires an explicit run directory")
+        from youtube_automation.production.ledger import leased_resource, resource_database
+
+        with leased_resource(resource_database(), "audacity"):
+            return _stitch_run(latest_run)
+    return _stitch_run(latest_run)
+
+
+def _stitch_run(latest_run):
+    print("=============================================")
+    print("Starting Standalone Audio Chapter Stitcher")
+    print("=============================================")
     print(f"Target Video Folder: '{latest_run}'")
+
+    adaptive = os.path.isfile(os.path.join(latest_run, "episode_brief.json"))
+    expected_names = None
+    if adaptive:
+        import json
+
+        from youtube_automation.production.contracts import load_brief
+        from youtube_automation.production.narration import prepare_manifest
+        from youtube_automation.production.writing import verify_written_episode
+
+        verify_written_episode(latest_run)
+        brief = load_brief(latest_run)
+        with open(os.path.join(latest_run, "voice_generation_manifest.json"), encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        with open(os.path.join(latest_run, "refined_script.txt"), encoding="utf-8") as handle:
+            script = handle.read().strip()
+        prepared = prepare_manifest(latest_run, manifest, brief, script)
+        if any(chapter["status"] != "COMPLETED" for chapter in prepared["chapters"]):
+            raise ValueError("Adaptive voice chapters are incomplete")
+        expected_names = [f"Chapter_{i}.wav" for i in range(1, len(prepared["chapters"]) + 1)]
 
     # 2. Determine target chapters directory (Polished Chapters vs Raw Voice Chapters fallback)
     polished_dir = os.path.join(latest_run, "polished_chapters")
@@ -166,6 +212,23 @@ def main():
             f"Error: Could not find sequential Chapter_*.wav files in either:\n - '{polished_dir}'\n - '{voice_dir}'"
         )
         sys.exit(1)
+
+    if adaptive:
+        if polished_count == 0:
+            raise ValueError("Adaptive audio requires verified polished chapters before stitching")
+        if polished_count and polished_count != len(expected_names):
+            raise ValueError("Partial polished chapter set cannot be stitched in adaptive mode")
+        if voice_count != len(expected_names):
+            raise ValueError("Raw chapter set differs from verified adaptive narration")
+        actual_names = sorted(
+            name for name in os.listdir(chapters_source_dir) if re.fullmatch(r"Chapter_\d+\.wav", name)
+        )
+        if actual_names != sorted(expected_names):
+            raise ValueError("Selected chapters differ from verified adaptive narration")
+        if chapters_source_dir == polished_dir:
+            from youtube_automation.audio.audacity_client import verify_adaptive_polished_manifest
+
+            verify_adaptive_polished_manifest(latest_run)
 
     # 3. Scan for numerically sequential Chapter_X.wav files starting at 1
     file_list, missing = scan_sequential_chapters(chapters_source_dir)

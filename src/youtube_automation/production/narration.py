@@ -10,6 +10,16 @@ from typing import Any
 from .contracts import Brief, fingerprint
 
 
+def require_unpolished_run(run_dir: str | Path) -> None:
+    """Prevent a voice rerun from replacing physical polished offsets with raw timings."""
+    root = Path(run_dir)
+    polished = root / "polished_chapters"
+    if (root / "full_episode_voice.wav").exists() or (
+        polished.exists() and any(polished.glob("Chapter_*.wav"))
+    ):
+        raise ValueError("Adaptive voice run already has polished or stitched audio; use a fresh run")
+
+
 def split_chapters(run_dir: str | Path, script: str, *, max_words: int = 220) -> list[dict[str, Any]]:
     """Partition source words without asking another model to rewrite the script."""
     if max_words <= 0 or not script.strip():

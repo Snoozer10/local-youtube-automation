@@ -88,7 +88,7 @@ When the user requests a durable behavior change, record it here or in the relev
 
 - `src/youtube_automation/`: Authoritative modular domain packages conforming to PEP 517/518:
   - `core`: Low-level system primitives, process handling, atomic disk writes, and profile management (`utils.py`).
-  - `audio`: Neural TTS voice synthesis, Win32 Audacity Named Pipe IPC DSP mastering, and lossless WAV chapter stitching (`tts_generator.py`, `audacity_client.py`, `chapter_stitcher.py`).
+  - `audio`: Neural TTS voice synthesis, Win32 Audacity Named Pipe IPC DSP mastering, and lossless WAV chapter stitching (`tts_generator.py`, `audacity_client.py`, `chapter_stitcher.py`). Adaptive polishing and stitching require complete verified chapters, exact run targeting, and shared Audacity ownership.
   - `speech`: Faster-Whisper ASR transcription, silero VAD alignment, and sequence-matcher lexical transcript spelling correction (`transcriber.py`, `spelling_corrector.py`).
   - `timeline`: Single source of truth (SSOT) timeline management and timestamp reconciliation (`engine.py`, `fix_timestamps.py`).
   - `nlp`: Multi-tier repair and structural sanitization for LLM JSON outputs (`json_sanitizer.py`).

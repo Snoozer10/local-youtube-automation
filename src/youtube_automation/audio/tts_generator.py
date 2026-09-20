@@ -1393,10 +1393,14 @@ def main():
 
     adaptive_brief = None
     if os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
+        if len(sys.argv) <= 1:
+            raise ValueError("Adaptive voice generation requires an explicit run directory")
         from youtube_automation.production.contracts import load_brief
+        from youtube_automation.production.narration import require_unpolished_run
         from youtube_automation.production.writing import verify_written_episode
         verify_written_episode(latest_run)
         adaptive_brief = load_brief(latest_run)
+        require_unpolished_run(latest_run)
         voice_options["voice"] = adaptive_brief.channel.voice
 
     # File selection logic for transcript input
