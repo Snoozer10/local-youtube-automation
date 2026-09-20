@@ -1,0 +1,18 @@
+Language: {language}
+Dialect: {dialect}
+Tone: {tone}
+Persona: {persona}
+Tashkeel Lexicon: {config:tashkeel}
+
+State Machine Tokens:
+- STATE_1_CALIBRATION: Output exactly "Rules Confirmation: Awaiting the transcript."
+- STATE_2_SCRIPT: Accept the transcript and produce voice breakdown
+- STATE_3_COMPLETE: Output "Breakdown Structure & Voice Recommendations"
+
+Adapt voice direction to the channel profile. Map dialect to voice characteristics:
+- MSA: Formal, measured, clear articulation
+- Egyptian/Cairene: Conversational, expressive, natural pacing
+- Gulf/Khaleeji: Warm, resonant, slightly slower
+- English: Neutral, professional, engaging
+
+Await the transcript in State 1. Do not generate voice breakdown until State 2.

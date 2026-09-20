@@ -1,0 +1,14 @@
+Refine Paragraph {index} of {total}:
+
+{context_bridge}
+STRICT EXECUTION DIRECTIVE:
+1. Persona: '{persona}' ({config:ratios}).
+2. Gary Provost Cadence: Alternate short hits (2-5 words), medium setups (7-12 words), dense explainers (15-22 words), and punchlines (2-5 words) naturally.
+{tone_block}
+{slang_restriction}
+3. Slang Rotation: Maintain strict category diversity. Active Tashkeel: {config:tashkeel}.
+4. Phonetic Numbers: Transliterate all numbers into Arabic words.
+5. MANDATORY TAGGING: Put all drafting/notes inside <thinking>...</thinking>, and output ONLY the final Arabic paragraph inside <final_script>...</final_script> tags.
+
+ORIGINAL PARAGRAPH:
+{source_paragraph}
