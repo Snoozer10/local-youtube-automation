@@ -494,10 +494,21 @@ def generate_comparison_viewer_html(
     canary_dir: str | None = None,
     output_html: str | None = None,
 ) -> str:
-    """Generates the broadcast NLE comparison studio HTML with real media sync, wipe slider, and dynamic scaffolding."""
-    canary_path = canary_dir or os.path.join(run_dir, "canary_images")
-    out_file = output_html or os.path.join(canary_path, "canary_comparison_viewer.html")
+    if canary_dir:
+        canary_path = canary_dir
+        default_out = os.path.join(canary_path, "canary_comparison_viewer.html")
+    else:
+        cand_dirs = [
+            os.path.join(run_dir, "canary_images"),
+            os.path.join(run_dir, "generated_images"),
+        ]
+        found_dir = next((d for d in cand_dirs if os.path.exists(d)), None)
+        canary_path = found_dir or os.path.join(run_dir, "canary_images")
+        default_out = os.path.join(run_dir, "studio_viewer.html")
+
+    out_file = output_html or default_out
     html_dir = os.path.dirname(os.path.abspath(out_file))
+    os.makedirs(html_dir, exist_ok=True)
     records = build_frame_records(run_dir, canary_path, html_dir=html_dir)
 
     media_info = resolve_media_assets(run_dir, html_dir)
@@ -2054,17 +2065,32 @@ renderFrame(initIdx, true);
 
     studio_alias = os.path.join(canary_path, "studio_viewer.html")
     if os.path.abspath(out_file) != os.path.abspath(studio_alias):
-        if os.path.dirname(os.path.abspath(studio_alias)) == html_dir:
-            alias_rendered = rendered_html
-        else:
-            alias_records = build_frame_records(run_dir, canary_path, html_dir=canary_path)
-            alias_media = resolve_media_assets(run_dir, canary_path)
-            alias_payload = {"media": alias_media, "frames": alias_records}
-            alias_json = json.dumps(alias_payload, ensure_ascii=False)
-            alias_rendered = html_content.replace("__CHUNK_OPTIONS__", chunk_options_html).replace("__STUDIO_DATA_JSON__", alias_json)
         try:
+            os.makedirs(os.path.dirname(os.path.abspath(studio_alias)), exist_ok=True)
+            if os.path.dirname(os.path.abspath(studio_alias)) == html_dir:
+                alias_rendered = rendered_html
+            else:
+                alias_records = build_frame_records(run_dir, canary_path, html_dir=canary_path)
+                alias_media = resolve_media_assets(run_dir, canary_path)
+                alias_payload = {"media": alias_media, "frames": alias_records}
+                alias_json = json.dumps(alias_payload, ensure_ascii=False)
+                alias_rendered = html_content.replace("__CHUNK_OPTIONS__", chunk_options_html).replace("__STUDIO_DATA_JSON__", alias_json)
             with open(studio_alias, "w", encoding="utf-8") as f:
                 f.write(alias_rendered)
+        except Exception:
+            pass
+
+    # Ensure run root studio_viewer.html is synchronized if out_file is inside a subfolder
+    root_alias = os.path.join(run_dir, "studio_viewer.html")
+    if os.path.abspath(out_file) != os.path.abspath(root_alias) and os.path.abspath(studio_alias) != os.path.abspath(root_alias):
+        try:
+            root_records = build_frame_records(run_dir, canary_path, html_dir=run_dir)
+            root_media = resolve_media_assets(run_dir, run_dir)
+            root_payload = {"media": root_media, "frames": root_records}
+            root_json = json.dumps(root_payload, ensure_ascii=False)
+            root_rendered = html_content.replace("__CHUNK_OPTIONS__", chunk_options_html).replace("__STUDIO_DATA_JSON__", root_json)
+            with open(root_alias, "w", encoding="utf-8") as f:
+                f.write(root_rendered)
         except Exception:
             pass
     return out_file
