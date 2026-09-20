@@ -26,6 +26,7 @@ from youtube_automation.core.utils import (
     launch_browser_with_profile,
     rotate_profile_index,
 )
+from youtube_automation.prompts import loader
 
 # Selector constants for the standard Gemini Web App
 RESPONSE_SELECTOR = "model-response div.markdown"
@@ -1431,21 +1432,27 @@ def main():
     voice_config = manifest.get("voice_config", voice_options)
     target_tts_model = voice_config.get("model", "gemini-2.5-pro-preview-tts")
 
-    prompt_path = os.path.join("prompts", "TTS_PROMPT.txt")
-    if not os.path.exists(prompt_path):
-        print(f"Error: '{prompt_path}' not found in prompts folder.")
+    try:
+        # Use default config for {config:*} placeholders; pass channel fields as vars_ for {persona}, {language}, {dialect}, {tone}, etc.
+        tts_prompt = loader.render("tts")
+    except loader.PromptError as e:
+        print(f"Error loading TTS prompt: {e}")
         sys.exit(1)
 
-    with open(prompt_path, encoding="utf-8") as f:
-        tts_prompt = f.read().strip()
-
     if adaptive_brief:
-        tts_prompt = (
-            "Read the supplied script exactly, as one narrator, without adding commentary. "
-            f"Language: {adaptive_brief.channel.language}; dialect: {adaptive_brief.channel.dialect}; "
-            f"delivery: {adaptive_brief.channel.tone}. Preserve names, numbers and uncertainty."
+        ch = adaptive_brief.channel
+        # Pass channel fields as vars_ for template placeholders
+        tts_prompt = loader.render(
+            "tts",
+            persona=ch.name,
+            language=ch.language,
+            dialect=ch.dialect,
+            tone=ch.tone,
+            age="30s",  # default, can be overridden if channel adds age field
+            gender="male",  # default
+            archetype="Narrator",  # default
         )
-        if voice_config.get("voice") != adaptive_brief.channel.voice:
+        if voice_config.get("voice") != ch.voice:
             raise ValueError("Cached voice manifest conflicts with selected channel voice")
 
     with open(transcript_path, encoding="utf-8") as f:

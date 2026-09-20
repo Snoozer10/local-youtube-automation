@@ -28,6 +28,7 @@ from gemini_utils import (  # noqa: E402
     wait_for_gemini_response,
 )
 from utils import atomic_write_json, get_config_value  # noqa: E402
+from youtube_automation.prompts import loader  # noqa: E402
 
 # Windows console hardening: guarantee UTF-8 for Arabic output even when piped.
 if sys.platform.startswith("win"):
@@ -42,23 +43,23 @@ runs_folder = "youtube_runs"
 os.makedirs(runs_folder, exist_ok=True)
 
 
-# 2. Read prompt files
-def read_prompts():
+# 2. Read prompt files via loader
+def read_prompts(channel=None):
     try:
-        with open(os.path.join("prompts", "prompt.txt"), encoding="utf-8") as f:
-            p1 = f.read().strip()
-    except FileNotFoundError:
-        print("Error: 'prompts/prompt.txt' not found. Please create it in VS Code.")
+        p1 = loader.render("phase1", channel=channel)
+    except loader.PromptError as e:
+        print(f"Error loading phase1 prompt: {e}")
         sys.exit(1)
 
     try:
-        with open(os.path.join("prompts", "prompt_phase3.txt"), encoding="utf-8") as f:
-            p3 = f.read().strip()
-    except FileNotFoundError:
-        print("Error: 'prompts/prompt_phase3.txt' not found. Please create it in VS Code.")
+        p3 = loader.render("phase3", channel=channel)
+    except loader.PromptError as e:
+        print(f"Error loading phase3 prompt: {e}")
         sys.exit(1)
 
-    return p1, p3
+    safety_disclaimer = loader.fragment("safety_disclaimer")
+
+    return p1, p3, safety_disclaimer
 
 
 # 3. YouTube ID extractor, title scraper, and transcript fetcher
@@ -472,7 +473,7 @@ def _main(argv=None):
     if args.channel_profile:
         from youtube_automation.production.contracts import load_channel
         channel = load_channel(args.channel_profile)
-    prompt_p1, prompt_p3 = read_prompts()
+    prompt_p1, prompt_p3, safety_disclaimer = read_prompts(channel)
 
     urls_file = "youtube_urls.txt"
     if not os.path.exists(urls_file):
@@ -636,7 +637,7 @@ def _main(argv=None):
 
                     print("Sending transcript to Gemini for paragraph breaking...")
                     input_gemini_prompt(
-                        gemini_page, f"{prompt_p1}{safety_disclaimer}\n\n{transcript_text}"
+                        gemini_page, f"{prompt_p1}\n\n{safety_disclaimer}\n\n{transcript_text}"
                     )
                     time.sleep(1)
 
@@ -749,10 +750,13 @@ def _main(argv=None):
                         print(f"Processing Paragraph {i} of {total_paragraphs}...")
 
                         gemini_page.bring_to_front()
-                        formatted_prompt = (
-                            f"DIRECTIVE: Transcreate Paragraph {i} of {total_paragraphs} into the Al-Daheeh Egyptian Arabic persona.\n"
-                            "CRITICAL: Output ONLY the Arabic transcreated text. Do NOT include any English preamble, greetings, commentary, review feedback, or questions:\n\n"
-                            f"{paragraph}"
+                        formatted_prompt = loader.turn(
+                            "phase3",
+                            "turn",
+                            channel=channel,
+                            index=i,
+                            total=total_paragraphs,
+                            paragraph=paragraph,
                         )
                         input_gemini_prompt(gemini_page, formatted_prompt)
                         time.sleep(1)
@@ -789,13 +793,12 @@ def _main(argv=None):
 
                             initial_count_setup = gemini_page.locator(RESPONSE_SELECTOR).count()
 
-                            academic_setup = (
-                                "ACADEMIC DIRECTIVE: You are executing a highly structured, analytical comparative "
-                                "linguistic transcreation task for an educational science documentary. You must "
-                                "adapt English source texts into conversational Egyptian Arabic (30% Academic Fusha : 70% Cairene Amiya). "
-                                f"Acknowledge the style guide:\n\n{prompt_p3}"
+                            academic_setup = loader.turn(
+                                "phase3",
+                                "academic_reset",
+                                channel=channel,
+                                style_guide=prompt_p3,
                             )
-
                             input_gemini_prompt(gemini_page, academic_setup)
                             time.sleep(1)
 
@@ -812,11 +815,11 @@ def _main(argv=None):
                             )
 
                             print(f"Resubmitting Paragraph {i} with clinical formatting...")
-                            fallback_prompt = (
-                                f"LINGUISTIC DIRECTIVE Turn {i} of {total_paragraphs}. Transcreate the "
-                                "following technical educational text segment into the Egyptian Arabic colloquial dialect "
-                                "defined in the guide. Output ONLY the Arabic text. Do NOT add English commentary, "
-                                f"preambles, or questions:\n\n{paragraph}"
+                            fallback_prompt = loader.turn(
+                                "phase3",
+                                "fallback_turn",
+                                channel=channel,
+                                paragraph=paragraph,
                             )
                             input_gemini_prompt(gemini_page, fallback_prompt)
                             time.sleep(1)

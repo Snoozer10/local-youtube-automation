@@ -17,6 +17,8 @@ from typing import Any
 from playwright._impl._errors import TargetClosedError
 from playwright.sync_api import Page
 
+from youtube_automation.prompts import loader
+
 logger = logging.getLogger("Pipeline")
 
 # Unified response container selector for multi-lingual UI states
@@ -264,11 +266,14 @@ class GeminiSessionClient:
         self.page = page
         self.model_name = model_name
 
-    def initialize_session(self, setup_prompt: str) -> bool:
+    def initialize_session(
+        self, setup_prompt: str, expected_ack_tokens: list[str] | None = None
+    ) -> bool:
         """Start a clean chat, select model, and send setup prompt.
 
         Args:
             setup_prompt: Initial prompt to establish refinement rules.
+            expected_ack_tokens: Tokens to look for in response. Defaults to refine prompt ack tokens.
 
         Returns:
             True if session initialized successfully, False otherwise.
@@ -284,8 +289,9 @@ class GeminiSessionClient:
         response = wait_for_gemini_response(
             self.page, initial_count=initial_count, timeout_seconds=120
         )
+        expected = expected_ack_tokens or loader.ack_tokens("refine")
         return bool(
-            response and any(kw in response.lower() for kw in ["understood", "جاهز", "مستعد"])
+            response and any(kw.lower() in response.lower() for kw in expected)
         )
 
     def dispatch_prompt(self, text: str) -> tuple[bool, int]:

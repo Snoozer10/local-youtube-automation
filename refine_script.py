@@ -33,6 +33,7 @@ from utils import (
     rotate_profile_index,
     send_telegram_notification,
 )
+from youtube_automation.prompts import loader
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -72,10 +73,9 @@ def get_latest_run_folder(runs_path="youtube_runs"):
 
 def read_refine_prompt():
     try:
-        with open(os.path.join("prompts", "refine_prompt.txt"), encoding="utf-8") as f:
-            return f.read().strip()
-    except FileNotFoundError:
-        print("Error: 'prompts/refine_prompt.txt' not found.")
+        return loader.render("refine")
+    except loader.PromptError as e:
+        print(f"Error loading refine prompt: {e}")
         sys.exit(1)
 
 
@@ -768,7 +768,8 @@ def setup_refinement_session(page, model_name):
         print("[SETUP ERROR] No response received from Gemini during setup.")
         return False
 
-    if any(kw in response.lower() for kw in ["understood", "جاهز", "مستعد", "تمام"]):
+    expected_ack = loader.ack_tokens("refine")
+    if any(kw.lower() in response.lower() for kw in expected_ack):
         print("[SETUP] Gemini acknowledged refinement rules.")
         return True
 
@@ -853,33 +854,28 @@ def refine_paragraph(
         context_bridge = f'BRIDGE CONTEXT (The previous paragraph ended with):\n"{previous_tail}"\n(Ensure a smooth transition)\n\n'
 
     if lean_prompt:
-        # Lean prompt: system rules already established in setup_refinement_session.
-        # The dialect ratio + tagging directives are re-anchored on every turn:
-        # they are contractual (30/70 Golden Ratio, <final_script> extraction)
-        # and must survive context drift in long sessions.
-        message = (
-            f"Refine Paragraph {index}/{total}:\n\n"
-            f"{context_bridge}"
-            f"[RATIO LOCK]: Persona '{persona}' — 30% Academic Fusha : 70% Cairene Amiya.\n"
-            f"[TAG LOCK]: Draft inside <thinking>...</thinking>; output ONLY the final Arabic paragraph inside <final_script>...</final_script>.\n"
-            f"{tone_block}\n"
-            f"{slang_restriction}"
-            f"ORIGINAL PARAGRAPH:\n{paragraph_text}"
+        message = loader.turn(
+            "refine",
+            "lean",
+            index=index,
+            total=total,
+            persona=persona,
+            context_bridge=context_bridge,
+            tone_block=tone_block,
+            slang_restriction=slang_restriction,
+            source_paragraph=paragraph_text,
         )
     else:
-        # Full prompt for first turn or when context refresh occurs
-        message = (
-            f"Refine Paragraph {index} of {total}:\n"
-            f"{context_bridge}"
-            "STRICT EXECUTION DIRECTIVE:\n"
-            f"1. Persona: '{persona}' (30% Academic Data : 70% Cairene Amiya).\n"
-            "2. Gary Provost Cadence: Alternate short hits, medium setups, data density, and punchlines naturally.\n"
-            f"{tone_block}\n"
-            f"{slang_restriction}"
-            "3. Slang Rotation: Maintain strict category diversity.\n"
-            "4. Phonetic Numbers: Transliterate all numbers into Arabic words.\n"
-            "5. MANDATORY TAGGING: Put all drafting/notes inside <thinking>...</thinking>, and output ONLY the final Arabic paragraph inside <final_script>...</final_script> tags.\n\n"
-            f"ORIGINAL PARAGRAPH:\n{paragraph_text}"
+        message = loader.turn(
+            "refine",
+            "full",
+            index=index,
+            total=total,
+            persona=persona,
+            context_bridge=context_bridge,
+            tone_block=tone_block,
+            slang_restriction=slang_restriction,
+            source_paragraph=paragraph_text,
         )
 
     success, initial_count = send_prompt_to_gemini(page, message)
@@ -1001,30 +997,8 @@ def main():
 
         session_initialized = False
 
-        # Egyptian Slang Catalog for automated rotational audit
-        SLANG_DICTIONARY = [
-            "هوبا",
-            "قوم إيه",
-            "فـ ثانية",
-            "على غفلة",
-            "فجأة كدا",
-            "يا سيدي",
-            "يا عبقري",
-            "يا نبيه",
-            "يا فنان",
-            "야 닥터",
-            "سَحْلَة",
-            "خازوق",
-            "حوار",
-            "دوشة",
-            "دوامة",
-            "متاهة",
-            "الزتونة",
-            "سر الطبخة",
-            "اللقطة",
-            "الملعوب",
-            "الخطة",
-        ]
+        # Egyptian Slang Catalog for automated rotational audit (loaded from fragments)
+        SLANG_DICTIONARY = loader.slang_terms()
 
         def extract_recent_slang(history, count=2):
             """Scans recent paragraphs and returns terms that should be temporarily banned."""
