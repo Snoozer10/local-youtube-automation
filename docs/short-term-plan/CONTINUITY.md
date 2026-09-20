@@ -1,46 +1,40 @@
-- Goal (incl. success criteria): Execute Post-Run Adversarial Audit, Gap Analysis, and Broadcast-Grade PR Preparation for target URL 'https://youtube.com/watch?v=vIqTRyX-cq0' ('What Do Animals Think Of Humans') following 10-phase production pass (197/200, 98.5%). Success criteria: (1) Complete adversarial evaluation of Redis/Memcached premise; (2) Verify all architectural invariants against master; (3) Run static analysis, AST validation, and regression baselines (520/520 unit tests, 35/35 pedagogy drills); (4) Atomically stage 32 modified + 12 untracked files into 5 conventional commits; (5) Package broadcast-grade PR targeting master via gh CLI.
+- Goal (incl. success criteria): Comprehensive architectural overhaul, upgrade, and repair of `studio_viewer.html` and `tools/viewer_generator.py`. Success criteria:
+  (1) Multi-agent grilling session completed with specialized sub-agents and full debate report recorded;
+  (2) Diagnose root cause of failure (empty frames in runs lacking `flow_prompts_socratic.json`, 0-based vs 1-based span index misalignment, hardcoded constants);
+  (3) Formal implementation plan artifact created at `studio_viewer_overhaul_plan.md` and `docs/superpowers/plans/2026-09-20-studio-viewer-overhaul.md` for user review;
+  (4) Evolve studio into broadcast NLE inspection suite (audio/video sync, split curtain wipe slider, pan/zoom, broadcast/platform safe zones, dynamic chunks);
+  (5) Validate with 100% passing tests and regenerate viewers across all runs upon user approval.
 - Constraints/Assumptions:
-  - Windows 11 PowerShell environment; unbuffered execution (python -u).
-  - Chrome DevTools Protocol bound strictly to 127.0.0.1:9222.
-  - Zero cloud SDKs (local Playwright CDP loopback only); atomic disk writes for checkpoints and manifests.
-  - Canonical timeline.json is read-only SSOT with cryptographic SHA-256 sidecars.
-  - youtube_urls.txt has skip-worktree bit enabled (S); youtube_runs/ and /docs/incidents/ gitignored.
+  - Windows 11 PowerShell environment; UTF-8 encodings.
+  - Zero external CDN dependencies for offline air-gapped resiliency.
+  - Backward compatibility: preserve `build_frame_records` and `generate_comparison_viewer_html` function signatures.
+  - Plan must be explicitly reviewed and approved by user before execution.
 - Key decisions:
-  - Adversarial Caching Verdict: Reject Redis and Memcached as unnecessary operational bloat for local Windows sequential video pipeline; confirm existing filesystem atomic writes, rolling SHA-256 ledgers, and in-memory LRU caching are optimal and crash-resilient.
-  - Pull Request Packaging: Target base branch master from feat/creative-prompt-script-refinement via gh CLI (Snoozer10).
+  - Revert premature code changes to keep workspace clean prior to plan approval.
+  - Universal 5-Tier Priority Cascade with Index Unioning to guarantee zero empty frames.
+  - Tri-Tier Media Clock Authority (Video 720p -> Audio WAV -> Virtual Clock) with 60fps RAF loop and $O(\log N)$ binary search.
 - State:
   - Done:
-    1. Antigravity 2.0 autonomous 10-phase pipeline run completed on vIqTRyX-cq0 (197/200, 98.5% pass).
-    2. Verification scorecard (verification_scorecard_vIqTRyX-cq0.md) and session handoff (HANDOFF.md) published.
-    3. Specialized skills activated: github-cli, requesting-code-review, finishing-a-development-branch.
-    4. AST syntax validation passed across all 60 Python files; zero hardcoded secrets detected.
-    5. Regression baseline verified: 520 / 520 unit tests passed, 35 / 35 pedagogy drills valid.
-    6. Phase A (Adversarial Caching Audit): External Redis/Memcached evaluated and rejected; pure filesystem atomic writes + in-memory hashes validated.
-    7. Phase B (Invariants & Gap Analysis): QSV_LOOKAHEAD=0, format=nv12, CDP 9222 loopback, timeline SSOT, S youtube_urls.txt verified.
-    8. Phase C & D (Modernization & Decoupling): Refactored all hardcoded single-persona references to universal adaptive multi-niche studio (niche_engine.py); modernized README.md, Project-workflow.md, CHANGELOG.md (tagged v4.4.0), and injected user directives into GEMINI.md.
-    9. Phase E (5 Atomic Commits): Staged and committed all 32 modified + 12 untracked files across 5 conventional commits (59a9ddd, 4238d97, 58492b3, 874fa00, 0419aef).
-    10. Phase F (Remote Push & PR): Pushed branch feat/creative-prompt-script-refinement to origin and opened Pull Request #20 targeting master.
-    11. Phase G (CI Failure Diagnosis & Comprehensive Remediation):
-        - Diagnosed CI blocking signal: ruff check tests/unit reported 43 errors (causing unit tests to be skipped).
-        - Executed repo-wide static analysis check; discovered and fixed F821 undefined name Any in src/youtube_automation/video/ken_burns.py:134.
-        - Resolved all 43 ruff lint errors across 8 test files in tests/unit (import sorting, unused imports, ambiguous variable l -> line, zip strict parameters).
-        - Cleaned non-test linting issues across repository; ruff check . passes 100% cleanly (0 errors).
-        - Synchronized version 4.4.0 across pyproject.toml, GEMINI.md, and CHANGELOG.md.
-        - Committed remediation as 7976da1, verified passing CI (run 35297116696).
-    12. Phase H (PR Failure Learning Documentation & CHANGELOG Decoupling):
-        - Documented root causes for initial commit status check badges (0419aef and 18373d2).
-        - Added [LEARNING-038] through [LEARNING-043] to GEMINI.md covering CI workflow mirroring, repo-wide static analysis, delayed type evaluation pitfalls (F821), multi-file version synchronization, CI status monitoring, and CHANGELOG version boundary verification.
-        - Updated docs/error-solving/understood-errors.md with 3 error patterns and 2 failure modes.
-        - Disentangled CHANGELOG.md version bleed by restoring missing ## [4.3.0] - 2026-09-12 header and documenting recent typing/linting fixes under [4.4.0].
-        - Verified clean release note extraction with tools/extract_release_notes.py for both v4.4.0 and v4.3.0.
-        - Committed as 990b093, pushed to remote, and verified CI run 35299489840 passed with SUCCESS in 9m44s.
-    13. Phase I (PR #20 Merge & v4.4.0 GitHub Release):
-        - Merged PR #20 into master via gh pr merge 20 --merge --delete-branch (merge commit 9377f74).
-        - Reconciled local master via git checkout master && git pull origin master; verified clean working tree and preserved S skip-worktree bit on youtube_urls.txt.
-        - Created and pushed annotated release tag v4.4.0.
-        - Monitored GitHub Actions Release workflow (run 35300672123); verified successful build and publication of release v4.4.0 with Windows zip bundle, wheel, tarball, and SHA-256 sums.
-  - Now: Mission complete. PR #20 merged into master, v4.4.0 published on GitHub Releases, all documentation and learning artifacts synchronized.
-  - Next: Standby for next pipeline mission or new episode production cycle.
+    - Reverted premature edits to `tools/viewer_generator.py`; baseline tests passing (3/3).
+    - Multi-agent grilling session completed (Round 1 Challenges + Round 2 Cross-Examination by `adversarial_griller`).
+    - Implemented 5 lethal vulnerability hardenings in the plan (Two-Pass Alignment, Debounced Scrub + Single-Source Audio, 3-Frame Lookahead Pre-decoder, Forced Geometric Normalization, 3-Tier CI/CD Matrix).
+    - Incorporated user directive: added Task 0 for dedicated git branch creation (`feat/studio-viewer-overhaul`) to isolate work from concurrent prompt engineering session.
+    - Updated Implementation Plan Artifact to v3 (`studio_viewer_overhaul_plan.md` and `docs/superpowers/plans/2026-09-20-studio-viewer-overhaul.md`).
+    - Full Grilling Report artifact updated (`studio_viewer_grilling_report.md`).
+    - **Adaptive Multi-Channel Prompt Engineering Upgrade (`feat/adaptive-prompt-engineering`)**:
+      - Audited OpenCode implementation across Tasks 1-4; diagnosed 4 critical defects (skipped consumer turn wiring in `refine_script.py`, leaked metadata headers with German `bereit` in turn files, missing legacy aliases in `loader.py`, unstarted Tasks 5 & 6).
+      - Surgically remediated all defects: wired `refine_paragraph` to `loader.turn("refine", "lean/full")`, cleaned ack tokens and xml_tags, added `NAME_ALIASES` in `loader.py`, purged rogue turn metadata.
+      - Implemented Task 5 (`tests/unit/test_prompt_contracts.py` with 9 passing contract tests).
+      - Completed Task 6 closeout: updated `understood-errors.md`, `README.md`, `GEMINI.md`, and `.superpowers/sdd/.../progress.md`.
+      - Full test suite passing: 571/571 unit tests green; pedagogy exercise linter 35/35 clean.
+      - **Live Browser E2E Verification Test (`tools/test_live_prompt_turn.py`)**:
+        - Connected to Chrome Profile 2 on port 9222 via Playwright CDP and monitored live with `browser-cdp` MCP.
+        - Calibration handshake confirmed with exact token `مستعد`.
+        - Content turn formatted via `loader.turn("refine", "full", ...)` executed live on Gemini.
+        - Verified 4-beat Gary Provost musical rhythm (`تلات قلوب؟` -> `تخيل يا فنان لو الميكروباص...` -> `قلبين بِيصِيهَا للخياشيم...` -> `هُوبَّا، وقفة.`), XML fencing (`<final_script>`), Tashkeel injection, category slang rotation, and zero metadata leakage.
+        - Live screenshots captured and results persisted to `debug_snapshots/live_prompt_verification_result.json`.
+  - Now: Live E2E verification complete and verified. Ready for next instructions.
+  - Next: User review of prompt engineering live test proof and studio viewer overhaul plan.
   - Historical Archive:
     1. Phase 1 & 2: Script Translation & 110-paragraph Al-Daheeh transcreation complete.
     2. Root Cause Analysis & Prevention: Documented in docs/error-solving/understood-errors.md.

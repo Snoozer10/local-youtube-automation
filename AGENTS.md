@@ -1,3 +1,5 @@
+Read GEMINI.md and use it as the current project guidance where it differs from the older AGENTS.md
+
 # DOX framework
 
 - DOX is highly performant AGENTS.md hierarchy installed here
@@ -90,7 +92,7 @@ When the user requests a durable behavior change, record it here or in the relev
   - `speech`: Faster-Whisper ASR transcription, silero VAD alignment, and sequence-matcher lexical transcript spelling correction (`transcriber.py`, `spelling_corrector.py`).
   - `timeline`: Single source of truth (SSOT) timeline management and timestamp reconciliation (`engine.py`, `fix_timestamps.py`).
   - `nlp`: Multi-tier repair and structural sanitization for LLM JSON outputs (`json_sanitizer.py`).
-  - `prompts`: Pydantic prompt validation, 8-part visual prompt schemas, and deterministic negative prompt injection (`validator.py`).
+  - `prompts`: Pydantic prompt validation, 8-part visual prompt schemas, multi-channel dynamic prompt loading, and deterministic negative prompt injection (`validator.py`, `loader.py`).
   - `browser`: Playwright Chrome DevTools Protocol (CDP) client loopback binding (`127.0.0.1:9222`), tab lifecycle hygiene, and Gemini web UI controllers (`cdp_client.py`, `gemini_utils.py`).
   - `visuals`: Google Flow image generation, continuity character asset studio, base64 extraction, and OCR text collision gates (`flow_generator.py`, `asset_studio.py`, `image_extractor.py`, `text_gate.py`).
   - `video`: FFmpeg hardware video compositing (Intel QSV / NVENC / CPU fallback), Ken Burns dynamic smoothstep pan-and-zoom transformation, filtergraph generation, and ASS subtitle burning (`compiler.py`, `encoder.py`, `ken_burns.py`, `filter_graph.py`, `subtitles.py`).
