@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import uuid
 import wave
@@ -41,7 +42,7 @@ def get_latest_run_folder(runs_path="youtube_runs"):
     return max(subdirs, key=os.path.getmtime)
 
 
-def send_audacity_command(write_pipe, read_pipe, command, *, strict=False):
+def send_audacity_command(write_pipe, read_pipe, command, *, strict=False, timeout_sec=90):
     """Sends a single scripting command to Audacity and waits for response.
 
     Audacity Named Pipe protocol:
@@ -49,27 +50,54 @@ def send_audacity_command(write_pipe, read_pipe, command, *, strict=False):
     when no textual output is produced), followed by 'BatchCommand finished: <status>',
     followed by a final empty line ('\\n') marking completion.
     """
+    def exchange():
+        write_pipe.write(command + "\n")
+        write_pipe.flush()
+
+        response = ""
+        saw_batch_finished = False
+        while True:
+            line = read_pipe.readline()
+            if not line:  # Audacity crashed or closed pipe
+                break
+            response += line
+            if strict and len(response) > 1024 * 1024:
+                raise ValueError(f"Audacity response exceeded 1 MiB: {command}")
+
+            if "BatchCommand finished" in line:
+                saw_batch_finished = True
+            elif saw_batch_finished and line.strip() == "":
+                break
+            elif not saw_batch_finished and line.strip() == "":
+                # Handle mock test harness without BatchCommand framing
+                if hasattr(read_pipe, "has_pending"):
+                    if not read_pipe.has_pending() or response.strip():
+                        break
+        return response
+
     t0 = time.perf_counter()
-    write_pipe.write(command + "\n")
-    write_pipe.flush()
+    if strict:
+        if timeout_sec <= 0:
+            raise ValueError("Audacity command timeout must be positive")
+        outcome = {}
+        finished = threading.Event()
 
-    response = ""
-    saw_batch_finished = False
-    while True:
-        line = read_pipe.readline()
-        if not line:  # Audacity crashed or closed pipe
-            break
-        response += line
+        def run_exchange():
+            try:
+                outcome["response"] = exchange()
+            except BaseException as exc:
+                outcome["error"] = exc
+            finally:
+                finished.set()
 
-        if "BatchCommand finished" in line:
-            saw_batch_finished = True
-        elif saw_batch_finished and line.strip() == "":
-            break
-        elif not saw_batch_finished and line.strip() == "":
-            # Handle mock test harness without BatchCommand framing
-            if hasattr(read_pipe, "has_pending"):
-                if not read_pipe.has_pending() or response.strip():
-                    break
+        threading.Thread(target=run_exchange, daemon=True).start()
+        if not finished.wait(timeout_sec):
+            raise TimeoutError(f"Audacity command timed out after {timeout_sec}s: {command}")
+        if "error" in outcome:
+            raise outcome["error"]
+        response = outcome["response"]
+    else:
+        response = exchange()
 
     latency_ms = (time.perf_counter() - t0) * 1000
     cleaned_response = response.strip().replace("\n", " | ")

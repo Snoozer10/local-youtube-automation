@@ -2,6 +2,7 @@
 
 import io
 import json
+import threading
 import wave
 
 import pytest
@@ -82,6 +83,24 @@ def test_adaptive_audacity_requires_explicit_command_success(response):
         io.StringIO(), io.StringIO("BatchCommand finished: OK\n\n"),
         "Normalize:", strict=True,
     )
+
+
+def test_adaptive_audacity_pipe_exchange_has_a_deadline():
+    release = threading.Event()
+
+    class StalledReader:
+        def readline(self):
+            release.wait(2)
+            return ""
+
+    try:
+        with pytest.raises(TimeoutError, match="command timed out"):
+            audacity_client.send_audacity_command(
+                io.StringIO(), StalledReader(), "Normalize:", strict=True,
+                timeout_sec=0.05,
+            )
+    finally:
+        release.set()
 
 
 def test_atomic_stitch_preserves_existing_master_on_bad_chapter(tmp_path):
