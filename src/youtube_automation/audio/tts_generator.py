@@ -15,6 +15,7 @@ import re
 import sys
 import time
 import wave
+from contextlib import ExitStack
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
@@ -897,18 +898,21 @@ def prepare_gemini_chat_session(page, manifest):
     return False
 
 
-def ensure_speech_playground_tab(context, target_tts_model="gemini-2.5-pro-preview-tts"):
+def ensure_speech_playground_tab(
+    context, target_tts_model="gemini-2.5-pro-preview-tts", *, owned_page=None
+):
     """Finds or opens the Google AI Studio Speech Playground tab and guarantees Playwright is on the correct UI."""
-    tab1_speech = None
+    tab1_speech = owned_page
 
     # 1. Search existing tabs for generate-speech
-    for page in context.pages:
-        if "generate-speech" in page.url:
-            tab1_speech = page
-            break
+    if tab1_speech is None:
+        for page in context.pages:
+            if "generate-speech" in page.url:
+                tab1_speech = page
+                break
 
     # 2. If not found, pick a non-Gemini page or open a new tab
-    if not tab1_speech:
+    if tab1_speech is None:
         for page in context.pages:
             if "gemini.google.com" not in page.url:
                 tab1_speech = page
@@ -1376,6 +1380,41 @@ def check_ai_studio_errors(page):
 
 
 def main():
+    """Lease the shared browser before an adaptive TTS run can touch CDP."""
+    latest_run = sys.argv[1] if len(sys.argv) > 1 else get_latest_run_folder()
+    if latest_run and os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
+        if len(sys.argv) <= 1:
+            raise ValueError("Adaptive voice generation requires an explicit run directory")
+        from youtube_automation.production.ledger import leased_resource, resource_database
+
+        with leased_resource(resource_database(), "browser"):
+            return _run_voice_generation()
+    return _run_voice_generation()
+
+
+class AdaptiveBrowserOwnershipError(RuntimeError):
+    """Adaptive TTS cannot take over or terminate an unowned browser process."""
+
+
+def connect_tts_browser(playwright, *, adaptive, browser_type, profile_index, port):
+    """Attach to CDP; only the legacy path may launch a replacement process."""
+    endpoint = f"http://127.0.0.1:{port}"
+    try:
+        browser = playwright.chromium.connect_over_cdp(endpoint)
+        print(f"Successfully connected to existing {browser_type.capitalize()} session.")
+        return browser
+    except Exception as exc:
+        if adaptive:
+            raise AdaptiveBrowserOwnershipError(
+                "Adaptive TTS requires an existing CDP browser session"
+            ) from exc
+    print("Debugging browser is closed or unreachable. Launching framework...")
+    if not launch_browser_with_profile(browser_type, profile_index):
+        sys.exit(1)
+    return playwright.chromium.connect_over_cdp(endpoint)
+
+
+def _run_voice_generation():
     print("=============================================")
     print("Starting Voice Generation Automation (Manifest Upgraded)")
     print("=============================================")
@@ -1502,7 +1541,7 @@ def main():
         failover_triggered = False
 
         try:
-            with sync_playwright() as p:
+            with sync_playwright() as p, ExitStack() as owned_tabs:
                 switch_enabled_str = (
                     get_runtime_state(
                         "SWITCH_ACCOUNTS_ENABLED",
@@ -1512,6 +1551,11 @@ def main():
                     .lower()
                 )
                 accounts_enabled = switch_enabled_str in ("true", "1", "yes")
+                if adaptive_brief:
+                    # Legacy failover terminates the process on the CDP port.
+                    # Until browser ownership is tracked, adaptive runs must
+                    # leave that process and the global account index alone.
+                    accounts_enabled = False
                 current_profile_idx = get_runtime_state(
                     "ACTIVE_PROFILE_INDEX",
                     get_config_value("ACTIVE_PROFILE_INDEX", "1"),
@@ -1519,22 +1563,24 @@ def main():
                 browser_type = get_config_value("BROWSER_TYPE", "chrome")
                 cdp_port = int(get_config_value("CDP_PORT", "9222"))
 
-                try:
-                    browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
-                    print(
-                        f"Successfully connected to existing {browser_type.capitalize()} session."
-                    )
-                except Exception:
-                    print("Debugging browser is closed or unreachable. Launching framework...")
-                    if not launch_browser_with_profile(browser_type, current_profile_idx):
-                        sys.exit(1)
-                    browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
+                browser = connect_tts_browser(
+                    p, adaptive=bool(adaptive_brief), browser_type=browser_type,
+                    profile_index=current_profile_idx, port=cdp_port,
+                )
 
                 context = browser.contexts[0]
-                context.grant_permissions(["clipboard-read", "clipboard-write"])
-                context.add_init_script(
-                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-                )
+                owned_speech_page = None
+                if adaptive_brief:
+                    owned_speech_page = context.new_page()
+                    owned_tabs.callback(owned_speech_page.close)
+                    owned_speech_page.add_init_script(
+                        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+                    )
+                else:
+                    context.grant_permissions(["clipboard-read", "clipboard-write"])
+                    context.add_init_script(
+                        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+                    )
 
                 # =========================================================
                 # PHASE 1: GEMINI APP SCRIPT ORCHESTRATION (ALL TEXT FIRST)
@@ -1798,7 +1844,9 @@ def main():
                 print("=========================================================")
 
                 # Guarantee Playwright is focused on the genuine Speech Playground tab with target model URL
-                tab1_speech = ensure_speech_playground_tab(context, target_tts_model)
+                tab1_speech = ensure_speech_playground_tab(
+                    context, target_tts_model, owned_page=owned_speech_page
+                )
                 reapply_speech_settings(tab1_speech, voice_config)
 
                 latest_alkali_state = {"status": None, "url": None, "is_403": False}
@@ -2183,6 +2231,8 @@ def main():
                         print("=============================================")
                         break
 
+        except AdaptiveBrowserOwnershipError:
+            raise
         except Exception as e:
             print(f"[RECOVERY] Playwright context closed or browser crashed: {e}")
             time.sleep(3)
