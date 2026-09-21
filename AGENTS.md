@@ -83,6 +83,7 @@ When the user requests a durable behavior change, record it here or in the relev
 
 - Use `GEMINI.md` as current project guidance where older instructions here differ.
 - Adaptive production selects a saved channel, analyzes raw scripts before translation, and uses stills plus selective local animation. Track progress in `tasks/adaptive-visual-tasks.md`.
+- The three pilot channels are saved in `channels/`; Professor Yashrah keeps Achird, while the Soldier's Sledger and Snoozer Anime pilots preserve their published narration. Their unselected synthesis voices remain null and must block TTS.
 
 ## Ownership & Domain Boundaries
 
@@ -113,6 +114,7 @@ When the user requests a durable behavior change, record it here or in the relev
 
 ## Child DOX Index
 
+- `channels/AGENTS.md`: saved adaptive channel identities and pilot voice/visual policy.
 - `tasks/AGENTS.md`: implementation plans, checklists and verification evidence.
 - `src/youtube_automation/production/AGENTS.md`: adaptive channel/episode contracts and editorial production.
 - Domain scopes governed directly by root contracts:

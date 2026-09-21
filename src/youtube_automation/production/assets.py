@@ -47,7 +47,9 @@ def validate_background(path: str | Path) -> tuple[int, int]:
         size = image.size
     if min(size) < 256:
         raise ValueError("Background is too small for a video shot")
-    boxes = _detect_via_pytesseract(str(path), {"MIN_BBOX": 0.00001, "MIN_TEXT_LEN": 1})
+    boxes = _detect_via_pytesseract(
+        str(path), {"MIN_BBOX": 0.00001, "MIN_TEXT_LEN": 1, "OCR_LANG": "eng+ara"}
+    )
     if boxes is None:
         raise RuntimeError("Required background OCR is unavailable; asset remains unverified")
     if boxes:

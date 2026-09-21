@@ -12,6 +12,7 @@ import json
 import os
 import sys
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
 
 from PIL import Image
@@ -92,13 +93,25 @@ def get_ocr_min_bbox_area_ratio(config: dict | None = None) -> float:
         return OCR_MIN_BBOX_AREA_RATIO
 
 
-def _run_pytesseract_dict(image: Any, output_type: Any = None) -> dict[str, Any]:
+def _run_pytesseract_dict(
+    image: Any, output_type: Any = None, *, language: str | None = None
+) -> dict[str, Any]:
     """Helper wrapper around pytesseract.image_to_data for easy mocking in unit tests."""
     import pytesseract
 
     if output_type is None:
         output_type = pytesseract.Output.DICT
-    return pytesseract.image_to_data(image, output_type=output_type)
+    command = os.getenv("TESSERACT_CMD")
+    if not command:
+        local_command = Path(__file__).resolve().parents[3] / ".runtime" / "tesseract" / "tesseract.exe"
+        if local_command.is_file():
+            command = str(local_command)
+    if command:
+        pytesseract.pytesseract.tesseract_cmd = command
+    options: dict[str, Any] = {"output_type": output_type, "timeout": 30}
+    if language:
+        options["lang"] = language
+    return pytesseract.image_to_data(image, **options)
 
 
 def _detect_via_pytesseract(image_path: str, config: dict | None = None) -> list[OCRBox] | None:
@@ -108,7 +121,8 @@ def _detect_via_pytesseract(image_path: str, config: dict | None = None) -> list
             img_w, img_h = img.size
             if img_w <= 0 or img_h <= 0:
                 return []
-            data = _run_pytesseract_dict(img)
+            language = config.get("OCR_LANG") if config else None
+            data = _run_pytesseract_dict(img, language=language) if language else _run_pytesseract_dict(img)
     except Exception:
         return None
 

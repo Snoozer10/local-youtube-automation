@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "channel_id": "professor-yashrah",
+  "name": "البروفيسور يشرح",
+  "audience": "Arabic-speaking adults seeking accessible explanations of psychology, attention, mental health, and human behavior",
+  "language": "Arabic",
+  "dialect": "Clear conversational Arabic; preserve the source narrator's dialect and use precise Arabic for scientific terms",
+  "asr_language": "ar",
+  "voice": "Achird",
+  "tone": "Curious, humane, clear, and evidence-conscious; never diagnose viewers or promise a clinical outcome",
+  "style": "Premium editorial illustration with tactile paper, confident ink shapes, restrained cobalt and warm amber accents, expressive but anatomically credible people, and strong foreground-background depth. Build episode-specific visual metaphors and clean mechanisms as separate still compositions; render all words, numerals, arrows, and highlights locally. No default talking mascot, generic floating brain, fake scientific chart, or repeated zoom cycle.",
+  "host_mode": "NONE",
+  "host_description": "",
+  "allowed_treatments": ["subject_scene", "detail", "mechanism", "comparison", "metaphor"],
+  "humor": "light",
+  "max_zoom": 1.07
+}

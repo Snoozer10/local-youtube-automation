@@ -6,6 +6,7 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 
 ## Local Contracts
 - Explicit channel selection; topic analysis cannot override stable identity.
+- Episode analysis must declare whether claims are factual, fictional or mixed. `evidence_needs` is only for external verification of real-world claims; fictional identities, relationships, settings and visible states belong in `continuity_anchors`. Figurative language cannot silently become literal staging.
 - Canonical speech timing is read-only input. Editorial shots reference it.
 - Persist source/profile/recipe hashes. Missing or unverified inputs block publication.
 - Preserve accepted artifacts; retries cannot silently select unrelated references.
@@ -13,8 +14,10 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 - Accepted image copies and final videos use content-derived names. active_master.json is the only adaptive master activation pointer.
 - Approval requires a current preview and binds its plan, assets, audio and render recipe.
 - Adaptive narration derives chapters from validated refined writing and requires an exact script/channel/voice recipe plus matching WAV digest for completed chapters.
+- `source-audio` imports a bounded excerpt of owner-provided local media, preserves the caption-derived script exactly, and publishes a verified WAV and source receipt. Profiles with a null synthesis voice and imported runs cannot enter adaptive TTS. Source media remains external; its hash, excerpt bounds and accepted WAV hash are recorded. Transcription still creates the canonical timeline before shots.
 - Adaptive voice, Audacity and stitching require an explicit run. Voice generation stops once any polished or stitched audio exists. Audacity requires a known preset and bounded, explicitly successful pipe commands; stalled or failed effects cannot publish output. Audacity and stitching require all validated voice chapters, gapless physical offsets and complete polished WAVs. Stitching verifies saved polished hashes without changing the manifest. The voice-generation manifest remains a raw-synthesis checkpoint. Audio chapter, manifest and master activation use short publication fences.
 - Adaptive thumbnails derive prompts from the selected brief, accept landscape images only after full-frame OCR passes, and require a content-bound receipt to skip generation. Missing OCR blocks acceptance. Their browser work uses the shared resource lease.
+- Adaptive image and thumbnail OCR request English and Arabic recognition. Missing language data or OCR failure blocks technical acceptance.
 - Render aspect crops must use the selected focal point and accepted source dimensions before zoom/pan. Non-hold motion needs visible safe travel; changing the camera recipe invalidates cached clips and approval.
 
 ## Work Guidance

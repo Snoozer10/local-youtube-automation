@@ -29,6 +29,7 @@ def make_brief(*, voice="Nova"):
     )
     analysis = Analysis(
         topics=["orbits"],
+        claim_basis="factual",
         form="explanation",
         proposition="An orbit follows gravity",
         narrative_strategy="Explain with concrete examples",

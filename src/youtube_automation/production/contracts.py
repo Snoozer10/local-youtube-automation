@@ -29,7 +29,7 @@ class Channel(Contract):
     language: Text
     dialect: Text
     asr_language: str | None = Field(default=None, pattern=r"^[a-z]{2,3}$")
-    voice: Text
+    voice: Text | None = None
     tone: Text
     style: Text
     host_mode: Literal["NONE", "CUSTOM_AVATAR"] = "NONE"
@@ -51,6 +51,7 @@ class Channel(Contract):
 
 class Analysis(Contract):
     topics: list[Text] = Field(min_length=1, max_length=20)
+    claim_basis: Literal["factual", "fictional", "mixed"]
     form: Literal[
         "explanation",
         "argument",
@@ -63,14 +64,31 @@ class Analysis(Contract):
     ]
     proposition: Text
     narrative_strategy: Text
-    evidence_needs: list[Text] = Field(default_factory=list, max_length=30)
+    evidence_needs: list[Text] = Field(
+        default_factory=list,
+        max_length=30,
+        description="External verification needed for real-world claims; never a requested image",
+    )
+    continuity_anchors: list[Text] = Field(
+        default_factory=list,
+        max_length=50,
+        description="Source-stated identities, relationships, settings and visible states to preserve",
+    )
     figurative_phrases: list[Text] = Field(default_factory=list, max_length=50)
     treatments: list[Treatment] = Field(min_length=1)
     rationale: Text
 
+    @model_validator(mode="after")
+    def separate_fact_checking_from_fiction(self) -> Analysis:
+        if self.claim_basis == "fictional" and self.evidence_needs:
+            raise ValueError(
+                "Fictional narratives cannot request external factual evidence; use continuity_anchors"
+            )
+        return self
+
 
 class Brief(Contract):
-    version: Literal[1] = 1
+    version: Literal[2] = 2
     source_sha256: Digest
     profile_sha256: Digest
     channel: Channel

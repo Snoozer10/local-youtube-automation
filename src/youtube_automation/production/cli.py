@@ -45,6 +45,7 @@ def main(argv: list[str] | None = None) -> None:
         choices=[
             "analyze",
             "write",
+            "source-audio",
             "plan",
             "generate",
             "report",
@@ -57,6 +58,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--channel-profile")
     parser.add_argument("--reviewer")
+    parser.add_argument("--media-file")
+    parser.add_argument("--start-seconds", type=float)
+    parser.add_argument("--end-seconds", type=float)
     args = parser.parse_args(argv)
     root = Path(args.run_dir).resolve()
     if not root.is_dir():
@@ -79,6 +83,17 @@ def main(argv: list[str] | None = None) -> None:
                 write_episode(root, load_brief(root), ask)
             else:
                 ensure_shot_plan(root, ask)
+    elif args.stage == "source-audio":
+        if args.media_file is None or args.start_seconds is None or args.end_seconds is None:
+            parser.error("source-audio requires --media-file, --start-seconds and --end-seconds")
+        from .source_narration import import_source_narration
+
+        print(
+            import_source_narration(
+                root, args.media_file,
+                start_seconds=args.start_seconds, end_seconds=args.end_seconds,
+            )
+        )
     elif args.stage == "generate":
         from youtube_automation.visuals.flow_generator import main as generate
 

@@ -71,6 +71,7 @@ def test_policy_and_narration_checks():
     )
     analysis = Analysis(
         topics=["animals"],
+        claim_basis="factual",
         form="explanation",
         proposition="Perception",
         narrative_strategy="Observe",
@@ -131,6 +132,7 @@ def test_paged_plan_validates_real_canonical_spans_and_flow_roundtrip(tmp_path):
     )
     analysis = Analysis(
         topics=["animals"],
+        claim_basis="factual",
         form="explanation",
         proposition="Perception",
         narrative_strategy="Observe",

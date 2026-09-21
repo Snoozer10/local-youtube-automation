@@ -75,6 +75,8 @@ def write_episode(run_dir: str | Path, brief: Brief, ask: Callable[[str], str]) 
     root = Path(run_dir)
     if load_brief(root) != brief:
         raise ValueError("Writing brief is not the validated run brief")
+    if (root / "source_audio_receipt.json").exists():
+        raise ValueError("Source-narrated run cannot rewrite words already bound to published audio")
     cache = root / "adaptive_writing"
     cache.mkdir(exist_ok=True)
     raw = (root / "raw_transcript.txt").read_text(encoding="utf-8-sig")
@@ -138,4 +140,14 @@ def verify_written_episode(run_dir: str | Path) -> bool:
     for name, digest in receipt["outputs"].items():
         if fingerprint((root / name).read_text(encoding="utf-8")) != digest:
             raise ValueError(f"Writing output changed: {name}")
+    source_receipt_exists = (root / "source_audio_receipt.json").exists()
+    if source_receipt_exists or receipt.get("mode") == "source_preserved":
+        if not source_receipt_exists or receipt.get("mode") != "source_preserved":
+            raise ValueError("Source narration and writing modes disagree")
+        original = (root / "raw_transcript.txt").read_text(encoding="utf-8-sig").strip() + "\n"
+        if any((root / name).read_text(encoding="utf-8") != original for name in expected):
+            raise ValueError("Source-preserved writing differs from the spoken transcript")
+        from .source_narration import verify_source_narration
+
+        verify_source_narration(root)
     return True

@@ -5,7 +5,9 @@ Branch: `codex/adaptive-multi-channel-visual-engine`, from updated master `dad17
 ## Approved architecture
 Selected saved channel + raw script -> whole-script analysis -> validated episode brief -> adapted restructuring/translation/refinement -> voice and canonical speech timing -> editorial shots -> reference-bound stills/local overlays -> quality review -> deterministic render -> verified publication.
 
-Channel profiles own audience, language/dialect, narrator and host identity, brand and allowed treatments. Episode analysis proposes topics, genre, narrative form, evidence needs, figurative language and visual strategy within those limits. It cannot change identity or browser selectors. Shots specify visual purpose, narration range, entities, references, composition, edits and overlays. Shots may cover multiple spans or subdivide one span. Canonical speech timing remains authoritative.
+For pilots built from published channel episodes, the original narration and caption excerpt are one immutable input pair. Analyze the excerpt under the selected channel, then import the matching owner-provided local audio segment and preserve the spoken script verbatim. Transcribe that accepted WAV to the canonical timeline before planning shots. This path tests the actual channels' pacing without claiming a rewrite was spoken.
+
+Channel profiles own audience, language/dialect, narrator and host identity, brand and allowed treatments. Episode analysis proposes topics, genre, narrative form, claim basis, external fact-check questions, source-stated continuity anchors, figurative language and visual strategy within those limits. Fictional continuity is not evidence, and evidence requests are not shot requests. Analysis cannot change identity or browser selectors. Shots specify visual purpose, narration range, entities, references, composition, edits and overlays. Shots may cover multiple spans or subdivide one span. Canonical speech timing remains authoritative.
 
 ## Priorities
 - **Remediate / P0:** coordinate leakage, unsolicited charts, truncated edits, schema aliases, reference identity, forced movement and missing assets.

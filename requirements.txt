@@ -27,6 +27,7 @@ torchaudio>=2.0.0               # Audio processing backend for PyTorch
 # 4. Image, Media & Video Timeline Processing
 # ------------------------------------------------------------------------------
 Pillow>=10.0.0                  # Image processing, bounding box validation & screenshots
+pytesseract>=0.3.13             # Required full-frame OCR gate for adaptive image acceptance
 moviepy>=2.0.0                  # Secondary/fallback SRT-synced video compositor
 
 # ------------------------------------------------------------------------------
@@ -41,4 +42,5 @@ pydantic>=2.0.0                 # Strict schema validation for storyboard frame 
 # - FFmpeg & FFprobe (v5.0+ with QSV/NVENC support): winget install Gyan.FFmpeg
 # - Audacity (v3.x+ with mod-script-pipe enabled)
 # - Google Chrome or Opera / Opera GX (Chromium-based with CDP remote debugging)
+# - Tesseract OCR engine with English and Arabic language data for adaptive image gates
 # ==============================================================================

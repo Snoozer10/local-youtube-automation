@@ -38,6 +38,7 @@ def make_brief(*, host_mode="NONE", host_description="", language="English"):
     )
     analysis = Analysis(
         topics=["migration"],
+        claim_basis="factual",
         form="explanation",
         proposition="Birds use landmarks during migration",
         narrative_strategy="Show field observations",

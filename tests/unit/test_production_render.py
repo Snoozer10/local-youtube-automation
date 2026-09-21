@@ -127,6 +127,7 @@ def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
         channel=channel,
         analysis=Analysis(
             topics=["test"],
+            claim_basis="factual",
             form="explanation",
             proposition="Scene",
             narrative_strategy="Observe",

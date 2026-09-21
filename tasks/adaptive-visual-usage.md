@@ -2,6 +2,16 @@
 
 This feature is opt-in and is not yet approved for unattended full episodes. The production package has offline regression coverage; real Gemini/Flow behavior, reference restoration, Arabic readability and artistic quality still require the three reviewed pilots in [the checklist](adaptive-visual-tasks.md).
 
+The three selected profiles are in `channels/`. The prepared pilot runs under `youtube_runs/adaptive-pilot-*` contain caption-derived `raw_transcript.txt`, `pilot_source.json` provenance and validated `episode_brief.json`. They contain no published narration WAV or preview yet. Public captions were available, but YouTube media downloads returned HTTP 403; import the owner's local copies when available. Keep the source video/audio files read-only.
+
+| Channel | Existing upload used for pilot | Caption/audio window | Narration policy |
+|---|---|---:|---|
+| [Professor Yashrah](https://www.youtube.com/watch?v=AvTeNM10wZQ) | Six attention exercises, opening Schulte-grid challenge | 0–69.08 s | Preserve published audio; Achird remains the saved synthesis voice. |
+| [Soldier's Sledger](https://www.youtube.com/watch?v=IyrbpV8-AQ4) | English Ardennes command-room opening | 0–69.4 s | Preserve published audio; profile is English for this episode. Arabic uploads need an explicitly selected language/voice variant later. |
+| [Snoozer Anime](https://www.youtube.com/watch?v=sViXav5CHlM) | Egyptian Arabic romance-comedy recap scene | 19.9–89.72 s | Preserve published audio; use original character continuity rather than screenshot imitation. |
+
+These excerpts are source material, not verified facts. Professor's claimed benefits of the Schulte grid and the Soldier's Sledger's historical reconstruction need human editorial checks. The anime recap is classified as fictional: its source-stated names, relationships and setting are continuity anchors rather than external evidence needs. Do not draw quantitative claims, historical specifics or character details that the brief cannot substantiate, and do not turn figurative phrases into literal visuals by default.
+
 ## Select identity before analysis
 
 Save one JSON profile per channel outside generated run folders. Select it explicitly; script analysis cannot infer the destination channel or change browser selectors. Example only (replace the voice with an available saved voice):
@@ -26,7 +36,7 @@ Save one JSON profile per channel outside generated run folders. Select it expli
 }
 ```
 
-`asr_language` is an optional Whisper language code; null lets the transcriber detect the spoken language. `CUSTOM_AVATAR` requires a stable host description. Omit the `host` treatment for a channel without a host. Profiles separate channel identity from episode topics, narrative form, evidence needs and figurative language. This is policy validation, not a factual or aesthetic guarantee.
+`asr_language` is an optional Whisper language code; null lets the transcriber detect the spoken language. `CUSTOM_AVATAR` requires a stable host description. Omit the `host` treatment for a channel without a host. Profiles separate channel identity from episode topics, narrative form, claim basis, fact-check questions, continuity anchors and figurative language. A fictional analysis must have no external evidence needs. This is policy validation, not a factual or aesthetic guarantee.
 
 ## New raw-script run
 
@@ -36,6 +46,17 @@ Run commands from the repository root with the project virtual environment. Crea
 venv/Scripts/python.exe adaptive_production.py analyze --run-dir "youtube_runs/pilot-science" --channel-profile "channels/science.json"
 venv/Scripts/python.exe adaptive_production.py write --run-dir "youtube_runs/pilot-science"
 ```
+
+For an existing-narration pilot, **skip `write` and TTS**. After `analyze`, import the matching original local media with the caption window above:
+
+```powershell
+venv/Scripts/python.exe adaptive_production.py source-audio --run-dir "youtube_runs/adaptive-pilot-professor-yashrah" --media-file "D:/owner-media/professor-video.mp4" --start-seconds 0 --end-seconds 69.08
+venv/Scripts/python.exe adaptive_production.py source-audio --run-dir "youtube_runs/adaptive-pilot-soldiers-ledger" --media-file "D:/owner-media/soldiers-video.mp4" --start-seconds 0 --end-seconds 69.4
+venv/Scripts/python.exe adaptive_production.py source-audio --run-dir "youtube_runs/adaptive-pilot-snoozer-anime" --media-file "D:/owner-media/anime-video.mp4" --start-seconds 19.9 --end-seconds 89.72
+venv/Scripts/python.exe faster_whisper_transcribe_audio.py "youtube_runs/adaptive-pilot-professor-yashrah"
+```
+
+Replace the example media paths with the owner's actual full uploads or matching narration tracks. Each import probes the source duration, verifies the exact local file hash, extracts mono 48 kHz PCM, checks the excerpt length, and publishes source/audio/writing receipts. A repeat reuses identical bytes; changed media or boundaries require a fresh run. `verify_written_episode` rejects a missing/tampered WAV or any changed source-preserved text. Run transcription separately for all three directories before planning shots. The source-audio receipt marks the narration mode; a null profile voice blocks synthesis until a real AI Studio voice is selected.
 
 For existing URL extraction, `automate_all.py --channel-profile "channels/science.json"` applies one explicitly selected channel to that invocation's URL list. It writes channel/video/profile-specific directories and runs analysis before restructuring, translation and refinement. Other channels require separate invocations. Changed raw input with existing downstream artifacts requires a fresh run, preserving previous output.
 
@@ -56,7 +77,7 @@ venv/Scripts/python.exe adaptive_production.py report --run-dir "youtube_runs/pi
 venv/Scripts/python.exe adaptive_production.py preview --run-dir "youtube_runs/pilot-science"
 ```
 
-Gemini and Flow use the existing authenticated browser/CDP setup. No new cloud SDK or API key is introduced; the browser services still need network access. Background OCR requires working Tesseract. Missing OCR, assets, references or frame coverage block the stage.
+Gemini and Flow use the existing authenticated browser/CDP setup. No new cloud SDK or API key is introduced; the browser services still need network access. Background and thumbnail OCR require `pytesseract`, a working Tesseract engine and both `eng` and `ara` language data; missing OCR, assets, references or frame coverage block the stage. Use a PATH-installed engine, set `TESSERACT_CMD` to its executable, or place a project-local executable at `.runtime/tesseract/tesseract.exe` with `tessdata/eng.traineddata` and `tessdata/ara.traineddata`. Do not change system DNS or network adapters for this workflow.
 
 Review `adaptive_review/index.html` and the video path inside `adaptive_preview.json`. Confirm subject relevance, factual meaning, consistent identities, meaningful cuts, crops, local Arabic labels and restrained motion. Contact sheets contain original assets; the rendered preview is necessary to review crops and overlays. Shape/font availability and mobile readability require visual inspection.
 The review table shows each shot's focal point and zoom. The renderer uses that point for the initial aspect crop and confines pans to travel that keeps it visible. Push/pull/pan with zoom 1 and pans without safe travel now fail planning/render validation; choose a hold or revise the composition. Re-preview and approve after a camera recipe change because cached clips and approval lineage are invalidated.

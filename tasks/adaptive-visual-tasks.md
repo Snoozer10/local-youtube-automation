@@ -2,7 +2,7 @@
 
 Plan: [adaptive-visual-plan.md](adaptive-visual-plan.md). Usage: [adaptive-visual-usage.md](adaptive-visual-usage.md). Checked means implemented with the evidence below; live aesthetic checks remain separate.
 
-Current state: staged adaptive implementation and offline verification complete for the checked items. Unattended full production is NOT complete. No live generation or historical regeneration has been launched. Three actual channel profiles are requested for pilot setup. The newer merged branch adds prompt loading, voice and viewer changes; the current verification record below supersedes the older baseline.
+Current state: staged adaptive implementation and offline verification complete for the checked items. Unattended full production is NOT complete. No live Flow generation or historical regeneration has been launched. The three actual channel profiles, existing-upload caption excerpts and channel analyses are prepared; published narration audio is on the owner's work drive and will be provided later. The newer merged branch adds prompt loading, voice and viewer changes; the current verification record below supersedes the older baseline.
 
 ## A. Branch and baseline
 - [x] A1 Fetch origin/master, verify clean worktree and PR #20 merge, create requested branch from dad17b3.
@@ -36,13 +36,13 @@ Current state: staged adaptive implementation and offline verification complete 
 - [x] D3 No mandatory progressive groups/camera cycles in adaptive mode; host remains channel policy.
 - [x] D4 Distinguish local crop/reveal reuse from new generation; stable entity/scene IDs.
 - [x] D5 Compile complete prompts and validate reference dependencies; prohibit invented evidence in planning instructions. Factual correctness still requires editorial review.
-- [ ] D6 Test idiom, close-up, multi-span hold, multiple shots per span and boundaries.
+- [x] D6 Test idiom, close-up, multi-span hold, multiple shots per span and boundaries. Live semantic quality remains G4h.
 
 ## E. Assets and composition (depends on D)
 - [x] E1 Asset receipts include recipe, bytes, dimensions, references and validation state.
 - [ ] E2 Verified exact browser attachments and reference recovery after reload/resume.
-- [ ] E3 Crop bounds/source resolution checks; no fixed upper-third focal target.
-- [ ] E4 Explicit holds/pushes/pans/reframes, local reveals and shaped Arabic overlays.
+- [x] E3 Crop bounds/source resolution checks; no fixed upper-third focal target. Live subject-point accuracy remains G4j.
+- [x] E4 Explicit holds/pushes/pans/reframes, local reveals and shaped Arabic overlays. Live Arabic readability remains G4j.
 - [x] E5 Derived edit timeline preserves canonical speech timing and invents no acoustic punches.
 - [x] E6 Review contact sheets/report include prompts, reasons, references and rejections.
 - [x] E7 Real temporary FFmpeg checks: frame count, static fidelity, overlays and valid encoding.
@@ -64,6 +64,20 @@ Current state: staged adaptive implementation and offline verification complete 
 - [ ] G5 User reviews relevance/progression/continuity/readability/motion before full episodes.
 - [ ] G6 Full-episode validation following pilot acceptance.
 
+### G4 pilot execution ledger
+
+- [x] G4a Save and validate channel profiles for Professor Yashrah, Soldier's Sledger and Snoozer Anime. Professor retains Achird; the other two preserve source narration for these pilots.
+- [x] G4b Select published-upload caption excerpts and record source URL, language, 60–90 second bounds and hashes in fresh run folders: Professor 0–69.08 seconds/161 words, Soldier 0–69.4 seconds/161 words, Snoozer 19.9–89.72 seconds/190 words. No historical run changed.
+- [x] G4c Run channel-bound analysis before any rewrite or translation; all three version-2 `episode_brief.json` files exist and match the saved profile/raw text. Professor and Soldier are factual with external verification questions; Snoozer is fictional with empty evidence needs and explicit continuity anchors.
+- [x] G4d Install `pytesseract` in the project venv, extract a hash-verified Tesseract engine to ignored `.runtime`, add official Arabic data and verify a real bilingual OCR probe. Add the package prerequisite and explicit `eng+ara` adaptive gates.
+- [x] G4e Add and test a source-preserved audio import that binds local owner media, excerpt boundaries, original script and WAV bytes; TTS cannot replace accepted source audio.
+- [ ] G4f Receive local owner media, import the three matching narration excerpts and inspect the resulting WAVs against the selected captions.
+- [ ] G4g Transcribe all three imported WAVs, verify canonical timing and correct caption/ASR errors without changing spoken audio.
+- [ ] G4h Generate and editorially inspect three shot plans for factual caution, idiom meaning, visual progression, consistency and crop choice.
+- [ ] G4i Generate technically accepted stills in Flow with real bilingual OCR and verify exact reference attachment/recovery where edits require it.
+- [ ] G4j Render three previews, inspect mobile-sized frames, Arabic shaping, local overlays, motion restraint, pacing and continuity; record rejects/revisions.
+- [ ] G4k Obtain user editorial review before approving any pilot master; keep G5/G6 open until separately completed.
+
 ## Partial items and next work
 
 | Item | Implemented | Remaining acceptance |
@@ -78,7 +92,7 @@ Current state: staged adaptive implementation and offline verification complete 
 | F4 | Verify assets/timing/approval and unchanged inputs before atomic video activation; content-derived final filenames preserve old masters. Adaptive chapter stitching verifies that polished bytes match the saved manifest, then writes and frame-checks a temporary WAV before fenced replacement of the audio master. | Crash injection across all publication boundaries and explicit reconciliation of interrupted stages. |
 | F5 | Competing claims, lease expiry, stale publication, corrupted writing/clip caches, missing exact references and stale approval tested. | Process-level crash/restart suite and all missing-output variants. |
 | F6 | Explicit audio run arguments, adaptive supervisor isolation, correct polished-audio path, bounded new renderer subprocesses. Adaptive narration partitions the verified script without a second rewrite; completed WAVs require matching MD5. Adaptive voice cannot rerun after DSP starts. Adaptive Audacity refuses unrelated sessions, requires the checked-in preset and bounded, explicitly successful pipe exchanges, keeps checkpoints on incomplete work, and syncs exact gapless chapter offsets without rewriting the raw voice checkpoint. Adaptive stitching blocks partial or changed polish and atomically replaces the master. | Legacy Audacity cleanup and unbounded legacy pipe reads, remaining persistence surfaces and cross-stage process ownership audit. |
-| G4–G6 | Offline synthetic renders only. | User channel profiles, three live 60–90 second pilots, actual editorial feedback and subsequent full episodes. |
+| G4–G6 | Three real channel profiles, caption excerpts, analyzed briefs, local bilingual OCR, and tested source-audio import are ready. | Owner's matching local narration files, three live visual previews, actual editorial feedback and subsequent full episodes. |
 
 ## Verification evidence
 
@@ -96,3 +110,5 @@ Current state: staged adaptive implementation and offline verification complete 
 - Adaptive audio-boundary slice: **600 unit tests** passed, plus workspace Ruff, production-package mypy (13 files), exercise structural lint and 7 focused integration tests. Offline tests cover gapless chapter offsets, changed polished bytes, incomplete polish, explicit Audacity pipe failures, user-owned Audacity protection, atomic stitching and explicit run arguments. No Audacity process, browser account, network setting or historical run was changed by these tests.
 - Adaptive TTS ownership slice: shared browser lease, an owned tab that closes on exit, no adaptive browser launch or global profile rotation, and removal of a hard-coded AI Studio Chrome resolver address. **603 unit tests** passed, plus workspace Ruff, production-package mypy (13 files) and exercise structural lint. No live CDP account or system DNS setting was changed.
 - Adaptive Audacity pipe deadline slice: adaptive command writes and reads now have a bounded exchange time and a 1 MiB response cap, while legacy protocol behavior stays compatible. **604 unit tests** passed, plus workspace Ruff, production-package mypy (13 files), exercise structural lint and the focused Audacity integration tests. No live Audacity process was launched.
+- Three-channel pilot preparation: the three public uploads above yielded existing-language captions; `youtube_runs/adaptive-pilot-*` stores final 161/161/190-word source excerpts and profile-bound analyses. A required claim-basis contract separates factual verification from fictional continuity: Professor and Soldier retain explicit fact-check questions, while Snoozer has empty evidence needs, four source continuity anchors and separately tagged figurative phrases. Each live analysis required at most one bounded retry when the Gemini model selector did not hydrate. YouTube audio download returned HTTP 403, so owner-provided local media remains G4f. Project-local Tesseract 5.4 reported `eng`, `ara`, `osd`; a real bilingual probe detected English and Arabic bitmap text. No generated images, previews or master approvals exist yet.
+- Pilot-preparation closeout: **608 unit tests** passed, workspace Ruff passed, production-package mypy passed for 14 source files, exercise structural lint passed for 35 files/35 links, and `git diff --check` passed. The episode brief contract is version 2 because claim basis and continuity anchors are required fields; the three ignored pilot briefs were migrated and revalidated. Source-audio activation is written only after WAV and preserved text bytes verify.

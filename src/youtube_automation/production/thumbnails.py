@@ -182,7 +182,9 @@ def publish(
         if not source.resolve().is_relative_to(root.resolve()):
             raise ValueError("Generated thumbnail must be inside the selected run")
         verify_image(source)
-        ocr = _detect_via_pytesseract(str(source), {"MIN_BBOX": 0.00001, "MIN_TEXT_LEN": 1})
+        ocr = _detect_via_pytesseract(
+            str(source), {"MIN_BBOX": 0.00001, "MIN_TEXT_LEN": 1, "OCR_LANG": "eng+ara"}
+        )
         if ocr is None:
             raise RuntimeError("Required thumbnail OCR is unavailable; no image accepted")
         if ocr:

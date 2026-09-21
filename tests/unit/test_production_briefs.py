@@ -24,6 +24,7 @@ def channel():
 def response(**changes):
     data = {
         "topics": ["animals"],
+        "claim_basis": "factual",
         "form": "explanation",
         "proposition": "Animal perception",
         "narrative_strategy": "Observe then explain",
@@ -39,6 +40,7 @@ def test_identity_and_resume(tmp_path, channel):
     brief = ensure_brief(tmp_path, channel, lambda _: response())
     resumed = ensure_brief(tmp_path, channel, lambda _: pytest.fail("Must use valid cached brief"))
     assert brief == resumed
+    assert brief.version == 2
     assert brief.profile_sha256 == fingerprint(channel)
     assert "MSA" in writing_prompt(brief, "translate")
     (tmp_path / "final_output.txt").write_text("translated", encoding="utf-8")
@@ -52,6 +54,34 @@ def test_channel_policy_cannot_be_overridden(channel):
         analyze_script("animals", channel, lambda _: response(treatments=["host"]))
     with pytest.raises(ValueError):
         analyze_script("animals", channel, lambda _: response(channel_id="imposter"))
+
+
+def test_fictional_analysis_separates_continuity_from_evidence(channel):
+    calls = []
+
+    def bad_then_good(prompt):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return response(
+                claim_basis="fictional",
+                evidence_needs=["Show the floor literally cracking when her heart races"],
+                figurative_phrases=["Her heartbeat cracked the floor"],
+            )
+        return response(
+            claim_basis="fictional",
+            evidence_needs=[],
+            continuity_anchors=["The manager's child is waiting in the staff room"],
+            figurative_phrases=["Her heartbeat cracked the floor"],
+        )
+
+    brief = analyze_script("A romantic comedy recap", channel, bad_then_good)
+    assert len(calls) == 2
+    assert "must be empty for fictional material" in calls[0]
+    assert "Fictional narratives cannot request external factual evidence" in calls[1]
+    assert brief.analysis.evidence_needs == []
+    assert brief.analysis.continuity_anchors == [
+        "The manager's child is waiting in the staff room"
+    ]
 
 
 def test_all_sections_are_analyzed(channel):

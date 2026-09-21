@@ -1439,6 +1439,10 @@ def _run_voice_generation():
         from youtube_automation.production.writing import verify_written_episode
         verify_written_episode(latest_run)
         adaptive_brief = load_brief(latest_run)
+        if adaptive_brief.channel.voice is None or os.path.isfile(
+            os.path.join(latest_run, "source_audio_receipt.json")
+        ):
+            raise ValueError("This adaptive run has no synthesis voice or preserves source narration")
         require_unpolished_run(latest_run)
         voice_options["voice"] = adaptive_brief.channel.voice
 

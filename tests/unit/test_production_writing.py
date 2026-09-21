@@ -23,6 +23,7 @@ def test_channel_writing_resume_and_tamper_detection(tmp_path):
     (tmp_path / "raw_transcript.txt").write_text("A historical journey.", encoding="utf-8")
     analysis = {
         "topics": ["history"],
+        "claim_basis": "factual",
         "form": "chronology",
         "proposition": "A journey",
         "narrative_strategy": "Follow events",
@@ -63,6 +64,7 @@ def test_failed_writing_never_publishes_partial_episode(tmp_path):
     (tmp_path / "raw_transcript.txt").write_text("A topic", encoding="utf-8")
     analysis = {
         "topics": ["topic"],
+        "claim_basis": "factual",
         "form": "explanation",
         "proposition": "Topic",
         "narrative_strategy": "Explain",
