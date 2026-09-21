@@ -8,6 +8,8 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 - Explicit channel selection; topic analysis cannot override stable identity.
 - Episode analysis must declare whether claims are factual, fictional or mixed. `evidence_needs` is only for external verification of real-world claims; fictional identities, relationships, settings and visible states belong in `continuity_anchors`. Figurative language cannot silently become literal staging.
 - Canonical speech timing is read-only input. Editorial shots reference it.
+- Shot plan version 2 persists a deterministic editorial policy resolved from the selected channel and analyzed script. Enforce its shot-duration ceiling, framing diversity, selective-motion cap and contiguous canonical coverage before generation.
+- Every shot declares visible stable entity IDs. A recurring entity in one scene must reuse or reference an established asset; add/remove/reframe/replace semantics determine compatible entity-set changes. Declared entities must appear in the visible description, and obvious literalized figurative transformations block the plan.
 - Persist source/profile/recipe hashes. Missing or unverified inputs block publication.
 - Preserve accepted artifacts; retries cannot silently select unrelated references.
 - Device entrypoints acquire the installation-wide browser, Audacity or encoder lease. Short artifact activation runs under publication_guard; never hold its SQLite transaction during browser calls, DSP or encoding.

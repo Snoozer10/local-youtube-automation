@@ -15,7 +15,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-# Locate and load the .env file from the project root directory with override enabled
+# Locate project defaults without replacing explicit process-level configuration.
 def _find_project_root() -> str:
     current = Path(__file__).resolve().parent
     for parent in [current, *current.parents]:
@@ -25,7 +25,7 @@ def _find_project_root() -> str:
 
 PROJECT_ROOT = _find_project_root()
 ENV_PATH = os.path.join(PROJECT_ROOT, ".env")
-load_dotenv(ENV_PATH, override=True)
+load_dotenv(ENV_PATH, override=False)
 
 # Configure logging
 LOG_DIR = Path(PROJECT_ROOT) / "logs"

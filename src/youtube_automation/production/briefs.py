@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from playwright.sync_api import Page
 from pydantic import BaseModel, ValidationError
@@ -18,22 +19,46 @@ from .ledger import publication_guard
 
 Response = TypeVar("Response", bound=BaseModel)
 
+_BARE_JSON_LABEL = re.compile(r"^json\s*(?=[{[])", re.IGNORECASE)
+
+
+def _decode_single_json_value(text: str) -> Any:
+    value, end = json.JSONDecoder().raw_decode(text)
+    trailing = text[end:].strip()
+    if trailing and ("{" in trailing or "[" in trailing):
+        raise ValueError("Response contains more than one JSON structure")
+    return value
+
 
 def request_json(
     prompt: str, ask: Callable[[str], str], model: type[Response], attempts: int = 3
 ) -> Response:
     error = ""
+    last_transport_error: RuntimeError | None = None
     for _ in range(attempts):
-        response = ask(
-            prompt + ("\nRepair the previous validation error: " + error if error else "")
-        )
+        try:
+            response = ask(
+                prompt + ("\nRepair the previous validation error: " + error if error else "")
+            )
+        except RuntimeError as exc:
+            last_transport_error = exc
+            error = f"Browser transport failed: {str(exc)[:900]}"
+            continue
         try:
             text = response.strip()
             if text.startswith("```") and text.endswith("```"):
                 text = text.split("\n", 1)[1].rsplit("```", 1)[0]
-            return model.model_validate(json.loads(text))
+            # Gemini sometimes obeys the structured-output request but emits the
+            # language label without a Markdown fence: ``JSON\n{...}``.
+            text = _BARE_JSON_LABEL.sub("", text.lstrip(), count=1)
+            return model.model_validate(_decode_single_json_value(text))
         except (ValueError, ValidationError) as exc:
-            error = str(exc)[:1500]
+            last_transport_error = None
+            excerpt = " ".join(response.strip().split())[:500]
+            tail = " ".join(response.strip().split())[-300:]
+            error = f"{str(exc)[:900]}; response excerpt={excerpt!r}; response tail={tail!r}"
+    if last_transport_error is not None:
+        raise RuntimeError(f"Browser transport failed after {attempts} attempts: {error}") from last_transport_error
     raise ValueError(f"Structured response failed after {attempts} attempts: {error}")
 
 

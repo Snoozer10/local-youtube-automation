@@ -2,8 +2,13 @@ import json
 
 import pytest
 
-from youtube_automation.production.briefs import analyze_script, ensure_brief, writing_prompt
-from youtube_automation.production.contracts import Channel, fingerprint
+from youtube_automation.production.briefs import (
+    analyze_script,
+    ensure_brief,
+    request_json,
+    writing_prompt,
+)
+from youtube_automation.production.contracts import Analysis, Channel, fingerprint
 
 
 @pytest.fixture
@@ -104,9 +109,48 @@ def test_malformed_response_retries_are_bounded(channel):
         calls.append(prompt)
         return "not json"
 
-    with pytest.raises(ValueError, match="3 attempts"):
+    with pytest.raises(ValueError, match="response excerpt='not json'"):
         analyze_script("animals", channel, ask)
     assert len(calls) == 3
+
+
+def test_request_json_accepts_bare_language_label(channel):
+    parsed = request_json("prompt", lambda _: "JSON\n" + response(), Analysis)
+    assert parsed.proposition == "Animal perception"
+
+
+def test_request_json_accepts_non_structured_trailing_commentary(channel):
+    parsed = request_json("prompt", lambda _: response() + "\nGenerated as requested.", Analysis)
+    assert parsed.proposition == "Animal perception"
+
+
+def test_request_json_rejects_multiple_structures(channel):
+    with pytest.raises(ValueError, match="more than one JSON structure"):
+        request_json("prompt", lambda _: response() + "\n" + response(), Analysis, attempts=1)
+
+
+def test_request_json_retries_bounded_browser_transport_failure(channel):
+    calls = []
+
+    def ask(_prompt):
+        calls.append(None)
+        if len(calls) == 1:
+            raise RuntimeError("transient Gemini error")
+        return response()
+
+    parsed = request_json("prompt", ask, Analysis)
+    assert parsed.proposition == "Animal perception"
+    assert len(calls) == 2
+
+
+def test_request_json_preserves_transport_error_after_retry_budget(channel):
+    with pytest.raises(RuntimeError, match="after 2 attempts"):
+        request_json(
+            "prompt",
+            lambda _: (_ for _ in ()).throw(RuntimeError("offline")),
+            Analysis,
+            attempts=2,
+        )
 
 
 def test_profiles_change_writing_without_changing_source(channel):

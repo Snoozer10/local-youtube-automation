@@ -13,6 +13,7 @@ import logging
 import re
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 from playwright._impl._errors import TargetClosedError
 from playwright.sync_api import Page
@@ -23,6 +24,28 @@ logger = logging.getLogger("Pipeline")
 
 # Unified response container selector for multi-lingual UI states
 RESPONSE_SELECTOR = "model-response, .model-response, [data-test-id='model-response']"
+USER_QUERY_SELECTOR = "user-query, [data-test-id='user-query']"
+
+
+def _normalize_rendered_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _rendered_query_matches_prompt(rendered: str, prompt: str) -> bool:
+    """Match both ends so a restored prompt with the same generic preamble cannot pass."""
+    actual = _normalize_rendered_text(rendered)
+    expected = _normalize_rendered_text(prompt)
+    if not expected:
+        return False
+    width = min(160, len(expected))
+    return expected[:width] in actual and expected[-width:] in actual
+
+
+def _model_label_matches(rendered: str, requested: str) -> bool:
+    """Match the model name exactly; `Flash` must not accept `Flash-Lite`."""
+    first_line = _normalize_rendered_text(rendered.splitlines()[0] if rendered else "").lower()
+    normalized = re.sub(r"^\d+(?:\.\d+)?\s+", "", first_line)
+    return normalized == requested.strip().lower()
 
 
 def find_input_box(page: Page) -> Any | None:
@@ -97,8 +120,6 @@ def find_send_button(page: Page) -> Any | None:
         "button.send-button",
         "div[class*='send-button-container'] button",
         "button[id*='send']",
-        "button:has(svg)",
-        "rich-textarea + div button",
     ]
     for sel in selectors:
         try:
@@ -305,6 +326,7 @@ class GeminiSessionClient:
         """
         wait_for_gemini_idle_native(self.page, timeout_ms=5000)
         initial_count = self.page.locator(RESPONSE_SELECTOR).count()
+        initial_query_count = self.page.locator(USER_QUERY_SELECTOR).count()
         try:
             target = find_input_box(self.page)
             if not target:
@@ -327,7 +349,21 @@ class GeminiSessionClient:
                 send_btn.click()
             else:
                 self.page.keyboard.press("Control+Enter")
-            return True, initial_count
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                queries = self.page.locator(USER_QUERY_SELECTOR)
+                if queries.count() > initial_query_count:
+                    rendered = queries.nth(queries.count() - 1).evaluate(
+                        "el => el.innerText"
+                    )
+                    if _rendered_query_matches_prompt(str(rendered or ""), text):
+                        return True, initial_count
+                    if not _is_clean_chat_url(self.page.url):
+                        logger.error("Historical Gemini conversation replaced the submitted turn.")
+                        return False, initial_count
+                time.sleep(0.25)
+            logger.error("Submitted Gemini prompt did not mount as a matching user turn.")
+            return False, initial_count
         except Exception as exc:
             logger.error("Failed to dispatch prompt: %s", exc)
             return False, initial_count
@@ -485,7 +521,7 @@ def wait_for_gemini_response(
     return ""
 
 
-def select_gemini_model(page: Page, model_name: str = "Pro", timeout_seconds: float = 8.0) -> bool:
+def select_gemini_model(page: Page, model_name: str = "Pro", timeout_seconds: float = 20.0) -> bool:
     """Select a specific Gemini model ('Pro', 'Flash', etc.).
 
     Compatible with Gemini 2.0/Advanced model selector dropdowns.
@@ -541,7 +577,7 @@ def select_gemini_model(page: Page, model_name: str = "Pro", timeout_seconds: fl
                         if "upgrade" in btn_text or "اشتراك" in btn_text:
                             continue
                         # Check if already active (exact model badge match)
-                        if bool(re.search(rf"\b{re.escape(target_clean)}\b", btn_text)):
+                        if _model_label_matches(btn_text, target_clean):
                             logger.info("Model '%s' is already active.", model_name)
                             return True
                         if any(
@@ -562,7 +598,7 @@ def select_gemini_model(page: Page, model_name: str = "Pro", timeout_seconds: fl
         time.sleep(0.5)
 
     if not model_btn:
-        logger.warning("Could not locate Gemini model selector button (assuming default).")
+        logger.warning("Could not locate Gemini model selector button.")
         return False
 
     try:
@@ -571,17 +607,13 @@ def select_gemini_model(page: Page, model_name: str = "Pro", timeout_seconds: fl
         time.sleep(1.2)
 
         # 2. Click the target option inside the opened menu
-        pattern = re.compile(
-            rf"(\b{re.escape(target_clean)}\b|\d+\.\d+\s*{re.escape(target_clean)})",
-            re.IGNORECASE,
-        )
         menu_selectors = [
-            f"[role='menuitem']:has-text('{model_name}')",
-            f"[role='option']:has-text('{model_name}')",
-            f".mat-mdc-menu-item:has-text('{model_name}')",
-            f".mat-menu-item:has-text('{model_name}')",
-            f"button[role='menuitem']:has-text('{model_name}')",
-            f"li:has-text('{model_name}')",
+            "[role='menuitem']",
+            "[role='option']",
+            ".mat-mdc-menu-item",
+            ".mat-menu-item",
+            "button[role='menuitem']",
+            "li[role='menuitem']",
         ]
 
         option_clicked = False
@@ -589,7 +621,8 @@ def select_gemini_model(page: Page, model_name: str = "Pro", timeout_seconds: fl
             try:
                 opts = page.locator(menu_sel).all()
                 for opt in opts:
-                    if opt.is_visible():
+                    option_text = (opt.evaluate("e => e.innerText") or "").strip()
+                    if opt.is_visible() and _model_label_matches(option_text, target_clean):
                         opt.click(force=True)
                         option_clicked = True
                         logger.info("Successfully selected model: '%s'", model_name)
@@ -598,19 +631,6 @@ def select_gemini_model(page: Page, model_name: str = "Pro", timeout_seconds: fl
                     break
             except Exception:
                 continue
-
-        if not option_clicked:
-            # Fallback regex match across visible text
-            try:
-                opts = page.get_by_text(pattern).all()
-                for opt in opts:
-                    if opt.is_visible():
-                        opt.click(force=True)
-                        option_clicked = True
-                        logger.info("Successfully selected model: '%s'", model_name)
-                        break
-            except Exception:
-                pass
 
         if not option_clicked:
             logger.warning("Model option '%s' not found in dropdown.", model_name)
@@ -631,6 +651,37 @@ def select_gemini_model(page: Page, model_name: str = "Pro", timeout_seconds: fl
         return False
 
 
+def _is_clean_chat_url(url: str) -> bool:
+    parsed = urlsplit(url)
+    return parsed.netloc == "gemini.google.com" and parsed.path.rstrip("/") == "/app"
+
+
+def _wait_for_clean_chat_surface(
+    page: Page, *, timeout_seconds: float = 15, stable_polls: int = 4
+) -> bool:
+    """Require a blank `/app` surface long enough to exclude late history hydration."""
+    deadline = time.monotonic() + timeout_seconds
+    stable = 0
+    while time.monotonic() < deadline:
+        try:
+            input_box = find_input_box(page)
+            input_text = (
+                input_box.evaluate("el => el.innerText || el.value || ''") if input_box else ""
+            )
+            clean = (
+                _is_clean_chat_url(page.url)
+                and page.locator(RESPONSE_SELECTOR).count() == 0
+                and not str(input_text or "").strip()
+            )
+            stable = stable + 1 if clean else 0
+            if stable >= stable_polls:
+                return True
+        except Exception:
+            stable = 0
+        time.sleep(0.5)
+    return False
+
+
 def start_clean_gemini_chat(page: Page) -> None:
     """Navigate to Gemini and start a fresh chat session.
 
@@ -641,29 +692,25 @@ def start_clean_gemini_chat(page: Page) -> None:
         page: Playwright page object.
     """
     logger.info("Navigating to Gemini...")
-    try:
-        page.goto("https://gemini.google.com/app", wait_until="domcontentloaded", timeout=45000)
-    except Exception as exc:
-        logger.warning("Navigation warning (continuing): %s", exc)
+    if urlsplit(page.url).netloc != "gemini.google.com":
+        try:
+            page.goto("https://gemini.google.com/app", wait_until="domcontentloaded", timeout=45000)
+        except Exception as exc:
+            logger.warning("Navigation warning (continuing): %s", exc)
 
-    # Wait for interactive input box to ensure previous conversation history has loaded
+    # Wait only for the shell. A zero response count here is not proof of a clean chat:
+    # saved history can hydrate after the input, so always request a new conversation.
     try:
         page.wait_for_selector("rich-textarea, div[contenteditable='true']", timeout=10000)
     except Exception:
         pass
-    time.sleep(1)
-
-    # If the page has 0 response cards and input box is empty, check if truly clean
-    if page.locator(RESPONSE_SELECTOR).count() == 0:
-        input_box = find_input_box(page)
-        if input_box and not (input_box.text_content() or "").strip():
-            return
 
     logger.info("Requesting a clean chat session...")
     new_chat_selectors = [
+        "a[aria-label='New chat'][href='/app']",
+        "a[href='/app']",
         "[aria-label='New chat']",
         "[aria-label='Start a new chat']",
-        "a[href='/app']",
         "a[href*='/app']",
         "div.new-chat-button",
         "button:has-text('New chat')",
@@ -689,13 +736,8 @@ def start_clean_gemini_chat(page: Page) -> None:
         except Exception as exc:
             logger.warning("Keyboard shortcut failed: %s", exc)
 
-    # Wait for response cards to clear
-    clear_start = time.time()
-    while time.time() - clear_start < 10:
-        try:
-            if page.locator(RESPONSE_SELECTOR).count() == 0:
-                break
-        except Exception:
-            pass
-        time.sleep(0.5)
+    if not _wait_for_clean_chat_surface(page):
+        raise RuntimeError(
+            "Gemini clean chat did not stabilize; refusing to reuse historical responses"
+        )
     time.sleep(1.5)

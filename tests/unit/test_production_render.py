@@ -9,6 +9,7 @@ def fixture_shot(**updates):
                 "shot_id": "s",
                 "scene_id": "scene",
                 "asset_id": "asset",
+                "entity_ids": ["cat"],
                 "span_ids": [0],
                 "start_frame": 0,
                 "end_frame": 180,
@@ -17,6 +18,7 @@ def fixture_shot(**updates):
                 "subject": "Cat",
                 "visible_state": "Looking at hand",
                 "setting": "Garden",
+                "framing": "close_up",
                 "composition": "Close-up",
             }
             | updates
@@ -102,7 +104,7 @@ def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
     from youtube_automation.production.contracts import Analysis, Brief, Channel, fingerprint
     from youtube_automation.production.render import probe_video, render_plan
     from youtube_automation.production.review import approve_review
-    from youtube_automation.production.shots import ShotPlan
+    from youtube_automation.production.shots import ShotPlan, resolve_editorial_policy
     from youtube_automation.video.compiler import load_video_config
 
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
@@ -156,6 +158,7 @@ def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
         timeline_sha256=fingerprint(timeline),
         fps=30,
         total_frames=30,
+        editorial_policy=resolve_editorial_policy(brief),
     )
     atomic_write_json(str(tmp_path / "shot_plan.json"), plan.model_dump())
     image = tmp_path / "asset.png"
