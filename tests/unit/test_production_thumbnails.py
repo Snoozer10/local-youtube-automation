@@ -120,6 +120,44 @@ def test_adaptive_thumbnail_rejects_changed_script_before_publication(tmp_path, 
         publish(tmp_path, brief, "Old", [], "model-v1", [str(tmp_path / "missing.png")])
 
 
+def test_thumbnail_publication_recovers_from_verified_accepted_bytes(tmp_path, monkeypatch):
+    from youtube_automation.production import thumbnails
+
+    brief = make_brief()
+    script = "Birds track landmarks."
+    titles = [{"index": 1, "text": "How birds navigate"}]
+    (tmp_path / "refined_script.txt").write_text(script, encoding="utf-8")
+    candidate = tmp_path / "candidate.png"
+    Image.new("RGB", (1280, 720), "blue").save(candidate)
+    monkeypatch.setattr(thumbnails, "verify_written_episode", lambda _root: True)
+    monkeypatch.setattr(thumbnails, "load_brief", lambda _root: brief)
+    monkeypatch.setattr(thumbnails, "_detect_via_pytesseract", lambda *_args: [])
+    real_write = thumbnails.atomic_write_json
+    receipt_writes = 0
+
+    def fail_active_receipt(path, value):
+        nonlocal receipt_writes
+        if str(path).endswith(RECEIPT):
+            receipt_writes += 1
+            if receipt_writes == 1:
+                raise OSError("injected activation crash")
+        real_write(path, value)
+
+    monkeypatch.setattr(thumbnails, "atomic_write_json", fail_active_receipt)
+    with pytest.raises(OSError, match="activation crash"):
+        publish(tmp_path, brief, script, titles, "model-v1", [str(candidate)])
+    expected = recipe(brief, script, titles, "model-v1")
+    assert not (tmp_path / RECEIPT).exists()
+    accepted = list((tmp_path / "thumbnails" / "accepted").glob("*.png"))
+    assert accepted
+
+    monkeypatch.setattr(thumbnails, "atomic_write_json", real_write)
+    recovered = validate_receipt(tmp_path, expected)
+    assert recovered == [str(accepted[0])]
+    assert (tmp_path / RECEIPT).is_file()
+    assert not (tmp_path / ".publication_journal" / "thumbnails" / f"{expected}.json").exists()
+
+
 def test_thumbnail_concepts_require_one_scene_per_title():
     titles = [{"index": 1, "text": "Birds"}, {"index": 2, "text": "Maps"}]
     valid = [{"title_index": 1, "scene": "Bird over a coastline"}, {"title_index": 2, "scene": "Map"}]

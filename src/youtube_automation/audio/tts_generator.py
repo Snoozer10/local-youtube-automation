@@ -63,6 +63,14 @@ user32.GetClipboardData.restype = ctypes.c_void_p
 
 def set_clipboard_text(text):
     """Sets Unicode text directly to the Windows system clipboard using native ctypes with retries."""
+    from youtube_automation.production.ledger import leased_resource, resource_database
+
+    with leased_resource(resource_database(), "clipboard"):
+        return _set_clipboard_text(text)
+
+
+def _set_clipboard_text(text):
+    """Own the already-leased Windows clipboard for one bounded write."""
     opened = False
     for _i in range(10):
         if user32.OpenClipboard(None):
@@ -1380,16 +1388,15 @@ def check_ai_studio_errors(page):
 
 
 def main():
-    """Lease the shared browser before an adaptive TTS run can touch CDP."""
+    """Lease the shared browser before any TTS run can touch CDP."""
     latest_run = sys.argv[1] if len(sys.argv) > 1 else get_latest_run_folder()
     if latest_run and os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
         if len(sys.argv) <= 1:
             raise ValueError("Adaptive voice generation requires an explicit run directory")
-        from youtube_automation.production.ledger import leased_resource, resource_database
+    from youtube_automation.production.ledger import leased_resource, resource_database
 
-        with leased_resource(resource_database(), "browser"):
-            return _run_voice_generation()
-    return _run_voice_generation()
+    with leased_resource(resource_database(), "browser"):
+        return _run_voice_generation()
 
 
 class AdaptiveBrowserOwnershipError(RuntimeError):

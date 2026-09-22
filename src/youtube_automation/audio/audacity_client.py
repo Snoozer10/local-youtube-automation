@@ -526,15 +526,18 @@ def main():
     if adaptive:
         if len(sys.argv) <= 1:
             raise ValueError("Adaptive Audacity requires an explicit run directory")
-        from youtube_automation.production.ledger import leased_resource, resource_database
-
         expected_chapters, expected_recipe = validate_adaptive_voice_run(latest_run)
-        with leased_resource(resource_database(), "audacity"):
-            return _process_run(
-                latest_run, adaptive=True, expected_chapters=expected_chapters,
-                expected_recipe=expected_recipe,
-            )
-    return _process_run(latest_run, adaptive=False)
+    else:
+        expected_chapters, expected_recipe = 0, None
+    from youtube_automation.production.ledger import leased_resource, resource_database
+
+    with leased_resource(resource_database(), "audacity"):
+        return _process_run(
+            latest_run,
+            adaptive=adaptive,
+            expected_chapters=expected_chapters,
+            expected_recipe=expected_recipe,
+        )
 
 
 def _process_run(latest_run, *, adaptive, expected_chapters=0, expected_recipe=None):
@@ -542,20 +545,10 @@ def _process_run(latest_run, *, adaptive, expected_chapters=0, expected_recipe=N
     print("Starting Autonomous Audacity Audio Polishing")
     print("=============================================")
 
-    if adaptive:
-        if audacity_is_running():
-            raise RuntimeError("Audacity is already open; close it before adaptive polishing")
-    else:
-        # Preserve legacy behavior for legacy runs only.
-        try:
-            subprocess.run(
-                ["taskkill", "/F", "/IM", "Audacity.exe"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            time.sleep(1.0)
-        except Exception as e:
-            print(f"[WARNING] Audacity taskkill failed (may not be running): {e}")
+    if audacity_is_running():
+        raise RuntimeError(
+            "Audacity is already open; close the user-owned session before automated polishing"
+        )
 
     # Wipe leftover crash files
     if not adaptive:
@@ -678,33 +671,22 @@ def _process_run(latest_run, *, adaptive, expected_chapters=0, expected_recipe=N
         print("  Audacity Named Pipes connected successfully.")
         # Pre-flight handshake to ensure Audacity GUI and scripting thread are actively responding
         print("  Executing initial handshake...")
-        send_audacity_command(w_pipe, r_pipe, "Help: Command=Help", strict=adaptive)
-        send_audacity_command(w_pipe, r_pipe, "SelectAll:", strict=adaptive)
+        send_audacity_command(w_pipe, r_pipe, "Help: Command=Help", strict=True)
+        send_audacity_command(w_pipe, r_pipe, "SelectAll:", strict=True)
         print("  Audacity session handshake complete and responsive.")
         return w_pipe, r_pipe
 
     def terminate_audacity_session(w_pipe, r_pipe):
         nonlocal owned_process
         # Kill process FIRST so FromSrvPipe EOFs and unblocks any reading thread/call without Windows CRT file-lock deadlock
-        if adaptive:
-            if owned_process is not None and owned_process.poll() is None:
-                owned_process.terminate()
-                try:
-                    owned_process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    owned_process.kill()
-                    owned_process.wait(timeout=5)
-            owned_process = None
-        else:
+        if owned_process is not None and owned_process.poll() is None:
+            owned_process.terminate()
             try:
-                subprocess.run(
-                    ["taskkill", "/F", "/IM", "Audacity.exe"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                time.sleep(0.5)
-            except Exception:
-                pass
+                owned_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                owned_process.kill()
+                owned_process.wait(timeout=5)
+        owned_process = None
         try:
             if w_pipe:
                 w_pipe.close()
@@ -723,8 +705,8 @@ def _process_run(latest_run, *, adaptive, expected_chapters=0, expected_recipe=N
         write_pipe, read_pipe = launch_audacity_session()
     except Exception as e:
         print(f"[ERROR] Failed to start Audacity session: {e}")
+        terminate_audacity_session(write_pipe, read_pipe)
         if adaptive:
-            terminate_audacity_session(write_pipe, read_pipe)
             raise
         sys.exit(1)
 
@@ -759,12 +741,12 @@ def _process_run(latest_run, *, adaptive, expected_chapters=0, expected_recipe=N
             try:
                 # 1. Import raw audio
                 send_audacity_command(
-                    write_pipe, read_pipe, f'Import2:Filename="{clean_import_path}"', strict=adaptive
+                    write_pipe, read_pipe, f'Import2:Filename="{clean_import_path}"', strict=True
                 )
 
                 # 2. Apply preset settings (NoiseGate, TruncateSilence, BassAndTreble, Compressor, Normalize)
                 preset_success = apply_preset_file(
-                    write_pipe, read_pipe, preset_file_path, strict=adaptive
+                    write_pipe, read_pipe, preset_file_path, strict=True
                 )
                 if adaptive and not preset_success:
                     raise ValueError("Adaptive Audacity preset contains no executable effects")
@@ -772,16 +754,16 @@ def _process_run(latest_run, *, adaptive, expected_chapters=0, expected_recipe=N
                 # Fallback if preset file was missing
                 if not preset_success:
                     print("  Falling back to internal macro command...")
-                    send_audacity_command(write_pipe, read_pipe, "SelectAll:", strict=adaptive)
+                    send_audacity_command(write_pipe, read_pipe, "SelectAll:", strict=True)
                     send_audacity_command(
-                        write_pipe, read_pipe, "Macro_YouTube_Voice_Optimizer:", strict=adaptive
+                        write_pipe, read_pipe, "Macro_YouTube_Voice_Optimizer:", strict=True
                     )
 
                 # 3. Export polished track
-                send_audacity_command(write_pipe, read_pipe, "SelectAll:", strict=adaptive)
+                send_audacity_command(write_pipe, read_pipe, "SelectAll:", strict=True)
                 send_audacity_command(
                     write_pipe, read_pipe,
-                    f'Export2:Filename="{clean_export_path}" NumChannels=1', strict=adaptive,
+                    f'Export2:Filename="{clean_export_path}" NumChannels=1', strict=True,
                 )
 
                 # 4. Wait for exported file to complete
@@ -836,8 +818,8 @@ def _process_run(latest_run, *, adaptive, expected_chapters=0, expected_recipe=N
                 save_checkpoint(latest_run, polished_files)
 
                 # 5. Clear tracks canvas cleanly for the next chapter
-                send_audacity_command(write_pipe, read_pipe, "SelectAll:", strict=adaptive)
-                send_audacity_command(write_pipe, read_pipe, "RemoveTracks:", strict=adaptive)
+                send_audacity_command(write_pipe, read_pipe, "SelectAll:", strict=True)
+                send_audacity_command(write_pipe, read_pipe, "RemoveTracks:", strict=True)
 
             except TimeoutError as te:
                 if adaptive and os.path.exists(export_path):

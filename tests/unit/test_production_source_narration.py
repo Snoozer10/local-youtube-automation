@@ -128,3 +128,58 @@ def test_source_narration_requires_matching_caption_window(tmp_path):
     with pytest.raises(ValueError, match="caption provenance"):
         import_source_narration(tmp_path, source, start_seconds=0, end_seconds=2)
     assert not (tmp_path / "full_episode_voice.wav").exists()
+
+
+@pytest.mark.skipif(
+    not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="FFmpeg unavailable"
+)
+def test_source_narration_recovers_after_activation_crash_without_ffmpeg(tmp_path, monkeypatch):
+    channel = Channel(
+        channel_id="pilot", name="Pilot", audience="adults", language="English",
+        dialect="English", voice=None, tone="clear", style="illustration",
+        allowed_treatments=["subject_scene"],
+    )
+    raw = "The original narration remains unchanged.\n"
+    (tmp_path / "raw_transcript.txt").write_text(raw, encoding="utf-8")
+    ensure_brief(
+        tmp_path, channel,
+        lambda _: json.dumps({
+            "topics": ["narration"], "claim_basis": "factual", "form": "narrative",
+            "proposition": "Exact speech", "narrative_strategy": "Follow the narrator",
+            "treatments": ["subject_scene"], "rationale": "Preserve source",
+        }),
+    )
+    source = tmp_path / "source.wav"
+    with wave.open(str(source), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(48000)
+        wav.writeframes(b"\x00\x00" * 144000)
+
+    real_write = source_narration.atomic_write_json
+    failed = False
+
+    def crash_before_source_receipt(path, value):
+        nonlocal failed
+        if str(path).endswith("source_audio_receipt.json") and not failed:
+            failed = True
+            raise OSError("injected source activation crash")
+        real_write(path, value)
+
+    monkeypatch.setattr(source_narration, "atomic_write_json", crash_before_source_receipt)
+    with pytest.raises(OSError, match="activation crash"):
+        import_source_narration(tmp_path, source, start_seconds=0.5, end_seconds=2.5)
+    assert (tmp_path / "full_episode_voice.wav").is_file()
+    assert not (tmp_path / "source_audio_receipt.json").exists()
+    assert list((tmp_path / ".publication_journal" / "source_audio").glob("*.json"))
+
+    monkeypatch.setattr(source_narration, "atomic_write_json", real_write)
+    monkeypatch.setattr(
+        source_narration.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("Recovery must not run FFmpeg or FFprobe"),
+    )
+    receipt = import_source_narration(tmp_path, source, start_seconds=0.5, end_seconds=2.5)
+    assert receipt["mode"] == "source_preserved"
+    assert verify_source_narration(tmp_path) == receipt
+    assert verify_written_episode(tmp_path)

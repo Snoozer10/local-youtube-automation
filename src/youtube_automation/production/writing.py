@@ -26,6 +26,17 @@ class WrittenParagraph(Contract):
     text: Text
 
 
+def _journal_path(root: Path) -> Path:
+    return root / ".publication_journal" / "writing.json"
+
+
+def _remove_journal(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def atomic_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_name = None
@@ -42,6 +53,35 @@ def atomic_text(path: Path, text: str) -> None:
     finally:
         if temp_name and os.path.exists(temp_name):
             os.unlink(temp_name)
+
+
+def _recover_pending_writing(root: Path, brief: Brief) -> dict[str, Any] | None:
+    journal = _journal_path(root)
+    try:
+        pending: dict[str, Any] = json.loads(journal.read_text(encoding="utf-8"))
+        outputs: dict[str, str] = pending["outputs"]
+        receipt: dict[str, Any] = pending["receipt"]
+        expected = {"breaked_paragraphs.txt", "final_output.txt", "refined_script.txt"}
+        if (
+            pending.get("version") != 1
+            or pending.get("kind") != "writing"
+            or set(outputs) != expected
+            or receipt.get("brief_sha256") != fingerprint(brief)
+            or receipt.get("outputs")
+            != {name: fingerprint(value) for name, value in outputs.items()}
+        ):
+            return None
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    with publication_guard():
+        if load_brief(root) != brief:
+            raise ValueError("Brief changed before writing publication recovery")
+        for name, text in outputs.items():
+            atomic_text(root / name, text)
+        atomic_write_json(str(root / "adaptive_writing_receipt.json"), receipt)
+    _remove_journal(journal)
+    verify_written_episode(root)
+    return receipt
 
 
 def _cached_response(
@@ -77,6 +117,9 @@ def write_episode(run_dir: str | Path, brief: Brief, ask: Callable[[str], str]) 
         raise ValueError("Writing brief is not the validated run brief")
     if (root / "source_audio_receipt.json").exists():
         raise ValueError("Source-narrated run cannot rewrite words already bound to published audio")
+    recovered = _recover_pending_writing(root, brief)
+    if recovered is not None:
+        return recovered
     cache = root / "adaptive_writing"
     cache.mkdir(exist_ok=True)
     raw = (root / "raw_transcript.txt").read_text(encoding="utf-8-sig")
@@ -121,11 +164,17 @@ def write_episode(run_dir: str | Path, brief: Brief, ask: Callable[[str], str]) 
         "brief_sha256": fingerprint(brief),
         "outputs": {name: fingerprint(text) for name, text in outputs.items()},
     }
+    journal = _journal_path(root)
+    journal.parent.mkdir(parents=True, exist_ok=True)
     with publication_guard():
-        for name, text in outputs.items():
-            atomic_text(root / name, text)
-        atomic_write_json(str(root / "adaptive_writing_receipt.json"), receipt)
-    return receipt
+        atomic_write_json(
+            str(journal),
+            {"version": 1, "kind": "writing", "outputs": outputs, "receipt": receipt},
+        )
+    recovered = _recover_pending_writing(root, brief)
+    if recovered is None:
+        raise RuntimeError("Complete writing publication could not be recovered")
+    return recovered
 
 
 def verify_written_episode(run_dir: str | Path) -> bool:

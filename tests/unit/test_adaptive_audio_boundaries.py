@@ -70,6 +70,17 @@ def test_adaptive_audacity_refuses_unowned_open_session(tmp_path, monkeypatch):
         audacity_client._process_run(str(tmp_path), adaptive=True, expected_chapters=1)
 
 
+def test_legacy_audacity_also_refuses_unowned_open_session(tmp_path, monkeypatch):
+    monkeypatch.setattr(audacity_client, "audacity_is_running", lambda: True)
+    monkeypatch.setattr(
+        audacity_client.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("Must not taskkill a user-owned Audacity process"),
+    )
+    with pytest.raises(RuntimeError, match="user-owned session"):
+        audacity_client._process_run(str(tmp_path), adaptive=False)
+
+
 @pytest.mark.parametrize(
     "response",
     ["BatchCommand finished: Failed\n\n", "BatchCommand finished.\n\n", ""],

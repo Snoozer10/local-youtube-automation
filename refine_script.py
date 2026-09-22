@@ -900,7 +900,7 @@ def refine_paragraph(
     return None
 
 
-def main():
+def _main():
     # Adaptive writing has its own validated per-channel refinement contract.
     requested_folder = sys.argv[1] if len(sys.argv) > 1 else get_latest_run_folder()
     if requested_folder and os.path.isfile(os.path.join(requested_folder, "episode_brief.json")):
@@ -1207,6 +1207,13 @@ def verify_script_with_rubric(page, script_text, folder=None):
 
         return has_pass_marker and not has_fail_markers
     return False
+
+
+def main():
+    from youtube_automation.production.ledger import leased_resource, resource_database
+
+    with leased_resource(resource_database(), "browser"):
+        return _main()
 
 
 if __name__ == "__main__":

@@ -136,16 +136,25 @@ def verify_image(path: Path) -> None:
         raise ValueError("Thumbnail image needs a usable landscape 16:9 composition")
 
 
-def validate_receipt(root: str | Path, expected_recipe: str) -> list[str] | None:
-    root = Path(root)
-    path = root / RECEIPT
-    if not path.exists():
-        return None
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("recipe") != expected_recipe or not payload.get("images"):
+def _journal_path(root: Path, expected_recipe: str) -> Path:
+    return root / ".publication_journal" / "thumbnails" / f"{expected_recipe}.json"
+
+
+def _remove_journal(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _validate_payload(root: Path, payload: dict[str, Any], expected_recipe: str) -> list[str]:
+    if payload.get("version") != 1 or payload.get("recipe") != expected_recipe:
         raise ValueError("Thumbnail receipt is stale; use a fresh run for changed inputs")
+    records = payload.get("images")
+    if not isinstance(records, list) or not records:
+        raise ValueError("Thumbnail receipt has no accepted images")
     images = []
-    for item in payload["images"]:
+    for item in records:
         target = (root / item["path"]).resolve()
         if not target.is_relative_to(root.resolve()) or not target.is_file():
             raise ValueError("Accepted thumbnail is missing or outside this run")
@@ -156,6 +165,31 @@ def validate_receipt(root: str | Path, expected_recipe: str) -> list[str] | None
         verify_image(target)
         images.append(str(target))
     return images
+
+
+def _recover_pending(root: Path, expected_recipe: str) -> list[str] | None:
+    journal = _journal_path(root, expected_recipe)
+    try:
+        pending = json.loads(journal.read_text(encoding="utf-8"))
+        if pending.get("version") != 1 or pending.get("kind") != "thumbnail":
+            return None
+        payload = pending["receipt"]
+        images = _validate_payload(root, payload, expected_recipe)
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    with publication_guard():
+        atomic_write_json(str(root / RECEIPT), payload)
+    _remove_journal(journal)
+    return images
+
+
+def validate_receipt(root: str | Path, expected_recipe: str) -> list[str] | None:
+    root = Path(root)
+    path = root / RECEIPT
+    if not path.exists():
+        return _recover_pending(root, expected_recipe)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return _validate_payload(root, payload, expected_recipe)
 
 
 def publish(
@@ -213,9 +247,15 @@ def publish(
         records.append(
             {"path": target.relative_to(root).as_posix(), "sha256": digest, "ocr_status": "passed"}
         )
+    expected_recipe = recipe(brief, script, titles, model)
+    payload = {"version": 1, "recipe": expected_recipe, "images": records}
+    journal = _journal_path(root, expected_recipe)
+    journal.parent.mkdir(parents=True, exist_ok=True)
     with publication_guard():
         atomic_write_json(
-            str(root / RECEIPT),
-            {"version": 1, "recipe": recipe(brief, script, titles, model), "images": records},
+            str(journal),
+            {"version": 1, "kind": "thumbnail", "receipt": payload},
         )
-    return [str(root / record["path"]) for record in records]
+        atomic_write_json(str(root / RECEIPT), payload)
+    _remove_journal(journal)
+    return _validate_payload(root, payload, expected_recipe)

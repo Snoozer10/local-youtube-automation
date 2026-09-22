@@ -458,11 +458,10 @@ def input_gemini_prompt(page, text):
 # Main orchestrator
 def main(argv=None):
     selected = list(argv or [])
-    if any(arg == "--channel-profile" or arg.startswith("--channel-profile=") for arg in selected):
-        from youtube_automation.production.ledger import leased_resource, resource_database
-        with leased_resource(resource_database(), "browser"):
-            return _main(selected)
-    return _main(selected)
+    from youtube_automation.production.ledger import leased_resource, resource_database
+
+    with leased_resource(resource_database(), "browser"):
+        return _main(selected)
 
 
 def _main(argv=None):

@@ -14,6 +14,7 @@ from youtube_automation.core.utils import get_config_value
 from .assets import file_digest
 from .briefs import browser_ask, ensure_brief
 from .contracts import Brief, fingerprint, load_brief, load_channel
+from .invalidation import invalidate_stage, reconcile_invalidation
 from .ledger import Ledger, durable_stage, leased_resource, resource_database
 from .render import probe_video, render_plan
 from .review import approve_review, write_review
@@ -328,6 +329,7 @@ def main(argv: list[str] | None = None) -> None:
             print(row)
     else:
         try:
+            reconcile_invalidation(root)
             recipe = _stage_recipe(root, args)
             key = _stage_key(root, args.stage)
             existing = Ledger(database).get(key)
@@ -352,6 +354,13 @@ def main(argv: list[str] | None = None) -> None:
                 if not execute:
                     print(f"Stage already succeeded for unchanged inputs: {args.stage}")
                     return
+                if existing and existing["recipe"] != recipe:
+                    archived = invalidate_stage(root, args.stage, existing["recipe"], recipe)
+                    if archived:
+                        print(
+                            f"Archived {len(archived)} invalidated activation file(s) "
+                            f"before retrying stage: {args.stage}"
+                        )
                 if adoptable and complete:
                     print(f"Registered existing verified stage output: {args.stage}")
                     return

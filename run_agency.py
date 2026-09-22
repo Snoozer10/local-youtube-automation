@@ -48,21 +48,16 @@ def print_header(title):
 
 
 def clean_browser_tabs():
-    """Connects to the running CDP browser and closes all tabs to free up memory for the next phase."""
+    """Probe CDP between phases without closing user-owned or untracked tabs."""
+    from youtube_automation.production.ledger import leased_resource, resource_database
+
     cdp_port = get_config_value("CDP_PORT", "9222")
     try:
-        with sync_playwright() as p:
+        with leased_resource(resource_database(), "browser"), sync_playwright() as p:
             browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}", timeout=3000)
-            context = browser.contexts[0]
-
-            context.new_page()
-
-            for page in context.pages[:-1]:
-                try:
-                    page.close()
-                except Exception:
-                    continue
-            print("🧹 [SYSTEM] Cleared browser tabs for the next phase.")
+            if not browser.contexts:
+                raise RuntimeError("CDP browser has no usable context")
+            print("🧹 [SYSTEM] Browser session reachable; existing tabs preserved.")
     except Exception:
         pass
 

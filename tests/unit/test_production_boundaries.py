@@ -1,3 +1,6 @@
+import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -45,6 +48,73 @@ def test_flow_entrypoint_holds_shared_browser_lease(tmp_path, monkeypatch):
     monkeypatch.setattr(flow_generator, "_main", worker)
     flow_generator.main(str(tmp_path))
     assert ledger.Ledger(database).status()[0]["state"] == "SUCCEEDED"
+
+
+def test_legacy_flow_entrypoint_also_holds_shared_browser_lease(tmp_path, monkeypatch):
+    from youtube_automation.production import ledger
+    from youtube_automation.visuals import flow_generator
+
+    database = tmp_path / "jobs.db"
+    monkeypatch.setattr(ledger, "resource_database", lambda: database)
+
+    def worker(folder):
+        assert Path(folder) == tmp_path
+        assert ledger.Ledger(database).claim("browser", "other", "competitor") is None
+
+    monkeypatch.setattr(flow_generator, "_main", worker)
+    flow_generator.main(str(tmp_path))
+
+
+def test_system_clipboard_write_holds_short_shared_lease(tmp_path, monkeypatch):
+    from youtube_automation.audio import tts_generator
+    from youtube_automation.production import ledger
+
+    database = tmp_path / "jobs.db"
+    monkeypatch.setattr(ledger, "resource_database", lambda: database)
+
+    def write(_text):
+        assert ledger.Ledger(database).claim("clipboard", "other", "competitor") is None
+        return True
+
+    monkeypatch.setattr(tts_generator, "_set_clipboard_text", write)
+    assert tts_generator.set_clipboard_text("hello") is True
+
+
+def test_final_ffmpeg_timeout_is_not_blocked_by_stderr_readline(monkeypatch):
+    from youtube_automation.video import compiler
+
+    release = threading.Event()
+
+    class StalledStream:
+        def readline(self):
+            release.wait(2)
+            return ""
+
+    class Process:
+        def __init__(self):
+            self.stderr = StalledStream()
+            self.returncode = None
+
+        def poll(self):
+            return self.returncode
+
+        def kill(self):
+            self.returncode = -9
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    process = Process()
+    monkeypatch.setattr(compiler.subprocess, "Popen", lambda *_args, **_kwargs: process)
+    started = time.monotonic()
+    try:
+        assert not compiler._execute_final_assembly(
+            ["ffmpeg"], ".", 0.05, 1.0, "output.mp4"
+        )
+    finally:
+        release.set()
+    assert time.monotonic() - started < 1.0
+    assert process.returncode == -9
 
 
 def test_stage_recipe_changes_with_inputs_not_outputs(tmp_path):
@@ -169,3 +239,56 @@ def test_cli_adopts_content_bound_existing_output_without_repeating_stage(
     row = cli.Ledger(database).status()[0]
     assert row["state"] == "SUCCEEDED"
     assert row["key"].endswith(":analyze")
+
+
+def test_changed_source_archives_only_active_generation_and_reanalyzes_same_run(
+    tmp_path, monkeypatch
+):
+    from youtube_automation.core.utils import atomic_write_json
+    from youtube_automation.production import cli
+    from youtube_automation.production.contracts import Analysis, Brief, Channel, fingerprint
+
+    database = tmp_path / "jobs.db"
+    old_raw = "Old source"
+    new_raw = "New source"
+    (tmp_path / "raw_transcript.txt").write_text(old_raw, encoding="utf-8")
+    channel = Channel(
+        channel_id="test", name="Test", audience="adults", language="Arabic",
+        dialect="MSA", voice="voice", tone="calm", style="illustration",
+        allowed_treatments=["subject_scene"],
+    )
+    profile = tmp_path / "channel.json"
+    atomic_write_json(str(profile), channel.model_dump(mode="json"))
+    analysis = Analysis(
+        topics=["test"], claim_basis="factual", form="explanation",
+        proposition="Scene", narrative_strategy="Observe",
+        treatments=["subject_scene"], rationale="Concrete",
+    )
+    old_brief = Brief(
+        source_sha256=fingerprint(old_raw), profile_sha256=fingerprint(channel),
+        channel=channel, analysis=analysis,
+    )
+    atomic_write_json(str(tmp_path / "episode_brief.json"), old_brief.model_dump(mode="json"))
+    (tmp_path / "final_output.txt").write_text("old writing", encoding="utf-8")
+    (tmp_path / "active_master.json").write_text("old pointer", encoding="utf-8")
+    accepted = tmp_path / "accepted_assets"
+    accepted.mkdir()
+    (accepted / "keep.png").write_bytes(b"accepted bytes")
+    monkeypatch.setattr(cli, "resource_database", lambda: database)
+    argv = ["analyze", "--run-dir", str(tmp_path), "--channel-profile", str(profile)]
+    cli.main(argv)
+
+    (tmp_path / "raw_transcript.txt").write_text(new_raw, encoding="utf-8")
+
+    @contextmanager
+    def transport():
+        yield lambda _prompt: analysis.model_dump_json()
+
+    monkeypatch.setattr(cli, "gemini_transport", transport)
+    cli.main(argv)
+    current = cli.load_brief(tmp_path)
+    assert current.source_sha256 == fingerprint(new_raw)
+    assert not (tmp_path / "final_output.txt").exists()
+    assert not (tmp_path / "active_master.json").exists()
+    assert (accepted / "keep.png").read_bytes() == b"accepted bytes"
+    assert list((tmp_path / ".adaptive_history").rglob("final_output.txt"))

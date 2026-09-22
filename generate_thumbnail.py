@@ -13,7 +13,6 @@ import json  # noqa: E402
 import re  # noqa: E402
 import tempfile  # noqa: E402
 import time  # noqa: E402
-from contextlib import nullcontext  # noqa: E402
 
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -630,7 +629,7 @@ def main():
     prompts_path = os.path.join(folder, f"thumbnail_prompts{suffix}.json")
     critique_path = os.path.join(folder, f"thumbnail_critique{suffix}.json")
 
-    browser_lease = leased_resource(resource_database(), "browser") if adaptive_brief else nullcontext()
+    browser_lease = leased_resource(resource_database(), "browser")
     with browser_lease, sync_playwright() as p:
         try:
             # Attempt to connect to an existing running session on the IPv4 loopback

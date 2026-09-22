@@ -1497,12 +1497,11 @@ def _retry_gemini_call(
 # MAIN ORCHESTRATOR
 # ==========================================
 def main(run_folder: str | None = None) -> None:
+    from youtube_automation.production.ledger import leased_resource, resource_database
+
     selected = run_folder or (sys.argv[1] if len(sys.argv) > 1 else None)
-    if selected and os.path.isfile(os.path.join(selected, "episode_brief.json")):
-        from youtube_automation.production.ledger import leased_resource, resource_database
-        with leased_resource(resource_database(), "browser"):
-            return _main(selected)
-    return _main(run_folder)
+    with leased_resource(resource_database(), "browser"):
+        return _main(selected)
 
 
 def _main(run_folder: str | None = None) -> None:

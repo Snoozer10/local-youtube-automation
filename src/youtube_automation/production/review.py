@@ -43,9 +43,9 @@ def write_review(run_dir: str | Path) -> Path:
             try:
                 receipt = read_receipt(root, shot.asset_id)
                 with Image.open(root / receipt["path"]) as image:
-                    image = image.convert("RGB")
-                    image.thumbnail((320, 180))
-                    sheet.paste(image, (x, y))
+                    thumbnail = image.convert("RGB")
+                    thumbnail.thumbnail((320, 180))
+                    sheet.paste(thumbnail, (x, y))
                 status = "technically verified; editorial review pending"
                 prompt = receipt["prompt"]
             except (OSError, ValueError, KeyError):
