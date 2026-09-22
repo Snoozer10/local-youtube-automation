@@ -42,6 +42,8 @@ Save one JSON profile per channel outside generated run folders. Select it expli
 
 Run commands from the repository root with the project virtual environment. Create a new run directory and place the original source in `raw_transcript.txt`. Do not retrofit a brief onto old translated output.
 
+Each adaptive CLI stage is a durable content-bound job. A successful stage with unchanged source files, selected profile/model and effective render settings skips only after its output revalidates. Missing or corrupt output reruns automatically. Existing output is registered without repeating work only when its own receipts/pointers prove the current input lineage; the unbound HTML report reruns after a recipe change. Changed inputs create a fresh attempt lineage. An expired worker is reclaimed with a higher fence, and a stale worker cannot publish. Three consecutive failures for one unchanged recipe open its circuit; correct the cause, then repeat that command with `--force-retry`. Do not use force retry to bypass validation or editorial approval.
+
 ```powershell
 venv/Scripts/python.exe adaptive_production.py analyze --run-dir "youtube_runs/pilot-science" --channel-profile "channels/science.json"
 venv/Scripts/python.exe adaptive_production.py write --run-dir "youtube_runs/pilot-science"
@@ -105,7 +107,7 @@ Approval requires a current rendered preview. Changes to the plan, assets, audio
 - Repeating a stage reuses validated writing, plans and assets. Invalid or stale inputs fail visibly; there is no automatic legacy fallback.
 - `accepted_assets/` preserves image bytes by SHA-256 independently of provider scratch files. Receipts record prompt, model recipe, dimensions, reference hash and technical status. Before accepted bytes are copied, `.publication_journal/assets/` records the intended content-bound receipt. After a crash, a repeat activates that asset only when the complete PNG still matches the current recipe, exact reference, byte hash, pixel hash and geometry; an incomplete or stale journal causes normal regeneration.
 - `adaptive_renders/<generation>/` separates render recipes. Clip receipts validate bytes as well as frame count. Final filenames include content hashes, so interruption before pointer activation leaves the previous master intact. `.publication_journal/renders/` records a verified preview/master pointer before activation; a repeat activates the existing encoded file without another encode only when its generation, full inputs, path, hash, frame count, frame rate and audio stream all revalidate.
-- `.runtime/adaptive.sqlite3` records resource claims, attempts, lease heartbeats and terminal events. Current locking covers adaptive writing/generation and rendering in this installation. It is not a complete durable per-stage scheduler or a lock for legacy tools.
+- `.runtime/adaptive.sqlite3` records content-bound adaptive stage jobs plus resource claims, attempts, lease heartbeats, fences and terminal events. Distinct stage/browser/Audacity/encoder claims may nest and jointly fence publication. Legacy tools do not all participate in these locks.
 - Stop the active process before maintenance. Preserve the run, receipts and prior `active_master.json` to restore an earlier accepted generation; never rename unrelated assets to satisfy a receipt.
 - Returning to the legacy workflow means using a separate legacy run without `episode_brief.json`. Do not remove the brief to force adaptive artifacts through legacy stages.
 
