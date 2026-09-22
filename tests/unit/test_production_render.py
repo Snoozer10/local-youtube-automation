@@ -220,6 +220,16 @@ def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
     assert (tmp_path / "adaptive_preview.json").read_bytes() == previous_preview
     assert assets.file_digest(tmp_path / active["path"]) == active["sha256"]
     monkeypatch.setattr(render, "atomic_write_json", original_write)
+    monkeypatch.setattr(
+        render,
+        "run_command",
+        lambda *_args, **_kwargs: pytest.fail("verified orphan should activate without re-encoding"),
+    )
+    recovered = render_plan(tmp_path, dict(config, CPU_CRF=28), preview=True)
+    recovered_pointer = json.loads((tmp_path / "adaptive_preview.json").read_text())
+    assert recovered == tmp_path / recovered_pointer["path"]
+    assert assets.file_digest(recovered) == recovered_pointer["sha256"]
+    assert not any((tmp_path / ".publication_journal" / "renders").glob("*.json"))
     # Accepted assets survive the provider overwriting its scratch candidate.
     image.write_bytes(b"overwritten provider scratch output")
     assert (

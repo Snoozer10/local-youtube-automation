@@ -56,6 +56,69 @@ def probe_video(
     return video
 
 
+def _render_journal_path(root: Path, generation: str, preview: bool) -> Path:
+    kind = "preview" if preview else "master"
+    return root / ".publication_journal" / "renders" / f"{kind}-{generation}.json"
+
+
+def _remove_journal(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        # A verified activation pointer wins; a leftover journal is harmless.
+        pass
+
+
+def _recover_render_publication(
+    root: Path,
+    generation: str,
+    inputs: dict[str, Any],
+    frames: int,
+    fps: int,
+    *,
+    preview: bool,
+) -> Path | None:
+    journal = _render_journal_path(root, generation, preview)
+    try:
+        pending: dict[str, Any] = json.loads(journal.read_text(encoding="utf-8"))
+        pointer = pending["pointer"]
+        expected_status = "pending" if preview else "approved"
+        if (
+            pending.get("version") != 1
+            or pending.get("kind") != ("preview" if preview else "master")
+            or not isinstance(pointer, dict)
+            or pointer.get("generation") != generation
+            or pointer.get("inputs") != inputs
+            or pointer.get("frames") != frames
+            or pointer.get("editorial_status") != expected_status
+        ):
+            return None
+        relative_path = pointer.get("path")
+        expected_hash = pointer.get("sha256")
+        if not isinstance(relative_path, str) or not isinstance(expected_hash, str):
+            return None
+        destination = (root / relative_path).resolve()
+        render_root = (root / "adaptive_renders" / generation).resolve()
+        prefix = "preview-" if preview else "master-"
+        expected_name = prefix + expected_hash + ".mp4"
+        if (
+            not destination.is_relative_to(render_root)
+            or destination.name != expected_name
+            or file_digest(destination) != expected_hash
+        ):
+            return None
+        probe_video(destination, frames, fps, require_audio=True)
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError, subprocess.SubprocessError):
+        return None
+    with publication_guard():
+        atomic_write_json(
+            str(root / ("adaptive_preview.json" if preview else "active_master.json")),
+            pointer,
+        )
+    _remove_journal(journal)
+    return destination
+
+
 def framed_focal(
     shot: Shot, width: int, height: int, source_size: tuple[int, int] | None
 ) -> tuple[float, float]:
@@ -213,6 +276,16 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
     generation = fingerprint(inputs)
     if not preview and approval.get("generation") != generation:
         raise ValueError("Render settings or audio changed after preview approval")
+    recovered = _recover_render_publication(
+        root,
+        generation,
+        inputs,
+        plan.total_frames,
+        plan.fps,
+        preview=preview,
+    )
+    if recovered is not None:
+        return recovered
     work = root / "adaptive_renders" / generation
     work.mkdir(parents=True, exist_ok=True)
     invocation = uuid.uuid4().hex
@@ -368,18 +441,31 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
         raise ValueError("Editorial approval changed during rendering")
     output_hash = file_digest(pending)
     destination = work / (("preview-" if preview else "master-") + output_hash + ".mp4")
+    pointer = {
+        "version": 1,
+        "generation": generation,
+        "inputs": inputs,
+        "path": str(destination.relative_to(root)),
+        "sha256": output_hash,
+        "frames": plan.total_frames,
+        "editorial_status": "pending" if preview else "approved",
+    }
+    journal = _render_journal_path(root, generation, preview)
+    journal.parent.mkdir(parents=True, exist_ok=True)
+    with publication_guard():
+        atomic_write_json(
+            str(journal),
+            {
+                "version": 1,
+                "kind": "preview" if preview else "master",
+                "pointer": pointer,
+            },
+        )
     with publication_guard():
         os.replace(pending, destination)
         atomic_write_json(
             str(root / ("adaptive_preview.json" if preview else "active_master.json")),
-            {
-                "version": 1,
-                "generation": generation,
-                "inputs": inputs,
-                "path": str(destination.relative_to(root)),
-                "sha256": output_hash,
-                "frames": plan.total_frames,
-                "editorial_status": "pending" if preview else "approved",
-            },
+            pointer,
         )
+    _remove_journal(journal)
     return destination

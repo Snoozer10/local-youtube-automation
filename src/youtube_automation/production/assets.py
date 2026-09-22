@@ -19,6 +19,8 @@ from .contracts import Brief, fingerprint
 from .ledger import publication_guard
 from .shots import Shot, generation_prompt
 
+_PUBLICATION_JOURNAL_VERSION = 1
+
 
 def file_digest(path: str | Path) -> str:
     hasher = hashlib.sha256()
@@ -70,9 +72,9 @@ def recipe(shot: Shot, brief: Brief, reference_hash: str | None) -> str:
     )
 
 
-def read_receipt(root: Path, asset_id: str) -> dict[str, Any]:
-    path = root / "asset_receipts" / f"{asset_id}.json"
-    receipt: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+def _validate_receipt_payload(
+    root: Path, asset_id: str, receipt: dict[str, Any]
+) -> dict[str, Any]:
     if receipt.get("version") != 1:
         raise ValueError("Unsupported asset receipt version")
     image = (root / receipt["path"]).resolve()
@@ -88,19 +90,76 @@ def read_receipt(root: Path, asset_id: str) -> dict[str, Any]:
     return receipt
 
 
+def read_receipt(root: Path, asset_id: str) -> dict[str, Any]:
+    path = root / "asset_receipts" / f"{asset_id}.json"
+    receipt: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    return _validate_receipt_payload(root, asset_id, receipt)
+
+
+def _journal_path(root: Path, asset_id: str) -> Path:
+    return root / ".publication_journal" / "assets" / f"{asset_id}.json"
+
+
+def _remove_journal(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        # A valid active receipt wins. A leftover journal is revalidated on the next run.
+        pass
+
+
+def _recover_pending_asset(
+    root: Path,
+    asset_id: str,
+    *,
+    expected_recipe: str,
+    expected_reference: str | None,
+) -> dict[str, Any] | None:
+    journal = _journal_path(root, asset_id)
+    try:
+        pending: dict[str, Any] = json.loads(journal.read_text(encoding="utf-8"))
+        receipt = pending["receipt"]
+        if (
+            pending.get("version") != _PUBLICATION_JOURNAL_VERSION
+            or pending.get("kind") != "asset"
+            or not isinstance(receipt, dict)
+            or receipt.get("recipe") != expected_recipe
+            or receipt.get("reference_sha256") != expected_reference
+        ):
+            return None
+        validated = _validate_receipt_payload(root, asset_id, receipt)
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    destination = root / "asset_receipts"
+    destination.mkdir(exist_ok=True)
+    with publication_guard():
+        atomic_write_json(str(destination / f"{asset_id}.json"), validated)
+    _remove_journal(journal)
+    return read_receipt(root, asset_id)
+
+
 def accepted_asset(root: Path, shot: Shot, brief: Brief) -> dict[str, Any] | None:
     try:
-        receipt = read_receipt(root, shot.asset_id)
         ref = (
             read_receipt(root, shot.reference_asset_id)["sha256"]
             if shot.reference_asset_id
             else None
         )
-        if receipt["recipe"] != recipe(shot, brief, ref):
-            return None
-        return receipt
     except (OSError, KeyError, ValueError):
         return None
+    expected_recipe = recipe(shot, brief, ref)
+    try:
+        receipt = read_receipt(root, shot.asset_id)
+        if receipt["recipe"] == expected_recipe:
+            return receipt
+    except (OSError, KeyError, ValueError):
+        pass
+    return _recover_pending_asset(
+        root,
+        shot.asset_id,
+        expected_recipe=expected_recipe,
+        expected_reference=ref,
+    )
 
 
 def register_asset(
@@ -118,6 +177,35 @@ def register_asset(
     store = root / "accepted_assets"
     store.mkdir(exist_ok=True)
     accepted = store / (digest + ".png")
+    candidate_dimensions, candidate_pixels = image_identity(path)
+    if candidate_dimensions != dimensions:
+        raise ValueError("Candidate geometry changed during asset registration")
+    receipt = {
+        "version": 1,
+        "asset_id": shot.asset_id,
+        "path": str(accepted.resolve().relative_to(root.resolve())),
+        "sha256": digest,
+        "pixel_sha256": candidate_pixels,
+        "dimensions": list(dimensions),
+        "reference_sha256": reference,
+        "recipe": recipe(shot, brief, reference),
+        "prompt": generation_prompt(shot, brief),
+        "source_url": source_url,
+        "project_url": project_url,
+        "technical_status": "verified",
+        "editorial_status": "pending",
+    }
+    journal = _journal_path(root, shot.asset_id)
+    journal.parent.mkdir(parents=True, exist_ok=True)
+    with publication_guard():
+        atomic_write_json(
+            str(journal),
+            {
+                "version": _PUBLICATION_JOURNAL_VERSION,
+                "kind": "asset",
+                "receipt": receipt,
+            },
+        )
     if not accepted.exists() or file_digest(accepted) != digest:
         temporary = None
         try:
@@ -127,31 +215,20 @@ def register_asset(
                     shutil.copyfileobj(source, handle)
                 handle.flush()
                 os.fsync(handle.fileno())
-            if file_digest(temporary) != digest:
+            if file_digest(temporary) != digest or image_identity(temporary) != (
+                dimensions,
+                candidate_pixels,
+            ):
                 raise ValueError("Candidate changed during asset registration")
             with publication_guard():
                 os.replace(temporary, accepted)
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
-    resolved = accepted.resolve()
-    receipt = {
-        "version": 1,
-        "asset_id": shot.asset_id,
-        "path": str(resolved.relative_to(root.resolve())),
-        "sha256": digest,
-        "pixel_sha256": pixel_digest(accepted),
-        "dimensions": dimensions,
-        "reference_sha256": reference,
-        "recipe": recipe(shot, brief, reference),
-        "prompt": generation_prompt(shot, brief),
-        "source_url": source_url,
-        "project_url": project_url,
-        "technical_status": "verified",
-        "editorial_status": "pending",
-    }
+    _validate_receipt_payload(root, shot.asset_id, receipt)
     destination = root / "asset_receipts"
     destination.mkdir(exist_ok=True)
     with publication_guard():
         atomic_write_json(str(destination / f"{shot.asset_id}.json"), receipt)
+    _remove_journal(journal)
     return receipt
