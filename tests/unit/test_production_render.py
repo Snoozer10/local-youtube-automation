@@ -95,6 +95,7 @@ def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
     import json
     import shutil
     import wave
+    from pathlib import Path
 
     import pytest
     from PIL import Image
@@ -185,12 +186,17 @@ def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
     original_run = render.run_command
 
     def recorded_run(args, cwd, timeout=600):
-        calls.append(args)
+        calls.append((args, Path(cwd)))
         return original_run(args, cwd, timeout)
 
     monkeypatch.setattr(render, "run_command", recorded_run)
     render_plan(tmp_path, config, preview=True)
-    assert any("-filter_complex_script" in args for args in calls)
+    assert any("-filter_complex_script" in args for args, _ in calls)
+    assert any(
+        cwd.name.startswith("youtube-overlay-")
+        for args, cwd in calls
+        if "-filter_complex_script" in args
+    )
     approve_review(tmp_path, "Human reviewer")
     master = render_plan(tmp_path, config)
     assert master.name.startswith("master-") and master.suffix == ".mp4"

@@ -1,8 +1,8 @@
 # Adaptive production: staged pilot workflow
 
-This feature is opt-in and is not yet approved for unattended full episodes. The production package has offline regression coverage; real Gemini/Flow behavior, reference restoration, Arabic readability and artistic quality still require the three reviewed pilots in [the checklist](adaptive-visual-tasks.md).
+This feature is opt-in and is not yet approved for unattended full episodes. The production package has offline regression coverage, and the approved Snoozer pilot has exercised live Flow generation, exact reference restoration, Arabic rendering, local preview composition and immutable master activation. Three reviewed pilots are still required in [the checklist](adaptive-visual-tasks.md).
 
-The three selected profiles are in `channels/`. The prepared pilot runs under `youtube_runs/adaptive-pilot-*` contain caption-derived `raw_transcript.txt`, `pilot_source.json` provenance and validated `episode_brief.json`. They contain no published narration WAV or preview yet. Public captions were available, but YouTube media downloads returned HTTP 403; import the owner's local copies when available. Keep the source video/audio files read-only.
+The three selected profiles are in `channels/`. The prepared pilot runs under `youtube_runs/adaptive-pilot-*` contain caption-derived `raw_transcript.txt`, `pilot_source.json` provenance and validated `episode_brief.json`. Snoozer additionally has a hash-bound source narration excerpt, canonical timeline, accepted visuals and a pending-review preview. Professor and Soldier still need the owner's matching local media because YouTube media downloads returned HTTP 403. Keep source video/audio files read-only.
 
 | Channel | Existing upload used for pilot | Caption/audio window | Narration policy |
 |---|---|---:|---|
@@ -82,7 +82,7 @@ Gemini and Flow use the existing authenticated browser/CDP setup. No new cloud S
 Review `adaptive_review/index.html` and the video path inside `adaptive_preview.json`. Confirm subject relevance, factual meaning, consistent identities, meaningful cuts, crops, local Arabic labels and restrained motion. Contact sheets contain original assets; the rendered preview is necessary to review crops and overlays. Shape/font availability and mobile readability require visual inspection.
 The review table shows each shot's focal point and zoom. The renderer uses that point for the initial aspect crop and confines pans to travel that keeps it visible. Push/pull/pan with zoom 1 and pans without safe travel now fail planning/render validation; choose a hold or revise the composition. Re-preview and approve after a camera recipe change because cached clips and approval lineage are invalidated.
 
-An edit attaches only the receipt's exact source URL in the same Flow project, verifies its decoded pixel hash, and checks the attachment chip. Missing references block generation. Automatic restoration into a new project/account is not implemented. Provider UI changes and live attachment behavior remain unverified.
+An edit first reopens the receipt's exact Flow project and attaches the matching provider image, tolerating signed-URL refresh only when the stable provider media ID matches. If that project reloads without its provider cards, the engine re-uploads the receipt-bound content-addressed accepted PNG and verifies exactly one prompt ingredient before generation. It never chooses a recent or merely similar card. Missing or mismatched references block generation; restoration into a different account remains unsupported.
 
 ## Thumbnail packaging
 
@@ -111,4 +111,4 @@ Approval requires a current rendered preview. Changes to the plan, assets, audio
 
 ## Remaining rollout gates
 
-Automatic reference restoration, semantic subject crop checks, complete audio/clipboard ownership, durable stage scheduling and the prior reliability backlog remain in the checklist. Three contrasting channel pilots and user acceptance precede full-episode production. No historical production runs have been regenerated as part of these implementation checks.
+Cross-account reference restoration, semantic subject crop checks, complete audio/clipboard ownership, durable stage scheduling and the prior reliability backlog remain in the checklist. Three contrasting channel pilots and user acceptance precede full-episode production. The Snoozer pilot is approved through active master; Professor and Soldier remain open. No historical production runs were regenerated.

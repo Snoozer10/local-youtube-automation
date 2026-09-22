@@ -11,7 +11,7 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 - Shot plan version 2 persists a deterministic editorial policy resolved from the selected channel and analyzed script. Enforce its shot-duration ceiling, framing diversity, selective-motion cap and contiguous canonical coverage before generation.
 - Every shot declares visible stable entity IDs. A recurring entity in one scene must reuse or reference an established asset; add/remove/reframe/replace semantics determine compatible entity-set changes. Declared entities must appear in the visible description, and obvious literalized figurative transformations block the plan.
 - Persist source/profile/recipe hashes. Missing or unverified inputs block publication.
-- Preserve accepted artifacts; retries cannot silently select unrelated references.
+- Preserve accepted artifacts; retries cannot silently select unrelated references. If Flow no longer mounts a provider card after reload, restore only the receipt-bound content-addressed accepted PNG and verify exactly one attached prompt ingredient.
 - Device entrypoints acquire the installation-wide browser, Audacity or encoder lease. Short artifact activation runs under publication_guard; never hold its SQLite transaction during browser calls, DSP or encoding.
 - Accepted image copies and final videos use content-derived names. active_master.json is the only adaptive master activation pointer.
 - Approval requires a current preview and binds its plan, assets, audio and render recipe.

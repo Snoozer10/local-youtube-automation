@@ -238,15 +238,28 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
             except (ValueError, OSError, KeyError, StopIteration, subprocess.SubprocessError):
                 pass
         ass_name = f"overlay_{index:05d}_{invocation}.ass"
+        ass_content = ""
         if shot.overlays:
-            atomic_text(work / ass_name, overlay_ass(shot, width, height, plan.fps))
+            ass_content = overlay_ass(shot, width, height, plan.fps)
+            atomic_text(work / ass_name, ass_content)
         for attempt in range(2):
             filters = camera_filter(shot, width, height, plan.fps, (iw, ih))
             if shot.overlays:
                 filters += f",ass={ass_name}"
             filters += ",format=" + ("nv12" if encoder["video_codec"] == "h264_qsv" else "yuv420p")
             graph_name = f"graph_{index:05d}_{invocation}.txt"
-            atomic_text(work / graph_name, f"[0:v]{filters}[vout]")
+            graph_content = f"[0:v]{filters}[vout]"
+            atomic_text(work / graph_name, graph_content)
+            execution_dir = work
+            scratch: tempfile.TemporaryDirectory[str] | None = None
+            if shot.overlays:
+                # libass on Windows cannot fopen a relative ASS file when the process cwd
+                # resolves beyond the legacy path limit. Keep durable debug copies in the
+                # run, but execute the overlay filter from a short system-temp directory.
+                scratch = tempfile.TemporaryDirectory(prefix="youtube-overlay-")
+                execution_dir = Path(scratch.name)
+                atomic_text(execution_dir / ass_name, ass_content)
+                atomic_text(execution_dir / graph_name, graph_content)
             temporary = work / f"clip_{index:05d}_{invocation}.pending.mp4"
             args = [
                 "ffmpeg",
@@ -270,7 +283,7 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
                 str(temporary),
             ]
             try:
-                run_command(args, work)
+                run_command(args, execution_dir)
                 probe_video(temporary, frames, plan.fps)
                 clip_hash = file_digest(temporary)
                 with publication_guard():
@@ -283,6 +296,9 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
                 if attempt or encoder["video_codec"] == "libx264":
                     raise
                 encoder = _build_encoder_config("libx264", render_config)
+            finally:
+                if scratch is not None:
+                    scratch.cleanup()
         clips.append(clip)
     atomic_text(work / "concat.txt", "".join(f"file '{p.name}'\n" for p in clips))
     pending = work / f"master_{invocation}.pending.mp4"

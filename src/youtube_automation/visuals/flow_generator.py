@@ -372,45 +372,28 @@ def wait_for_flow_generation_idle(page: Any, timeout_seconds: int = 90) -> bool:
 
 def count_attached_prompt_chips(page: Any) -> int:
     """Returns the count of visible reference image chips strictly inside the prompt bar."""
-    prompt_container = page.locator(
-        "form:has(textarea), div:has(> div[contenteditable='true']), [role='region']:has(textarea)"
-    ).last
+    prompt_container = page.locator("div.base-prompt-box, flow-base-prompt-box, div[contenteditable='true'], form").first
     if not prompt_container.is_visible():
         prompt_container = page
-
-    chip_selectors = [
-        "[role='group']",
-        ".attachment-chip",
-        "[aria-label*='Remove reference' i]",
-        "[aria-label*='Remove chip' i]",
-        "img[alt*='reference' i]",
-    ]
-    try:
-        c = page.locator("flow-ingredient-chip, flow-image-ingredient-chip, mat-chip-row, [role='row']").count()
-        if c > 0:
-            return c
-    except Exception:
-        pass
-
-    prompt_container = page.locator("div.base-prompt-box, flow-base-prompt-box, div[contenteditable='true'], form").first
     chip_selectors = [
         "flow-ingredient-chip",
         "flow-image-ingredient-chip",
         "button.chip-container",
         ".removable-chip",
         "mat-chip-row",
-        "[role='row']",
         "[aria-label*='Remove reference' i]",
         "[aria-label*='Remove chip' i]",
+        "img[alt*='Ingredient image' i]",
         "img[alt*='reference' i]",
     ]
-    total = 0
     for sel in chip_selectors:
         try:
-            total += prompt_container.locator(sel).count()
+            count = prompt_container.locator(sel).count()
+            if count:
+                return count
         except Exception:
             pass
-    return total
+    return 0
 
 
 def clear_attached_prompt_chips(page: Any) -> None:
