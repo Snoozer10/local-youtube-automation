@@ -343,7 +343,7 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
                 "error",
                 "-i",
                 str(root / receipt["path"]),
-                "-filter_complex_script",
+                "-/filter_complex",
                 graph_name,
                 "-map",
                 "[vout]",

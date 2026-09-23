@@ -23,6 +23,7 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 - Adaptive thumbnails derive prompts from the selected brief, accept landscape images only after full-frame OCR passes, and require a content-bound receipt to skip generation. Missing OCR blocks acceptance. Their browser work uses the shared resource lease.
 - Adaptive image and thumbnail OCR request English and Arabic recognition. Missing language data or OCR failure blocks technical acceptance.
 - Render aspect crops must use the selected focal point and accepted source dimensions before zoom/pan. Non-hold motion needs visible safe travel; changing the camera recipe invalidates cached clips and approval.
+- Use FFmpeg's supported `-/filter_complex` file input in both adaptive and legacy renderers; CI installs a release where the deprecated script option is absent.
 
 ## Work Guidance
 - New adaptive execution is opt-in until reviewed pilots pass.

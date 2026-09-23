@@ -1087,7 +1087,7 @@ def _build_chunk_ffmpeg_cmd(
         "-loglevel",
         config["FFMPEG_LOGLEVEL"],
         *input_args,
-        "-filter_complex_script",
+        "-/filter_complex",
         filter_script_path,
         "-map",
         f"[{video_label}]",
@@ -1241,7 +1241,7 @@ def _execute_chunk_ffmpeg(
                 # Capture last progress and filter graph size for diagnosability
                 try:
                     filter_idx = next(
-                        (i for i, a in enumerate(cmd) if a == "-filter_complex_script"),
+                        (i for i, a in enumerate(cmd) if a == "-/filter_complex"),
                         -1,
                     )
                     filter_path = cmd[filter_idx + 1] if 0 <= filter_idx < len(cmd) - 1 else ""
@@ -1702,7 +1702,7 @@ def assemble_final_video(
         "-i",
         concat_txt_path,
         *audio_inputs,
-        "-filter_complex_script",
+        "-/filter_complex",
         filter_script_path,
         "-map",
         video_label,

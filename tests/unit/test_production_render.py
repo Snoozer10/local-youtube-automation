@@ -191,11 +191,11 @@ def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
 
     monkeypatch.setattr(render, "run_command", recorded_run)
     render_plan(tmp_path, config, preview=True)
-    assert any("-filter_complex_script" in args for args, _ in calls)
+    assert any("-/filter_complex" in args for args, _ in calls)
     assert any(
         cwd.name.startswith("youtube-overlay-")
         for args, cwd in calls
-        if "-filter_complex_script" in args
+        if "-/filter_complex" in args
     )
     approve_review(tmp_path, "Human reviewer")
     master = render_plan(tmp_path, config)
