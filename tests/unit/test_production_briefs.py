@@ -352,6 +352,50 @@ def test_interrupted_submitted_response_is_recovered_without_resubmission(
     assert receipt["attempts"][0]["recovered_after_interruption"] is True
 
 
+def test_transport_binds_conversation_url_and_persists_keyboard_interrupt(
+    tmp_path, monkeypatch
+):
+    from youtube_automation.browser import gemini_utils
+
+    class Page:
+        def __init__(self):
+            self.url = "https://gemini.google.com/app"
+            self.waits = []
+
+        def wait_for_timeout(self, timeout_ms):
+            self.waits.append(timeout_ms)
+            self.url = "https://gemini.google.com/app/bound-professor-chat"
+
+    class Client:
+        def __init__(self, _page, _model):
+            pass
+
+        def dispatch_prompt(self, _prompt):
+            return True, 0
+
+    page = Page()
+    monkeypatch.setattr(gemini_utils, "GeminiSessionClient", Client)
+    monkeypatch.setattr(gemini_utils, "start_clean_gemini_chat", lambda _page: None)
+    monkeypatch.setattr(gemini_utils, "select_gemini_model", lambda _page, _model: True)
+
+    def interrupt(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(gemini_utils, "wait_for_gemini_response", interrupt)
+    transport = BrowserTransport(page, "Pro", True, tmp_path, 600)
+    transport.begin_window(0, 575)
+
+    with pytest.raises(KeyboardInterrupt):
+        transport("interrupted bound prompt")
+
+    receipt = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
+    attempt = receipt["attempts"][0]
+    assert page.waits
+    assert attempt["state"] == "interrupted"
+    assert attempt["chat_url"] == "https://gemini.google.com/app/bound-professor-chat"
+    assert attempt["transient_url"] is None
+
+
 def test_profiles_change_writing_without_changing_source(channel):
     first = analyze_script("Animal perception", channel, lambda _: response())
     other = channel.model_copy(

@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
+from urllib.parse import urlsplit
 
 from playwright.sync_api import Page
 from pydantic import BaseModel, ValidationError
@@ -240,6 +241,25 @@ class BrowserTransport:
                 return response
         return None
 
+    @staticmethod
+    def _is_bound_chat_url(url: object) -> bool:
+        if not isinstance(url, str):
+            return False
+        parts = urlsplit(url)
+        segments = [segment for segment in parts.path.split("/") if segment]
+        return parts.netloc == "gemini.google.com" and len(segments) >= 2 and segments[0] == "app"
+
+    def _wait_for_bound_chat_url(self, timeout_seconds: float = 5.0) -> str | None:
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            current_url = self.page.url
+            if self._is_bound_chat_url(current_url):
+                return current_url
+            remaining_ms = int(max(0.0, deadline - time.monotonic()) * 1000)
+            if remaining_ms <= 0:
+                return None
+            self.page.wait_for_timeout(min(100, remaining_ms))
+
     def _recover_late_response(self, payload: dict[str, Any]) -> str | None:
         from youtube_automation.browser.gemini_utils import (
             RESPONSE_SELECTOR,
@@ -249,7 +269,7 @@ class BrowserTransport:
         for attempt in reversed(payload["attempts"]):
             chat_url = attempt.get("chat_url")
             prior_state = attempt.get("state")
-            if prior_state not in {"submitted", "timed_out"} or not isinstance(chat_url, str):
+            if prior_state not in {"interrupted", "submitted", "timed_out"} or not self._is_bound_chat_url(chat_url):
                 continue
             try:
                 if self.page.url != chat_url:
@@ -303,26 +323,35 @@ class BrowserTransport:
         ok, count = GeminiSessionClient(self.page, self.model_name).dispatch_prompt(prompt)
         if not ok:
             raise RuntimeError("Could not submit analysis prompt")
+        bound_chat_url = self._wait_for_bound_chat_url()
         attempt = {
             "submitted_at": time.time(),
-            "chat_url": self.page.url,
+            "chat_url": bound_chat_url,
+            "transient_url": self.page.url if bound_chat_url is None else None,
             "initial_response_count": count,
             "state": "submitted",
         }
         receipt["attempts"].append(attempt)
         self._save_receipt(receipt)
-        result = wait_for_gemini_response(
-            self.page, count, timeout_seconds=self.timeout_seconds
-        )
+        try:
+            result = wait_for_gemini_response(
+                self.page, count, timeout_seconds=self.timeout_seconds
+            )
+        except KeyboardInterrupt:
+            attempt["state"] = "interrupted"
+            attempt["finished_at"] = time.time()
+            attempt["chat_url"] = self._wait_for_bound_chat_url(timeout_seconds=0.0)
+            self._save_receipt(receipt)
+            raise
         if not result:
             attempt["state"] = "timed_out"
             attempt["finished_at"] = time.time()
-            attempt["chat_url"] = self.page.url
+            attempt["chat_url"] = self._wait_for_bound_chat_url(timeout_seconds=0.0)
             self._save_receipt(receipt)
             raise RuntimeError("Analysis turn did not complete")
         attempt["state"] = "completed"
         attempt["finished_at"] = time.time()
-        attempt["chat_url"] = self.page.url
+        attempt["chat_url"] = self._wait_for_bound_chat_url(timeout_seconds=0.0)
         attempt["response"] = str(result)
         self._save_receipt(receipt)
         return str(result)
