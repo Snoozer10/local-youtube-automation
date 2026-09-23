@@ -4,6 +4,7 @@ from youtube_automation.production.contracts import Analysis, Brief, Channel, fi
 from youtube_automation.production.shots import (
     Shot,
     ShotPlan,
+    _validate_editorial_quality,
     generation_prompt,
     resolve_editorial_policy,
     validate_plan,
@@ -50,6 +51,38 @@ def episode_brief():
         narrative_strategy="Observe",
         treatments=["subject_scene"],
         rationale="Concrete",
+    )
+    return Brief(
+        source_sha256="a" * 64,
+        profile_sha256=fingerprint(channel),
+        channel=channel,
+        analysis=analysis,
+    )
+
+
+def version_two_brief():
+    channel = Channel(
+        version=2,
+        channel_id="psychology",
+        name="Psychology",
+        audience="adults",
+        language="Arabic",
+        dialect="MSA",
+        voice="voice",
+        tone="evidence-conscious",
+        style="editorial illustration",
+        visual_directives=["Use specific human contexts and clean local diagrams"],
+        forbidden_motifs=["mechanical puzzle", "glowing brain"],
+        allowed_treatments=["subject_scene", "detail", "mechanism"],
+    )
+    analysis = Analysis(
+        topics=["attention"],
+        claim_basis="factual",
+        form="explanation",
+        proposition="Attention can be trained with a visual search task",
+        narrative_strategy="Move from context to an interactive exercise",
+        treatments=["subject_scene", "detail", "mechanism"],
+        rationale="Concrete demonstration",
     )
     return Brief(
         source_sha256="a" * 64,
@@ -458,6 +491,118 @@ def test_editorial_quality_rejects_invisible_entity_and_literalized_idiom():
     )
     with pytest.raises(ValueError, match="literalize figurative language"):
         validate_plan(literal, timeline, brief)
+
+
+def test_version_two_channel_requires_roles_and_rejects_forbidden_motifs():
+    brief = version_two_brief()
+    missing_role = ShotPlan(
+        shots=[shot()],
+        brief_sha256="a" * 64,
+        timeline_sha256="b" * 64,
+        fps=30,
+        total_frames=60,
+        editorial_policy=resolve_editorial_policy(brief),
+    )
+    with pytest.raises(ValueError, match="requires narrative_role"):
+        _validate_editorial_quality(missing_role, brief, complete=False)
+
+    forbidden = ShotPlan(
+        shots=[shot(narrative_role="story_subject", subject="Adult solving a mechanical puzzle")],
+        brief_sha256="a" * 64,
+        timeline_sha256="b" * 64,
+        fps=30,
+        total_frames=60,
+        editorial_policy=resolve_editorial_policy(brief),
+    )
+    with pytest.raises(ValueError, match="channel-forbidden motif: mechanical puzzle"):
+        _validate_editorial_quality(forbidden, brief, complete=False)
+
+
+def test_host_free_channel_rejects_presenter_role():
+    brief = version_two_brief()
+    plan = ShotPlan(
+        shots=[shot(narrative_role="presenter")],
+        brief_sha256="a" * 64,
+        timeline_sha256="b" * 64,
+        fps=30,
+        total_frames=60,
+        editorial_policy=resolve_editorial_policy(brief),
+    )
+    with pytest.raises(ValueError, match="Host-free channel cannot use a presenter"):
+        _validate_editorial_quality(plan, brief, complete=False)
+
+
+def test_schulte_grid_requires_clean_near_full_frame_diagram():
+    brief = version_two_brief()
+    grid = {
+        "kind": "data_grid",
+        "start_frame": 0,
+        "end_frame": 60,
+        "x": 0.1,
+        "y": 0.15,
+        "width": 0.8,
+        "height": 0.7,
+        "preset": "schulte_6x6",
+    }
+    bad = ShotPlan(
+        shots=[
+            shot(
+                narrative_role="participant",
+                subject="A man holds a board toward the viewer",
+                overlays=[grid],
+            )
+        ],
+        brief_sha256="a" * 64,
+        timeline_sha256="b" * 64,
+        fps=30,
+        total_frames=60,
+        editorial_policy=resolve_editorial_policy(brief),
+    )
+    with pytest.raises(ValueError, match="clean, human-free, near-full-frame diagram"):
+        _validate_editorial_quality(bad, brief, complete=False)
+
+    accepted = ShotPlan(
+        shots=[
+            shot(
+                narrative_role="diagram",
+                treatment="mechanism",
+                entity_ids=["schulte_grid"],
+                subject="Schulte grid",
+                visible_state="Grid fills the frame",
+                setting="Clean dark graphic field",
+                framing="diagram",
+                composition="High-contrast grid centered for visual search",
+                overlays=[grid],
+            )
+        ],
+        brief_sha256="a" * 64,
+        timeline_sha256="b" * 64,
+        fps=30,
+        total_frames=60,
+        editorial_policy=resolve_editorial_policy(brief),
+    )
+    _validate_editorial_quality(accepted, brief, complete=False)
+
+
+def test_version_one_channel_fingerprint_remains_backward_compatible():
+    channel = episode_brief().channel
+    legacy = channel.model_dump(mode="json")
+    legacy.pop("visual_directives")
+    legacy.pop("forbidden_motifs")
+    assert fingerprint(channel) == fingerprint(legacy)
+
+
+def test_version_two_channel_fingerprint_includes_visual_policy():
+    channel = version_two_brief().channel
+    changed = channel.model_copy(update={"forbidden_motifs": ["floating icon"]})
+    assert fingerprint(channel) != fingerprint(changed)
+
+
+def test_generation_prompt_carries_channel_visual_policy():
+    brief = version_two_brief()
+    prompt = generation_prompt(shot(narrative_role="story_subject"), brief)
+    assert "Use specific human contexts and clean local diagrams" in prompt
+    assert "mechanical puzzle; glowing brain" in prompt
 
 
 def test_reframe_may_focus_on_subset_of_reference_entities():

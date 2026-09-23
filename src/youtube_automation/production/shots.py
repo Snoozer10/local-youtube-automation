@@ -88,6 +88,9 @@ class Shot(Contract):
     end_frame: int = Field(gt=0)
     purpose: Text
     treatment: Treatment
+    narrative_role: Literal[
+        "story_subject", "participant", "presenter", "background", "diagram"
+    ] | None = None
     subject: Text
     visible_state: Text
     setting: Text
@@ -288,6 +291,55 @@ def _validate_editorial_quality(plan: ShotPlan, brief: Brief, *, complete: bool)
         visible_description = " ".join(
             (shot.subject, shot.visible_state, shot.setting, shot.composition)
         ).lower()
+        if brief.channel.version == 2 and shot.narrative_role is None:
+            raise ValueError(f"Version 2 channel requires narrative_role in shot {shot.shot_id}")
+        if brief.channel.host_mode == "NONE" and shot.narrative_role == "presenter":
+            raise ValueError(f"Host-free channel cannot use a presenter in shot {shot.shot_id}")
+
+        editorial_description = " ".join(
+            (
+                shot.purpose,
+                shot.subject,
+                shot.visible_state,
+                shot.setting,
+                shot.composition,
+                " ".join(shot.entity_ids),
+            )
+        )
+        normalized_description = re.sub(r"[\W_]+", " ", editorial_description.casefold()).strip()
+        for motif in brief.channel.forbidden_motifs:
+            normalized_motif = re.sub(r"[\W_]+", " ", motif.casefold()).strip()
+            if normalized_motif and normalized_motif in normalized_description:
+                raise ValueError(
+                    f"Shot {shot.shot_id} uses channel-forbidden motif: {motif}"
+                )
+
+        schulte_grids = [
+            overlay
+            for overlay in shot.overlays
+            if overlay.kind == "data_grid" and overlay.preset == "schulte_6x6"
+        ]
+        if schulte_grids and brief.channel.version == 2:
+            human_terms = {
+                "person", "human", "adult", "man", "woman", "boy", "girl", "child",
+                "teen", "student", "worker", "viewer", "user", "host", "presenter",
+            }
+            described_tokens = set(re.findall(r"[a-z]+", editorial_description.casefold()))
+            if (
+                shot.framing != "diagram"
+                or shot.narrative_role != "diagram"
+                or described_tokens & human_terms
+                or any(
+                    grid.x > 0.15
+                    or grid.y > 0.2
+                    or grid.width < 0.7
+                    or grid.height < 0.65
+                    for grid in schulte_grids
+                )
+            ):
+                raise ValueError(
+                    "Schulte grids require a clean, human-free, near-full-frame diagram composition"
+                )
         for entity_id in shot.entity_ids:
             tokens = [token for token in re.split(r"[_-]+", entity_id.lower()) if len(token) > 2]
             human_terms = {
@@ -490,6 +542,15 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         "not in generated pixels. For a Schulte challenge, use a data_grid overlay with preset "
         "schulte_6x6 and a separate timer overlay; never ask the image generator to draw the grid. "
         "Do not imply an unverified benefit is proven. "
+        "narrative_role must describe the visible subject's actual function. A presenter addresses the viewer, "
+        "demonstrates to camera or carries the episode between otherwise unrelated scenes; never disguise that role "
+        "as story_subject. If host_mode is NONE, do not use a presenter or recurring presenter surrogate. "
+        "When schulte_6x6 is used, the shot must be narrative_role diagram, framing diagram, contain no person, "
+        "and place the grid as a clean near-full-frame local overlay rather than on an in-scene board or device. "
+        "Do not create false authority with medical props, laboratory staging or charts unless the narration "
+        "specifically establishes them. Do not visually attack or reject an activity the narration does not criticize. "
+        f"CHANNEL VISUAL DIRECTIVES: {json.dumps(brief.channel.visual_directives, ensure_ascii=False)}. "
+        f"CHANNEL FORBIDDEN MOTIFS: {json.dumps(brief.channel.forbidden_motifs, ensure_ascii=False)}. "
         f"Resolve pacing with this fixed editorial policy: {editorial_policy.model_dump_json()}. "
         f"No shot may exceed {maximum_shot_frames} frames. Split inside a canonical narration span when needed, "
         "and list that same span_id on both shots. Vary framing intentionally; never repeat the same framing more than "
@@ -610,5 +671,9 @@ def generation_prompt(shot: Shot, brief: Brief) -> str:
         content
         + "\nChannel style: "
         + brief.channel.style
+        + ". Channel directives: "
+        + "; ".join(brief.channel.visual_directives)
+        + ". Exclude these channel motifs: "
+        + "; ".join(brief.channel.forbidden_motifs)
         + ". Full-frame widescreen still. No lettering, numbers, coordinate guides, watermarks or unrelated decorative charts."
     )

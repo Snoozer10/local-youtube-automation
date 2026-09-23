@@ -18,7 +18,7 @@ Save one JSON profile per channel outside generated run folders. Select it expli
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "channel_id": "science-example",
   "name": "Science example",
   "audience": "Curious Arabic-speaking adults",
@@ -28,6 +28,14 @@ Save one JSON profile per channel outside generated run folders. Select it expli
   "voice": "REPLACE_WITH_SAVED_VOICE",
   "tone": "Clear, curious and measured",
   "style": "Naturalistic editorial illustration; consistent soft lighting and restrained colors",
+  "visual_directives": [
+    "Ground every scene in a specific observable situation",
+    "Use clean local diagrams only when they clarify the narration"
+  ],
+  "forbidden_motifs": [
+    "glowing brain",
+    "floating icon collage"
+  ],
   "host_mode": "NONE",
   "host_description": "",
   "allowed_treatments": ["subject_scene", "detail", "mechanism", "comparison"],
@@ -36,7 +44,7 @@ Save one JSON profile per channel outside generated run folders. Select it expli
 }
 ```
 
-`asr_language` is an optional Whisper language code; null lets the transcriber detect the spoken language. `CUSTOM_AVATAR` requires a stable host description. Omit the `host` treatment for a channel without a host. Profiles separate channel identity from episode topics, narrative form, claim basis, fact-check questions, continuity anchors and figurative language. A fictional analysis must have no external evidence needs. This is policy validation, not a factual or aesthetic guarantee.
+`asr_language` is an optional Whisper language code; null lets the transcriber detect the spoken language. `CUSTOM_AVATAR` requires a stable host description. Omit the `host` treatment for a channel without a host. Version 2 profiles require positive `visual_directives` and exact `forbidden_motifs`; name concrete visual phrases rather than vague quality words. New shots also declare `narrative_role`, and a host-free channel rejects the `presenter` role. Profiles separate channel identity from episode topics, narrative form, claim basis, fact-check questions, continuity anchors and figurative language. A fictional analysis must have no external evidence needs. These deterministic gates do not prove factual or aesthetic quality.
 
 ## New raw-script run
 
@@ -83,7 +91,7 @@ Gemini and Flow use the existing authenticated browser/CDP setup. No new cloud S
 
 The shot planner sends at most about 20 seconds of canonical narration per Gemini request, retaining original span IDs and binding every validated partial batch to the brief, timeline and window boundaries in `shot_plan.partial.json`. Each window keeps one Gemini chat for validation repair. Transport retry sends the exact same prompt, and atomic files under `planner_responses/` bind the prompt hash, model, frame window, stable `/app/<conversation-id>` URL and attempt states. Ctrl+C persists an interrupted attempt before exiting. A restart first reopens submitted, interrupted or timed-out attempts and accepts only a new response that passes the normal Stop-free stability handshake; the transient blank `/app` route is never navigated as a receipt target, and completed responses are reused without submission. The planner wait defaults to 600 seconds and can be changed with `IMAGE_PLANNER_TIMEOUT_SECONDS`. Changed upstream or planner recipes archive the checkpoint with other mutable activations. A technically valid batch still needs editorial review; Professor Yashrah's archived gears/puzzle shorthand is an explicit reject.
 
-The local compositor supports deterministic `data_grid` and `timer` overlays in addition to labels, arrows and highlights. Use `preset: schulte_6x6` for the Professor challenge: it supplies the immutable 1–36 arrangement and renders the grid, focus cells and timer locally. Do not ask Flow to generate exact numerals or Arabic text.
+The local compositor supports deterministic `data_grid` and `timer` overlays in addition to labels, arrows and highlights. Use `preset: schulte_6x6` for the Professor challenge: it supplies the immutable 1–36 arrangement and renders the grid, focus cells and timer locally. A Schulte shot must use `narrative_role: diagram`, `framing: diagram`, contain no human, and give the grid a near-full-frame region. Do not ask Flow to generate exact numerals or Arabic text or place the exercise on a presenter-held prop.
 
 Review `adaptive_review/index.html` and the video path inside `adaptive_preview.json`. Confirm subject relevance, factual meaning, consistent identities, meaningful cuts, crops, local Arabic labels and restrained motion. Contact sheets contain original assets; the rendered preview is necessary to review crops and overlays. Shape/font availability and mobile readability require visual inspection.
 The review table shows each shot's focal point and zoom. The renderer uses that point for the initial aspect crop and confines pans to travel that keeps it visible. Push/pull/pan with zoom 1 and pans without safe travel now fail planning/render validation; choose a hold or revise the composition. Re-preview and approve after a camera recipe change because cached clips and approval lineage are invalidated.

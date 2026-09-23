@@ -8,9 +8,11 @@
 - Select a profile explicitly before analysis. A script cannot alter channel identity or allowed treatments.
 - `voice: null` means no synthesis voice has been selected. It must block AI Studio synthesis, while a verified source-audio receipt identifies an imported narration episode.
 - Channel styles describe visual grammar, not a fixed episode topic. Claims, historical details and depicted characters still require episode-level review.
+- Version 2 profiles declare positive `visual_directives` and exact `forbidden_motifs`; these affect planning and image prompts. Version 1 profiles remain loadable without silently changing their historical fingerprints.
 
 # Work Guidance
 - Keep Professor Yashrah on Achird until the user changes that choice. Prefer a coherent illustrated documentary system over the legacy curly-haired mascot.
+- Professor Yashrah is host-free. Use concrete human contexts and clean local exercise graphics; reject presenter surrogates, generic cognition symbols and false clinical authority.
 - Soldier's Sledger and Snoozer Anime source-audio pilots keep their published narration; select a real TTS voice before synthesizing new episodes.
 
 # Verification

@@ -22,7 +22,7 @@ class Contract(BaseModel):
 
 
 class Channel(Contract):
-    version: Literal[1] = 1
+    version: Literal[1, 2] = 1
     channel_id: Identifier
     name: Text
     audience: Text
@@ -32,6 +32,8 @@ class Channel(Contract):
     voice: Text | None = None
     tone: Text
     style: Text
+    visual_directives: list[Text] = Field(default_factory=list, max_length=30)
+    forbidden_motifs: list[Text] = Field(default_factory=list, max_length=30)
     host_mode: Literal["NONE", "CUSTOM_AVATAR"] = "NONE"
     host_description: str = ""
     allowed_treatments: list[Treatment] = Field(min_length=1)
@@ -46,6 +48,15 @@ class Channel(Contract):
             raise ValueError("Host treatment requires CUSTOM_AVATAR")
         if len(set(self.allowed_treatments)) != len(self.allowed_treatments):
             raise ValueError("Duplicate allowed treatments")
+        if self.version == 2 and (not self.visual_directives or not self.forbidden_motifs):
+            raise ValueError("Version 2 channels require visual directives and forbidden motifs")
+        for label, values in (
+            ("visual directives", self.visual_directives),
+            ("forbidden motifs", self.forbidden_motifs),
+        ):
+            normalized = [value.casefold() for value in values]
+            if len(normalized) != len(set(normalized)):
+                raise ValueError(f"Duplicate {label}")
         return self
 
 
@@ -106,12 +117,26 @@ class Brief(Contract):
 def fingerprint(value: BaseModel | dict[str, Any] | str) -> str:
     if isinstance(value, BaseModel):
         value = value.model_dump(mode="json")
+    value = _canonical_fingerprint_value(value)
     encoded = (
         value
         if isinstance(value, str)
         else json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     )
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _canonical_fingerprint_value(value: Any) -> Any:
+    """Keep version-1 channel fingerprints stable while version 2 adds policy fields."""
+    if isinstance(value, dict):
+        normalized = {key: _canonical_fingerprint_value(item) for key, item in value.items()}
+        if normalized.get("version") == 1 and "channel_id" in normalized:
+            normalized.pop("visual_directives", None)
+            normalized.pop("forbidden_motifs", None)
+        return normalized
+    if isinstance(value, list):
+        return [_canonical_fingerprint_value(item) for item in value]
+    return value
 
 
 def load_channel(path: str | Path) -> Channel:
