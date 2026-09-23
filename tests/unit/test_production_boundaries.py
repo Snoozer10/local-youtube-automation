@@ -292,3 +292,35 @@ def test_changed_source_archives_only_active_generation_and_reanalyzes_same_run(
     assert not (tmp_path / "active_master.json").exists()
     assert (accepted / "keep.png").read_bytes() == b"accepted bytes"
     assert list((tmp_path / ".adaptive_history").rglob("final_output.txt"))
+
+
+def test_changed_source_audio_cut_reruns_after_archiving_old_receipt(tmp_path, monkeypatch):
+    from youtube_automation.production import cli
+
+    database = tmp_path / "jobs.db"
+    (tmp_path / "raw_transcript.txt").write_text("Spoken words", encoding="utf-8")
+    (tmp_path / "episode_brief.json").write_text("{}", encoding="utf-8")
+    media = tmp_path / "owner.wav"
+    media.write_bytes(b"owner voice")
+    receipt = tmp_path / "source_audio_receipt.json"
+    executed = []
+
+    monkeypatch.setattr(cli, "resource_database", lambda: database)
+    monkeypatch.setattr(cli, "_stage_complete", lambda _root, _args: receipt.exists())
+
+    def execute(args, _root, _database):
+        executed.append(args.end_seconds)
+        receipt.write_text(str(args.end_seconds), encoding="utf-8")
+
+    monkeypatch.setattr(cli, "_execute_stage", execute)
+    base = [
+        "source-audio", "--run-dir", str(tmp_path), "--media-file", str(media),
+        "--start-seconds", "0", "--end-seconds",
+    ]
+    cli.main([*base, "77.2"])
+    cli.main([*base, "76.55"])
+
+    assert executed == [77.2, 76.55]
+    assert receipt.read_text(encoding="utf-8") == "76.55"
+    assert [path.read_text(encoding="utf-8") for path in
+            (tmp_path / ".adaptive_history").rglob("source_audio_receipt.json")] == ["77.2"]

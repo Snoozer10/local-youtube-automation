@@ -361,6 +361,9 @@ def main(argv: list[str] | None = None) -> None:
                             f"Archived {len(archived)} invalidated activation file(s) "
                             f"before retrying stage: {args.stage}"
                         )
+                    # The earlier completion check examined the prior activation.
+                    # Recheck after archiving before adopting any remaining output.
+                    complete = _stage_complete(root, args)
                 if adoptable and complete:
                     print(f"Registered existing verified stage output: {args.stage}")
                     return
