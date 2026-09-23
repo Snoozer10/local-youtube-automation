@@ -203,25 +203,28 @@ def test_paged_plan_validates_real_canonical_spans_and_flow_roundtrip(tmp_path):
         calls.append(prompt)
         if len(calls) == 1:
             scenes = [
-                shot(end_frame=210, span_ids=list(range(7)), framing="establishing"),
+                shot(end_frame=180, span_ids=list(range(6)), framing="establishing"),
                 shot(
                     shot_id="s2",
                     asset_id="a2",
                     operation="reframe",
                     reference_asset_id="a1",
-                    start_frame=210,
-                    end_frame=420,
-                    span_ids=list(range(7, 14)),
+                    start_frame=180,
+                    end_frame=390,
+                    span_ids=list(range(6, 13)),
                     framing="wide",
                 ),
+            ]
+        else:
+            scenes = [
                 shot(
                     shot_id="s3",
                     asset_id="a3",
                     operation="reframe",
                     reference_asset_id="a2",
-                    start_frame=420,
-                    end_frame=630,
-                    span_ids=list(range(14, 21)),
+                    start_frame=390,
+                    end_frame=570,
+                    span_ids=list(range(13, 19)),
                     framing="close_up",
                 ),
                 shot(
@@ -229,27 +232,36 @@ def test_paged_plan_validates_real_canonical_spans_and_flow_roundtrip(tmp_path):
                     asset_id="a4",
                     operation="reframe",
                     reference_asset_id="a3",
-                    start_frame=630,
-                    end_frame=750,
-                    span_ids=list(range(21, 25)),
+                    start_frame=570,
+                    end_frame=780,
+                    span_ids=list(range(19, 26)),
                     framing="insert",
                 ),
             ]
-        else:
-            scenes = [
-                shot(
-                    shot_id="s5",
-                    asset_id="a4",
-                    start_frame=750,
-                    end_frame=780,
-                    span_ids=[25],
-                    operation="reuse",
-                )
-            ]
         return json.dumps({"shots": [s.model_dump() for s in scenes]})
+
+    def interrupted_after_first_window(prompt):
+        if calls:
+            raise RuntimeError("Gemini transport interrupted")
+        return ask(prompt)
+
+    with pytest.raises(RuntimeError, match="Gemini transport interrupted"):
+        ensure_shot_plan(tmp_path, interrupted_after_first_window)
+    partial_path = tmp_path / "shot_plan.partial.json"
+    checkpoint = json.loads(partial_path.read_text(encoding="utf-8"))
+    assert checkpoint["next_window"] == 1
+    checkpoint["timeline_sha256"] = "0" * 64
+    partial_path.write_text(json.dumps(checkpoint), encoding="utf-8")
+    with pytest.raises(ValueError, match="does not match current planning inputs"):
+        ensure_shot_plan(tmp_path, ask)
+    checkpoint["timeline_sha256"] = fingerprint(timeline)
+    partial_path.write_text(json.dumps(checkpoint), encoding="utf-8")
 
     plan = ensure_shot_plan(tmp_path, ask)
     assert len(calls) == 2
+    assert not (tmp_path / "shot_plan.partial.json").exists()
+    assert "INTERVAL [0, 390)" in calls[0]
+    assert "INTERVAL [390, 780)" in calls[1]
     assert '"asset_id": "a1"' in calls[1]
     assert plan.total_frames == 780
     prepare_flow(tmp_path, lambda _: pytest.fail("Validated plan should resume"))
@@ -257,6 +269,39 @@ def test_paged_plan_validates_real_canonical_spans_and_flow_roundtrip(tmp_path):
     assert len(parsed) == 4  # Deliberate local reuse never requests new diffusion output.
     assert parsed[0].raw_payload["adaptive_shot"]["asset_id"] == "a1"
     assert parsed[0].raw_payload["adaptive_shot"]["subject"] == "Cat watching a hand"
+
+
+def test_sparse_long_spans_are_split_into_short_word_sliced_requests():
+    from youtube_automation.production.shots import _planning_windows, _window_spans
+
+    timeline = {
+        "fps": 30,
+        "total_frames": 2296,
+        "spans": [
+            {"index": 0, "start_frame": 0, "end_frame": 308, "start_word_id": 0, "end_word_id": 1},
+            {"index": 1, "start_frame": 308, "end_frame": 1219, "start_word_id": 1, "end_word_id": 3},
+            {"index": 2, "start_frame": 1219, "end_frame": 1659, "start_word_id": 3, "end_word_id": 4},
+            {"index": 3, "start_frame": 1659, "end_frame": 2296, "start_word_id": 4, "end_word_id": 5},
+        ],
+        "words": [
+            {"id": 0, "text": "first", "start": 0.0, "end": 10.0},
+            {"id": 1, "text": "second", "start": 10.3, "end": 20.0},
+            {"id": 2, "text": "third", "start": 20.1, "end": 40.0},
+            {"id": 3, "text": "fourth", "start": 40.6, "end": 55.0},
+            {"id": 4, "text": "fifth", "start": 55.3, "end": 76.5},
+        ],
+    }
+    windows = _planning_windows(timeline)
+    assert len(windows) == 4
+    assert windows[0][0] == 0 and windows[-1][1] == 2296
+    assert all(end - start <= 20 * 30 for start, end in windows)
+    assert all(left[1] == right[0] for left, right in zip(windows, windows[1:], strict=False))
+    first = _window_spans(timeline, *windows[0])
+    last = _window_spans(timeline, *windows[-1])
+    assert first[0]["index"] == 0
+    assert last[-1]["index"] == 3
+    assert "first" in first[0]["text"]
+    assert "fifth" not in first[-1]["text"]
 
 
 def test_multiple_shots_can_share_one_narration_span():

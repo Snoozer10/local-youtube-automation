@@ -282,6 +282,116 @@ def validate_plan(
     _validate_editorial_quality(plan, brief, complete=editorial_complete)
 
 
+def _planning_windows(timeline: dict[str, Any], max_seconds: int = 20) -> list[tuple[int, int]]:
+    """Bound model requests by narration time even when ASR emits few long spans."""
+    total = timeline["total_frames"]
+    fps = timeline["fps"]
+    spans = timeline["spans"]
+    max_frames = max_seconds * fps
+    boundaries = [total]
+    boundaries.extend(round(word["end"] * fps) for word in timeline.get("words", []))
+    boundaries.extend(span["end_frame"] for span in spans)
+    boundaries = sorted({frame for frame in boundaries if 0 < frame <= total})
+    windows: list[tuple[int, int]] = []
+    start = 0
+    while start < total:
+        remaining = total - start
+        parts = math.ceil(remaining / max_frames)
+        target = start + math.ceil(remaining / parts)
+        if parts == 1:
+            end = total
+        else:
+            nearby = [
+                frame for frame in boundaries
+                if start < frame < total
+                and frame - start <= max_frames
+                and abs(frame - target) <= fps
+            ]
+            end = min(nearby, key=lambda frame: (abs(frame - target), frame)) if nearby else target
+            # Prevent a dense timeline from making one request cover more than 25 spans.
+            overlapping = [
+                span for span in spans
+                if span["start_frame"] < end and span["end_frame"] > start
+            ]
+            if len(overlapping) > 25:
+                end = min(end, overlapping[24]["end_frame"])
+        if end <= start or end > total:
+            raise ValueError("Could not divide canonical narration into planning windows")
+        windows.append((start, end))
+        start = end
+    return windows
+
+
+def _window_spans(timeline: dict[str, Any], start: int, end: int) -> list[dict[str, Any]]:
+    """Give the planner only speech that overlaps this window, retaining canonical IDs."""
+    fps = timeline["fps"]
+    words = timeline.get("words", [])
+    section = []
+    for span in timeline["spans"]:
+        if span["start_frame"] >= end or span["end_frame"] <= start:
+            continue
+        excerpt = [
+            word["text"] for word in words
+            if span.get("start_word_id", 0) <= word["id"] < span.get("end_word_id", 0)
+            and word["start"] * fps < end and word["end"] * fps > start
+        ]
+        section.append({
+            "index": span["index"],
+            "start_frame": max(start, span["start_frame"]),
+            "end_frame": min(end, span["end_frame"]),
+            "text": " ".join(excerpt) if excerpt else span.get("text", ""),
+        })
+    return section
+
+
+def _load_partial_plan(
+    path: Path, brief: Brief, timeline: dict[str, Any], windows: list[tuple[int, int]]
+) -> tuple[int, list[Shot]]:
+    if not path.exists():
+        return 0, []
+    checkpoint = json.loads(path.read_text(encoding="utf-8"))
+    next_window = checkpoint.get("next_window")
+    if (
+        checkpoint.get("version") != 1
+        or checkpoint.get("brief_sha256") != fingerprint(brief)
+        or checkpoint.get("timeline_sha256") != fingerprint(timeline)
+        or checkpoint.get("windows") != [list(window) for window in windows]
+        or type(next_window) is not int
+        or not 0 < next_window <= len(windows)
+    ):
+        raise ValueError("Partial shot plan does not match current planning inputs")
+    partial = ShotPlan(
+        shots=[Shot.model_validate(shot) for shot in checkpoint["shots"]],
+        brief_sha256=fingerprint(brief),
+        timeline_sha256=fingerprint(timeline),
+        fps=timeline["fps"],
+        total_frames=windows[next_window - 1][1],
+        editorial_policy=resolve_editorial_policy(brief),
+    )
+    shadow = partial.model_copy(update={"total_frames": timeline["total_frames"]})
+    validate_plan(shadow, timeline, brief, editorial_complete=False)
+    return next_window, partial.shots
+
+
+def _save_partial_plan(
+    path: Path,
+    brief: Brief,
+    timeline: dict[str, Any],
+    windows: list[tuple[int, int]],
+    next_window: int,
+    shots: list[Shot],
+) -> None:
+    with publication_guard():
+        atomic_write_json(str(path), {
+            "version": 1,
+            "brief_sha256": fingerprint(brief),
+            "timeline_sha256": fingerprint(timeline),
+            "windows": [list(window) for window in windows],
+            "next_window": next_window,
+            "shots": [shot.model_dump(mode="json") for shot in shots],
+        })
+
+
 def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan:
     root = Path(run_dir)
     brief = load_brief(root)
@@ -305,6 +415,12 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         "or symbolic props merely to visualize an exaggeration; use plausible expression, posture, breath, wardrobe, "
         "weather and composition instead. "
         "Use actual subject scenes, details or purposeful diagrams according to channel policy. "
+        "Treat the saved channel style as binding exclusions as well as visual direction. Avoid default mascots, "
+        "blank white isolation, generic glowing brains, gears, floating puzzle pieces and icon collages as "
+        "shortcuts for thinking unless the source specifically calls for those objects. Use a distinct "
+        "human situation, physical mechanism or useful local graphic for each narrative beat. "
+        "Any exact words, numerals, tables, timers or instructions belong in deterministic local graphics, "
+        "not in generated pixels. Do not imply an unverified benefit is proven. "
         f"Resolve pacing with this fixed editorial policy: {editorial_policy.model_dump_json()}. "
         f"No shot may exceed {maximum_shot_frames} frames. Split inside a canonical narration span when needed, "
         "and list that same span_id on both shots. Vary framing intentionally; never repeat the same framing more than "
@@ -330,14 +446,15 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         + "\nFIXED EPISODE BRIEF:\n"
         + brief.model_dump_json()
     )
-    all_shots: list[Shot] = []
     spans = timeline["spans"]
     if not spans:
         raise ValueError("Canonical timeline contains no spans")
-    for offset in range(0, len(spans), 25):
-        section = spans[offset : offset + 25]
-        start = all_shots[-1].end_frame if all_shots else 0
-        end = timeline["total_frames"] if offset + 25 >= len(spans) else section[-1]["end_frame"]
+    windows = _planning_windows(timeline)
+    partial_path = root / "shot_plan.partial.json"
+    next_window, all_shots = _load_partial_plan(partial_path, brief, timeline, windows)
+    for offset in range(next_window, len(windows)):
+        start, end = windows[offset]
+        section = _window_spans(timeline, start, end)
         previous = [
             {
                 "asset_id": s.asset_id,
@@ -374,6 +491,9 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
                 shadow = partial.model_copy(update={"total_frames": timeline["total_frames"]})
                 validate_plan(shadow, timeline, brief, editorial_complete=False)
                 all_shots = partial.shots
+                _save_partial_plan(
+                    partial_path, brief, timeline, windows, offset + 1, all_shots
+                )
                 break
             except ValueError as exc:
                 error = str(exc)
@@ -396,6 +516,7 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         raise ValueError("Planning inputs changed during generation")
     with publication_guard():
         atomic_write_json(str(path), plan.model_dump(mode="json"))
+        partial_path.unlink(missing_ok=True)
     return plan
 
 
