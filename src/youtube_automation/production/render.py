@@ -192,11 +192,14 @@ Style: Default,{font},{max(22, height // 25)},&H00FFFFFF,&H000000FF,&H00000000,&
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-    events = []
+    events: list[str] = []
     for overlay in shot.overlays:
         x, y = round(overlay.x * width), round(overlay.y * height)
         w, h = round(overlay.width * width), round(overlay.height * height)
-        if overlay.kind == "label":
+        start = _ass_time(overlay.start_frame, fps)
+        end = _ass_time(overlay.end_frame, fps)
+        contents: list[str] = []
+        if overlay.kind in {"label", "timer"}:
             text = (
                 overlay.text.replace("\\", "＼")
                 .replace("{", "(")
@@ -204,15 +207,65 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 .replace("\r", "")
                 .replace("\n", "\\N")
             )
-            content = f"{{\\pos({x},{y})}}{text}"
+            if overlay.kind == "timer":
+                contents.append(
+                    f"{{\\an5\\b1\\fs{max(28, h // 2)}\\bord3\\pos({x + w // 2},{y + h // 2})}}{text}"
+                )
+            else:
+                contents.append(f"{{\\pos({x},{y})}}{text}")
         elif overlay.kind == "highlight":
-            content = f"{{\\pos({x},{y})\\p1\\bord3\\1a&HFF&\\3c&H00BFFF&}}m 0 0 l {w} 0 {w} {h} 0 {h} 0 0{{\\p0}}"
-        else:
+            contents.append(
+                f"{{\\pos({x},{y})\\p1\\bord3\\1a&HFF&\\3c&H00BFFF&}}m 0 0 l {w} 0 {w} {h} 0 {h} 0 0{{\\p0}}"
+            )
+        elif overlay.kind == "arrow":
             # Arrow runs from upper-left to lower-right within its declared box.
             head = max(6, min(w, h) // 5)
-            content = f"{{\\pos({x},{y})\\p1\\bord3\\1a&HFF&\\3c&H00BFFF&}}m 0 0 l {w} {h} m {w - head} {h} l {w} {h} {w} {h - head}{{\\p0}}"
-        events.append(
-            f"Dialogue: 0,{_ass_time(overlay.start_frame, fps)},{_ass_time(overlay.end_frame, fps)},Default,,0,0,0,,{content}"
+            contents.append(
+                f"{{\\pos({x},{y})\\p1\\bord3\\1a&HFF&\\3c&H00BFFF&}}m 0 0 l {w} {h} m {w - head} {h} l {w} {h} {w} {h - head}{{\\p0}}"
+            )
+        else:
+            cell_w = w / overlay.columns
+            cell_h = h / overlay.rows
+            for cell_index in overlay.highlight_cells:
+                row, column = divmod(cell_index, overlay.columns)
+                left, top = round(column * cell_w), round(row * cell_h)
+                right, bottom = round((column + 1) * cell_w), round((row + 1) * cell_h)
+                contents.append(
+                    f"{{\\pos({x},{y})\\p1\\bord0\\1c&H56D68B&\\1a&H30&}}"
+                    f"m {left} {top} l {right} {top} {right} {bottom} {left} {bottom} {left} {top}{{\\p0}}"
+                )
+            path = [f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0"]
+            path.extend(
+                f"m {round(column * cell_w)} 0 l {round(column * cell_w)} {h}"
+                for column in range(1, overlay.columns)
+            )
+            path.extend(
+                f"m 0 {round(row * cell_h)} l {w} {round(row * cell_h)}"
+                for row in range(1, overlay.rows)
+            )
+            contents.append(
+                f"{{\\pos({x},{y})\\p1\\bord2\\1a&HFF&\\3c&H303030&}}"
+                + " ".join(path)
+                + "{\\p0}"
+            )
+            font_size = max(18, round(min(cell_w, cell_h) * 0.36))
+            for cell_index, cell in enumerate(overlay.cells):
+                row, column = divmod(cell_index, overlay.columns)
+                cell_x = x + round((column + 0.5) * cell_w)
+                cell_y = y + round((row + 0.5) * cell_h)
+                safe_cell = (
+                    cell.replace("\\", "＼")
+                    .replace("{", "(")
+                    .replace("}", ")")
+                    .replace("\r", " ")
+                    .replace("\n", " ")
+                )
+                contents.append(
+                    f"{{\\an5\\fs{font_size}\\b1\\bord1\\3c&HFFFFFF&\\1c&H202020&"
+                    f"\\pos({cell_x},{cell_y})}}{safe_cell}"
+                )
+        events.extend(
+            f"Dialogue: 0,{start},{end},Default,,0,0,0,,{content}" for content in contents
         )
     return header + "\n".join(events) + "\n"
 

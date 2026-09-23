@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -33,16 +35,20 @@ def _decode_single_json_value(text: str) -> Any:
 def request_json(
     prompt: str, ask: Callable[[str], str], model: type[Response], attempts: int = 3
 ) -> Response:
-    error = ""
+    validation_error = ""
     last_transport_error: RuntimeError | None = None
     for _ in range(attempts):
         try:
             response = ask(
-                prompt + ("\nRepair the previous validation error: " + error if error else "")
+                prompt
+                + (
+                    "\nRepair the previous validation error: " + validation_error
+                    if validation_error
+                    else ""
+                )
             )
         except RuntimeError as exc:
             last_transport_error = exc
-            error = f"Browser transport failed: {str(exc)[:900]}"
             continue
         try:
             text = response.strip()
@@ -56,10 +62,14 @@ def request_json(
             last_transport_error = None
             excerpt = " ".join(response.strip().split())[:500]
             tail = " ".join(response.strip().split())[-300:]
-            error = f"{str(exc)[:900]}; response excerpt={excerpt!r}; response tail={tail!r}"
+            validation_error = (
+                f"{str(exc)[:900]}; response excerpt={excerpt!r}; response tail={tail!r}"
+            )
     if last_transport_error is not None:
-        raise RuntimeError(f"Browser transport failed after {attempts} attempts: {error}") from last_transport_error
-    raise ValueError(f"Structured response failed after {attempts} attempts: {error}")
+        raise RuntimeError(
+            f"Browser transport failed after {attempts} attempts: {str(last_transport_error)[:900]}"
+        ) from last_transport_error
+    raise ValueError(f"Structured response failed after {attempts} attempts: {validation_error}")
 
 
 def analyze_script(raw: str, channel: Channel, ask: Callable[[str], str]) -> Brief:
@@ -180,6 +190,94 @@ def writing_prompt(brief: Brief, stage: str) -> str:
 class BrowserTransport:
     page: Page
     model_name: str
+    persistent_chat: bool = False
+    receipt_dir: Path | None = None
+    timeout_seconds: int = 180
+    _chat_ready: bool = field(default=False, init=False)
+    _window: tuple[int, int] | None = field(default=None, init=False)
+
+    def begin_window(self, start_frame: int, end_frame: int) -> None:
+        """Start the next planning window in a clean chat; repairs stay in that chat."""
+        self._window = (start_frame, end_frame)
+        self._chat_ready = False
+
+    def _receipt_path(self, prompt_sha256: str) -> Path | None:
+        if self.receipt_dir is None:
+            return None
+        self.receipt_dir.mkdir(parents=True, exist_ok=True)
+        return self.receipt_dir / f"{prompt_sha256}.json"
+
+    def _load_receipt(self, prompt_sha256: str) -> dict[str, Any]:
+        path = self._receipt_path(prompt_sha256)
+        if path is None or not path.exists():
+            return {
+                "version": 1,
+                "prompt_sha256": prompt_sha256,
+                "model": self.model_name,
+                "window": list(self._window) if self._window else None,
+                "attempts": [],
+            }
+        payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        if (
+            payload.get("version") != 1
+            or payload.get("prompt_sha256") != prompt_sha256
+            or payload.get("model") != self.model_name
+            or payload.get("window") != (list(self._window) if self._window else None)
+            or not isinstance(payload.get("attempts"), list)
+        ):
+            raise ValueError("Gemini response receipt does not match the current request")
+        return payload
+
+    def _save_receipt(self, payload: dict[str, Any]) -> None:
+        path = self._receipt_path(payload["prompt_sha256"])
+        if path is not None:
+            atomic_write_json(str(path), payload)
+
+    def _completed_receipt(self, payload: dict[str, Any]) -> str | None:
+        for attempt in reversed(payload["attempts"]):
+            response = attempt.get("response")
+            if attempt.get("state") == "completed" and isinstance(response, str) and response:
+                return response
+        return None
+
+    def _recover_late_response(self, payload: dict[str, Any]) -> str | None:
+        from youtube_automation.browser.gemini_utils import (
+            RESPONSE_SELECTOR,
+            wait_for_gemini_response,
+        )
+
+        for attempt in reversed(payload["attempts"]):
+            chat_url = attempt.get("chat_url")
+            prior_state = attempt.get("state")
+            if prior_state not in {"submitted", "timed_out"} or not isinstance(chat_url, str):
+                continue
+            try:
+                if self.page.url != chat_url:
+                    self.page.goto(chat_url, wait_until="domcontentloaded", timeout=45000)
+                self.page.wait_for_selector(RESPONSE_SELECTOR, timeout=15000)
+                initial_count = int(attempt.get("initial_response_count", 0))
+                text = wait_for_gemini_response(
+                    self.page,
+                    initial_count=initial_count,
+                    timeout_seconds=min(15, self.timeout_seconds),
+                )
+                if not text:
+                    return None
+                attempt["state"] = "completed"
+                attempt["recovered_from_state"] = prior_state
+                attempt[
+                    "recovered_after_timeout"
+                    if prior_state == "timed_out"
+                    else "recovered_after_interruption"
+                ] = True
+                attempt["finished_at"] = time.time()
+                attempt["response"] = text
+                self._save_receipt(payload)
+                self._chat_ready = True
+                return text
+            except Exception:
+                return None
+        return None
 
     def __call__(self, prompt: str) -> str:
         from youtube_automation.browser.gemini_utils import (
@@ -189,17 +287,59 @@ class BrowserTransport:
             wait_for_gemini_response,
         )
 
-        start_clean_gemini_chat(self.page)
-        if not select_gemini_model(self.page, self.model_name):
-            raise RuntimeError("Could not select the requested analysis model")
+        prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        receipt = self._load_receipt(prompt_sha256)
+        completed = self._completed_receipt(receipt)
+        if completed is not None:
+            return completed
+        recovered = self._recover_late_response(receipt)
+        if recovered is not None:
+            return recovered
+        if not self.persistent_chat or not self._chat_ready:
+            start_clean_gemini_chat(self.page)
+            if not select_gemini_model(self.page, self.model_name):
+                raise RuntimeError("Could not select the requested analysis model")
+            self._chat_ready = True
         ok, count = GeminiSessionClient(self.page, self.model_name).dispatch_prompt(prompt)
         if not ok:
             raise RuntimeError("Could not submit analysis prompt")
-        result = wait_for_gemini_response(self.page, count, timeout_seconds=180)
+        attempt = {
+            "submitted_at": time.time(),
+            "chat_url": self.page.url,
+            "initial_response_count": count,
+            "state": "submitted",
+        }
+        receipt["attempts"].append(attempt)
+        self._save_receipt(receipt)
+        result = wait_for_gemini_response(
+            self.page, count, timeout_seconds=self.timeout_seconds
+        )
         if not result:
+            attempt["state"] = "timed_out"
+            attempt["finished_at"] = time.time()
+            attempt["chat_url"] = self.page.url
+            self._save_receipt(receipt)
             raise RuntimeError("Analysis turn did not complete")
+        attempt["state"] = "completed"
+        attempt["finished_at"] = time.time()
+        attempt["chat_url"] = self.page.url
+        attempt["response"] = str(result)
+        self._save_receipt(receipt)
         return str(result)
 
 
-def browser_ask(page: Page, model_name: str = "Pro") -> BrowserTransport:
-    return BrowserTransport(page, model_name)
+def browser_ask(
+    page: Page,
+    model_name: str = "Pro",
+    *,
+    persistent_chat: bool = False,
+    receipt_dir: Path | None = None,
+    timeout_seconds: int = 180,
+) -> BrowserTransport:
+    return BrowserTransport(
+        page,
+        model_name,
+        persistent_chat=persistent_chat,
+        receipt_dir=receipt_dir,
+        timeout_seconds=timeout_seconds,
+    )

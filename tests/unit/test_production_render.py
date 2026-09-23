@@ -91,6 +91,54 @@ def test_arabic_overlay_is_local_and_escapes_ass_commands():
     assert "{\\pos(0,0)}" not in ass
 
 
+def test_schulte_grid_and_timer_are_deterministic_local_graphics():
+    shot = fixture_shot(
+        overlays=[
+            Overlay(
+                kind="data_grid",
+                preset="schulte_6x6",
+                start_frame=0,
+                end_frame=180,
+                x=0.2,
+                y=0.1,
+                width=0.6,
+                height=0.8,
+                highlight_cells=[0, 10],
+            ),
+            Overlay(
+                kind="timer",
+                start_frame=0,
+                end_frame=180,
+                text="00:40",
+                x=0.82,
+                y=0.05,
+                width=0.15,
+                height=0.1,
+            ),
+        ]
+    )
+    ass = overlay_ass(shot, 1920, 1080, 30)
+    assert "00:40" in ass
+    assert "m 0 0 l 1152 0 1152 864" in ass
+    assert all(f"}}{number}\n" in ass or f"}}{number}\r\n" in ass for number in map(str, range(1, 37)))
+
+
+def test_schulte_grid_values_cannot_be_replaced():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="deterministic"):
+        Overlay(
+            kind="data_grid",
+            preset="schulte_6x6",
+            cells=[str(value) for value in range(36)],
+            rows=6,
+            columns=6,
+            start_frame=0,
+            end_frame=30,
+        )
+
+
 def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
     import json
     import shutil
@@ -151,7 +199,30 @@ def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
         audio.writeframes(b"\0\0" * 48000)
     shot = fixture_shot(
         end_frame=30,
-        overlays=[Overlay(kind="label", start_frame=10, end_frame=25, text="عين القط")],
+        overlays=[
+            Overlay(kind="label", start_frame=10, end_frame=25, text="عين القط"),
+            Overlay(
+                kind="data_grid",
+                preset="schulte_6x6",
+                start_frame=0,
+                end_frame=30,
+                x=0.2,
+                y=0.1,
+                width=0.55,
+                height=0.8,
+                highlight_cells=[10],
+            ),
+            Overlay(
+                kind="timer",
+                start_frame=0,
+                end_frame=30,
+                text="00:40",
+                x=0.78,
+                y=0.1,
+                width=0.18,
+                height=0.12,
+            ),
+        ],
     )
     plan = ShotPlan(
         shots=[shot],

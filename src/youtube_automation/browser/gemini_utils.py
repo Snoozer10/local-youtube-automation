@@ -657,8 +657,12 @@ def wait_for_gemini_response(
 
                 is_placeholder = _is_transient_placeholder(current_text)
 
-                # Track text stability independently while the Stop control is visible
-                if not is_placeholder and len(current_text) >= min_length:
+                # Completion stability starts only after Gemini's real Stop control is gone.
+                if (
+                    not stop_visible
+                    and not is_placeholder
+                    and len(current_text) >= min_length
+                ):
                     if current_text == last_text and current_text != "":
                         stable_count += 1
                     else:
@@ -733,7 +737,11 @@ def wait_for_gemini_response(
             final_text = _clean_response_prefix(str(raw_text).strip())
             is_placeholder = _is_transient_placeholder(final_text)
 
-            if not is_placeholder and len(final_text) >= min_length:
+            if (
+                not final_stop_visible
+                and not is_placeholder
+                and len(final_text) >= min_length
+            ):
                 if final_text == last_text and final_text != "":
                     stable_count += 1
                 else:

@@ -319,6 +319,35 @@ def test_multiple_shots_can_share_one_narration_span():
     assert [s.span_ids for s in plan.shots] == [[0], [0]]
 
 
+def test_harmless_overlay_overrun_and_generic_human_entity_are_normalized():
+    normalized = shot(
+        entity_ids=["e_person"],
+        subject="A young adult studying a visual challenge",
+        end_frame=60,
+        overlays=[
+            {
+                "kind": "timer",
+                "start_frame": 20,
+                "end_frame": 90,
+                "text": "00:40",
+            }
+        ],
+    )
+    assert normalized.overlays[0].end_frame == 60
+    plan = ShotPlan(
+        shots=[normalized],
+        brief_sha256="a" * 64,
+        timeline_sha256="b" * 64,
+        fps=30,
+        total_frames=60,
+        editorial_policy=editorial_policy(),
+    )
+    # The generic entity token is semantically visible as a young adult.
+    from youtube_automation.production.shots import _validate_editorial_quality
+
+    _validate_editorial_quality(plan, episode_brief(), complete=False)
+
+
 @pytest.mark.parametrize(
     "update", [{"scene_id": "unrelated"}, {"entity_ids": ["different-animal"]}]
 )

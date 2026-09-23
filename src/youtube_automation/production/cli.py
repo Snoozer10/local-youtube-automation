@@ -23,7 +23,12 @@ from .writing import write_episode
 
 
 @contextmanager
-def gemini_transport() -> Iterator[Callable[[str], str]]:
+def gemini_transport(
+    *,
+    persistent_chat: bool = False,
+    receipt_dir: Path | None = None,
+    timeout_seconds: int = 180,
+) -> Iterator[Callable[[str], str]]:
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as playwright:
@@ -35,7 +40,13 @@ def gemini_transport() -> Iterator[Callable[[str], str]]:
         page = context.new_page()
         try:
             page.goto("https://gemini.google.com/app", wait_until="domcontentloaded")
-            yield browser_ask(page, get_config_value("IMAGE_PLANNER_MODEL", "Pro"))
+            yield browser_ask(
+                page,
+                get_config_value("IMAGE_PLANNER_MODEL", "Pro"),
+                persistent_chat=persistent_chat,
+                receipt_dir=receipt_dir,
+                timeout_seconds=timeout_seconds,
+            )
         finally:
             page.close()
 
@@ -238,7 +249,16 @@ def _execute_stage(args: argparse.Namespace, root: Path, database: Path) -> None
         with leased_resource(database, "browser"), gemini_transport() as ask:
             ensure_brief(root, channel, ask)
     elif args.stage in {"write", "plan"}:
-        with leased_resource(database, "browser"), gemini_transport() as ask:
+        planning = args.stage == "plan"
+        with leased_resource(database, "browser"), gemini_transport(
+            persistent_chat=planning,
+            receipt_dir=root / "planner_responses" if planning else None,
+            timeout_seconds=(
+                int(get_config_value("IMAGE_PLANNER_TIMEOUT_SECONDS", "600"))
+                if planning
+                else 180
+            ),
+        ) as ask:
             if args.stage == "write":
                 write_episode(root, load_brief(root), ask)
             else:

@@ -17,9 +17,18 @@ from .briefs import request_json
 from .contracts import Brief, Contract, Digest, Identifier, Text, Treatment, fingerprint, load_brief
 from .ledger import publication_guard
 
+SCHULTE_6X6 = [
+    "17", "3", "29", "12", "35", "8",
+    "24", "31", "6", "19", "1", "27",
+    "10", "22", "34", "15", "26", "5",
+    "33", "14", "21", "7", "30", "18",
+    "4", "28", "11", "36", "16", "23",
+    "25", "9", "32", "2", "20", "13",
+]
+
 
 class Overlay(Contract):
-    kind: Literal["label", "highlight", "arrow"]
+    kind: Literal["label", "highlight", "arrow", "data_grid", "timer"]
     start_frame: int = Field(ge=0)
     end_frame: int = Field(gt=0)
     text: str = ""
@@ -28,6 +37,23 @@ class Overlay(Contract):
     y: float = Field(default=0.1, ge=0, le=1)
     width: float = Field(default=0.3, gt=0, le=1)
     height: float = Field(default=0.15, gt=0, le=1)
+    preset: Literal["schulte_6x6"] | None = None
+    rows: int = Field(default=0, ge=0, le=8)
+    columns: int = Field(default=0, ge=0, le=8)
+    cells: list[str] = Field(default_factory=list, max_length=64)
+    highlight_cells: list[int] = Field(default_factory=list, max_length=64)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_local_graphic(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        if normalized.get("kind") == "data_grid" and normalized.get("preset") == "schulte_6x6":
+            normalized.setdefault("rows", 6)
+            normalized.setdefault("columns", 6)
+            normalized.setdefault("cells", SCHULTE_6X6)
+        return normalized
 
     @model_validator(mode="after")
     def valid_box(self) -> Overlay:
@@ -35,8 +61,19 @@ class Overlay(Contract):
             raise ValueError("Overlay extends beyond frame")
         if self.end_frame <= self.start_frame:
             raise ValueError("Overlay duration must be positive")
-        if self.kind == "label" and not self.text.strip():
-            raise ValueError("Label requires text")
+        if self.kind in {"label", "timer"} and not self.text.strip():
+            raise ValueError(f"{self.kind.capitalize()} requires text")
+        if self.kind == "data_grid":
+            if self.rows < 1 or self.columns < 1 or len(self.cells) != self.rows * self.columns:
+                raise ValueError("Data grid cells must match its rows and columns")
+            if any(not cell.strip() or len(cell) > 12 for cell in self.cells):
+                raise ValueError("Data grid cells must contain short visible values")
+            if len(self.highlight_cells) != len(set(self.highlight_cells)) or any(
+                index < 0 or index >= len(self.cells) for index in self.highlight_cells
+            ):
+                raise ValueError("Data grid highlights must name unique existing cells")
+            if self.preset == "schulte_6x6" and self.cells != SCHULTE_6X6:
+                raise ValueError("Schulte preset values are deterministic and cannot be replaced")
         return self
 
 
@@ -62,6 +99,27 @@ class Shot(Contract):
     focal_y: float = Field(default=0.5, ge=0, le=1)
     zoom: float = Field(default=1, ge=1, le=1.15)
     overlays: list[Overlay] = Field(default_factory=list, max_length=6)
+
+    @model_validator(mode="before")
+    @classmethod
+    def clamp_local_overlay_duration(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        start = value.get("start_frame")
+        end = value.get("end_frame")
+        overlays = value.get("overlays")
+        if not isinstance(start, int) or not isinstance(end, int) or not isinstance(overlays, list):
+            return value
+        duration = end - start
+        normalized = dict(value)
+        normalized_overlays = []
+        for overlay in overlays:
+            if isinstance(overlay, dict) and isinstance(overlay.get("end_frame"), int):
+                overlay = dict(overlay)
+                overlay["end_frame"] = min(overlay["end_frame"], duration)
+            normalized_overlays.append(overlay)
+        normalized["overlays"] = normalized_overlays
+        return normalized
 
     @model_validator(mode="after")
     def valid_edit(self) -> Shot:
@@ -232,7 +290,16 @@ def _validate_editorial_quality(plan: ShotPlan, brief: Brief, *, complete: bool)
         ).lower()
         for entity_id in shot.entity_ids:
             tokens = [token for token in re.split(r"[_-]+", entity_id.lower()) if len(token) > 2]
-            if not tokens or not any(token in visible_description for token in tokens):
+            human_terms = {
+                "person", "human", "adult", "man", "woman", "boy", "girl", "child",
+                "teen", "student", "worker", "viewer", "user", "host",
+            }
+            semantic_human_match = bool(set(tokens) & human_terms) and any(
+                term in visible_description for term in human_terms
+            )
+            if not tokens or not (
+                any(token in visible_description for token in tokens) or semantic_human_match
+            ):
                 raise ValueError(
                     f"Shot {shot.shot_id} declares entity {entity_id} without a visible description"
                 )
@@ -420,7 +487,9 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         "shortcuts for thinking unless the source specifically calls for those objects. Use a distinct "
         "human situation, physical mechanism or useful local graphic for each narrative beat. "
         "Any exact words, numerals, tables, timers or instructions belong in deterministic local graphics, "
-        "not in generated pixels. Do not imply an unverified benefit is proven. "
+        "not in generated pixels. For a Schulte challenge, use a data_grid overlay with preset "
+        "schulte_6x6 and a separate timer overlay; never ask the image generator to draw the grid. "
+        "Do not imply an unverified benefit is proven. "
         f"Resolve pacing with this fixed editorial policy: {editorial_policy.model_dump_json()}. "
         f"No shot may exceed {maximum_shot_frames} frames. Split inside a canonical narration span when needed, "
         "and list that same span_id on both shots. Vary framing intentionally; never repeat the same framing more than "
@@ -455,6 +524,9 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
     for offset in range(next_window, len(windows)):
         start, end = windows[offset]
         section = _window_spans(timeline, start, end)
+        begin_window = getattr(ask, "begin_window", None)
+        if callable(begin_window):
+            begin_window(start, end)
         previous = [
             {
                 "asset_id": s.asset_id,

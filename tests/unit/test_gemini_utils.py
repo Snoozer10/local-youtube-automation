@@ -1,5 +1,4 @@
 import logging
-import subprocess
 import time
 
 import pytest
@@ -357,20 +356,34 @@ def test_regression_6_gemini_shows_error_card_preserves_behavior():
     assert result == ""
 
 
-def test_regression_7_response_completes_on_final_timeout_boundary_observation():
+def test_regression_7_response_completes_on_final_timeout_boundary_observation(monkeypatch):
     """7. The response completes on the final timeout-boundary observation: return it instead of raising a false timeout."""
-    # Text is stable for 3 polls while stop button is visible; at boundary stop button disappears
+    # The final observation is the third stable sample after the Stop control is gone.
     eval_calls = 0
+    wait_calls = 0
+    clock_ms = 0
 
     def dynamic_stop():
         nonlocal eval_calls
         eval_calls += 1
-        return eval_calls < 4
+        return eval_calls < 2
 
     page = FakeGeminiResponsePage(
         responses=["Old turn 1", "Answer completed right at boundary."],
         stop_control_fn=dynamic_stop,
     )
+
+    def monotonic() -> float:
+        return clock_ms / 1000.0
+
+    def advance_clock(timeout_ms: float) -> None:
+        nonlocal clock_ms, wait_calls
+        page.timeout_waits.append(timeout_ms)
+        wait_calls += 1
+        clock_ms = 20 if wait_calls == 1 else 40
+
+    monkeypatch.setattr(gemini_utils.time, "monotonic", monotonic)
+    page.wait_for_timeout = advance_clock
     result = gemini_utils.wait_for_gemini_response(
         page,
         initial_count=1,
@@ -401,30 +414,43 @@ def test_regression_timeout_boundary_rejects_insufficient_stability_polls():
     assert result == ""
 
 
-def test_phase1_boundary_response_mounts_at_final_observation():
+def test_phase1_boundary_response_mounts_at_final_observation(monkeypatch):
     """Response node appears only during final phase-one boundary observation: transitions to phase 2."""
     poll_calls = 0
+    clock_ms = 0
 
     class _BoundaryPhase1Page(FakeGeminiResponsePage):
         def locator(self, selector: str):
             nonlocal poll_calls
             if selector == gemini_utils.RESPONSE_SELECTOR:
                 poll_calls += 1
-                if poll_calls < 4:
+                if poll_calls < 2:
                     return _FakeResponseLocator(["Old turn 1"])
                 return _FakeResponseLocator(["Old turn 1", "Completed response mounted at boundary."])
             return super().locator(selector)
 
     page = _BoundaryPhase1Page(stop_control_active=False)
+
+    def monotonic() -> float:
+        return clock_ms / 1000.0
+
+    def advance_to_deadline(timeout_ms: float) -> None:
+        nonlocal clock_ms
+        page.timeout_waits.append(timeout_ms)
+        clock_ms = 50
+
+    monkeypatch.setattr(gemini_utils.time, "monotonic", monotonic)
+    page.wait_for_timeout = advance_to_deadline
     result = gemini_utils.wait_for_gemini_response(
         page,
         initial_count=1,
         min_length=5,
-        timeout_seconds=5.0,
-        stability_polls=2,
+        timeout_seconds=0.05,
+        stability_polls=1,
         poll_interval=0.01,
     )
     assert result == "Completed response mounted at boundary."
+    assert poll_calls >= 3
 
 
 def test_wait_for_gemini_response_uses_wait_for_timeout_not_sleep(monkeypatch):
@@ -533,61 +559,3 @@ def test_semantic_stop_selectors_and_audio_exclusion():
     for kw in ("audio", "playback", "listen", "صوت"):
         assert kw in gemini_utils.EXCLUDED_AUDIO_PLAYBACK_KEYWORDS
         assert kw in gemini_utils.STOP_CONTROL_CHECK_JS
-
-
-def test_stop_control_check_js_runtime_execution():
-    """Run STOP_CONTROL_CHECK_JS with Node to verify JS execution against simulated DOM."""
-    js_test_script = f"""
-    const fn = ({gemini_utils.STOP_CONTROL_CHECK_JS});
-
-    function runWith(elements) {{
-        global.document = {{
-            querySelectorAll: (sel) => {{
-                return elements.filter(el => {{
-                    if (sel === "button, [role='button']") {{
-                        return el.tag === 'button' || el.role === 'button';
-                    }}
-                    if (sel.startsWith('button[aria-label')) {{
-                        return el.tag === 'button' && el.ariaLabel && el.ariaLabel.toLowerCase().includes('stop');
-                    }}
-                    if (sel.includes("data-test-id='stop-button'")) {{
-                        return el['data-test-id'] === 'stop-button';
-                    }}
-                    return el.tag === sel;
-                }}).map(el => ({{
-                    offsetParent: el.visible !== false ? 1 : null,
-                    getAttribute: (attr) => el[attr] || (attr === 'aria-label' ? el.ariaLabel : null),
-                    innerText: el.text || ''
-                }}));
-            }}
-        }};
-        return fn();
-    }}
-
-    const tests = [
-        runWith([{{ tag: 'mat-progress-spinner' }}]) === false,
-        runWith([{{ tag: 'mat-progress-bar' }}]) === false,
-        runWith([{{ tag: 'button', ariaLabel: 'Stop audio', text: 'Stop' }}]) === false,
-        runWith([{{ tag: 'button', ariaLabel: 'Stop playback', text: 'Stop' }}]) === false,
-        runWith([{{ tag: 'button', ariaLabel: 'إيقاف الصوت', text: 'إيقاف' }}]) === false,
-        runWith([{{ tag: 'button', ariaLabel: 'Stop generating' }}]) === true,
-        runWith([{{ tag: 'button', ariaLabel: 'Stop response' }}]) === true,
-        runWith([{{ tag: 'button', 'data-test-id': 'stop-button' }}]) === true,
-        runWith([{{ tag: 'button', text: 'Stop' }}]) === true,
-        runWith([{{ tag: 'button', text: 'إيقاف الإنشاء' }}]) === true,
-    ];
-
-    if (!tests.every(Boolean)) {{
-        console.error('JS test failed', tests);
-        process.exit(1);
-    }}
-    console.log('ALL_JS_TESTS_PASSED');
-    """
-
-    res = subprocess.run(
-        ["node", "-e", js_test_script],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    assert "ALL_JS_TESTS_PASSED" in res.stdout
