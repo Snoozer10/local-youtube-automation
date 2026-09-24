@@ -52,6 +52,8 @@ Run commands from the repository root with the project virtual environment. Crea
 
 Each adaptive CLI stage is a durable content-bound job. A successful stage with unchanged source files, selected profile/model and effective render settings skips only after its output revalidates. Missing or corrupt output reruns automatically. Existing output is registered without repeating work only when its own receipts/pointers prove the current input lineage; the unbound HTML report reruns after a recipe change. Changed inputs create a fresh attempt lineage. An expired worker is reclaimed with a higher fence, and a stale worker cannot publish. Three consecutive failures for one unchanged recipe open its circuit; correct the cause, then repeat that command with `--force-retry`. Do not use force retry to bypass validation or editorial approval.
 
+Rerun `analyze` with the same profile path after changing only `version`, `visual_directives` or `forbidden_motifs`. The stage verifies and preserves existing writing, imported narration and canonical timing, updates the brief without opening Gemini, then archives the shot plan and all mutable visual publications. Changes to any identity, language, voice, tone, style, host, treatment, humor or zoom field follow the full analysis invalidation path.
+
 ```powershell
 venv/Scripts/python.exe adaptive_production.py analyze --run-dir "youtube_runs/pilot-science" --channel-profile "channels/science.json"
 venv/Scripts/python.exe adaptive_production.py write --run-dir "youtube_runs/pilot-science"

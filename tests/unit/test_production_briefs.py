@@ -7,10 +7,17 @@ from youtube_automation.production.briefs import (
     BrowserTransport,
     analyze_script,
     ensure_brief,
+    is_visual_policy_update,
+    rebind_visual_policy,
     request_json,
     writing_prompt,
 )
-from youtube_automation.production.contracts import Analysis, Channel, fingerprint
+from youtube_automation.production.contracts import (
+    Analysis,
+    Channel,
+    fingerprint,
+    narration_fingerprint,
+)
 
 
 @pytest.fixture
@@ -405,3 +412,51 @@ def test_profiles_change_writing_without_changing_source(channel):
     assert first.source_sha256 == second.source_sha256
     assert first.profile_sha256 != second.profile_sha256
     assert writing_prompt(first, "refine") != writing_prompt(second, "refine")
+
+
+def test_visual_policy_rebind_preserves_verified_writing_and_analysis(tmp_path, channel):
+    from youtube_automation.production.writing import verify_written_episode
+
+    raw = "Animal perception"
+    (tmp_path / "raw_transcript.txt").write_text(raw, encoding="utf-8")
+    existing = ensure_brief(tmp_path, channel, lambda _: response())
+    outputs = {
+        "breaked_paragraphs.txt": raw,
+        "final_output.txt": raw,
+        "refined_script.txt": raw,
+    }
+    for name, text in outputs.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    (tmp_path / "adaptive_writing_receipt.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "brief_sha256": narration_fingerprint(existing),
+                "outputs": {name: fingerprint(text) for name, text in outputs.items()},
+            }
+        ),
+        encoding="utf-8",
+    )
+    upgraded = channel.model_copy(
+        update={
+            "version": 2,
+            "visual_directives": ["Use observable human contexts"],
+            "forbidden_motifs": ["glowing brain"],
+        }
+    )
+
+    assert is_visual_policy_update(tmp_path, upgraded)
+    rebound = rebind_visual_policy(tmp_path, upgraded)
+    assert rebound.analysis == existing.analysis
+    assert rebound.channel == upgraded
+    assert narration_fingerprint(rebound) == narration_fingerprint(existing)
+    assert verify_written_episode(tmp_path)
+
+
+def test_visual_policy_rebind_rejects_identity_or_voice_change(tmp_path, channel):
+    (tmp_path / "raw_transcript.txt").write_text("Animal perception", encoding="utf-8")
+    ensure_brief(tmp_path, channel, lambda _: response())
+    changed = channel.model_copy(update={"voice": "different-voice"})
+    assert not is_visual_policy_update(tmp_path, changed)
+    with pytest.raises(ValueError, match="not limited"):
+        rebind_visual_policy(tmp_path, changed)

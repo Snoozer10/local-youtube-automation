@@ -324,3 +324,160 @@ def test_changed_source_audio_cut_reruns_after_archiving_old_receipt(tmp_path, m
     assert receipt.read_text(encoding="utf-8") == "76.55"
     assert [path.read_text(encoding="utf-8") for path in
             (tmp_path / ".adaptive_history").rglob("source_audio_receipt.json")] == ["77.2"]
+
+
+def test_visual_only_profile_change_invalidates_plan_not_narration(tmp_path, monkeypatch):
+    from youtube_automation.core.utils import atomic_write_json
+    from youtube_automation.production import cli
+    from youtube_automation.production.contracts import Analysis, Brief, Channel, fingerprint
+
+    database = tmp_path / "jobs.db"
+    (tmp_path / "raw_transcript.txt").write_text("Spoken words", encoding="utf-8")
+    profile = tmp_path / "channel.json"
+    old = Channel(
+        channel_id="test",
+        name="Test",
+        audience="adults",
+        language="Arabic",
+        dialect="MSA",
+        voice="voice",
+        tone="calm",
+        style="illustration",
+        allowed_treatments=["subject_scene"],
+    )
+    atomic_write_json(str(profile), old.model_dump(mode="json"))
+    invalidated = []
+    executed = []
+    monkeypatch.setattr(cli, "resource_database", lambda: database)
+    monkeypatch.setattr(cli, "_stage_complete", lambda _root, _args: False)
+    monkeypatch.setattr(
+        cli,
+        "_execute_stage",
+        lambda args, _root, _database: executed.append(args.stage),
+    )
+    monkeypatch.setattr(
+        cli,
+        "is_visual_policy_update",
+        lambda _root, channel: channel.version == 2,
+    )
+    monkeypatch.setattr(
+        cli,
+        "invalidate_stage",
+        lambda _root, stage, _old, _new: invalidated.append(stage) or [],
+    )
+    argv = [
+        "analyze",
+        "--run-dir",
+        str(tmp_path),
+        "--channel-profile",
+        str(profile),
+    ]
+    cli.main(argv)
+    brief = Brief(
+        source_sha256=fingerprint("Spoken words"),
+        profile_sha256=fingerprint(old),
+        channel=old,
+        analysis=Analysis(
+            topics=["attention"],
+            claim_basis="factual",
+            form="explanation",
+            proposition="Attention changes with context",
+            narrative_strategy="Observe daily situations",
+            treatments=["subject_scene"],
+            rationale="Concrete human scenes",
+        ),
+    )
+    atomic_write_json(
+        str(tmp_path / "episode_brief.json"), brief.model_dump(mode="json")
+    )
+    upgraded = old.model_copy(
+        update={
+            "version": 2,
+            "visual_directives": ["Use concrete scenes"],
+            "forbidden_motifs": ["glowing brain"],
+        }
+    )
+    atomic_write_json(str(profile), upgraded.model_dump(mode="json"))
+    cli.main(argv)
+
+    assert executed == ["analyze", "analyze"]
+    assert invalidated == ["plan"]
+
+
+def test_visual_only_profile_change_without_analyze_ledger_still_invalidates_plan(
+    tmp_path, monkeypatch
+):
+    from youtube_automation.core.utils import atomic_write_json
+    from youtube_automation.production import cli
+    from youtube_automation.production.contracts import Analysis, Brief, Channel, fingerprint
+
+    database = tmp_path / "jobs.db"
+    raw = "Spoken words"
+    (tmp_path / "raw_transcript.txt").write_text(raw, encoding="utf-8")
+    old = Channel(
+        channel_id="test",
+        name="Test",
+        audience="adults",
+        language="Arabic",
+        dialect="MSA",
+        voice="voice",
+        tone="calm",
+        style="illustration",
+        allowed_treatments=["subject_scene"],
+    )
+    upgraded = old.model_copy(
+        update={
+            "version": 2,
+            "visual_directives": ["Use concrete scenes"],
+            "forbidden_motifs": ["glowing brain"],
+        }
+    )
+    profile = tmp_path / "channel.json"
+    atomic_write_json(str(profile), upgraded.model_dump(mode="json"))
+    brief = Brief(
+        source_sha256=fingerprint(raw),
+        profile_sha256=fingerprint(old),
+        channel=old,
+        analysis=Analysis(
+            topics=["attention"],
+            claim_basis="factual",
+            form="explanation",
+            proposition="Attention changes with context",
+            narrative_strategy="Observe daily situations",
+            treatments=["subject_scene"],
+            rationale="Concrete human scenes",
+        ),
+    )
+    atomic_write_json(
+        str(tmp_path / "episode_brief.json"), brief.model_dump(mode="json")
+    )
+    invalidated = []
+    executed = []
+    monkeypatch.setattr(cli, "resource_database", lambda: database)
+    monkeypatch.setattr(cli, "_stage_complete", lambda _root, _args: False)
+    monkeypatch.setattr(
+        cli,
+        "_execute_stage",
+        lambda args, _root, _database: executed.append(args.stage),
+    )
+    monkeypatch.setattr(
+        cli,
+        "invalidate_stage",
+        lambda _root, stage, old_recipe, new_recipe: invalidated.append(
+            (stage, old_recipe, new_recipe)
+        )
+        or [],
+    )
+
+    cli.main(
+        [
+            "analyze",
+            "--run-dir",
+            str(tmp_path),
+            "--channel-profile",
+            str(profile),
+        ]
+    )
+
+    assert executed == ["analyze"]
+    assert invalidated == [("plan", fingerprint(old), fingerprint(upgraded))]

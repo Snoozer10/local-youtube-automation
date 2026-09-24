@@ -126,6 +126,20 @@ def fingerprint(value: BaseModel | dict[str, Any] | str) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def narration_fingerprint(brief: Brief) -> str:
+    """Bind words and audio to channel identity without visual-only policy fields."""
+    if brief.channel.version == 1:
+        return fingerprint(brief)
+    channel = brief.channel.model_dump(mode="json")
+    channel["version"] = 1
+    channel.pop("visual_directives", None)
+    channel.pop("forbidden_motifs", None)
+    projected = brief.model_dump(mode="json")
+    projected["channel"] = channel
+    projected["profile_sha256"] = fingerprint(channel)
+    return fingerprint(projected)
+
+
 def _canonical_fingerprint_value(value: Any) -> Any:
     """Keep version-1 channel fingerprints stable while version 2 adds policy fields."""
     if isinstance(value, dict):

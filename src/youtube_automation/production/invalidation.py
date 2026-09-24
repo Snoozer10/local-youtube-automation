@@ -80,6 +80,7 @@ _STAGE_PATTERNS: dict[str, tuple[str, ...]] = {
         "adaptive_preview.json",
         "editorial_approval.json",
         "active_master.json",
+        "adaptive_thumbnail_receipt.json",
     ),
     "generate": (
         "asset_receipts/*.json",

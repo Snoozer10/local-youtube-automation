@@ -14,7 +14,7 @@ from typing import Any
 
 from youtube_automation.core.utils import atomic_write_json
 
-from .contracts import fingerprint, load_brief
+from .contracts import fingerprint, load_brief, narration_fingerprint
 from .ledger import publication_guard
 from .writing import atomic_text, verify_written_episode
 
@@ -82,7 +82,7 @@ def _recover_pending_source(root: Path, recipe: str) -> dict[str, Any] | None:
             or not accepted.is_file()
             or _sha256(accepted) != source_receipt.get("audio_sha256")
             or source_receipt.get("recipe") != recipe
-            or source_receipt.get("brief_sha256") != fingerprint(load_brief(root))
+            or source_receipt.get("brief_sha256") != narration_fingerprint(load_brief(root))
             or writing_receipt.get("brief_sha256") != source_receipt.get("brief_sha256")
             or writing_receipt.get("outputs")
             != {name: fingerprint(value) for name, value in outputs.items()}
@@ -98,7 +98,7 @@ def _recover_pending_source(root: Path, recipe: str) -> dict[str, Any] | None:
         _remove_journal(journal)
         return existing
     with publication_guard():
-        if source_receipt.get("brief_sha256") != fingerprint(load_brief(root)):
+        if source_receipt.get("brief_sha256") != narration_fingerprint(load_brief(root)):
             raise ValueError("Source narration inputs changed before publication recovery")
         audio = root / "full_episode_voice.wav"
         if audio.exists() and _sha256(audio) != source_receipt["audio_sha256"]:
@@ -142,7 +142,7 @@ def verify_source_narration(run_dir: str | Path) -> dict[str, Any]:
     audio = root / "full_episode_voice.wav"
     if (
         receipt.get("version") != 1
-        or receipt.get("brief_sha256") != fingerprint(load_brief(root))
+        or receipt.get("brief_sha256") != narration_fingerprint(load_brief(root))
         or not audio.is_file()
         or _sha256(audio) != receipt.get("audio_sha256")
     ):
@@ -173,7 +173,7 @@ def import_source_narration(
         ):
             raise ValueError("Audio excerpt does not match the selected caption provenance")
     media_sha256 = _sha256(media)
-    brief_sha256 = fingerprint(brief)
+    brief_sha256 = narration_fingerprint(brief)
     source_recipe = _source_recipe(
         brief_sha256, raw, media_sha256, start_seconds, end_seconds
     )
@@ -247,7 +247,7 @@ def import_source_narration(
         writing_receipt = {
             "version": 1,
             "mode": "source_preserved",
-            "brief_sha256": fingerprint(brief),
+            "brief_sha256": narration_fingerprint(brief),
             "outputs": {name: fingerprint(value) for name, value in outputs.items()},
         }
         accepted_dir = root / "source_audio"

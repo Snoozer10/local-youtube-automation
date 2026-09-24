@@ -17,12 +17,13 @@ from pydantic import BaseModel, ValidationError
 
 from youtube_automation.core.utils import atomic_write_json
 
-from .contracts import Analysis, Brief, Channel, fingerprint
+from .contracts import Analysis, Brief, Channel, fingerprint, load_brief
 from .ledger import publication_guard
 
 Response = TypeVar("Response", bound=BaseModel)
 
 _BARE_JSON_LABEL = re.compile(r"^json\s*(?=[{[])", re.IGNORECASE)
+_VISUAL_ONLY_PROFILE_FIELDS = {"version", "visual_directives", "forbidden_motifs"}
 
 
 def _decode_single_json_value(text: str) -> Any:
@@ -165,6 +166,59 @@ def ensure_brief(run_dir: str | Path, channel: Channel, ask: Callable[[str], str
     with publication_guard():
         atomic_write_json(str(target), brief.model_dump(mode="json"))
     return brief
+
+
+def is_visual_policy_update(run_dir: str | Path, channel: Channel) -> bool:
+    """True only when the raw source and every nonvisual channel field are unchanged."""
+    root = Path(run_dir)
+    try:
+        existing = load_brief(root)
+    except (OSError, ValueError):
+        return False
+    if existing.profile_sha256 == fingerprint(channel):
+        return False
+    old = existing.channel.model_dump(mode="json")
+    new = channel.model_dump(mode="json")
+    for profile_field in _VISUAL_ONLY_PROFILE_FIELDS:
+        old.pop(profile_field, None)
+        new.pop(profile_field, None)
+    return old == new
+
+
+def rebind_visual_policy(run_dir: str | Path, channel: Channel) -> Brief:
+    """Adopt visual-only profile fields while preserving verified words, audio and timing."""
+    root = Path(run_dir)
+    existing = load_brief(root)
+    if not is_visual_policy_update(root, channel):
+        raise ValueError("Profile change is not limited to versioned visual policy")
+
+    writing_receipt = root / "adaptive_writing_receipt.json"
+    source_receipt = root / "source_audio_receipt.json"
+    if writing_receipt.exists():
+        from .writing import verify_written_episode
+
+        verify_written_episode(root)
+    if source_receipt.exists():
+        from .source_narration import verify_source_narration
+
+        verify_source_narration(root)
+
+    updated = Brief(
+        source_sha256=existing.source_sha256,
+        profile_sha256=fingerprint(channel),
+        channel=channel,
+        analysis=existing.analysis,
+    )
+    with publication_guard():
+        if load_brief(root) != existing:
+            raise ValueError("Episode brief changed during visual-policy rebind")
+        atomic_write_json(str(root / "episode_brief.json"), updated.model_dump(mode="json"))
+
+    if writing_receipt.exists():
+        verify_written_episode(root)
+    if source_receipt.exists():
+        verify_source_narration(root)
+    return load_brief(root)
 
 
 def writing_prompt(brief: Brief, stage: str) -> str:

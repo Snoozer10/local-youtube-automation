@@ -14,7 +14,7 @@ from pydantic import Field
 from youtube_automation.core.utils import atomic_write_json
 
 from .briefs import Response, request_json, writing_prompt
-from .contracts import Brief, Contract, Text, fingerprint, load_brief
+from .contracts import Brief, Contract, Text, fingerprint, load_brief, narration_fingerprint
 from .ledger import publication_guard
 
 
@@ -66,7 +66,7 @@ def _recover_pending_writing(root: Path, brief: Brief) -> dict[str, Any] | None:
             pending.get("version") != 1
             or pending.get("kind") != "writing"
             or set(outputs) != expected
-            or receipt.get("brief_sha256") != fingerprint(brief)
+            or receipt.get("brief_sha256") != narration_fingerprint(brief)
             or receipt.get("outputs")
             != {name: fingerprint(value) for name, value in outputs.items()}
         ):
@@ -161,7 +161,7 @@ def write_episode(run_dir: str | Path, brief: Brief, ask: Callable[[str], str]) 
         raise ValueError("Brief changed during writing")
     receipt = {
         "version": 1,
-        "brief_sha256": fingerprint(brief),
+        "brief_sha256": narration_fingerprint(brief),
         "outputs": {name: fingerprint(text) for name, text in outputs.items()},
     }
     journal = _journal_path(root)
@@ -181,7 +181,7 @@ def verify_written_episode(run_dir: str | Path) -> bool:
     root = Path(run_dir)
     brief = load_brief(root)
     receipt = json.loads((root / "adaptive_writing_receipt.json").read_text(encoding="utf-8"))
-    if receipt["brief_sha256"] != fingerprint(brief):
+    if receipt["brief_sha256"] != narration_fingerprint(brief):
         raise ValueError("Writing receipt uses a stale brief")
     expected = {"breaked_paragraphs.txt", "final_output.txt", "refined_script.txt"}
     if set(receipt["outputs"]) != expected:

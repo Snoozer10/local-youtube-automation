@@ -7,7 +7,7 @@ import wave
 from pathlib import Path
 from typing import Any
 
-from .contracts import Brief, fingerprint
+from .contracts import Brief, fingerprint, narration_fingerprint
 
 
 def require_unpolished_run(run_dir: str | Path) -> None:
@@ -53,7 +53,14 @@ def split_chapters(run_dir: str | Path, script: str, *, max_words: int = 220) ->
 def prepare_manifest(run_dir: str | Path, manifest: dict[str, Any], brief: Brief, script: str) -> dict[str, Any]:
     """Resume only chapters from this exact script, channel and voice."""
     expected = split_chapters(run_dir, script)
-    recipe = fingerprint({"version": 1, "script": script, "brief": fingerprint(brief), "voice": brief.channel.voice})
+    recipe = fingerprint(
+        {
+            "version": 1,
+            "script": script,
+            "brief": narration_fingerprint(brief),
+            "voice": brief.channel.voice,
+        }
+    )
     existing = manifest.get("chapters", [])
     marker = manifest.get("adaptive_voice_recipe")
     if existing:

@@ -25,6 +25,9 @@ def test_changed_plan_archives_downstream_pointers_but_preserves_accepted_bytes(
     (renders / "master.mp4").write_bytes(b"immutable render")
     (tmp_path / "adaptive_preview.json").write_text('{"old": true}', encoding="utf-8")
     (tmp_path / "active_master.json").write_text('{"old": true}', encoding="utf-8")
+    (tmp_path / "adaptive_thumbnail_receipt.json").write_text(
+        '{"old": true}', encoding="utf-8"
+    )
 
     archived = invalidate_stage(tmp_path, "plan", "a" * 64, "b" * 64)
 
@@ -34,6 +37,7 @@ def test_changed_plan_archives_downstream_pointers_but_preserves_accepted_bytes(
         "asset_receipts/scene.json",
         "adaptive_preview.json",
         "active_master.json",
+        "adaptive_thumbnail_receipt.json",
     }
     assert (accepted / "scene.png").read_bytes() == b"expensive accepted image"
     assert (renders / "master.mp4").read_bytes() == b"immutable render"

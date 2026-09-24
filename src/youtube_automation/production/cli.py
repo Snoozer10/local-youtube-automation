@@ -12,7 +12,7 @@ from typing import Any
 from youtube_automation.core.utils import get_config_value
 
 from .assets import file_digest
-from .briefs import browser_ask, ensure_brief
+from .briefs import browser_ask, ensure_brief, is_visual_policy_update, rebind_visual_policy
 from .contracts import Brief, fingerprint, load_brief, load_channel
 from .invalidation import invalidate_stage, reconcile_invalidation
 from .ledger import Ledger, durable_stage, leased_resource, resource_database
@@ -246,6 +246,9 @@ def _execute_stage(args: argparse.Namespace, root: Path, database: Path) -> None
         if not args.channel_profile:
             raise ValueError("analyze requires --channel-profile")
         channel = load_channel(args.channel_profile)
+        if is_visual_policy_update(root, channel):
+            rebind_visual_policy(root, channel)
+            return
         with leased_resource(database, "browser"), gemini_transport() as ask:
             ensure_brief(root, channel, ask)
     elif args.stage in {"write", "plan"}:
@@ -354,6 +357,15 @@ def main(argv: list[str] | None = None) -> None:
             key = _stage_key(root, args.stage)
             existing = Ledger(database).get(key)
             complete = _stage_complete(root, args)
+            visual_policy_transition: tuple[str, str] | None = None
+            if args.stage == "analyze" and args.channel_profile:
+                requested_channel = load_channel(args.channel_profile)
+                if is_visual_policy_update(root, requested_channel):
+                    visual_policy_transition = (
+                        load_brief(root).profile_sha256,
+                        fingerprint(requested_channel),
+                    )
+            visual_policy_rebind = visual_policy_transition is not None
             adoptable = args.stage != "report"
             repair_success = bool(
                 existing
@@ -368,13 +380,30 @@ def main(argv: list[str] | None = None) -> None:
                 database,
                 key,
                 recipe,
-                force=args.force_retry or repair_success or recover_complete,
+                force=(
+                    args.force_retry
+                    or repair_success
+                    or recover_complete
+                    or visual_policy_rebind
+                ),
                 detail={"stage": args.stage, "run": str(root)},
             ) as execute:
                 if not execute:
                     print(f"Stage already succeeded for unchanged inputs: {args.stage}")
                     return
-                if existing and existing["recipe"] != recipe:
+                if visual_policy_transition is not None:
+                    archived = invalidate_stage(
+                        root, "plan", visual_policy_transition[0], visual_policy_transition[1]
+                    )
+                    if archived:
+                        print(
+                            f"Archived {len(archived)} invalidated activation file(s) "
+                            f"before retrying stage: {args.stage}"
+                        )
+                    # The earlier completion check examined the prior activation.
+                    # Recheck after archiving before adopting any remaining output.
+                    complete = _stage_complete(root, args)
+                elif existing and existing["recipe"] != recipe:
                     archived = invalidate_stage(root, args.stage, existing["recipe"], recipe)
                     if archived:
                         print(
