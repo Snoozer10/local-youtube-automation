@@ -26,6 +26,37 @@ SCHULTE_6X6 = [
     "25", "9", "32", "2", "20", "13",
 ]
 
+VISUAL_FAMILY_GUIDANCE = {
+    "generic_desk_task": (
+        "a person or disembodied hands performing generic card, paper, pen, notebook, drafting, "
+        "or desk work that does not reveal an episode-specific behavior"
+    ),
+    "generic_focus_portrait": (
+        "a medium or close portrait whose main idea is merely that someone looks focused, "
+        "confident, alert, or mentally sharp"
+    ),
+    "mechanical_cognition": (
+        "gears, tracks, tiles, mechanisms, puzzles, or snapping alignment used as shorthand "
+        "for thought, attention, perception, or intelligence"
+    ),
+    "efficacy_transformation": (
+        "a person shown as sharper, energized, improved, or transformed after an exercise, "
+        "visually presenting an unverified benefit as an achieved outcome"
+    ),
+    "generated_exercise_surface": (
+        "cards, grids, tables, tiles, numbers, or exercise instructions placed in generated pixels "
+        "instead of deterministic local graphics"
+    ),
+    "wellness_strawman": (
+        "incense, candles, cushions, lotus or yoga imagery, meditation props, or breathing symbols "
+        "used as a dismissive visual shorthand for a passive or boring alternative"
+    ),
+    "false_authority": (
+        "clinical, diagnostic, medical, laboratory, or scientific-authority staging that the "
+        "narration and evidence do not establish"
+    ),
+}
+
 
 class Overlay(Contract):
     kind: Literal["label", "highlight", "arrow", "data_grid", "timer"]
@@ -50,9 +81,15 @@ class Overlay(Contract):
             return value
         normalized = dict(value)
         if normalized.get("kind") == "data_grid" and normalized.get("preset") == "schulte_6x6":
-            normalized.setdefault("rows", 6)
-            normalized.setdefault("columns", 6)
-            normalized.setdefault("cells", SCHULTE_6X6)
+            # The renderer owns the exercise definition. Model-supplied grid geometry or
+            # values are untrusted hints and must never alter the canonical 1-36 layout.
+            normalized["x"] = 0.15
+            normalized["y"] = 0.15
+            normalized["width"] = 0.7
+            normalized["height"] = 0.7
+            normalized["rows"] = 6
+            normalized["columns"] = 6
+            normalized["cells"] = SCHULTE_6X6
         return normalized
 
     @model_validator(mode="after")
@@ -96,7 +133,9 @@ class Shot(Contract):
     setting: Text
     framing: Literal["establishing", "wide", "medium", "close_up", "insert", "overhead", "diagram"]
     composition: Text
-    operation: Literal["generate", "reuse", "add", "remove", "replace", "reframe"] = "generate"
+    operation: Literal[
+        "generate", "local_canvas", "reuse", "add", "remove", "replace", "reframe"
+    ] = "generate"
     motion: Literal["hold", "push", "pull", "pan_left", "pan_right"] = "hold"
     focal_x: float = Field(default=0.5, ge=0, le=1)
     focal_y: float = Field(default=0.5, ge=0, le=1)
@@ -108,6 +147,18 @@ class Shot(Contract):
     def clamp_local_overlay_duration(cls, value: Any) -> Any:
         if not isinstance(value, dict):
             return value
+        citation = re.compile(r"\s*\[cite:\s*\d+(?:\s*,\s*\d+)*\]", re.IGNORECASE)
+
+        def strip_citations(item: Any) -> Any:
+            if isinstance(item, str):
+                return citation.sub("", item).strip()
+            if isinstance(item, list):
+                return [strip_citations(child) for child in item]
+            if isinstance(item, dict):
+                return {key: strip_citations(child) for key, child in item.items()}
+            return item
+
+        value = strip_citations(value)
         start = value.get("start_frame")
         end = value.get("end_frame")
         overlays = value.get("overlays")
@@ -130,12 +181,19 @@ class Shot(Contract):
             raise ValueError("Duplicate entity identities")
         if self.operation == "reuse" and self.reference_asset_id not in {None, self.asset_id}:
             raise ValueError("Reuse cannot name an unrelated reference")
+        if self.operation == "local_canvas":
+            if self.reference_asset_id:
+                raise ValueError("A local canvas cannot name a generated reference")
+            if self.narrative_role != "diagram" or self.framing != "diagram":
+                raise ValueError("A local canvas is reserved for full-frame diagrams")
+            if not any(overlay.kind == "data_grid" for overlay in self.overlays):
+                raise ValueError("A local canvas requires a deterministic data-grid overlay")
         duration = self.end_frame - self.start_frame
         if duration <= 0:
             raise ValueError("Shot duration must be positive")
         if any(o.end_frame > duration for o in self.overlays):
             raise ValueError("Overlay exceeds shot duration")
-        if self.operation not in {"generate", "reuse"} and not self.reference_asset_id:
+        if self.operation not in {"generate", "local_canvas", "reuse"} and not self.reference_asset_id:
             raise ValueError("A generated edit requires an explicit reference asset")
         if self.motion != "hold" and self.zoom <= 1:
             raise ValueError("Camera motion requires zoom above 1 to produce visible travel")
@@ -171,12 +229,33 @@ class ShotPlan(ShotBatch):
             if shot.shot_id in seen_shots or shot.start_frame != cursor:
                 raise ValueError("Shots must be unique with contiguous frame coverage")
             seen_shots.add(shot.shot_id)
+            if (
+                shot.operation == "reframe"
+                and shot.reference_asset_id == shot.asset_id
+                and shot.asset_id in assets
+            ):
+                origin = assets[shot.asset_id]
+                if origin.scene_id == shot.scene_id and set(shot.entity_ids) <= set(
+                    origin.entity_ids
+                ):
+                    shot.operation = "reuse"
+                    shot.reference_asset_id = None
+            if shot.operation == "local_canvas" and shot.asset_id in assets:
+                origin = assets[shot.asset_id]
+                if (
+                    origin.operation == "local_canvas"
+                    and origin.scene_id == shot.scene_id
+                    and set(origin.entity_ids) == set(shot.entity_ids)
+                ):
+                    shot.operation = "reuse"
+                else:
+                    raise ValueError("A local canvas ID cannot replace an unrelated asset")
             if shot.operation == "reuse":
                 if shot.asset_id not in assets:
                     raise ValueError("Reuse references an asset that has not been established")
                 origin = assets[shot.asset_id]
-                if origin.scene_id != shot.scene_id or set(origin.entity_ids) != set(
-                    shot.entity_ids
+                if origin.scene_id != shot.scene_id or not set(shot.entity_ids) <= set(
+                    origin.entity_ids
                 ):
                     raise ValueError("Reuse cannot change scene or entity identity")
             else:
@@ -188,24 +267,21 @@ class ShotPlan(ShotBatch):
                         raise ValueError("Reference must be an established asset in the same scene")
                     reference_entities = set(reference.entity_ids)
                     target_entities = set(shot.entity_ids)
-                    if shot.operation == "generate":
-                        if target_entities == reference_entities:
-                            shot.operation = "replace"
-                        elif target_entities < reference_entities:
-                            shot.operation = "reframe"
-                        elif reference_entities < target_entities:
-                            shot.operation = "add"
-                        else:
-                            raise ValueError("Referenced generation has unrelated entity identities")
                     valid_entities = {
                         "add": reference_entities < target_entities,
                         "remove": target_entities < reference_entities,
                         "reframe": target_entities <= reference_entities,
                         "replace": target_entities == reference_entities,
-                    }[shot.operation]
-                    if not valid_entities:
+                    }.get(shot.operation, False)
+                    if not valid_entities and reference_entities < target_entities:
+                        shot.operation = "add"
+                    elif not valid_entities and target_entities < reference_entities:
+                        shot.operation = "reframe"
+                    elif not valid_entities and target_entities == reference_entities:
+                        shot.operation = "replace"
+                    elif not valid_entities:
                         raise ValueError(
-                            f"{shot.operation.capitalize()} has incompatible reference entities"
+                            "Referenced edit has unrelated entity identities"
                         )
                 assets[shot.asset_id] = shot
             cursor = shot.end_frame
@@ -248,6 +324,440 @@ def resolve_editorial_policy(brief: Brief) -> EditorialPolicy:
     )
 
 
+def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
+    normalized = text.casefold()
+    ascii_tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    for term in terms:
+        normalized_term = term.casefold()
+        if re.fullmatch(r"[a-z0-9]+", normalized_term):
+            if normalized_term in ascii_tokens:
+                return True
+        elif normalized_term in normalized:
+            return True
+    return False
+
+
+def _affirmative_visible_description(text: str) -> str:
+    """Remove bounded exclusion clauses before testing what a shot visibly contains."""
+    normalized = re.sub(r"\bhuman[- ]free\b", "", text.casefold())
+    return re.sub(
+        r"\b(?:no|without|excluding|free of|clear of|devoid of)\b[^.,;]{0,80}",
+        "",
+        normalized,
+    )
+
+
+def _shot_visual_families(shot: Shot) -> set[str]:
+    """Classify recurring weak visual concepts using visible, reviewable shot text."""
+    visible_description = " ".join(
+        (
+            shot.subject,
+            shot.visible_state,
+            shot.setting,
+            shot.composition,
+            " ".join(shot.entity_ids),
+        )
+    ).casefold()
+    description = f"{shot.purpose} {visible_description}".casefold()
+    human = _contains_any(
+        description,
+        (
+            "person",
+            "human",
+            "adult",
+            "man",
+            "woman",
+            "student",
+            "worker",
+            "hand",
+            "hands",
+            "finger",
+            "fingers",
+        ),
+    )
+    cognition = _contains_any(
+        description,
+        (
+            "mind",
+            "mental",
+            "cognitive",
+            "attention",
+            "focus",
+            "focused",
+            "perception",
+            "intelligence",
+        ),
+    )
+    families: set[str] = set()
+    staged_desk_task_markers = (
+        "drafting",
+        "compass",
+        "ruler",
+        "protractor",
+        "stencil",
+        "sorting cards",
+        "shuffling cards",
+        "arranging cards",
+        "card sorting",
+        "flipping cards",
+        "turning cards",
+        "dealing cards",
+        "index cards",
+        "drawing a line",
+        "drawing lines",
+        "drawing path",
+        "drawing a path",
+        "connecting dots",
+        "ink dots",
+        "tracing a line",
+        "tracing line",
+        "tracing path",
+        "tracing a path",
+        "pen path",
+        "ink path",
+        "drawing shapes",
+        "structural sketch",
+        "writing on paper",
+        "writing on a sheet",
+        "writing notes",
+        "taking notes",
+        "pen over paper",
+        "pen over the paper",
+        "hand holds a pen",
+        "hand holding a pen",
+        "holding a pen over",
+        "scribbling",
+        "jotting",
+        "writing in notebook",
+        "writing on a notepad",
+        "wall of notes",
+        "notes on a wall",
+        "scattered notes",
+        "scattered paper notes",
+        "paper-covered wall",
+        "wall covered in",
+        "covered in paper notes",
+        "covered in notes",
+        "overlapping paper notes",
+        "pinned to a wall",
+        "pinned to a studio wall",
+        "pulling out a sketchpad",
+        "pulling a sketchpad",
+        "removing the sketchpad",
+        "writing at a desk",
+        "working at a desk",
+        "worker writing",
+        "person writing at",
+        "desk work",
+        "paper task",
+        "desk task",
+        "writing task",
+        "worksheet",
+        "worksheets",
+    )
+    if human and _contains_any(description, staged_desk_task_markers):
+        families.add("generic_desk_task")
+    elif (
+        human
+        and _contains_any(description, ("desk", "desks", "table", "tables"))
+        and _contains_any(
+            description,
+            (
+                "write",
+                "writing",
+                "sort",
+                "sorting",
+                "draft",
+                "drafting",
+                "sketch",
+                "sketching",
+                "scribble",
+                "scribbling",
+                "jot",
+                "jotting",
+            ),
+        )
+    ):
+        families.add("generic_desk_task")
+    visible_person_desc = f"{shot.subject} {shot.visible_state}".casefold()
+    person_present = _contains_any(
+        visible_person_desc,
+        (
+            "person",
+            "human",
+            "adult",
+            "man",
+            "woman",
+            "student",
+            "worker",
+            "host",
+            "boy",
+            "girl",
+            "character",
+        ),
+    )
+    explicit_face = _contains_any(
+        visible_person_desc, ("portrait", "face", "eyes", "gaze", "stare", "expression")
+    )
+    is_portrait_framing = person_present and (
+        (shot.framing == "medium" and shot.treatment != "detail")
+        or (shot.framing == "close_up" and explicit_face)
+        or explicit_face
+    )
+    has_attention_lapse = _contains_any(
+        visible_person_desc,
+        (
+            "confused",
+            "searching",
+            "frantic",
+            "forgetful",
+            "fatigue",
+            "foggy",
+            "distracted",
+            "amnesia",
+            "puzzled",
+            "lost",
+            "struggling",
+            "clumsy",
+            "absent-minded",
+            "daydreaming",
+            "washing",
+            "splashing",
+        ),
+    )
+    focus_portrait_markers = (
+        "focused",
+        "confident",
+        "alert",
+        "attentive",
+        "thoughtful gaze",
+        "composed gaze",
+        "focused gaze",
+        "calm gaze",
+        "mental sharpness",
+        "cognitive readiness",
+        "sharp gaze",
+        "sharp expression",
+        "steady gaze",
+        "intense stare",
+        "staring forward",
+        "staring ahead",
+        "staring at a",
+        "determined expression",
+        "performing focus",
+        "demonstrating focus",
+    )
+    if (
+        is_portrait_framing
+        and not has_attention_lapse
+        and _contains_any(visible_person_desc, focus_portrait_markers)
+    ):
+        families.add("generic_focus_portrait")
+    if cognition and _contains_any(
+        description,
+        (
+            "mechanical",
+            "mechanism",
+            "mechanisms",
+            "gear",
+            "gears",
+            "track",
+            "tracks",
+            "tile",
+            "tiles",
+            "puzzle",
+            "puzzles",
+            "snapping",
+            "alignment",
+        ),
+    ):
+        families.add("mechanical_cognition")
+    if human and cognition and _contains_any(
+        description,
+        (
+            "following the exercise",
+            "following the exercises",
+            "after the exercise",
+            "after the exercises",
+            "desired outcome",
+            "improved",
+            "elevated",
+            "transformed",
+            "return activity",
+            "sharper than",
+            "active state of mind",
+            "boost in focus",
+            "boosted",
+            "renewed clarity",
+            "perfect mental clarity",
+            "total mental confidence",
+            "radiating mental clarity",
+            "radiating a sense of perfect mental clarity",
+            "before-and-after",
+            "demonstrating enhanced",
+            "heightened focus",
+        ),
+    ):
+        families.add("efficacy_transformation")
+    has_local_grid = any(overlay.kind == "data_grid" for overlay in shot.overlays)
+    if (
+        not has_local_grid
+        and _contains_any(
+            description,
+            (
+                "exercise",
+                "exercises",
+                "test",
+                "tests",
+                "challenge",
+                "challenges",
+                "cognitive",
+                "mental",
+            ),
+        )
+        and _contains_any(
+            description,
+            (
+                "card",
+                "cards",
+                "grid",
+                "grids",
+                "tile",
+                "tiles",
+                "number",
+                "numbers",
+                "worksheet",
+                "worksheets",
+                "data table",
+                "number table",
+                "table of numbers",
+                "numbered grid",
+                "exercise board",
+            ),
+        )
+    ):
+        families.add("generated_exercise_surface")
+    if _contains_any(
+        visible_description,
+        (
+            "incense",
+            "candle",
+            "candles",
+            "cushion",
+            "cushions",
+            "lotus",
+            "yoga",
+            "meditation",
+            "mindfulness",
+            "breathing",
+        ),
+    ) and _contains_any(
+        description,
+        ("boring", "dismiss", "dismisses", "reject", "passive", "ignored", "unlit"),
+    ):
+        families.add("wellness_strawman")
+    if _contains_any(
+        description,
+        (
+            "clinical diagnostic",
+            "diagnostic metric",
+            "clinical metric",
+            "medical authority",
+            "medical evidence",
+            "laboratory evidence",
+            "scientific authority",
+            "clinically proven",
+            "diagnostic test",
+        ),
+    ):
+        families.add("false_authority")
+    return families
+
+
+def _validate_interactive_graphics(
+    plan: ShotPlan, timeline: dict[str, Any], *, complete: bool
+) -> None:
+    """Keep an introduced Schulte exercise playable and locally rendered."""
+    spans = timeline.get("spans", [])
+    schulte_spans = [
+        span
+        for span in spans
+        if _contains_any(str(span.get("text", "")).casefold(), ("شولتي", "schulte"))
+    ]
+    if not schulte_spans:
+        return
+    grid_shots = [
+        shot
+        for shot in plan.shots
+        if any(
+            overlay.kind == "data_grid" and overlay.preset == "schulte_6x6"
+            for overlay in shot.overlays
+        )
+    ]
+    introduction = min(int(span["start_frame"]) for span in schulte_spans)
+    covered_through = max((shot.end_frame for shot in plan.shots), default=0)
+    if not grid_shots:
+        if complete or covered_through > introduction + plan.fps:
+            raise ValueError("Schulte grid must begin when the exercise is introduced")
+        return
+    first_grid = min(shot.start_frame for shot in grid_shots)
+    if first_grid < max(0, introduction - plan.fps):
+        raise ValueError(
+            "Schulte grid must not appear more than one second before its spoken introduction"
+        )
+    if first_grid > introduction + plan.fps:
+        raise ValueError("Schulte grid must begin when the exercise is introduced")
+    for shot in grid_shots:
+        for overlay in shot.overlays:
+            if overlay.kind == "timer" and not re.fullmatch(r"\d{2}:\d{2}", overlay.text):
+                raise ValueError("Schulte timer must use a readable MM:SS value")
+    reached_spans = (
+        spans
+        if complete
+        else [span for span in spans if int(span["start_frame"]) < covered_through]
+    )
+    timeline_text = " ".join(
+        str(span.get("text", "")) for span in reached_spans
+    ).casefold()
+    if _contains_any(timeline_text, ("المركز", "center", "centre")) and not any(
+        overlay.kind == "highlight"
+        for shot in grid_shots
+        for overlay in shot.overlays
+    ):
+        raise ValueError("Schulte center-fixation instruction requires a local highlight")
+    start_cue_spans = [
+        span
+        for span in spans
+        if _contains_any(
+            str(span.get("text", "")).casefold(),
+            ("ابدا", "ابدأ", "begin", "start"),
+        )
+    ]
+    if start_cue_spans:
+        countdown_end = max(int(span["end_frame"]) for span in start_cue_spans)
+        for shot in plan.shots:
+            if (
+                shot.end_frame > first_grid
+                and shot.start_frame < countdown_end
+                and shot not in grid_shots
+            ):
+                raise ValueError(
+                    "Schulte grid must remain the dominant canvas through the spoken countdown"
+                )
+        if any(span in reached_spans for span in start_cue_spans):
+            has_countdown_label = any(
+                overlay.kind == "label"
+                and (
+                    _contains_any(overlay.text.casefold(), ("جاهز", "ready"))
+                    or re.search(r"(?<!\d)[123١٢٣](?!\d)", overlay.text) is not None
+                )
+                for shot in grid_shots
+                for overlay in shot.overlays
+            )
+            if not has_countdown_label:
+                raise ValueError("Schulte spoken countdown requires a local countdown label")
+
+
 def _validate_editorial_quality(plan: ShotPlan, brief: Brief, *, complete: bool) -> None:
     expected_policy = resolve_editorial_policy(brief)
     if plan.editorial_policy != expected_policy:
@@ -255,6 +765,8 @@ def _validate_editorial_quality(plan: ShotPlan, brief: Brief, *, complete: bool)
 
     maximum_frames = round(expected_policy.max_shot_seconds * plan.fps)
     for shot in plan.shots:
+        if shot.narrative_role == "diagram" and shot.framing != "diagram":
+            raise ValueError("Diagram narrative roles require diagram framing")
         if shot.end_frame - shot.start_frame > maximum_frames:
             duration_frames = shot.end_frame - shot.start_frame
             raise ValueError(
@@ -264,7 +776,12 @@ def _validate_editorial_quality(plan: ShotPlan, brief: Brief, *, complete: bool)
 
     repeated_framing = 0
     previous_framing = ""
+    previous_shot: Shot | None = None
     established_entities: set[tuple[str, str]] = set()
+    entity_scenes: dict[str, str] = {}
+    family_counts: dict[str, int] = dict.fromkeys(brief.channel.repetition_limited_visual_families, 0)
+    scene_counts: dict[str, int] = {}
+    max_scene_appearances = brief.channel.max_non_diagram_scene_appearances or 4
     literalization_markers = (
         "literally",
         "morphing into",
@@ -276,12 +793,46 @@ def _validate_editorial_quality(plan: ShotPlan, brief: Brief, *, complete: bool)
         "organs turning",
     )
     for shot in plan.shots:
-        repeated_framing = repeated_framing + 1 if shot.framing == previous_framing else 1
-        previous_framing = shot.framing
-        if repeated_framing > expected_policy.max_consecutive_framing:
-            raise ValueError("Too many consecutive shots use the same framing")
+        is_exercise_grid = any(
+            overlay.kind == "data_grid" for overlay in shot.overlays
+        )
+        if not is_exercise_grid:
+            if (
+                previous_shot is not None
+                and not any(overlay.kind == "data_grid" for overlay in previous_shot.overlays)
+                and shot.asset_id == previous_shot.asset_id
+                and shot.framing == previous_shot.framing
+                and shot.motion == previous_shot.motion
+            ):
+                raise ValueError(
+                    "Adjacent non-diagram shots cannot repeat the same asset, framing and motion"
+                )
+            scene_counts[shot.scene_id] = scene_counts.get(shot.scene_id, 0) + 1
+            if (
+                scene_counts[shot.scene_id]
+                > max_scene_appearances
+            ):
+                raise ValueError(
+                    f"Non-diagram scene {shot.scene_id} exceeds the channel limit of "
+                    f"{max_scene_appearances} appearances"
+                )
+            repeated_framing = repeated_framing + 1 if shot.framing == previous_framing else 1
+            previous_framing = shot.framing
+            if repeated_framing > expected_policy.max_consecutive_framing:
+                raise ValueError("Too many consecutive shots use the same framing")
+        else:
+            repeated_framing = 0
+            previous_framing = ""
 
         identities = {(shot.scene_id, entity_id) for entity_id in shot.entity_ids}
+        for entity_id in shot.entity_ids:
+            prior_scene = entity_scenes.get(entity_id)
+            if prior_scene is not None and prior_scene != shot.scene_id:
+                raise ValueError(
+                    f"Entity {entity_id} cannot migrate from scene {prior_scene} to "
+                    f"{shot.scene_id}"
+                )
+            entity_scenes[entity_id] = shot.scene_id
         if established_entities & identities and shot.operation == "generate":
             raise ValueError(
                 f"Recurring entities in scene {shot.scene_id} must reuse or reference an established asset"
@@ -289,29 +840,66 @@ def _validate_editorial_quality(plan: ShotPlan, brief: Brief, *, complete: bool)
         established_entities.update(identities)
 
         visible_description = " ".join(
-            (shot.subject, shot.visible_state, shot.setting, shot.composition)
-        ).lower()
-        if brief.channel.version == 2 and shot.narrative_role is None:
-            raise ValueError(f"Version 2 channel requires narrative_role in shot {shot.shot_id}")
-        if brief.channel.host_mode == "NONE" and shot.narrative_role == "presenter":
-            raise ValueError(f"Host-free channel cannot use a presenter in shot {shot.shot_id}")
-
-        editorial_description = " ".join(
             (
-                shot.purpose,
                 shot.subject,
                 shot.visible_state,
                 shot.setting,
                 shot.composition,
-                " ".join(shot.entity_ids),
             )
-        )
-        normalized_description = re.sub(r"[\W_]+", " ", editorial_description.casefold()).strip()
+        ).lower()
+        affirmative_visible = _affirmative_visible_description(visible_description)
+        if shot.operation != "local_canvas" and _contains_any(
+            affirmative_visible,
+            (
+                "printed text",
+                "legible text",
+                "readable text",
+                "visible words",
+                "written words",
+                "book text",
+            ),
+        ):
+            raise ValueError(
+                f"Shot {shot.shot_id} requests typography inside generated pixels"
+            )
+        if brief.channel.version >= 2 and shot.narrative_role is None:
+            raise ValueError(f"Version 2+ channel requires narrative_role in shot {shot.shot_id}")
+        if brief.channel.host_mode == "NONE" and shot.narrative_role == "presenter":
+            raise ValueError(f"Host-free channel cannot use a presenter in shot {shot.shot_id}")
+
+        normalized_visible = re.sub(r"[\W_]+", " ", visible_description.casefold()).strip()
+        normalized_purpose = re.sub(r"[\W_]+", " ", shot.purpose.casefold()).strip()
         for motif in brief.channel.forbidden_motifs:
             normalized_motif = re.sub(r"[\W_]+", " ", motif.casefold()).strip()
-            if normalized_motif and normalized_motif in normalized_description:
+            if not normalized_motif:
+                continue
+            if normalized_motif in normalized_visible:
                 raise ValueError(
                     f"Shot {shot.shot_id} uses channel-forbidden motif: {motif}"
+                )
+            if normalized_motif in normalized_purpose:
+                negation_pattern = (
+                    rf"(?:avoid|avoiding|avoids|without|reject|rejecting|rejects|instead of|no|not|never)"
+                    rf"\b[\w\s]{{0,40}}\b{re.escape(normalized_motif)}"
+                )
+                if not re.search(negation_pattern, normalized_purpose):
+                    raise ValueError(
+                        f"Shot {shot.shot_id} uses channel-forbidden motif: {motif}"
+                    )
+
+        visual_families = _shot_visual_families(shot)
+        forbidden_families = visual_families & set(brief.channel.forbidden_visual_families)
+        if forbidden_families:
+            family = sorted(forbidden_families)[0]
+            raise ValueError(f"Shot {shot.shot_id} uses forbidden visual family: {family}")
+        for family in visual_families & set(
+            brief.channel.repetition_limited_visual_families
+        ):
+            family_counts[family] += 1
+            if family_counts[family] > brief.channel.max_visual_family_repetitions:
+                raise ValueError(
+                    f"Visual family {family} exceeds the channel repetition limit of "
+                    f"{brief.channel.max_visual_family_repetitions}"
                 )
 
         schulte_grids = [
@@ -319,12 +907,12 @@ def _validate_editorial_quality(plan: ShotPlan, brief: Brief, *, complete: bool)
             for overlay in shot.overlays
             if overlay.kind == "data_grid" and overlay.preset == "schulte_6x6"
         ]
-        if schulte_grids and brief.channel.version == 2:
+        if schulte_grids and brief.channel.version >= 2:
             human_terms = {
                 "person", "human", "adult", "man", "woman", "boy", "girl", "child",
-                "teen", "student", "worker", "viewer", "user", "host", "presenter",
+                "teen", "student", "worker", "host", "presenter",
             }
-            described_tokens = set(re.findall(r"[a-z]+", editorial_description.casefold()))
+            described_tokens = set(re.findall(r"[a-z]+", affirmative_visible))
             if (
                 shot.framing != "diagram"
                 or shot.narrative_role != "diagram"
@@ -355,6 +943,7 @@ def _validate_editorial_quality(plan: ShotPlan, brief: Brief, *, complete: bool)
                 raise ValueError(
                     f"Shot {shot.shot_id} declares entity {entity_id} without a visible description"
                 )
+        previous_shot = shot
         editorial_text = f"{shot.purpose} {shot.subject} {shot.visible_state}".lower()
         if any(marker in editorial_text for marker in literalization_markers):
             raise ValueError(f"Shot {shot.shot_id} appears to literalize figurative language")
@@ -398,6 +987,7 @@ def validate_plan(
         }
         if len(shot.span_ids) != len(set(shot.span_ids)) or set(shot.span_ids) != expected:
             raise ValueError(f"Narration references do not match shot timing: {shot.shot_id}")
+    _validate_interactive_graphics(plan, timeline, complete=editorial_complete)
     _validate_editorial_quality(plan, brief, complete=editorial_complete)
 
 
@@ -479,17 +1069,26 @@ def _load_partial_plan(
         or not 0 < next_window <= len(windows)
     ):
         raise ValueError("Partial shot plan does not match current planning inputs")
-    partial = ShotPlan(
-        shots=[Shot.model_validate(shot) for shot in checkpoint["shots"]],
-        brief_sha256=fingerprint(brief),
-        timeline_sha256=fingerprint(timeline),
-        fps=timeline["fps"],
-        total_frames=windows[next_window - 1][1],
-        editorial_policy=resolve_editorial_policy(brief),
-    )
-    shadow = partial.model_copy(update={"total_frames": timeline["total_frames"]})
-    validate_plan(shadow, timeline, brief, editorial_complete=False)
-    return next_window, partial.shots
+    saved_shots = [Shot.model_validate(shot) for shot in checkpoint["shots"]]
+    valid_shots: list[Shot] = []
+    for window_index in range(next_window):
+        window_end = windows[window_index][1]
+        candidate_shots = [shot for shot in saved_shots if shot.end_frame <= window_end]
+        try:
+            partial = ShotPlan(
+                shots=candidate_shots,
+                brief_sha256=fingerprint(brief),
+                timeline_sha256=fingerprint(timeline),
+                fps=timeline["fps"],
+                total_frames=window_end,
+                editorial_policy=resolve_editorial_policy(brief),
+            )
+            shadow = partial.model_copy(update={"total_frames": timeline["total_frames"]})
+            validate_plan(shadow, timeline, brief, editorial_complete=False)
+        except ValueError:
+            return window_index, valid_shots
+        valid_shots = partial.shots
+    return next_window, valid_shots
 
 
 def _save_partial_plan(
@@ -537,7 +1136,17 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         "Treat the saved channel style as binding exclusions as well as visual direction. Avoid default mascots, "
         "blank white isolation, generic glowing brains, gears, floating puzzle pieces and icon collages as "
         "shortcuts for thinking unless the source specifically calls for those objects. Use a distinct "
-        "human situation, physical mechanism or useful local graphic for each narrative beat. "
+        "source-grounded human situation, environmental observation or useful local graphic for each narrative beat. "
+        "Use a physical mechanism only when the source describes that literal mechanism and the channel does not "
+        "forbid its semantic family. "
+        "For early narrative beats addressing foggy thinking, cognitive fatigue, or overconfidence in attention, "
+        "ground shots in recognizable, relatable micro-stories from daily attention failures (such as searching past an item "
+        "that is already visible in plain sight, standing at a threshold or room entrance having forgotten the intention, "
+        "or having attention captured by a competing environmental cue or distraction). Strictly avoid staged 'performing focus' "
+        "B-roll, such as purposeless drafting, compass manipulation, drawing arbitrary lines or ink paths connecting dots, "
+        "sorting cards on tables, walls of scattered notes, or intense staring close-ups. Staged productivity and generic "
+        "desk tasks are strictly rejected. When narration mentions sharpening the mind, do not show a person physically "
+        "demonstrating improved focus or doing artificial paper tasks; preserve psychological restraint. "
         "Any exact words, numerals, tables, timers or instructions belong in deterministic local graphics, "
         "not in generated pixels. For a Schulte challenge, use a data_grid overlay with preset "
         "schulte_6x6 and a separate timer overlay; never ask the image generator to draw the grid. "
@@ -545,10 +1154,30 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         "narrative_role must describe the visible subject's actual function. A presenter addresses the viewer, "
         "demonstrates to camera or carries the episode between otherwise unrelated scenes; never disguise that role "
         "as story_subject. If host_mode is NONE, do not use a presenter or recurring presenter surrogate. "
-        "When schulte_6x6 is used, the shot must be narrative_role diagram, framing diagram, contain no person, "
-        "and place the grid as a clean near-full-frame local overlay rather than on an in-scene board or device. "
+        "When schulte_6x6 is used, the shot must be narrative_role diagram, framing diagram, operation local_canvas, "
+        "contain no person, and place the grid as a clean near-full-frame local overlay rather than on an in-scene "
+        "board or device. Establish one local_canvas asset, then reuse that exact asset for later grid states. "
+        "For the schulte_6x6 overlay, supply preset only and omit rows, columns and cells; the local renderer "
+        "overwrites those fields and grid geometry with its immutable canonical exercise definition. "
         "Do not create false authority with medical props, laboratory staging or charts unless the narration "
         "specifically establishes them. Do not visually attack or reject an activity the narration does not criticize. "
+        "Semantic visual-family rules apply by meaning, including synonyms and paraphrases; renaming a weak concept "
+        "does not make it acceptable. Do not reveal an interactive Schulte grid more than one second before the narration "
+        "first names that exercise. When it is introduced, switch to the playable local grid within one second and, "
+        "when the supplied clip ends at the spoken start cue, keep that grid as the "
+        "dominant canvas continuously through the countdown all the way to the start cue without cutting away to other scenes or participants. "
+        "Consecutive diagram shots containing an active interactive exercise grid do not count against the consecutive framing limit. "
+        "When narration instructs center fixation, add a local highlight over the grid center at that beat. "
+        "When narration gives a ready or countdown cue, add a local label carrying that cue while preserving the grid. "
+        "Timers use MM:SS. "
+        f"VISUAL FAMILY DEFINITIONS: {json.dumps(VISUAL_FAMILY_GUIDANCE, ensure_ascii=False)}. "
+        f"FORBIDDEN VISUAL FAMILIES: {json.dumps(brief.channel.forbidden_visual_families)}. "
+        f"REPETITION-LIMITED VISUAL FAMILIES: "
+        f"{json.dumps(brief.channel.repetition_limited_visual_families)}; maximum "
+        f"{brief.channel.max_visual_family_repetitions} shots per listed family. "
+        f"NON-DIAGRAM SCENE LIMIT: {brief.channel.max_non_diagram_scene_appearances or 4} appearances "
+        "per scene_id. A new scene_id must represent a genuinely distinct behavior or environment, "
+        "not a renamed cosmetic reframe. Interactive exercise diagrams are exempt. "
         f"CHANNEL VISUAL DIRECTIVES: {json.dumps(brief.channel.visual_directives, ensure_ascii=False)}. "
         f"CHANNEL FORBIDDEN MOTIFS: {json.dumps(brief.channel.forbidden_motifs, ensure_ascii=False)}. "
         f"Resolve pacing with this fixed editorial policy: {editorial_policy.model_dump_json()}. "
@@ -559,6 +1188,7 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         "Push, pull and pan require zoom above 1; if there is no safe focal travel, choose hold. "
         "Set the focal point on the subject in the intended source composition so aspect crops preserve it. "
         "Use English subject/state/setting/composition for image generation. Local overlay labels use channel language. "
+        "Scene fields describe only visible content; do not restate exclusions such as no people or no text in those fields. "
         "Describe a single visible state, not an impossible temporal action in a still. "
         "Prefer reuse of the same asset with local overlays/crops when that conveys the change. "
         "Treat scene_id as a stable place-and-time continuity unit, not a new ID for every narration beat. "
@@ -594,14 +1224,48 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
                 "scene_id": s.scene_id,
                 "entity_ids": s.entity_ids,
                 "subject": s.subject,
+                "visible_state": s.visible_state,
+                "setting": s.setting,
+                "framing": s.framing,
+                "continuity_rule": (
+                    "If a new shot overlaps these entity_ids in this scene, operation=generate "
+                    "is forbidden. Use operation=reuse with this exact asset_id only when the "
+                    "existing pixels support the requested crop/hold. Otherwise use add, remove, "
+                    "replace or reframe with reference_asset_id set to this asset_id and a new asset_id."
+                ),
             }
             for s in all_shots
             if s.operation != "reuse"
         ]
+        scene_appearances: dict[str, int] = {}
+        for prior_shot in all_shots:
+            if any(overlay.kind == "data_grid" for overlay in prior_shot.overlays):
+                continue
+            scene_appearances[prior_shot.scene_id] = (
+                scene_appearances.get(prior_shot.scene_id, 0) + 1
+            )
+        scene_limit = brief.channel.max_non_diagram_scene_appearances or 4
+        scene_budgets = {
+            scene_id: {
+                "used": count,
+                "limit": scene_limit,
+                "remaining": max(0, scene_limit - count),
+            }
+            for scene_id, count in scene_appearances.items()
+        }
         prompt = (
             instructions
-            + f"\nINTERVAL [{start}, {end}), fps={timeline['fps']}. ID prefix p{offset}_\nESTABLISHED ASSETS:\n"
+            + f"\nINTERVAL [{start}, {end}), fps={timeline['fps']}. ID prefix p{offset}_\n"
+            + "CONTINUITY-LOCKED ESTABLISHED ASSETS:\n"
             + json.dumps(previous, ensure_ascii=False)
+            + "\nTreat every continuity_rule above as a hard per-asset constraint. Do not describe a "
+            + "new pose, action, expression or visible state while using operation=reuse; referenced "
+            + "edit operations are required when the pixels must change.\n"
+            + "NON-DIAGRAM SCENE BUDGETS:\n"
+            + json.dumps(scene_budgets, ensure_ascii=False)
+            + "\nA scene with remaining=0 is unavailable for every non-diagram shot in this and later "
+            + "windows. Create a genuinely distinct scene_id, environment and behavior instead; renaming "
+            + "the same scene does not restore its budget.\n"
             + "\nCANONICAL SPANS:\n"
             + json.dumps(section, ensure_ascii=False)
         )
@@ -622,7 +1286,12 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
                     if shot.start_frame < start or shot.end_frame > end:
                         raise ValueError("Batch escaped its assigned interval")
                 shadow = partial.model_copy(update={"total_frames": timeline["total_frames"]})
-                validate_plan(shadow, timeline, brief, editorial_complete=False)
+                validate_plan(
+                    shadow,
+                    timeline,
+                    brief,
+                    editorial_complete=offset == len(windows) - 1,
+                )
                 all_shots = partial.shots
                 _save_partial_plan(
                     partial_path, brief, timeline, windows, offset + 1, all_shots
@@ -630,6 +1299,9 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
                 break
             except ValueError as exc:
                 error = str(exc)
+                reject_response = getattr(ask, "reject_last_response", None)
+                if callable(reject_response):
+                    reject_response(error)
                 if attempt == 2:
                     raise
     plan = ShotPlan(
@@ -654,6 +1326,11 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
 
 
 def generation_prompt(shot: Shot, brief: Brief) -> str:
+    if shot.operation == "local_canvas":
+        return (
+            "Deterministic locally rendered high-contrast diagram canvas: warm ivory to pale blue "
+            "gradient, no texture, pattern, grid, text, numerals, people, props, or generated marks."
+        )
     content = (
         f"{shot.subject}. Visible state: {shot.visible_state}. Environment: {shot.setting}. "
         f"Framing: {shot.framing}. Composition: {shot.composition}."
@@ -675,5 +1352,10 @@ def generation_prompt(shot: Shot, brief: Brief) -> str:
         + "; ".join(brief.channel.visual_directives)
         + ". Exclude these channel motifs: "
         + "; ".join(brief.channel.forbidden_motifs)
+        + ". Exclude these semantic visual families: "
+        + "; ".join(
+            VISUAL_FAMILY_GUIDANCE[family]
+            for family in brief.channel.forbidden_visual_families
+        )
         + ". Full-frame widescreen still. No lettering, numbers, coordinate guides, watermarks or unrelated decorative charts."
     )

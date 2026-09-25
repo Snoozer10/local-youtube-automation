@@ -7,7 +7,7 @@ import json
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from youtube_automation.core.utils import get_config_value
 
@@ -20,6 +20,18 @@ from .render import probe_video, render_plan
 from .review import approve_review, write_review
 from .shots import ShotPlan, ensure_shot_plan, validate_plan
 from .writing import write_episode
+
+
+def _planner_attachment_mode(*, persistent_chat: bool) -> Literal["inline", "file"]:
+    if not persistent_chat:
+        return "inline"
+    configured = get_config_value("IMAGE_PLANNER_TRANSPORT", "file").strip().lower()
+    if configured not in {"inline", "file"}:
+        raise ValueError(
+            "IMAGE_PLANNER_TRANSPORT must be either 'inline' or 'file'; "
+            f"received {configured!r}"
+        )
+    return "file" if configured == "file" else "inline"
 
 
 @contextmanager
@@ -46,6 +58,7 @@ def gemini_transport(
                 persistent_chat=persistent_chat,
                 receipt_dir=receipt_dir,
                 timeout_seconds=timeout_seconds,
+                attachment_mode=_planner_attachment_mode(persistent_chat=persistent_chat),
             )
         finally:
             page.close()
@@ -91,6 +104,8 @@ def _stage_recipe(root: Path, args: argparse.Namespace) -> str:
         inputs["channel_profile"] = _file_input(profile)
     if stage in {"analyze", "write", "plan"}:
         inputs["planner_model"] = get_config_value("IMAGE_PLANNER_MODEL", "Pro")
+    if stage == "plan":
+        inputs["planner_transport"] = get_config_value("IMAGE_PLANNER_TRANSPORT", "file")
     if stage == "source-audio":
         media = Path(args.media_file).resolve() if args.media_file else None
         inputs.update(

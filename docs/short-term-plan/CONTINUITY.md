@@ -1,32 +1,40 @@
-- Goal (incl. success criteria): Comprehensive architectural overhaul, upgrade, and repair of `studio_viewer.html` and `tools/viewer_generator.py`. Success criteria:
-  (1) Multi-agent grilling session completed with specialized sub-agents and full debate report recorded;
-  (2) Diagnose root cause of failure (empty frames in runs lacking `flow_prompts_socratic.json`, 0-based vs 1-based span index misalignment, hardcoded constants);
-  (3) Formal implementation plan artifact created at `studio_viewer_overhaul_plan.md` and `docs/superpowers/plans/2026-09-20-studio-viewer-overhaul.md`;
-  (4) Dedicated branch created (`feat/studio-viewer-overhaul`) isolating changes from concurrent prompt engineering;
-  (5) 5-tier data cascade with two-pass span alignment implemented;
-  (6) Broadcast NLE inspection engine implemented (single-source audio, video/audio sync, debounced scrubber, 60fps RAF loop with $O(\log N)$ binary search, 3-frame lookahead pre-decoder, split curtain wipe slider with forced geometric normalization, synchronized 1x-5x pan/zoom, broadcast SVG safe zones, diff mode, Cairo/Tajawal Arabic RTL typography, and CLI range compressor);
-  (7) 100% passing tests (9/9 unit tests) and all candidate viewers regenerated across both production runs.
+- Goal (incl. success criteria): Hardening the adaptive multi-channel visual production engine with Professor Yashrah as primary channel:
+  (1) Reject generic AI imagery, repetitive stock scenes, arbitrary desk activity, literal brain metaphors, and unsupported transformation claims.
+  (2) Audit and refine semantic visual families (`generic_desk_task`, `generated_exercise_surface`, `efficacy_transformation`).
+  (3) Ground early beats in recognizable daily attention lapses (searching past visible objects, doorway amnesia, attentional capture) while strictly rejecting staged "performing focus" scenes (purposeless drafting, compass, arbitrary pen paths, card sorting, note walls).
+  (4) Enforce Schulte grid prompt & validation timing gate (starts within 1s of introduction at frame 1219, dominant through countdown, MM:SS timer).
+  (5) Preserve all pre-flight invariants: narration hash, timeline hash, writing/source receipts, zero unexpected partial plans, owned browser PID.
 - Constraints/Assumptions:
-  - Windows 11 PowerShell environment; UTF-8 encodings.
-  - Zero external CDN dependencies for offline air-gapped resiliency.
-  - Backward compatibility: preserve `build_frame_records` and `generate_comparison_viewer_html` function signatures.
-  - Branch isolation on `feat/studio-viewer-overhaul`.
+  - Branch: `codex/adaptive-multi-channel-visual-engine`; preserve generated run history and avoid destructive resets or branch switches.
+  - Zero cloud SDKs; CDP loopback port 9222 with exact PID ownership registry.
+  - Planner model is configurable; the Professor pilot used Gemini Pro with `IMAGE_PLANNER_TIMEOUT_SECONDS=600` and the hash-bound UTF-8 file transport.
+  - Pilot dir: `youtube_runs/adaptive-pilot-professor-yashrah-local-narration/`.
+  - Canonical source-narration WAV SHA-256: `7a89334ef0c8023d0a0f464810c6df18887688be37631fd2f4f45e0af9a92fa0`.
+  - Canonical timeline SHA-256: `0be48b4e361572fe4fc121cd854f6768b3293f711b8506d2c215ca871df04edf` (2,296 frames @ 30 fps).
 - Key decisions:
-  - Universal 5-Tier Priority Cascade with Index Unioning to guarantee zero empty frames.
-  - Two-Pass Timestamp-Validated Span Alignment mapping 0-based `timeline.json` spans to 1-based prompt arrays.
-  - Single-Source Audio Policy: `videoProxy.muted = true` while uncompressed master WAV audio plays simultaneously to prevent acoustic echo.
-  - Forced geometric normalization (`position: absolute; width: 100%; height: 100%; object-fit: cover;`) in split wipe viewport to eliminate aspect ratio / layout shifts.
+  - Profile Schema v3: Semantic visual families (`mechanical_cognition`, `efficacy_transformation`, `generated_exercise_surface`, `wellness_strawman`, `generic_desk_task`, `generic_focus_portrait`).
+  - Refined `generic_desk_task` classifier: detects staged drafting, compass, line/path drawing, card sorting, and note walls while accepting legitimate, story-relevant daily attention lapses.
+  - Refined `generated_exercise_surface`: prevents false positives on furniture dining/coffee tables while banning generated number grids/cards.
+  - Ground early beats in genuine attention lapses in both prompt instructions and channel profile directives.
+  - Archived stale partial plan `shot_plan.partial.json` into `.adaptive_history/rejected_partial_plans/`.
+  - Rebound brief to updated v3 channel profile via `rebind_visual_policy`.
 - State:
   - Done:
-    - **Multi-Agent Internal Grilling Session**: Completed Round 1 and Round 2 with `adversarial_griller`, `studio_systems_architect`, and `studio_ui_director`.
-    - **Implementation Plan**: Produced v3 plan at `studio_viewer_overhaul_plan.md` and `docs/superpowers/plans/2026-09-20-studio-viewer-overhaul.md`.
-    - **Branch Isolation**: Created and checked out `feat/studio-viewer-overhaul`.
-    - **Task 1 (Data Layer & Alignment)**: Implemented 5-tier cascade, two-pass span alignment, image dimension inspector, and relative path resolution. (Commit: `b79c29f`).
-    - **Task 2 (Broadcast NLE Frontend)**: Implemented single-source audio, media scrubber, 60fps RAF loop with binary search, 3-frame lookahead pre-decoder, split curtain wipe slider, pan/zoom, broadcast SVG safe zones, diff blend mode, and CLI range compressor. (Commit: `3d007b6`).
-    - **Task 3 (Full Run Regeneration & Validation)**: Regenerated all viewers across `What Do Animals Think Of Humans` (139 frames verified) and `Terrence Howard` (293 frames verified). (Commit: `5ebe72d`).
-    - **Test Coverage**: 9/9 unit tests passing (`tests/unit/test_viewer_generator.py`); exercise scaffold linter 35/35 passing.
-  - Now: Overhaul complete and all evidence verified. Ready for user presentation and review.
-  - Next: User inspection of `studio_viewer.html` in browser; merge `feat/studio-viewer-overhaul` into working branch when approved.
+    - Pre-flight invariants verified (WAV SHA, Timeline SHA, visual-policy-only update, receipts verified, partial plan cleared, owned browser PID 25480 confirmed).
+    - Hardened `_shot_visual_families` in `shots.py` (`generic_desk_task`, `generic_focus_portrait`, `wellness_strawman`) and updated `ensure_shot_plan` instructions.
+    - Updated `channels/professor-yashrah.json` visual directives and forbidden motifs; rebound episode brief.
+    - Fixed `editorial_description` definition and entity description verification in `shots.py`.
+    - Added comprehensive unit tests for `generic_focus_portrait` and `wellness_strawman` (53/53 tests passing, mypy 0 errors, ruff clean).
+    - Resolved framing limit deadlock for interactive exercise grids: exempted continuous active `data_grid` shots from `max_consecutive_framing` and clarified prompt instructions.
+    - Live adaptive planning complete: `adaptive_production.py plan` finalized `shot_plan.json` (15 shots, 2,296 frames, nine Flow assets, one local canvas and two exact reference edits).
+    - Verified Schulte grid 6x6 continuous dominance from introduction (frame 1219) through the displayed 00:40 target to the spoken start cue (`1 2 3 ابدا`).
+    - Flow visual generation completed for all nine generated images with 100% bilingual (`eng+ara`) OCR text-gate pass. Exact prompt-chip v2 blocked one mismatched reference, restored the receipt-bound asset and reverified identity immediately before submission.
+    - Review report compiled (`adaptive_production.py report`) into `adaptive_review/index.html` (54 KB) and contact sheet `sheet_001.jpg` (268 KB).
+    - Preview video rendered (`adaptive_production.py preview`): 1080p `preview-ddd32b927f399875baa267fad7402cc71ae082739c8df1913dde2e68cc859330.mp4` (exact 2,296 frames @ 30 fps, 76.53s). Full-resolution inspection verified Arabic shaping, all 36 values, center highlight and the displayed timer. Resolved Win32 `MAX_PATH` cwd limit and concat scratch handling in `render.py`.
+    - Decision Record and "What I Think & My Recommendation" deliberation summary embedded directly into `DECISION_RECORD_FLOW_GENERATION.md` and `adaptive_review/index.html` for Codex review.
+    - Final gates pass: 725/725 unit tests, production mypy for 15 files, repository Ruff, exercise pedagogy linter (35 files/35 links) and `git diff --check`.
+  - Now: Professor planning, Flow generation, review reporting and preview rendering are technically complete. The preview remains pending user editorial approval; Soldier media and pilot remain open.
+  - Next: Complete final repository gates and push the branch, then obtain Professor editorial approval before creating its master. Locate Soldier's matching owner media and complete the third pilot before full-episode validation.
 - Historical Archive:
     1. Phase 1 & 2: Script Translation & 110-paragraph Al-Daheeh transcreation complete.
     2. Root Cause Analysis & Prevention: Documented in docs/error-solving/understood-errors.md.

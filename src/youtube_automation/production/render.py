@@ -378,13 +378,14 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
             atomic_text(work / graph_name, graph_content)
             execution_dir = work
             scratch: tempfile.TemporaryDirectory[str] | None = None
-            if shot.overlays:
-                # libass on Windows cannot fopen a relative ASS file when the process cwd
-                # resolves beyond the legacy path limit. Keep durable debug copies in the
-                # run, but execute the overlay filter from a short system-temp directory.
+            if shot.overlays or len(str(work)) > 240:
+                # libass and Windows CreateProcess fail when process cwd resolves beyond
+                # the legacy MAX_PATH limit. Keep durable debug copies in the run, but execute
+                # from a short system-temp directory.
                 scratch = tempfile.TemporaryDirectory(prefix="youtube-overlay-")
                 execution_dir = Path(scratch.name)
-                atomic_text(execution_dir / ass_name, ass_content)
+                if shot.overlays:
+                    atomic_text(execution_dir / ass_name, ass_content)
                 atomic_text(execution_dir / graph_name, graph_content)
             temporary = work / f"clip_{index:05d}_{invocation}.pending.mp4"
             args = [
@@ -426,52 +427,69 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
                 if scratch is not None:
                     scratch.cleanup()
         clips.append(clip)
-    atomic_text(work / "concat.txt", "".join(f"file '{p.name}'\n" for p in clips))
+    concat_lines = [
+        f"file '{p.resolve().as_posix()}'\n" if len(str(work)) > 240 else f"file '{p.name}'\n"
+        for p in clips
+    ]
+    atomic_text(work / "concat.txt", "".join(concat_lines))
     pending = work / f"master_{invocation}.pending.mp4"
-    # Re-encode the assembled stream so a hardware fallback cannot mix incompatible SPS.
-    run_command(
-        [
-            "ffmpeg",
-            "-nostdin",
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-f",
-            "concat",
-            "-safe",
-            "1",
-            "-i",
-            "concat.txt",
-            "-i",
-            str(audio),
-            "-map",
-            "0:v:0",
-            "-map",
-            "1:a:0",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "veryfast",
-            "-crf",
-            str(config.get("CPU_CRF", 17)),
-            "-pix_fmt",
-            "yuv420p",
-            "-r",
-            str(plan.fps),
-            "-fps_mode",
-            "cfr",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-movflags",
-            "+faststart",
-            str(pending),
-        ],
-        work,
-        timeout=5400,
-    )
+    concat_scratch: tempfile.TemporaryDirectory[str] | None = None
+    concat_cwd = work
+    concat_input = "concat.txt"
+    safe_flag = "1"
+    if len(str(work)) > 240:
+        concat_scratch = tempfile.TemporaryDirectory(prefix="youtube-concat-")
+        concat_cwd = Path(concat_scratch.name)
+        concat_input = (work / "concat.txt").resolve().as_posix()
+        safe_flag = "0"
+    try:
+        # Re-encode the assembled stream so a hardware fallback cannot mix incompatible SPS.
+        run_command(
+            [
+                "ffmpeg",
+                "-nostdin",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "concat",
+                "-safe",
+                safe_flag,
+                "-i",
+                concat_input,
+                "-i",
+                str(audio),
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                str(config.get("CPU_CRF", 17)),
+                "-pix_fmt",
+                "yuv420p",
+                "-r",
+                str(plan.fps),
+                "-fps_mode",
+                "cfr",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                "-movflags",
+                "+faststart",
+                str(pending.resolve()),
+            ],
+            concat_cwd,
+            timeout=5400,
+        )
+    finally:
+        if concat_scratch is not None:
+            concat_scratch.cleanup()
     probe_video(pending, plan.total_frames, plan.fps, require_audio=True)
     # Inputs can be edited while a long render is running; never activate stale work.
     current_plan = ShotPlan.model_validate_json(

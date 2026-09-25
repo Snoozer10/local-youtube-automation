@@ -15,6 +15,15 @@ Identifier = Annotated[str, Field(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$")]
 Treatment = Literal[
     "subject_scene", "detail", "mechanism", "comparison", "timeline_map", "metaphor", "host"
 ]
+VisualFamily = Literal[
+    "generic_desk_task",
+    "generic_focus_portrait",
+    "mechanical_cognition",
+    "efficacy_transformation",
+    "generated_exercise_surface",
+    "wellness_strawman",
+    "false_authority",
+]
 
 
 class Contract(BaseModel):
@@ -22,7 +31,7 @@ class Contract(BaseModel):
 
 
 class Channel(Contract):
-    version: Literal[1, 2] = 1
+    version: Literal[1, 2, 3] = 1
     channel_id: Identifier
     name: Text
     audience: Text
@@ -34,6 +43,12 @@ class Channel(Contract):
     style: Text
     visual_directives: list[Text] = Field(default_factory=list, max_length=30)
     forbidden_motifs: list[Text] = Field(default_factory=list, max_length=30)
+    forbidden_visual_families: list[VisualFamily] = Field(default_factory=list, max_length=10)
+    repetition_limited_visual_families: list[VisualFamily] = Field(
+        default_factory=list, max_length=10
+    )
+    max_visual_family_repetitions: int = Field(default=3, ge=1, le=10)
+    max_non_diagram_scene_appearances: int | None = Field(default=None, ge=1, le=10)
     host_mode: Literal["NONE", "CUSTOM_AVATAR"] = "NONE"
     host_description: str = ""
     allowed_treatments: list[Treatment] = Field(min_length=1)
@@ -48,11 +63,13 @@ class Channel(Contract):
             raise ValueError("Host treatment requires CUSTOM_AVATAR")
         if len(set(self.allowed_treatments)) != len(self.allowed_treatments):
             raise ValueError("Duplicate allowed treatments")
-        if self.version == 2 and (not self.visual_directives or not self.forbidden_motifs):
-            raise ValueError("Version 2 channels require visual directives and forbidden motifs")
+        if self.version >= 2 and (not self.visual_directives or not self.forbidden_motifs):
+            raise ValueError("Version 2+ channels require visual directives and forbidden motifs")
         for label, values in (
             ("visual directives", self.visual_directives),
             ("forbidden motifs", self.forbidden_motifs),
+            ("forbidden visual families", self.forbidden_visual_families),
+            ("repetition-limited visual families", self.repetition_limited_visual_families),
         ):
             normalized = [value.casefold() for value in values]
             if len(normalized) != len(set(normalized)):
@@ -134,6 +151,10 @@ def narration_fingerprint(brief: Brief) -> str:
     channel["version"] = 1
     channel.pop("visual_directives", None)
     channel.pop("forbidden_motifs", None)
+    channel.pop("forbidden_visual_families", None)
+    channel.pop("repetition_limited_visual_families", None)
+    channel.pop("max_visual_family_repetitions", None)
+    channel.pop("max_non_diagram_scene_appearances", None)
     projected = brief.model_dump(mode="json")
     projected["channel"] = channel
     projected["profile_sha256"] = fingerprint(channel)
@@ -141,12 +162,23 @@ def narration_fingerprint(brief: Brief) -> str:
 
 
 def _canonical_fingerprint_value(value: Any) -> Any:
-    """Keep version-1 channel fingerprints stable while version 2 adds policy fields."""
+    """Keep older channel fingerprints stable as visual-policy schemas evolve."""
     if isinstance(value, dict):
         normalized = {key: _canonical_fingerprint_value(item) for key, item in value.items()}
+        if "channel_id" in normalized and normalized.get("max_non_diagram_scene_appearances") is None:
+            normalized.pop("max_non_diagram_scene_appearances", None)
         if normalized.get("version") == 1 and "channel_id" in normalized:
             normalized.pop("visual_directives", None)
             normalized.pop("forbidden_motifs", None)
+            normalized.pop("forbidden_visual_families", None)
+            normalized.pop("repetition_limited_visual_families", None)
+            normalized.pop("max_visual_family_repetitions", None)
+            normalized.pop("max_non_diagram_scene_appearances", None)
+        elif normalized.get("version") == 2 and "channel_id" in normalized:
+            normalized.pop("forbidden_visual_families", None)
+            normalized.pop("repetition_limited_visual_families", None)
+            normalized.pop("max_visual_family_repetitions", None)
+            normalized.pop("max_non_diagram_scene_appearances", None)
         return normalized
     if isinstance(value, list):
         return [_canonical_fingerprint_value(item) for item in value]

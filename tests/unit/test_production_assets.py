@@ -6,7 +6,7 @@ from PIL import Image
 
 from youtube_automation.production import assets
 from youtube_automation.production.contracts import Analysis, Brief, Channel, fingerprint
-from youtube_automation.production.shots import Shot
+from youtube_automation.production.shots import Overlay, Shot
 
 
 def fixture_shot_and_brief():
@@ -155,3 +155,46 @@ def test_incomplete_asset_publication_never_activates(tmp_path, monkeypatch):
 
     assert assets.accepted_asset(tmp_path, shot, brief) is None
     assert not (tmp_path / "asset_receipts" / "asset.json").exists()
+
+
+def test_local_canvas_is_deterministic_receipted_and_text_free(tmp_path, monkeypatch):
+    _, brief = fixture_shot_and_brief()
+    shot = Shot(
+        shot_id="grid",
+        scene_id="exercise",
+        asset_id="grid_canvas",
+        entity_ids=["schulte_grid"],
+        span_ids=[0],
+        start_frame=0,
+        end_frame=60,
+        purpose="Present a playable Schulte exercise",
+        treatment="mechanism",
+        narrative_role="diagram",
+        subject="Local Schulte exercise canvas",
+        visible_state="Static clean canvas",
+        setting="Two-dimensional diagram space",
+        framing="diagram",
+        composition="Full-frame high-contrast diagram",
+        operation="local_canvas",
+        overlays=[
+            Overlay(
+                kind="data_grid",
+                start_frame=0,
+                end_frame=60,
+                preset="schulte_6x6",
+                x=0.08,
+                y=0.08,
+                width=0.84,
+                height=0.84,
+            )
+        ],
+    )
+    monkeypatch.setattr(assets, "_detect_via_pytesseract", lambda *_: [])
+
+    first = assets.ensure_local_canvas(tmp_path, shot, brief)
+    second = assets.ensure_local_canvas(tmp_path, shot, brief)
+
+    assert first == second
+    assert first["source_url"] == "local://deterministic-diagram-canvas"
+    assert first["dimensions"] == list(assets.LOCAL_CANVAS_SIZE)
+    assert len(list((tmp_path / "accepted_assets").glob("*.png"))) == 1

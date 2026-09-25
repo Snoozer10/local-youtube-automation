@@ -13,13 +13,60 @@ from playwright.sync_api import Page
 
 from youtube_automation.core.utils import atomic_write_json
 
-from .assets import accepted_asset, pixel_digest, read_receipt
+from .assets import accepted_asset, ensure_local_canvas, pixel_digest, read_receipt
 from .contracts import Brief, load_brief
 from .ledger import publication_guard
-from .shots import ShotPlan, ensure_shot_plan, generation_prompt
+from .shots import Shot, ShotPlan, ensure_shot_plan, generation_prompt
 
 
-def _attach_uploaded_reference(page: Page, image_path: Path) -> bool:
+def _provider_image_id(url: str) -> str:
+    path = urlsplit(url).path
+    return path.split("/image/", 1)[1].split("/", 1)[0] if "/image/" in path else ""
+
+
+def _attached_reference_matches(page: Page, receipt: dict[str, Any]) -> bool:
+    from youtube_automation.visuals.flow_generator import visible_attached_prompt_images
+    from youtube_automation.visuals.image_extractor import extract_high_res_image
+
+    images = visible_attached_prompt_images(page)
+    if len(images) != 1:
+        return False
+    image = images[0]
+    attached_url = image.get_attribute("src") or ""
+    expected_provider_id = _provider_image_id(receipt.get("source_url", ""))
+    attached_provider_id = _provider_image_id(attached_url)
+    if expected_provider_id and attached_provider_id:
+        return expected_provider_id == attached_provider_id
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
+        path = temp.name
+    try:
+        return bool(
+            extract_high_res_image(page, image, path, min_size_kb=1)
+            and pixel_digest(path) == receipt["pixel_sha256"]
+        )
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
+
+
+def verify_exact_reference(page: Page, root: Path, asset_id: str) -> None:
+    receipt = read_receipt(root, asset_id)
+    if not _attached_reference_matches(page, receipt):
+        raise RuntimeError(f"Reference {asset_id} exact reference chip is not attached")
+
+
+def verify_adaptive_prompt_references(page: Page, root: Path, shot: Shot) -> None:
+    from youtube_automation.visuals.flow_generator import count_attached_prompt_chips
+
+    if shot.reference_asset_id:
+        verify_exact_reference(page, root, shot.reference_asset_id)
+    elif count_attached_prompt_chips(page) != 0:
+        raise RuntimeError(f"Shot {shot.shot_id} has an unexpected reference chip")
+
+
+def _attach_uploaded_reference(
+    page: Page, image_path: Path, receipt: dict[str, Any]
+) -> bool:
     """Restore an accepted local image when Flow no longer mounts its provider card."""
     from youtube_automation.visuals.flow_generator import (
         clear_attached_prompt_chips,
@@ -27,6 +74,8 @@ def _attach_uploaded_reference(page: Page, image_path: Path) -> bool:
     )
 
     clear_attached_prompt_chips(page)
+    if count_attached_prompt_chips(page) != 0:
+        return False
     add_ingredients = page.locator("button[aria-label*='Add ingredients' i]").last
     if not add_ingredients.is_visible():
         return False
@@ -61,7 +110,7 @@ def _attach_uploaded_reference(page: Page, image_path: Path) -> bool:
     asset.click(force=True)
     page.wait_for_timeout(400)
     if count_attached_prompt_chips(page) == 1:
-        return True
+        return _attached_reference_matches(page, receipt)
     add_to_prompt = overlay.locator("button").filter(has_text="Add to prompt").first
     if not add_to_prompt.is_visible():
         page.keyboard.press("Escape")
@@ -69,7 +118,7 @@ def _attach_uploaded_reference(page: Page, image_path: Path) -> bool:
     add_to_prompt.click(force=True)
     for _ in range(20):
         if count_attached_prompt_chips(page) == 1:
-            return True
+            return _attached_reference_matches(page, receipt)
         page.wait_for_timeout(250)
     return False
 
@@ -77,7 +126,10 @@ def _attach_uploaded_reference(page: Page, image_path: Path) -> bool:
 def prepare_flow(root: Path, ask: Callable[[str], str]) -> tuple[ShotPlan, Brief]:
     brief = load_brief(root)
     plan = ensure_shot_plan(root, ask)
-    generated = [s for s in plan.shots if s.operation != "reuse"]
+    for shot in plan.shots:
+        if shot.operation == "local_canvas":
+            ensure_local_canvas(root, shot, brief)
+    generated = [s for s in plan.shots if s.operation not in {"reuse", "local_canvas"}]
     payloads = []
     for i, shot in enumerate(generated, 1):
         second = shot.start_frame // plan.fps
@@ -115,11 +167,6 @@ def attach_exact_reference(page: Page, root: Path, asset_id: str) -> None:
         dismiss_blocking_flow_modals,
         wait_for_flow_input_box,
     )
-    from youtube_automation.visuals.image_extractor import extract_high_res_image
-
-    def provider_image_id(url: str) -> str:
-        path = urlsplit(url).path
-        return path.split("/image/", 1)[1].split("/", 1)[0] if "/image/" in path else ""
 
     receipt = read_receipt(root, asset_id)
     if not receipt["source_url"] or not receipt["project_url"]:
@@ -149,7 +196,6 @@ def attach_exact_reference(page: Page, root: Path, asset_id: str) -> None:
         or "flow-content.google/image/" in (loc.get_attribute("src") or "")
     ]
     candidates = exact_url + [loc for loc in refreshed_tiles if loc not in exact_url]
-    expected_provider_id = provider_image_id(receipt["source_url"])
     for candidate in candidates:
         clear_attached_prompt_chips(page)
         if count_attached_prompt_chips(page) != 0:
@@ -158,31 +204,15 @@ def attach_exact_reference(page: Page, root: Path, asset_id: str) -> None:
             continue
         for _ in range(20):
             if count_attached_prompt_chips(page) == 1:
-                chip_image = page.locator(
-                    "flow-ingredient-bar img[alt*='Ingredient' i], "
-                    "div.base-prompt-box img[alt*='Ingredient' i]"
-                ).first
-                if chip_image.is_visible():
-                    attached_url = chip_image.get_attribute("src") or ""
-                    if expected_provider_id and provider_image_id(attached_url) == expected_provider_id:
-                        return
-                    if not expected_provider_id:
-                        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
-                            path = temp.name
-                        try:
-                            if extract_high_res_image(page, chip_image, path, min_size_kb=1):
-                                if pixel_digest(path) == receipt["pixel_sha256"]:
-                                    return
-                        finally:
-                            if os.path.exists(path):
-                                os.unlink(path)
-                    break
+                if _attached_reference_matches(page, receipt):
+                    return
+                break
             page.wait_for_timeout(250)
         clear_attached_prompt_chips(page)
     accepted_path = (root / receipt["path"]).resolve()
     if not accepted_path.is_relative_to(root.resolve()):
         raise RuntimeError(f"Reference {asset_id} escapes its accepted asset store")
-    if _attach_uploaded_reference(page, accepted_path):
+    if _attach_uploaded_reference(page, accepted_path, receipt):
         return
     raise RuntimeError(f"Reference content differs from the accepted asset: {asset_id}")
 

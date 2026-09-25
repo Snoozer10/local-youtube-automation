@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "channel_id": "professor-yashrah",
   "name": "البروفيسور يشرح",
   "audience": "Arabic-speaking adults seeking accessible explanations of psychology, attention, mental health, and human behavior",
@@ -10,10 +10,18 @@
   "tone": "Curious, humane, clear, and evidence-conscious; never diagnose viewers or promise a clinical outcome",
   "style": "Premium editorial illustration with tactile paper, confident ink shapes, restrained cobalt and warm amber accents, expressive but anatomically credible people, and strong foreground-background depth. Build episode-specific visual metaphors and clean mechanisms as separate still compositions; render all words, numerals, arrows, and highlights locally. No default talking mascot, generic floating brain, fake scientific chart, or repeated zoom cycle.",
   "visual_directives": [
-    "Ground every human scene in a specific behavior, environment, or attention task rather than a person presenting to camera",
+    "Ground human scenes in specific real-world behaviors, environmental observations, or recognizable daily attention lapses (such as searching past a visible object, forgetting an intention at a threshold, or attention captured by a competing cue) rather than a person presenting to camera or staged generic task performance",
     "Vary narrative function across environmental wides, human-context scenes, observational details, mechanisms, and clean local diagrams",
     "Use full-frame high-contrast local graphics for interactive exercises so viewers can actually perform the task",
-    "Treat psychology claims with visual restraint and show uncertainty when the narration does not establish causation or clinical efficacy"
+    "Treat psychology claims with visual restraint and show uncertainty when the narration does not establish causation or clinical efficacy",
+    "Never turn a promotional cognition claim into a successful before-and-after transformation; treat cognitive ability with restraint and show grounded human context or realistic uncertainty rather than visual proof of improvement or staged productivity",
+    "Introduce a playable full-frame local exercise graphic as soon as its rules begin, then keep people, hands, desks, props, and generated text off the exercise canvas",
+    "Reuse an identifiable participant only when continuity advances the story; repeated generic desk portraits, intense staring close-ups, and cosmetic reframes do not count as visual progression",
+    "Do not stage artificial 'performing focus' scenes such as purposeless drafting, arbitrary pen paths, drawing lines connecting dots, sorting cards, compass manipulation, or detective walls of notes; ground early beats in genuine, relatable daily situations",
+    "Never extend a non-diagram still by splitting it into adjacent shots with the same asset, framing, and motion; cut to a new narrative beat or use a purposeful referenced edit",
+    "Treat entity IDs as episode-global identities: details of an established environment remain in the same scene and use a reference operation rather than an unrelated regeneration",
+    "Generated scenes never request printed or legible words; books, screens, signs, and paper remain text-free or illegible unless deterministic local typography supplies the content",
+    "Animate interactive exercise instructions locally at the narration beat: show center fixation with a local highlight and carry each spoken ready or countdown cue with a local label while preserving the grid"
   ],
   "forbidden_motifs": [
     "mechanical puzzle",
@@ -28,8 +36,35 @@
     "medical notepad",
     "fake scientific chart",
     "neon grid",
-    "white isolation"
+    "white isolation",
+    "wooden tiles on tracks",
+    "mechanical alignment",
+    "blank card grid",
+    "generated paper grid",
+    "invented historical archive",
+    "before-and-after focus transformation",
+    "person staring forward at a clean desk",
+    "wall of notes",
+    "drafting compass",
+    "arbitrary pen path",
+    "drawing lines connecting dots",
+    "staged card sorting",
+    "sketchpad on shelf",
+    "performing focus"
   ],
+  "forbidden_visual_families": [
+    "generic_focus_portrait",
+    "mechanical_cognition",
+    "efficacy_transformation",
+    "generated_exercise_surface",
+    "wellness_strawman",
+    "false_authority"
+  ],
+  "repetition_limited_visual_families": [
+    "generic_desk_task"
+  ],
+  "max_visual_family_repetitions": 2,
+  "max_non_diagram_scene_appearances": 2,
   "host_mode": "NONE",
   "host_description": "",
   "allowed_treatments": ["subject_scene", "detail", "mechanism", "comparison", "metaphor"],

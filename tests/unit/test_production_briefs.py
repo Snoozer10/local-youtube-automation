@@ -138,6 +138,22 @@ def test_request_json_rejects_multiple_structures(channel):
         request_json("prompt", lambda _: response() + "\n" + response(), Analysis, attempts=1)
 
 
+def test_request_json_recovers_one_complete_restart_after_broken_draft(channel):
+    broken_then_restarted = (
+        '{"topics": ["animals"], "proposition": "unfinished\n'
+        "```json\n"
+        + response()
+    )
+    parsed = request_json("prompt", lambda _: broken_then_restarted, Analysis, attempts=1)
+    assert parsed.proposition == "Animal perception"
+
+
+def test_request_json_rejects_multiple_complete_restarts(channel):
+    ambiguous = "broken\n```json\n" + response() + "\n```json\n" + response()
+    with pytest.raises(ValueError):
+        request_json("prompt", lambda _: ambiguous, Analysis, attempts=1)
+
+
 def test_request_json_retries_bounded_browser_transport_failure(channel):
     calls = []
 
@@ -202,7 +218,53 @@ def test_persistent_browser_transport_keeps_repairs_in_one_chat_and_receipts(
     receipts = [json.loads(path.read_text(encoding="utf-8")) for path in tmp_path.glob("*.json")]
     assert len(receipts) == 2
     assert all(item["window"] == [0, 575] for item in receipts)
-    assert all(item["attempts"][-1]["state"] == "completed" for item in receipts)
+    assert sorted(item["attempts"][-1]["state"] for item in receipts) == [
+        "completed",
+        "rejected",
+    ]
+
+
+def test_rejected_completed_receipt_is_not_replayed(tmp_path, monkeypatch):
+    from youtube_automation.browser import gemini_utils
+
+    submitted = []
+    responses = ["not json", response()]
+
+    class Page:
+        url = "https://gemini.google.com/app/rejected-chat"
+
+    class Client:
+        def __init__(self, _page, _model):
+            pass
+
+        def dispatch_prompt(self, prompt):
+            submitted.append(prompt)
+            return True, len(submitted) - 1
+
+    monkeypatch.setattr(gemini_utils, "GeminiSessionClient", Client)
+    monkeypatch.setattr(gemini_utils, "start_clean_gemini_chat", lambda _page: None)
+    monkeypatch.setattr(gemini_utils, "select_gemini_model", lambda _page, _model: True)
+    monkeypatch.setattr(
+        gemini_utils,
+        "wait_for_gemini_response",
+        lambda *_args, **_kwargs: responses.pop(0),
+    )
+    transport = BrowserTransport(Page(), "Pro", True, tmp_path, 600)
+    transport.begin_window(0, 575)
+
+    parsed = request_json("plan window", transport, Analysis)
+
+    assert parsed.proposition == "Animal perception"
+    receipts = [json.loads(path.read_text(encoding="utf-8")) for path in tmp_path.glob("*.json")]
+    assert sorted(item["attempts"][-1]["state"] for item in receipts) == [
+        "completed",
+        "rejected",
+    ]
+    rejected = next(
+        item for item in receipts if item["attempts"][-1]["state"] == "rejected"
+    )
+    assert "validation_error" in rejected["attempts"][-1]
+    assert len(submitted) == 2
 
 
 def test_transport_retry_reuses_exact_prompt_and_content_bound_receipt(
@@ -243,6 +305,55 @@ def test_transport_retry_reuses_exact_prompt_and_content_bound_receipt(
     assert len(receipt_files) == 1
     attempts = json.loads(receipt_files[0].read_text(encoding="utf-8"))["attempts"]
     assert [attempt["state"] for attempt in attempts] == ["timed_out", "completed"]
+
+
+def test_file_attachment_transport_submits_short_bound_instruction(
+    tmp_path, monkeypatch
+):
+    from youtube_automation.browser import gemini_utils
+
+    submitted = []
+    attached = []
+
+    class Page:
+        url = "https://gemini.google.com/app/file-chat"
+
+    class Client:
+        def __init__(self, _page, _model):
+            pass
+
+        def dispatch_prompt(self, prompt):
+            submitted.append(prompt)
+            return True, 0
+
+    monkeypatch.setattr(gemini_utils, "GeminiSessionClient", Client)
+    monkeypatch.setattr(gemini_utils, "start_clean_gemini_chat", lambda _page: None)
+    monkeypatch.setattr(gemini_utils, "select_gemini_model", lambda _page, _model: True)
+    monkeypatch.setattr(
+        gemini_utils, "wait_for_gemini_response", lambda *_args, **_kwargs: response()
+    )
+    transport = BrowserTransport(
+        Page(),
+        "Flash",
+        persistent_chat=True,
+        receipt_dir=tmp_path,
+        timeout_seconds=600,
+        attachment_mode="file",
+    )
+    monkeypatch.setattr(transport, "_attach_prompt_file", lambda path: attached.append(path))
+    transport.begin_window(1156, 1734)
+
+    result = transport("large planning payload")
+
+    assert result == response()
+    assert len(attached) == 1
+    assert attached[0].read_text(encoding="utf-8") == "large planning payload"
+    assert submitted[0].startswith("Read the attached UTF-8 planning request completely")
+    assert "large planning payload" not in submitted[0]
+    receipt = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
+    assert receipt["version"] == 2
+    assert receipt["transport"] == "file"
+    assert receipt["attempts"][0]["attachment"] == attached[0].name
 
 
 def test_timed_out_response_is_recovered_from_its_bound_chat_without_resubmission(
@@ -442,6 +553,9 @@ def test_visual_policy_rebind_preserves_verified_writing_and_analysis(tmp_path, 
             "version": 2,
             "visual_directives": ["Use observable human contexts"],
             "forbidden_motifs": ["glowing brain"],
+            "forbidden_visual_families": ["mechanical_cognition"],
+            "repetition_limited_visual_families": ["generic_desk_task"],
+            "max_visual_family_repetitions": 2,
         }
     )
 

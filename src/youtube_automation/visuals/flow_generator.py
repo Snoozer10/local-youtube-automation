@@ -178,6 +178,7 @@ __all__ = [
     "wait_for_flow_generation_handshake",
     "wait_for_flow_generation_idle",
     "wait_for_flow_input_box",
+    "visible_attached_prompt_images",
     "wait_for_predicate",
     "wait_for_prompt_format_completion",
     "write_runtime_telemetry",
@@ -370,11 +371,38 @@ def wait_for_flow_generation_idle(page: Any, timeout_seconds: int = 90) -> bool:
     return wait_for_flow_generation_handshake(page, timeout_seconds=timeout_seconds)
 
 
+_PROMPT_ROOT_SELECTORS = (
+    "flow-base-prompt-box",
+    "div.base-prompt-box",
+    "form:has([contenteditable='true'])",
+)
+
+
+def _prompt_scoped_locator(page: Any, target_selector: str) -> Any:
+    selectors = [f"{root} {target_selector}" for root in _PROMPT_ROOT_SELECTORS]
+    return page.locator(", ".join(selectors))
+
+
+def visible_attached_prompt_images(page: Any) -> list[Any]:
+    """Return only visible ingredient images inside the active prompt composer."""
+    locator = _prompt_scoped_locator(
+        page,
+        "flow-ingredient-bar img, flow-ingredient-chip img, "
+        "flow-image-ingredient-chip img, img[alt*='Ingredient' i], "
+        "img[alt*='reference' i]",
+    )
+    visible = []
+    for image in locator.all():
+        try:
+            if image.is_visible():
+                visible.append(image)
+        except Exception:
+            continue
+    return visible
+
+
 def count_attached_prompt_chips(page: Any) -> int:
-    """Returns the count of visible reference image chips strictly inside the prompt bar."""
-    prompt_container = page.locator("div.base-prompt-box, flow-base-prompt-box, div[contenteditable='true'], form").first
-    if not prompt_container.is_visible():
-        prompt_container = page
+    """Return the visible chip count strictly inside the active prompt composer."""
     chip_selectors = [
         "flow-ingredient-chip",
         "flow-image-ingredient-chip",
@@ -388,7 +416,11 @@ def count_attached_prompt_chips(page: Any) -> int:
     ]
     for sel in chip_selectors:
         try:
-            count = prompt_container.locator(sel).count()
+            count = sum(
+                1
+                for chip in _prompt_scoped_locator(page, sel).all()
+                if chip.is_visible()
+            )
             if count:
                 return count
         except Exception:
@@ -2027,6 +2059,15 @@ def _main(run_folder: str | None = None) -> None:
                                         flow_page.wait_for_timeout(100)
                                         flow_page.keyboard.insert_text(f" {payload_text}")
                                         flow_page.wait_for_timeout(300)
+
+                                    if adaptive_shot:
+                                        from youtube_automation.production.flow import (
+                                            verify_adaptive_prompt_references,
+                                        )
+
+                                        verify_adaptive_prompt_references(
+                                            flow_page, Path(subfolder), adaptive_shot
+                                        )
 
                                     pre_card_count = 0
                                     try:

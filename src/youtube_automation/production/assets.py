@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from youtube_automation.core.utils import atomic_write_json, get_config_value
 from youtube_automation.visuals.text_gate import _detect_via_pytesseract
@@ -20,6 +20,9 @@ from .ledger import publication_guard
 from .shots import Shot, generation_prompt
 
 _PUBLICATION_JOURNAL_VERSION = 1
+LOCAL_CANVAS_SIZE = (1920, 1080)
+LOCAL_CANVAS_DARK = "#dbe7f2"
+LOCAL_CANVAS_LIGHT = "#f7edda"
 
 
 def file_digest(path: str | Path) -> str:
@@ -60,16 +63,27 @@ def validate_background(path: str | Path) -> tuple[int, int]:
 
 
 def recipe(shot: Shot, brief: Brief, reference_hash: str | None) -> str:
-    return fingerprint(
-        {
-            "version": 2,
-            "prompt": generation_prompt(shot, brief),
-            "reference": reference_hash,
-            "entities": shot.entity_ids,
-            "model": get_config_value("FLOW_IMAGE_MODEL", "Nano Banana 2"),
-            "count": get_config_value("FLOW_IMAGE_COUNT", "1x"),
-        }
-    )
+    if shot.operation == "local_canvas":
+        return fingerprint(
+            {
+                "version": 1,
+                "kind": "local_canvas",
+                "dimensions": LOCAL_CANVAS_SIZE,
+                "dark": LOCAL_CANVAS_DARK,
+                "light": LOCAL_CANVAS_LIGHT,
+            }
+        )
+    payload = {
+        "version": 2,
+        "prompt": generation_prompt(shot, brief),
+        "reference": reference_hash,
+        "entities": shot.entity_ids,
+        "model": get_config_value("FLOW_IMAGE_MODEL", "Nano Banana 2"),
+        "count": get_config_value("FLOW_IMAGE_COUNT", "1x"),
+    }
+    if reference_hash:
+        payload.update(version=3, reference_transport="exact-prompt-chip-v2")
+    return fingerprint(payload)
 
 
 def _validate_receipt_payload(
@@ -159,6 +173,40 @@ def accepted_asset(root: Path, shot: Shot, brief: Brief) -> dict[str, Any] | Non
         shot.asset_id,
         expected_recipe=expected_recipe,
         expected_reference=ref,
+    )
+
+
+def ensure_local_canvas(root: Path, shot: Shot, brief: Brief) -> dict[str, Any]:
+    """Publish a deterministic text-free substrate for locally rendered diagrams."""
+    if shot.operation != "local_canvas":
+        raise ValueError("Only local_canvas shots may request a local diagram substrate")
+    existing = accepted_asset(root, shot, brief)
+    if existing is not None:
+        return existing
+    candidates = root / ".local_assets"
+    candidates.mkdir(exist_ok=True)
+    path = candidates / f"{shot.asset_id}-{recipe(shot, brief, None)[:16]}.png"
+    if not path.is_file():
+        gradient = Image.linear_gradient("L").resize(LOCAL_CANVAS_SIZE)
+        canvas = ImageOps.colorize(gradient, LOCAL_CANVAS_DARK, LOCAL_CANVAS_LIGHT)
+        temporary: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=candidates, delete=False) as handle:
+                temporary = Path(handle.name)
+                canvas.save(handle, format="PNG")
+                handle.flush()
+                os.fsync(handle.fileno())
+            with publication_guard():
+                os.replace(temporary, path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+    return register_asset(
+        root,
+        shot,
+        brief,
+        path,
+        source_url="local://deterministic-diagram-canvas",
     )
 
 

@@ -155,6 +155,15 @@ def test_generation_stage_recipe_includes_effective_flow_model(tmp_path, monkeyp
     assert cli._stage_recipe(tmp_path, args) != first
 
 
+def test_planner_attachment_mode_rejects_unknown_transport(monkeypatch):
+    from youtube_automation.production import cli
+
+    monkeypatch.setattr(cli, "get_config_value", lambda _key, _default: "canvas")
+    assert cli._planner_attachment_mode(persistent_chat=False) == "inline"
+    with pytest.raises(ValueError, match="IMAGE_PLANNER_TRANSPORT"):
+        cli._planner_attachment_mode(persistent_chat=True)
+
+
 def test_cli_skips_successful_unchanged_stage_and_reruns_changed_recipe(
     tmp_path, monkeypatch
 ):

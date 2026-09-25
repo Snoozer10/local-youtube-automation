@@ -84,6 +84,8 @@ When the user requests a durable behavior change, record it here or in the relev
 - Use `GEMINI.md` as current project guidance where older instructions here differ.
 - Adaptive production selects a saved channel, analyzes raw scripts before translation, and uses stills plus selective local animation. Track progress in `tasks/adaptive-visual-tasks.md`.
 - The three pilot channels are saved in `channels/`; Professor Yashrah keeps Achird, while the Soldier's Sledger and Snoozer Anime pilots preserve their published narration. Their unselected synthesis voices remain null and must block TTS.
+- Before a new approval gate, audit the concrete action and recommend the strongest safe option. Proceed without repeating the question when the session already authorizes it; platform-enforced disclosure, destructive-action or irreversible-publication gates still require the explicit response they request.
+- When the user reports that the five-hour quota has reached 10%, prepare a self-contained Antigravity 2.0 delegation prompt for the remaining bounded work. The user owns starting and stopping that external session and will stop it when this task's quota resets.
 
 ## Ownership & Domain Boundaries
 

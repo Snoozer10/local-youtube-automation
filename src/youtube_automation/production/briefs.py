@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 from urllib.parse import urlsplit
 
 from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel, ValidationError
 
 from youtube_automation.core.utils import atomic_write_json
@@ -23,7 +26,15 @@ from .ledger import publication_guard
 Response = TypeVar("Response", bound=BaseModel)
 
 _BARE_JSON_LABEL = re.compile(r"^json\s*(?=[{[])", re.IGNORECASE)
-_VISUAL_ONLY_PROFILE_FIELDS = {"version", "visual_directives", "forbidden_motifs"}
+_VISUAL_ONLY_PROFILE_FIELDS = {
+    "version",
+    "visual_directives",
+    "forbidden_motifs",
+    "forbidden_visual_families",
+    "repetition_limited_visual_families",
+    "max_visual_family_repetitions",
+    "max_non_diagram_scene_appearances",
+}
 
 
 def _decode_single_json_value(text: str) -> Any:
@@ -32,6 +43,27 @@ def _decode_single_json_value(text: str) -> Any:
     if trailing and ("{" in trailing or "[" in trailing):
         raise ValueError("Response contains more than one JSON structure")
     return value
+
+
+def _decode_response_value(text: str) -> Any:
+    """Decode strict JSON, or one complete JSON restart after a broken Gemini draft."""
+    try:
+        return _decode_single_json_value(text)
+    except ValueError as original_error:
+        recovered: list[Any] = []
+        markers = list(re.finditer(r"```json\s*", text, re.IGNORECASE))
+        for index, marker in enumerate(markers):
+            candidate_end = markers[index + 1].start() if index + 1 < len(markers) else len(text)
+            candidate = text[marker.end():candidate_end].strip()
+            if candidate.endswith("```"):
+                candidate = candidate[:-3].rstrip()
+            try:
+                recovered.append(_decode_single_json_value(candidate))
+            except ValueError:
+                continue
+        if len(recovered) == 1:
+            return recovered[0]
+        raise original_error
 
 
 def request_json(
@@ -59,9 +91,12 @@ def request_json(
             # Gemini sometimes obeys the structured-output request but emits the
             # language label without a Markdown fence: ``JSON\n{...}``.
             text = _BARE_JSON_LABEL.sub("", text.lstrip(), count=1)
-            return model.model_validate(_decode_single_json_value(text))
+            return model.model_validate(_decode_response_value(text))
         except (ValueError, ValidationError) as exc:
             last_transport_error = None
+            reject_response = getattr(ask, "reject_last_response", None)
+            if callable(reject_response):
+                reject_response(str(exc))
             excerpt = " ".join(response.strip().split())[:500]
             tail = " ".join(response.strip().split())[-300:]
             validation_error = (
@@ -248,8 +283,10 @@ class BrowserTransport:
     persistent_chat: bool = False
     receipt_dir: Path | None = None
     timeout_seconds: int = 180
+    attachment_mode: Literal["inline", "file"] = "inline"
     _chat_ready: bool = field(default=False, init=False)
     _window: tuple[int, int] | None = field(default=None, init=False)
+    _last_prompt_sha256: str | None = field(default=None, init=False)
 
     def begin_window(self, start_frame: int, end_frame: int) -> None:
         """Start the next planning window in a clean chat; repairs stay in that chat."""
@@ -260,28 +297,131 @@ class BrowserTransport:
         if self.receipt_dir is None:
             return None
         self.receipt_dir.mkdir(parents=True, exist_ok=True)
-        return self.receipt_dir / f"{prompt_sha256}.json"
+        if self.attachment_mode == "inline":
+            return self.receipt_dir / f"{prompt_sha256}.json"
+        receipt_id = fingerprint(
+            {
+                "prompt_sha256": prompt_sha256,
+                "model": self.model_name,
+                "transport": self.attachment_mode,
+            }
+        )
+        return self.receipt_dir / f"{receipt_id}.json"
 
     def _load_receipt(self, prompt_sha256: str) -> dict[str, Any]:
         path = self._receipt_path(prompt_sha256)
         if path is None or not path.exists():
             return {
-                "version": 1,
+                "version": 2 if self.attachment_mode == "file" else 1,
                 "prompt_sha256": prompt_sha256,
                 "model": self.model_name,
+                "transport": self.attachment_mode,
                 "window": list(self._window) if self._window else None,
                 "attempts": [],
             }
         payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         if (
-            payload.get("version") != 1
+            payload.get("version") != (2 if self.attachment_mode == "file" else 1)
             or payload.get("prompt_sha256") != prompt_sha256
             or payload.get("model") != self.model_name
+            or payload.get("transport", "inline") != self.attachment_mode
             or payload.get("window") != (list(self._window) if self._window else None)
             or not isinstance(payload.get("attempts"), list)
         ):
             raise ValueError("Gemini response receipt does not match the current request")
         return payload
+
+    def _attachment_path(self, prompt: str, prompt_sha256: str) -> Path:
+        if self.receipt_dir is None:
+            raise RuntimeError("File attachment transport requires a receipt directory")
+        directory = self.receipt_dir / "payloads"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"planner-request-{prompt_sha256[:16]}.txt"
+        if path.is_file() and path.read_text(encoding="utf-8") == prompt:
+            return path
+        temporary: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=directory, delete=False, newline="\n"
+            ) as handle:
+                temporary = Path(handle.name)
+                handle.write(prompt)
+                handle.flush()
+                os.fsync(handle.fileno())
+            with publication_guard():
+                os.replace(temporary, path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        return path
+
+    def _attach_prompt_file(self, path: Path) -> None:
+        uploaded = False
+        for _ in range(3):
+            upload_tools = self.page.get_by_role("button", name="Upload & tools")
+            try:
+                upload_tools.wait_for(state="visible", timeout=30000)
+            except PlaywrightTimeoutError as exc:
+                raise RuntimeError("Gemini Upload & tools control is unavailable") from exc
+            upload_tools.click()
+            upload_item = self.page.get_by_role(
+                "menuitem", name="Upload files. Documents, data, code files"
+            )
+            try:
+                upload_item.wait_for(state="visible", timeout=5000)
+                self.page.evaluate(
+                    """() => {
+                        window.__plannerOriginalFileClick = HTMLInputElement.prototype.click;
+                        window.__plannerFileInput = null;
+                        HTMLInputElement.prototype.click = function() {
+                            if (this.type === 'file') {
+                                window.__plannerFileInput = this;
+                                return;
+                            }
+                            return window.__plannerOriginalFileClick.call(this);
+                        };
+                    }"""
+                )
+                upload_item.click(force=True, no_wait_after=True)
+                self.page.wait_for_function(
+                    "() => window.__plannerFileInput !== null", timeout=5000
+                )
+                handle = self.page.evaluate_handle("() => window.__plannerFileInput")
+                element = handle.as_element()
+                if element is None:
+                    raise PlaywrightTimeoutError("Gemini did not create a file input")
+                element.set_input_files(str(path.resolve()))
+                uploaded = True
+                break
+            except PlaywrightTimeoutError:
+                self.page.keyboard.press("Escape")
+                self.page.wait_for_timeout(300)
+            finally:
+                try:
+                    self.page.evaluate(
+                        """() => {
+                            if (window.__plannerOriginalFileClick) {
+                                HTMLInputElement.prototype.click = window.__plannerOriginalFileClick;
+                            }
+                            delete window.__plannerOriginalFileClick;
+                            delete window.__plannerFileInput;
+                        }"""
+                    )
+                except Exception:
+                    pass
+        if not uploaded:
+            raise RuntimeError("Gemini file chooser did not open")
+        self.page.wait_for_function(
+            """filename => [...document.querySelectorAll('[aria-describedby]')].some(el => {
+                if (!(el instanceof HTMLElement) || el.offsetParent === null) return false;
+                return (el.getAttribute('aria-describedby') || '').split(/\\s+/).some(id => {
+                    const tooltip = document.getElementById(id);
+                    return tooltip && (tooltip.textContent || '').trim() === filename;
+                });
+            })""",
+            arg=path.name,
+            timeout=30000,
+        )
 
     def _save_receipt(self, payload: dict[str, Any]) -> None:
         path = self._receipt_path(payload["prompt_sha256"])
@@ -294,6 +434,20 @@ class BrowserTransport:
             if attempt.get("state") == "completed" and isinstance(response, str) and response:
                 return response
         return None
+
+    def reject_last_response(self, error: str) -> None:
+        """Keep rejected model output as evidence without replaying it as success."""
+        if self._last_prompt_sha256 is None:
+            return
+        payload = self._load_receipt(self._last_prompt_sha256)
+        for attempt in reversed(payload["attempts"]):
+            if attempt.get("state") != "completed":
+                continue
+            attempt["state"] = "rejected"
+            attempt["rejected_at"] = time.time()
+            attempt["validation_error"] = error[:1200]
+            self._save_receipt(payload)
+            return
 
     @staticmethod
     def _is_bound_chat_url(url: object) -> bool:
@@ -362,6 +516,7 @@ class BrowserTransport:
         )
 
         prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        self._last_prompt_sha256 = prompt_sha256
         receipt = self._load_receipt(prompt_sha256)
         completed = self._completed_receipt(receipt)
         if completed is not None:
@@ -374,7 +529,17 @@ class BrowserTransport:
             if not select_gemini_model(self.page, self.model_name):
                 raise RuntimeError("Could not select the requested analysis model")
             self._chat_ready = True
-        ok, count = GeminiSessionClient(self.page, self.model_name).dispatch_prompt(prompt)
+        submitted_prompt = prompt
+        attachment_path: Path | None = None
+        if self.attachment_mode == "file":
+            attachment_path = self._attachment_path(prompt, prompt_sha256)
+            self._attach_prompt_file(attachment_path)
+            submitted_prompt = (
+                "Read the attached UTF-8 planning request completely. Follow every instruction in "
+                "that file and return only the requested JSON. Request SHA-256: "
+                + prompt_sha256
+            )
+        ok, count = GeminiSessionClient(self.page, self.model_name).dispatch_prompt(submitted_prompt)
         if not ok:
             raise RuntimeError("Could not submit analysis prompt")
         bound_chat_url = self._wait_for_bound_chat_url()
@@ -384,6 +549,8 @@ class BrowserTransport:
             "transient_url": self.page.url if bound_chat_url is None else None,
             "initial_response_count": count,
             "state": "submitted",
+            "transport": self.attachment_mode,
+            "attachment": attachment_path.name if attachment_path is not None else None,
         }
         receipt["attempts"].append(attempt)
         self._save_receipt(receipt)
@@ -418,6 +585,7 @@ def browser_ask(
     persistent_chat: bool = False,
     receipt_dir: Path | None = None,
     timeout_seconds: int = 180,
+    attachment_mode: Literal["inline", "file"] = "inline",
 ) -> BrowserTransport:
     return BrowserTransport(
         page,
@@ -425,4 +593,5 @@ def browser_ask(
         persistent_chat=persistent_chat,
         receipt_dir=receipt_dir,
         timeout_seconds=timeout_seconds,
+        attachment_mode=attachment_mode,
     )

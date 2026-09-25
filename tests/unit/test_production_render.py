@@ -1,5 +1,5 @@
 from youtube_automation.production.render import camera_filter, overlay_ass
-from youtube_automation.production.shots import Overlay, Shot
+from youtube_automation.production.shots import SCHULTE_6X6, Overlay, Shot
 
 
 def fixture_shot(**updates):
@@ -119,24 +119,21 @@ def test_schulte_grid_and_timer_are_deterministic_local_graphics():
     )
     ass = overlay_ass(shot, 1920, 1080, 30)
     assert "00:40" in ass
-    assert "m 0 0 l 1152 0 1152 864" in ass
+    assert "m 0 0 l 1344 0 1344 756" in ass
     assert all(f"}}{number}\n" in ass or f"}}{number}\r\n" in ass for number in map(str, range(1, 37)))
 
 
-def test_schulte_grid_values_cannot_be_replaced():
-    import pytest
-    from pydantic import ValidationError
-
-    with pytest.raises(ValidationError, match="deterministic"):
-        Overlay(
-            kind="data_grid",
-            preset="schulte_6x6",
-            cells=[str(value) for value in range(36)],
-            rows=6,
-            columns=6,
-            start_frame=0,
-            end_frame=30,
-        )
+def test_schulte_grid_values_are_replaced_with_the_deterministic_preset():
+    overlay = Overlay(
+        kind="data_grid",
+        preset="schulte_6x6",
+        cells=[str(value) for value in range(36)],
+        rows=6,
+        columns=6,
+        start_frame=0,
+        end_frame=30,
+    )
+    assert overlay.cells == SCHULTE_6X6
 
 
 def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
