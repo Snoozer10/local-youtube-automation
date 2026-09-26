@@ -505,11 +505,18 @@ def main():
 
     config = load_transcribe_config("transcribe_config.txt")
 
-    latest_run = get_latest_run_folder(config["RUNS_DIR"])
+    latest_run = sys.argv[1] if len(sys.argv) > 1 else get_latest_run_folder(config["RUNS_DIR"])
     if not latest_run:
         print(f"Error: No active run folders found in '{config['RUNS_DIR']}'.")
         sys.exit(1)
 
+    if not os.path.isdir(latest_run):
+        raise ValueError("Explicit transcription run directory does not exist")
+    if os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
+        from youtube_automation.production.contracts import load_brief
+        from youtube_automation.production.writing import verify_written_episode
+        verify_written_episode(latest_run)
+        config["WHISPER_LANGUAGE"] = load_brief(latest_run).channel.asr_language
     print(f"Target Video Folder: {latest_run}")
 
     target_audio = os.path.join(
@@ -592,7 +599,7 @@ def main():
     timeline = build_timeline(
         words_for_timeline,
         audio_duration=audio_duration,
-        audio_file=os.path.basename(target_audio),
+        audio_file=os.path.relpath(target_audio, latest_run).replace("\\", "/"),
         fps=int(config.get("OUTPUT_FPS", 30)),
         vad_snap_threshold=vad_threshold,
     )

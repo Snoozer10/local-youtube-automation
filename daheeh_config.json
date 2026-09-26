@@ -1,6 +1,6 @@
 {
   "al_daheeh_master_pipeline_config": {
-    "version": "4.1.0",
+    "version": "4.4.0",
     "target_channel": "Al-Daheeh (الدحيح)",
     "dialect_profile": {
       "fusha_academic_ratio": 0.3,
@@ -25,15 +25,6 @@
       "rapid_montage_wpm": 195,
       "philosophical_outro_wpm": 90,
       "skeptic_interruption_frequency_words": 250
-    },
-    "tts_acoustic_tags": {
-      "expert_drop": "[tone: expert_drop]",
-      "street_logic": "[tone: street_logic]",
-      "skeptic_shout": "[tone: skeptic_shout]",
-      "bureaucratic_mockery": "[tone: bureaucratic_mockery]",
-      "existential_whisper": "[tone: existential_whisper]",
-      "dramatic_pause": "[pause: tension]",
-      "comedic_pause": "[pause: comedic_halt]"
     },
     "visual_diffusion_engine": {
       "model": "Google Flow / Imagen 3",

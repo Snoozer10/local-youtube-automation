@@ -302,10 +302,26 @@
 - **Why it's wrong**: Omitting `tests/unit/`, tools, and root facade shims allows syntax, style, and import bugs to slip through into CI and release packaging.
 - **Correct approach**: Always execute `ruff check .` across the entire workspace before committing.
 
-### Assuming Import Success Guarantees Type Annotation Correctness
-- **What looks correct**: Relying on `python -c "import module"` or standard test runs to catch missing types when `from __future__ import annotations` is imported.
-- **Why it's wrong**: Python PEP 563 converts annotations into strings without evaluating them at runtime, completely masking missing imports until external tools or reflection inspect the types.
-- **Correct approach**: Run static linters (`ruff check .`) or type checkers (`mypy`) that evaluate the AST and detect undefined symbols regardless of PEP 563 stringification.
+### Monolithic Prompt Hand-Coded Slang Corruption
+- **Cause**: Hardcoded slang dictionaries in consumer scripts (e.g., `refine_script.py`) contained corrupted Hangul string `"야 닥تر"` instead of Arabic `"يا دكتور"` due to accidental keyboard IME switching during legacy editing.
+- **Solution**: Single-source slang terms into modular fragment files (`prompts/fragments/slang_categories.txt`), parse via `loader.slang_terms()`, and enforce AST contract tests asserting clean Arabic tokens and banning non-Arabic glyphs.
+- **Prevention**: Never hardcode vocabulary lists inside orchestration scripts; isolate them in external UTF-8 text fragments and gate them with contract tests.
+
+### Conversation Turn Template Metadata Leakage
+- **Cause**: Generating turn templates containing system-level `<<<PROMPT_META_START>>>` headers and extraneous acknowledgement tokens (e.g., German `bereit`). When dispatched during live chat turns, unstripped metadata headers leak directly into the LLM context, degrading reasoning and dialect naturalness.
+- **Solution**: Strip metadata blocks from all turn templates in `prompts/turns/`; ensure `loader.turn()` defensively detects and strips residual `<<<PROMPT_META_*>>>` blocks; restrict metadata headers strictly to root system prompts (`phase1`, `phase3`, `refine`, `tts`).
+- **Prevention**: Distinguish system prompt initialization from active user conversation turns; user turns must never contain system metadata blocks.
+
+### Studio Viewer Empty Frames & 0-Based Span Index Misalignment
+- **Cause**: In `tools/viewer_generator.py`, iterating strictly over `socratic_map.keys()` caused production runs without Socratic prompts (e.g. `What Do Animals Think Of Humans`) to generate empty viewers (`const frames = [];`). Naively unioning `timeline.json` 0-based span indices (`0..N-1`) with 1-based prompt indices (`1..N`) introduced a phantom frame 0, desynchronizing all downstream frames.
+- **Solution**: Implement a 5-Tier Priority Cascade with Index Unioning and Two-Pass Timestamp-Validated Span Alignment: chronometric matching via `start_time <= ts < end_time` followed by uniform index offset mapping (`span_idx = frame_idx - 1`).
+- **Prevention**: In multi-source media metadata ingestion, never iterate over a single optional source; union all candidate indices and normalize 0-based timeline spans to 1-based prompt arrays.
+
+### Dual-Audio Phase Echo in Browser Media Synchronization
+- **Cause**: Embedding both uncompressed master audio (`<audio id="master-audio">`) and video preview proxy (`<video id="video-proxy">`) in web inspection suites without muting the video element causes simultaneous playback of AAC and WAV audio streams, creating phase-delayed acoustic echo and flange artifacts.
+- **Solution**: Strictly enforce single-source audio: set `videoProxy.muted = true` as an immutable DOM property and drive audio exclusively through the master WAV element.
+- **Prevention**: In video/audio paired HTML5 web tools, always mute the video element when playing external high-fidelity audio stems.
+
 
 
 

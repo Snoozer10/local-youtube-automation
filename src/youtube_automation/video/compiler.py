@@ -1087,7 +1087,7 @@ def _build_chunk_ffmpeg_cmd(
         "-loglevel",
         config["FFMPEG_LOGLEVEL"],
         *input_args,
-        "-filter_complex_script",
+        "-/filter_complex",
         filter_script_path,
         "-map",
         f"[{video_label}]",
@@ -1188,7 +1188,15 @@ def _execute_chunk_ffmpeg(
         # silently, making FFMPEG_CLIP_TIMEOUT unreachable.
         # Use read1 to avoid fixed-size blocking (warning loglevel emits <256B).
         stderr_logs = []
-        stderr_queue = queue.Queue()
+        stderr_chars = 0
+        stderr_queue = queue.Queue(maxsize=256)
+
+        def append_stderr(value):
+            nonlocal stderr_chars
+            stderr_logs.append(value)
+            stderr_chars += len(value)
+            while stderr_chars > 1024 * 1024 and stderr_logs:
+                stderr_chars -= len(stderr_logs.pop(0))
 
         def _pump_stderr(stream, out_queue):
             try:
@@ -1233,7 +1241,7 @@ def _execute_chunk_ffmpeg(
                 # Capture last progress and filter graph size for diagnosability
                 try:
                     filter_idx = next(
-                        (i for i, a in enumerate(cmd) if a == "-filter_complex_script"),
+                        (i for i, a in enumerate(cmd) if a == "-/filter_complex"),
                         -1,
                     )
                     filter_path = cmd[filter_idx + 1] if 0 <= filter_idx < len(cmd) - 1 else ""
@@ -1261,7 +1269,7 @@ def _execute_chunk_ffmpeg(
                             if extra is None:
                                 break
                             if extra:
-                                stderr_logs.append(extra)
+                                append_stderr(extra)
                     except queue.Empty:
                         pass
                     break
@@ -1273,7 +1281,7 @@ def _execute_chunk_ffmpeg(
                 # EOF but process still running: let the timeout check decide.
                 continue
 
-            stderr_logs.append(chunk)
+            append_stderr(chunk)
             buffer += chunk
             while "\r" in buffer or "\n" in buffer:
                 line, _, buffer = re.split(r"([\r\n])", buffer, maxsplit=1)
@@ -1559,31 +1567,56 @@ def _execute_final_assembly(
         )
 
         stderr_logs = []
+        stderr_chars = 0
+        stderr_queue = queue.Queue()
+
+        def pump_stderr():
+            try:
+                while True:
+                    line = process.stderr.readline()
+                    if not line:
+                        break
+                    stderr_queue.put(line)
+            finally:
+                stderr_queue.put(None)
+
+        threading.Thread(target=pump_stderr, daemon=True).start()
+        stderr_eof = False
         while True:
             if time.time() - start_time > timeout:
                 process.kill()
+                process.wait(timeout=5)
                 print(f"\n  [ERROR Final Assembly] FFmpeg timeout ({timeout}s)")
                 return False
 
-            line = process.stderr.readline()
-            if not line and process.poll() is not None:
-                break
+            try:
+                line = stderr_queue.get(timeout=0.5)
+            except queue.Empty:
+                if process.poll() is not None and stderr_eof:
+                    break
+                continue
+            if line is None:
+                stderr_eof = True
+                if process.poll() is not None:
+                    break
+                continue
+            stderr_logs.append(line)
+            stderr_chars += len(line)
+            while stderr_chars > 1024 * 1024 and stderr_logs:
+                stderr_chars -= len(stderr_logs.pop(0))
+            if "time=" in line:
+                match = re.search(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)", line)
+                if match:
+                    h, m, s = map(float, match.groups())
+                    current_sec = h * 3600 + m * 60 + s
+                    pct = min(100.0, (current_sec / max(0.1, total_duration)) * 100)
+                    print(
+                        f"\r  [Assembly] Progress: {pct:.1f}% ({int(current_sec)}s / {int(total_duration)}s)",
+                        end="",
+                        flush=True,
+                    )
 
-            if line:
-                stderr_logs.append(line)
-                if "time=" in line:
-                    match = re.search(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)", line)
-                    if match:
-                        h, m, s = map(float, match.groups())
-                        current_sec = h * 3600 + m * 60 + s
-                        pct = min(100.0, (current_sec / max(0.1, total_duration)) * 100)
-                        print(
-                            f"\r  [Assembly] Progress: {pct:.1f}% ({int(current_sec)}s / {int(total_duration)}s)",
-                            end="",
-                            flush=True,
-                        )
-
-        process.wait()
+        process.wait(timeout=5)
         print("\n")
 
         if process.returncode != 0:
@@ -1669,7 +1702,7 @@ def assemble_final_video(
         "-i",
         concat_txt_path,
         *audio_inputs,
-        "-filter_complex_script",
+        "-/filter_complex",
         filter_script_path,
         "-map",
         video_label,
@@ -2090,7 +2123,7 @@ def verify_master_video(output_path: str, expected_duration: float) -> bool:
         return False
 
 
-def main(run_folder: str | list | None = None):
+def _main_unleased(run_folder: str | list | None = None):
     print("=============================================")
     print("Starting SILKY CINEMATIC Video Compilation")
     print("=============================================")
@@ -2106,6 +2139,11 @@ def main(run_folder: str | list | None = None):
     print(f"Target Video Folder: {latest_run}")
 
     config = load_video_config("video_config.txt")
+    if os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
+        from youtube_automation.production.render import render_plan
+        print(render_plan(latest_run, config))
+        return
+
     anim_enabled = config["ENABLE_ANIMATIONS"]
     subs_enabled = config["ENABLE_SUBTITLES"]
 
@@ -2182,6 +2220,18 @@ def main(run_folder: str | list | None = None):
     else:
         print("\n[ERROR] Video compilation failed or output verification did not pass.")
         sys.exit(1)
+
+
+def main(run_folder: str | list | None = None):
+    """Fence legacy encoder access; adaptive rendering owns its lease internally."""
+    selected = run_folder[0] if isinstance(run_folder, (list, tuple)) and run_folder else run_folder
+    latest_run = selected if selected else get_latest_run_folder()
+    if latest_run and os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
+        return _main_unleased(run_folder)
+    from youtube_automation.production.ledger import leased_resource, resource_database
+
+    with leased_resource(resource_database(), "encoder"):
+        return _main_unleased(run_folder)
 
 
 if __name__ == "__main__":

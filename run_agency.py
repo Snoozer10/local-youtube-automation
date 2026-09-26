@@ -48,21 +48,16 @@ def print_header(title):
 
 
 def clean_browser_tabs():
-    """Connects to the running CDP browser and closes all tabs to free up memory for the next phase."""
+    """Probe CDP between phases without closing user-owned or untracked tabs."""
+    from youtube_automation.production.ledger import leased_resource, resource_database
+
     cdp_port = get_config_value("CDP_PORT", "9222")
     try:
-        with sync_playwright() as p:
+        with leased_resource(resource_database(), "browser"), sync_playwright() as p:
             browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}", timeout=3000)
-            context = browser.contexts[0]
-
-            context.new_page()
-
-            for page in context.pages[:-1]:
-                try:
-                    page.close()
-                except Exception:
-                    continue
-            print("🧹 [SYSTEM] Cleared browser tabs for the next phase.")
+            if not browser.contexts:
+                raise RuntimeError("CDP browser has no usable context")
+            print("🧹 [SYSTEM] Browser session reachable; existing tabs preserved.")
     except Exception:
         pass
 
@@ -297,6 +292,8 @@ def process_folder(folder: str, step_timeout: int = 7200) -> bool:
 
     Returns True if completed successfully or skipped, False on failure.
     """
+    if os.path.isfile(os.path.join(folder, "episode_brief.json")):
+        raise ValueError("Adaptive runs require adaptive_production.py stages and explicit editorial review")
     video_title = os.path.basename(os.path.normpath(folder))
     state = get_pipeline_state(folder)
 
@@ -440,7 +437,7 @@ def main():
         if os.path.isdir(os.path.join(runs_dir, d))
     ]
 
-    valid_folders = [f for f in folders if os.path.exists(os.path.join(f, "final_output.txt"))]
+    valid_folders = [f for f in folders if os.path.exists(os.path.join(f, "final_output.txt")) and not os.path.isfile(os.path.join(f, "episode_brief.json"))]
 
     if not valid_folders:
         print("No valid video folders found to process. Exiting.")

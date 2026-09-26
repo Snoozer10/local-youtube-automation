@@ -1,3 +1,5 @@
+Read GEMINI.md and use it as the current project guidance where it differs from the older AGENTS.md
+
 # DOX framework
 
 - DOX is highly performant AGENTS.md hierarchy installed here
@@ -79,18 +81,27 @@ Default section order:
 
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
+- Use `GEMINI.md` as current project guidance where older instructions here differ.
+- Adaptive production selects a saved channel, analyzes raw scripts before translation, and uses stills plus selective local animation. Track progress in `tasks/adaptive-visual-tasks.md`.
+- Treat a saved channel profile as stable brand identity only. Every pasted source URL must compile a content-bound episode visual strategy before translation and planning, with its own hook, semantic beat map, visual-mode palette, local UI treatment, motion grammar and repetition limits.
+- The three pilot channels are saved in `channels/`; Professor Yashrah keeps Achird, while the Soldier's Sledger and Snoozer Anime pilots preserve their published narration. Their unselected synthesis voices remain null and must block TTS.
+- Before a new approval gate, audit the concrete action and recommend the strongest safe option. Proceed without repeating the question when the session already authorizes it; platform-enforced disclosure, destructive-action or irreversible-publication gates still require the explicit response they request.
+- When the user reports that the five-hour quota has reached 10%, prepare a self-contained Antigravity 2.0 delegation prompt for the remaining bounded work. The user owns starting and stopping that external session and will stop it when this task's quota resets.
+- Before costly live browser runs, proactively audit likely failure states instead of waiting for the user to spot them. Use a small number of bounded, non-overlapping subagents only when parallel review can prevent reruns; choose model and effort deliberately, stop agents once their evidence is complete, and avoid unnecessary token or quota consumption.
+
 ## Ownership & Domain Boundaries
 
 - `src/youtube_automation/`: Authoritative modular domain packages conforming to PEP 517/518:
-  - `core`: Low-level system primitives, process handling, atomic disk writes, and profile management (`utils.py`).
-  - `audio`: Neural TTS voice synthesis, Win32 Audacity Named Pipe IPC DSP mastering, and lossless WAV chapter stitching (`tts_generator.py`, `audacity_client.py`, `chapter_stitcher.py`).
+  - `core`: Low-level system primitives, fenced resource leases, atomic disk writes, profile management and an exact-PID owned-browser registry (`utils.py`).
+  - `audio`: Neural TTS voice synthesis, Win32 Audacity Named Pipe IPC DSP mastering, and lossless WAV chapter stitching (`tts_generator.py`, `audacity_client.py`, `chapter_stitcher.py`). TTS uses the shared browser lease; all Audacity entrypoints use bounded pipe commands, refuse unrelated sessions and terminate only the process they launched.
   - `speech`: Faster-Whisper ASR transcription, silero VAD alignment, and sequence-matcher lexical transcript spelling correction (`transcriber.py`, `spelling_corrector.py`).
   - `timeline`: Single source of truth (SSOT) timeline management and timestamp reconciliation (`engine.py`, `fix_timestamps.py`).
   - `nlp`: Multi-tier repair and structural sanitization for LLM JSON outputs (`json_sanitizer.py`).
-  - `prompts`: Pydantic prompt validation, 8-part visual prompt schemas, and deterministic negative prompt injection (`validator.py`).
-  - `browser`: Playwright Chrome DevTools Protocol (CDP) client loopback binding (`127.0.0.1:9222`), tab lifecycle hygiene, and Gemini web UI controllers (`cdp_client.py`, `gemini_utils.py`).
+  - `prompts`: Pydantic prompt validation, 8-part visual prompt schemas, multi-channel dynamic prompt loading, and deterministic negative prompt injection (`validator.py`, `loader.py`).
+  - `browser`: Playwright Chrome DevTools Protocol (CDP) client loopback binding (`127.0.0.1:9222`), tab lifecycle hygiene, shared browser/clipboard leases and Gemini web UI controllers (`cdp_client.py`, `gemini_utils.py`). Gemini completion requires a new response node, the semantic Stop control to be absent, then three stable 500 ms observations; generic spinners and SVG buttons never prove active generation.
   - `visuals`: Google Flow image generation, continuity character asset studio, base64 extraction, and OCR text collision gates (`flow_generator.py`, `asset_studio.py`, `image_extractor.py`, `text_gate.py`).
   - `video`: FFmpeg hardware video compositing (Intel QSV / NVENC / CPU fallback), Ken Burns dynamic smoothstep pan-and-zoom transformation, filtergraph generation, and ASS subtitle burning (`compiler.py`, `encoder.py`, `ken_burns.py`, `filter_graph.py`, `subtitles.py`).
+  - `production`: Opt-in adaptive channel briefs, versioned channel visual directives and forbidden motifs with plan-only profile rebinding, editorial shot plans with narrative roles, exact narration chapter recipes, thumbnail packaging, preserved asset receipts, dependency-aware stage invalidation, journaled multi-file publication, durable content-bound stage jobs, local rendering and explicit preview approval. See its child contract.
   - `orchestrator`: Pipeline stage orchestration and batch execution coordination.
   - Note on visual engines:
     - `flow_image_generator.py` (and `src/youtube_automation/visuals/flow_generator.py`) is the primary visual engine. Prompts are governed by `roadmap_orchestrator.py`, `prompt_planner.py`, and `asset_studio.py` (`FLOW_ASSET_PRESETS`).
@@ -107,12 +118,20 @@ When the user requests a durable behavior change, record it here or in the relev
 
 ## Child DOX Index
 
-- No child AGENTS.md files are currently required; root `AGENTS.md` serves as the authoritative DOX rail for the unified repository tree.
+- `channels/AGENTS.md`: saved adaptive channel identities and pilot voice/visual policy.
+- `tasks/AGENTS.md`: implementation plans, checklists and verification evidence.
+- `src/youtube_automation/production/AGENTS.md`: adaptive channel/episode contracts and editorial production.
 - Domain scopes governed directly by root contracts:
   - `src/youtube_automation/` (`core`, `audio`, `speech`, `timeline`, `nlp`, `prompts`, `browser`, `visuals`, `video`, `orchestrator`)
   - `exercises/` (pedagogy scaffold & pre-flight diagnostic drills)
   - `tools/` (`lint_exercises.py`, `extract_release_notes.py`)
   - Root-owned scripts, facade shims, and docs: `README.md`, `GEMINI.md`, `CLAUDE.md`, `LICENSE`, `banner.jpg`, `video-thumbnail.jpg`, `setup.bat`, `setup.ps1`, `run.bat`.
+
+## **Parent AI Agent:** Dispatch/Delegate Multi-Agent Orchestration & Quality Gates
+- **Coordinator (Tier 1)**: Claude 3.7 Sonnet / Gemini Pro — spec design, refactor strategy.
+- **Executor (Tier 2)**: Gemini Flash / DeepSeek V3 — fast TDD, linting, regression tests.
+- **Codex subagent routing**: Choose model and reasoning effort explicitly from task difficulty. Use Luna or Sol at low/medium effort for mechanical edits, test execution and bounded routine work; Sol High for complex implementation; Astra High for architecture, ambiguous failure analysis and final risk review. Do not spend Astra quota on routine work, and do not leave a consequential delegation on an accidental inherited default.
+- **Quality Gates**: Unit tests green (`python -m pytest tests/unit`), clean lint (`ruff check`), exercise lint clean, drills green.
 
 <!-- pane-agent-context:start -->
 ## Pane

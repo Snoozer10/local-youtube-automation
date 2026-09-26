@@ -32,6 +32,7 @@ dependencies = [
     "tqdm>=4.66.0",
     "requests>=2.31.0",
     "Pillow>=10.0.0",
+    "pytesseract>=0.3.13",
     "pydantic>=2.0.0",
     "moviepy>=1.0.3",
 ]
@@ -54,6 +55,7 @@ dev = [
 
 [tool.setuptools]
 py-modules = [
+    "adaptive_production",
     "run_agency",
     "automate_all",
     "refine_script",

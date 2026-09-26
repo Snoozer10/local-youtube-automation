@@ -1,4 +1,10 @@
-﻿# Implementation Plan: flow_image_generator.py Hardening
+# Active adaptive visual engine work
+
+See [adaptive-visual-plan.md](adaptive-visual-plan.md).
+
+---
+
+# Implementation Plan: flow_image_generator.py Hardening
 
 ## Overview
 Fix the silent `TargetClosedError` death during Gemini planning, batch-kill on
