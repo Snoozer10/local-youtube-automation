@@ -2,6 +2,7 @@ import hashlib
 import json
 
 import pytest
+from pydantic import BaseModel
 
 from youtube_automation.production.briefs import (
     BrowserTransport,
@@ -285,6 +286,56 @@ def test_request_json_preserves_transport_error_after_retry_budget(channel):
         )
 
 
+def test_request_json_preserves_first_candidate_across_multiple_repairs():
+    class Payload(BaseModel):
+        kept: str
+        count: int
+
+    class Transport:
+        def __init__(self):
+            self.repairs = []
+            self.responses = [
+                '{"count":"still invalid"}',
+                '{"kept":"baseline value","count":2}',
+            ]
+
+        def __call__(self, _prompt):
+            return '{"kept":"baseline value","count":"invalid"}'
+
+        def repair_json(self, *args):
+            self.repairs.append(args)
+            return self.responses.pop(0)
+
+        def reject_last_response(self, _error):
+            pass
+
+    transport = Transport()
+    parsed = request_json("request", transport, Payload)
+
+    assert parsed == Payload(kept="baseline value", count=2)
+    assert len(transport.repairs) == 2
+    assert '"kept":"baseline value"' in transport.repairs[1][2]
+    assert '"kept"' not in transport.repairs[1][3]
+
+
+def test_transport_failure_does_not_consume_schema_repair_budget():
+    replies = iter(["not json", RuntimeError("provider error"), "still not json", response()])
+    calls = []
+
+    def ask(prompt):
+        calls.append(prompt)
+        reply = next(replies)
+        if isinstance(reply, RuntimeError):
+            raise reply
+        return reply
+
+    parsed = request_json("prompt", ask, Analysis, attempts=3)
+
+    assert parsed.proposition == "Animal perception"
+    assert len(calls) == 4
+    assert "Repair the previous validation error" in calls[-1]
+
+
 def test_persistent_browser_transport_keeps_repairs_in_one_chat_and_receipts(
     tmp_path, monkeypatch, channel
 ):
@@ -321,7 +372,7 @@ def test_persistent_browser_transport_keeps_repairs_in_one_chat_and_receipts(
     assert parsed.proposition == "Animal perception"
     assert len(starts) == 1
     assert len(submitted) == 2
-    assert "Repair the previous validation error" in submitted[1]
+    assert "Repair the latest rejected JSON candidate" in submitted[1]
     receipts = [json.loads(path.read_text(encoding="utf-8")) for path in tmp_path.glob("*.json")]
     assert len(receipts) == 2
     assert all(item["window"] == [0, 575] for item in receipts)
@@ -374,7 +425,7 @@ def test_rejected_completed_receipt_is_not_replayed(tmp_path, monkeypatch):
     assert len(submitted) == 2
 
 
-def test_transport_retry_reuses_exact_prompt_and_content_bound_receipt(
+def test_transport_retry_reuses_exact_prompt_in_a_fresh_chat_and_content_bound_receipt(
     tmp_path, monkeypatch
 ):
     from youtube_automation.browser import gemini_utils
@@ -407,11 +458,73 @@ def test_transport_retry_reuses_exact_prompt_and_content_bound_receipt(
     parsed = request_json("same prompt", transport, Analysis)
     assert parsed.proposition == "Animal perception"
     assert submitted == ["same prompt", "same prompt"]
-    assert len(starts) == 1
+    assert len(starts) == 2
     receipt_files = list(tmp_path.glob("*.json"))
     assert len(receipt_files) == 1
     attempts = json.loads(receipt_files[0].read_text(encoding="utf-8"))["attempts"]
     assert [attempt["state"] for attempt in attempts] == ["timed_out", "completed"]
+
+
+def test_provider_soft_refusal_retries_exact_prompt_in_clean_chat(tmp_path, monkeypatch):
+    from youtube_automation.browser import gemini_utils
+
+    starts = []
+    submitted = []
+    responses = [
+        "I'm having a hard time fulfilling your request. Can I help you with something else instead?",
+        response(),
+    ]
+
+    class Page:
+        url = "https://gemini.google.com/app/refusal-chat"
+
+    class Client:
+        def __init__(self, _page, _model):
+            pass
+
+        def dispatch_prompt(self, prompt):
+            submitted.append(prompt)
+            return True, 0
+
+    monkeypatch.setattr(gemini_utils, "GeminiSessionClient", Client)
+    monkeypatch.setattr(
+        gemini_utils, "start_clean_gemini_chat", lambda _page: starts.append(1)
+    )
+    monkeypatch.setattr(gemini_utils, "select_gemini_model", lambda _page, _model: True)
+    monkeypatch.setattr(
+        gemini_utils,
+        "wait_for_gemini_response",
+        lambda *_args, **_kwargs: responses.pop(0),
+    )
+    transport = BrowserTransport(Page(), "Flash", True, tmp_path, 600)
+    transport.begin_window(0, 575)
+
+    parsed = request_json("same request", transport, Analysis)
+
+    assert parsed.proposition == "Animal perception"
+    assert submitted == ["same request", "same request"]
+    assert len(starts) == 2
+    receipt = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
+    assert [attempt["state"] for attempt in receipt["attempts"]] == [
+        "provider_refusal",
+        "completed",
+    ]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "I'm having hard time fulfilling request. Can I help you with something else instead?",
+        "I encountered an error doing what you asked. Could you try again?",
+        "I encountered error doing what you asked. Could you try again?",
+        "I seem to be encountering an error. Can I try something else for you?",
+        "I seem be encountering an error. Can I try something else for you?",
+    ],
+)
+def test_known_provider_error_cards_are_transport_failures(message):
+    from youtube_automation.production.briefs import _is_provider_soft_refusal
+
+    assert _is_provider_soft_refusal(message)
 
 
 def test_file_attachment_transport_submits_short_bound_instruction(
@@ -457,10 +570,263 @@ def test_file_attachment_transport_submits_short_bound_instruction(
     assert attached[0].read_text(encoding="utf-8") == "large planning payload"
     assert submitted[0].startswith("Read the attached UTF-8 planning request completely")
     assert "large planning payload" not in submitted[0]
+    assert "SHA-256" not in submitted[0]
+    assert attached[0].name.startswith("visual-plan-")
+    assert len(attached[0].stem.removeprefix("visual-plan-")) == 8
+    assert "Request ID:" in submitted[0]
     receipt = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
     assert receipt["version"] == 2
     assert receipt["transport"] == "file"
     assert receipt["attempts"][0]["attachment"] == attached[0].name
+
+
+def test_file_validation_repair_uses_a_bound_repair_attachment(tmp_path, monkeypatch):
+    from youtube_automation.browser import gemini_utils
+
+    starts = []
+    attached = []
+    submitted = []
+    long_invalid = "not json " + ("x" * 5000)
+    responses = [long_invalid, response()]
+
+    class Locator:
+        def count(self):
+            return 0
+
+    class Page:
+        url = "https://gemini.google.com/app/file-repair"
+
+        def locator(self, _selector):
+            return Locator()
+
+    class Client:
+        def __init__(self, _page, _model):
+            pass
+
+        def dispatch_prompt(self, prompt):
+            submitted.append(prompt)
+            return True, len(submitted) - 1
+
+    monkeypatch.setattr(gemini_utils, "GeminiSessionClient", Client)
+    monkeypatch.setattr(
+        gemini_utils, "start_clean_gemini_chat", lambda _page: starts.append(1)
+    )
+    monkeypatch.setattr(gemini_utils, "select_gemini_model", lambda _page, _model: True)
+    monkeypatch.setattr(
+        gemini_utils,
+        "wait_for_gemini_response",
+        lambda *_args, **_kwargs: responses.pop(0),
+    )
+    transport = BrowserTransport(
+        Page(), "Flash", True, tmp_path, 600, attachment_mode="file"
+    )
+    monkeypatch.setattr(transport, "_attach_prompt_file", lambda path: attached.append(path))
+
+    parsed = request_json("large request", transport, Analysis)
+
+    assert parsed.proposition == "Animal perception"
+    assert len(starts) == 1
+    assert len(attached) == 2
+    assert "Request ID:" in submitted[0]
+    assert "Request ID:" in submitted[1]
+    repair_packet = attached[1].read_text(encoding="utf-8")
+    assert repair_packet.startswith("Repair the latest rejected JSON candidate")
+    assert "Baseline JSON candidate:\nnot json" in repair_packet
+    assert "Latest rejected JSON candidate:\nnot json" in repair_packet
+    assert "restore every unaffected field" in repair_packet
+    assert "Exact JSON schema:" in repair_packet
+    assert "large request" not in repair_packet
+    repair_receipt = next(
+        receipt
+        for receipt in (
+            json.loads(path.read_text(encoding="utf-8")) for path in tmp_path.glob("*.json")
+        )
+        if receipt["prompt_sha256"] == hashlib.sha256(repair_packet.encode()).hexdigest()
+    )
+    assert len(repair_packet) > 4096
+    assert repair_receipt["attempts"][0]["query_text"] == submitted[1]
+
+
+def test_repair_refuses_to_write_into_an_unrelated_chat(tmp_path, monkeypatch):
+    class Page:
+        url = "https://gemini.google.com/app/unrelated-chat"
+
+    transport = BrowserTransport(
+        Page(), "Pro", True, tmp_path, 600, attachment_mode="file"
+    )
+    prompt_sha256 = "a" * 64
+    transport._last_prompt_sha256 = prompt_sha256
+    transport._chat_ready = True
+    receipt = transport._load_receipt(prompt_sha256)
+    receipt["attempts"].append(
+        {
+            "state": "rejected",
+            "chat_url": "https://gemini.google.com/app/rejected-chat",
+        }
+    )
+    transport._save_receipt(receipt)
+    calls = []
+    monkeypatch.setattr(
+        transport,
+        "_request",
+        lambda prompt, *, use_file: calls.append((prompt, use_file)) or "fresh",
+    )
+
+    result = transport.repair_json("original", "error", "base", "latest", "{}")
+
+    assert result == "fresh"
+    assert calls == [("original", True)]
+    assert transport._chat_ready is False
+
+
+def test_submission_is_journaled_before_uncertain_send_failure(tmp_path, monkeypatch):
+    from youtube_automation.browser import gemini_utils
+
+    class Locator:
+        def count(self):
+            return 0
+
+    class Page:
+        url = "https://gemini.google.com/app/journal-chat"
+
+        def locator(self, _selector):
+            return Locator()
+
+    class Client:
+        def __init__(self, _page, _model):
+            pass
+
+        def dispatch_prompt(self, _prompt):
+            raise RuntimeError("renderer closed after send boundary")
+
+    monkeypatch.setattr(gemini_utils, "GeminiSessionClient", Client)
+    monkeypatch.setattr(gemini_utils, "start_clean_gemini_chat", lambda _page: None)
+    monkeypatch.setattr(gemini_utils, "select_gemini_model", lambda _page, _model: True)
+    transport = BrowserTransport(Page(), "Flash", True, tmp_path, 600)
+
+    with pytest.raises(RuntimeError, match="renderer closed"):
+        transport("journal me")
+
+    receipt = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
+    attempt = receipt["attempts"][0]
+    assert attempt["state"] == "submission_uncertain"
+    assert attempt["initial_response_count"] == 0
+    assert attempt["chat_url"] == Page.url
+    assert transport._chat_ready is False
+
+
+def test_attachment_ready_wait_requires_stable_non_busy_samples(tmp_path):
+    states = [
+        {"mounted": True, "busy": True},
+        {"mounted": True, "busy": False},
+        {"mounted": True, "busy": True},
+        {"mounted": True, "busy": False},
+        {"mounted": True, "busy": False},
+        {"mounted": True, "busy": False},
+        {"mounted": True, "busy": False},
+    ]
+
+    class Page:
+        def __init__(self):
+            self.waits = []
+            self.expressions = []
+
+        def evaluate(self, expression, filename):
+            self.expressions.append((expression, filename))
+            return states.pop(0)
+
+        def wait_for_timeout(self, milliseconds):
+            self.waits.append(milliseconds)
+
+    page = Page()
+    transport = BrowserTransport(page, "Flash", timeout_seconds=30)
+    attachment = tmp_path / "planner-request.txt"
+
+    transport._wait_for_attachment_ready(attachment)
+
+    assert len(page.expressions) == 7
+    assert page.waits == [250] * 6
+    expression, filename = page.expressions[0]
+    assert filename == attachment.name
+    assert '[role="progressbar"]' in expression
+    assert '[aria-busy="true"]' in expression
+    assert "upload-spinner" in expression
+    assert "composer.querySelectorAll('[aria-describedby]')" in expression
+    assert "document.querySelectorAll('[aria-describedby]')" not in expression
+
+
+def test_page_ready_wait_requires_complete_stable_unblocked_surface():
+    states = [
+        {
+            "document_complete": False,
+            "composer": True,
+            "navigation": True,
+            "blocking_busy": True,
+        },
+        {
+            "document_complete": True,
+            "composer": True,
+            "navigation": True,
+            "blocking_busy": False,
+        },
+    ]
+    counts = iter([(0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0)])
+
+    class Locator:
+        def __init__(self, page, index):
+            self.page = page
+            self.index = index
+
+        def count(self):
+            if self.index == 0:
+                self.page.current_counts = next(counts)
+            return self.page.current_counts[self.index]
+
+    class Page:
+        url = "https://gemini.google.com/app"
+
+        def __init__(self):
+            self.current_counts = (0, 0)
+            self.waits = []
+            self.polls = 0
+
+        def evaluate(self, expression):
+            assert 'document.readyState === \'complete\'' in expression
+            state = states[min(self.polls, len(states) - 1)]
+            self.polls += 1
+            return state
+
+        def locator(self, selector):
+            from youtube_automation.browser.gemini_utils import RESPONSE_SELECTOR
+
+            return Locator(self, 0 if selector == RESPONSE_SELECTOR else 1)
+
+        def wait_for_timeout(self, milliseconds):
+            self.waits.append(milliseconds)
+
+    page = Page()
+    BrowserTransport(page, "Flash", timeout_seconds=30)._wait_for_page_ready()
+
+    assert page.polls == 5
+    assert page.waits == [500] * 4
+
+
+def test_attachment_ready_wait_times_out_before_dispatch(tmp_path, monkeypatch):
+    class Page:
+        def evaluate(self, _expression, _filename):
+            return {"mounted": True, "busy": True}
+
+        def wait_for_timeout(self, _milliseconds):
+            pass
+
+    ticks = iter([0.0, 31.0])
+    monkeypatch.setattr(
+        "youtube_automation.production.briefs.time.monotonic", lambda: next(ticks)
+    )
+    transport = BrowserTransport(Page(), "Flash", timeout_seconds=30)
+
+    with pytest.raises(RuntimeError, match="did not finish uploading"):
+        transport._wait_for_attachment_ready(tmp_path / "planner-request.txt")
 
 
 def test_timed_out_response_is_recovered_from_its_bound_chat_without_resubmission(
@@ -515,6 +881,157 @@ def test_timed_out_response_is_recovered_from_its_bound_chat_without_resubmissio
     receipt = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
     assert receipt["attempts"][0]["recovered_after_timeout"] is True
     assert receipt["attempts"][0]["recovered_from_state"] == "timed_out"
+
+
+def test_file_recovery_reads_response_paired_to_exact_user_turn(tmp_path, monkeypatch):
+    from youtube_automation.browser import gemini_utils
+
+    expected_query = "Read attached request. Request ID: ABCD2345"
+
+    class Item:
+        def __init__(self, text):
+            self.text = text
+
+        def evaluate(self, _expression, timeout):
+            assert timeout == 4000
+            return self.text
+
+    class Items:
+        def __init__(self, values):
+            self.values = values
+
+        def count(self):
+            return len(self.values)
+
+        def nth(self, index):
+            return Item(self.values[index])
+
+    class Page:
+        url = "https://gemini.google.com/app/exact-turn"
+
+        def locator(self, selector):
+            if selector == gemini_utils.USER_QUERY_SELECTOR:
+                return Items([expected_query, "later unrelated request"])
+            return Items(["Gemini said\n" + response(), "Gemini said\nwrong later reply"])
+
+        def wait_for_selector(self, _selector, timeout):
+            assert timeout == 15000
+
+    monkeypatch.setattr(
+        gemini_utils,
+        "wait_for_gemini_response",
+        lambda *_args, **_kwargs: "wrong later reply",
+    )
+    payload = {
+        "version": 2,
+        "prompt_sha256": "a" * 64,
+        "model": "Flash",
+        "transport": "file",
+        "window": [0, 575],
+        "attempts": [
+            {
+                "state": "timed_out",
+                "chat_url": Page.url,
+                "initial_response_count": 0,
+                "user_query_index": 0,
+                "query_text": expected_query,
+            }
+        ],
+    }
+    transport = BrowserTransport(
+        Page(), "Flash", True, tmp_path, 600, attachment_mode="file"
+    )
+
+    recovered = transport._recover_late_response(payload)
+
+    assert json.loads(recovered)["proposition"] == "Animal perception"
+    assert payload["attempts"][0]["response"] == response()
+
+
+def test_file_recovery_rejects_wrong_user_turn_and_recovered_refusal(tmp_path, monkeypatch):
+    from youtube_automation.browser import gemini_utils
+
+    class Item:
+        def __init__(self, text):
+            self.text = text
+
+        def evaluate(self, _expression, timeout):
+            assert timeout == 4000
+            return self.text
+
+    class Items:
+        def __init__(self, values):
+            self.values = values
+
+        def count(self):
+            return len(self.values)
+
+        def nth(self, index):
+            return Item(self.values[index])
+
+    class Page:
+        url = "https://gemini.google.com/app/refusal-recovery"
+
+        def __init__(self, query):
+            self.query = query
+
+        def locator(self, selector):
+            if selector == gemini_utils.USER_QUERY_SELECTOR:
+                return Items([self.query])
+            return Items(["I encountered an error doing what you asked. Could you try again?"])
+
+        def wait_for_selector(self, _selector, timeout):
+            assert timeout == 15000
+
+    monkeypatch.setattr(
+        gemini_utils,
+        "wait_for_gemini_response",
+        lambda *_args, **_kwargs: "I encountered an error doing what you asked.",
+    )
+
+    def payload():
+        return {
+            "version": 2,
+            "prompt_sha256": "b" * 64,
+            "model": "Flash",
+            "transport": "file",
+            "window": [0, 575],
+            "attempts": [
+                {
+                    "state": "timed_out",
+                    "chat_url": Page.url,
+                    "initial_response_count": 0,
+                    "user_query_index": 0,
+                    "query_text": "Request ID: RIGHT123",
+                }
+            ],
+        }
+
+    wrong = payload()
+    assert (
+        BrowserTransport(
+            Page("Request ID: WRONG999"),
+            "Flash",
+            True,
+            tmp_path,
+            600,
+            attachment_mode="file",
+        )._recover_late_response(wrong)
+        is None
+    )
+
+    refused = payload()
+    transport = BrowserTransport(
+        Page("Request ID: RIGHT123"),
+        "Flash",
+        True,
+        tmp_path,
+        600,
+        attachment_mode="file",
+    )
+    assert transport._recover_late_response(refused) is None
+    assert refused["attempts"][0]["state"] == "provider_refusal"
+    assert transport._chat_ready is False
 
 
 def test_interrupted_submitted_response_is_recovered_without_resubmission(

@@ -87,6 +87,7 @@ When the user requests a durable behavior change, record it here or in the relev
 - The three pilot channels are saved in `channels/`; Professor Yashrah keeps Achird, while the Soldier's Sledger and Snoozer Anime pilots preserve their published narration. Their unselected synthesis voices remain null and must block TTS.
 - Before a new approval gate, audit the concrete action and recommend the strongest safe option. Proceed without repeating the question when the session already authorizes it; platform-enforced disclosure, destructive-action or irreversible-publication gates still require the explicit response they request.
 - When the user reports that the five-hour quota has reached 10%, prepare a self-contained Antigravity 2.0 delegation prompt for the remaining bounded work. The user owns starting and stopping that external session and will stop it when this task's quota resets.
+- Before costly live browser runs, proactively audit likely failure states instead of waiting for the user to spot them. Use a small number of bounded, non-overlapping subagents only when parallel review can prevent reruns; choose model and effort deliberately, stop agents once their evidence is complete, and avoid unnecessary token or quota consumption.
 
 ## Ownership & Domain Boundaries
 
@@ -125,6 +126,12 @@ When the user requests a durable behavior change, record it here or in the relev
   - `exercises/` (pedagogy scaffold & pre-flight diagnostic drills)
   - `tools/` (`lint_exercises.py`, `extract_release_notes.py`)
   - Root-owned scripts, facade shims, and docs: `README.md`, `GEMINI.md`, `CLAUDE.md`, `LICENSE`, `banner.jpg`, `video-thumbnail.jpg`, `setup.bat`, `setup.ps1`, `run.bat`.
+
+## **Parent AI Agent:** Dispatch/Delegate Multi-Agent Orchestration & Quality Gates
+- **Coordinator (Tier 1)**: Claude 3.7 Sonnet / Gemini Pro — spec design, refactor strategy.
+- **Executor (Tier 2)**: Gemini Flash / DeepSeek V3 — fast TDD, linting, regression tests.
+- **Codex subagent routing**: Choose model and reasoning effort explicitly from task difficulty. Use Luna or Sol at low/medium effort for mechanical edits, test execution and bounded routine work; Sol High for complex implementation; Astra High for architecture, ambiguous failure analysis and final risk review. Do not spend Astra quota on routine work, and do not leave a consequential delegation on an accidental inherited default.
+- **Quality Gates**: Unit tests green (`python -m pytest tests/unit`), clean lint (`ruff check`), exercise lint clean, drills green.
 
 <!-- pane-agent-context:start -->
 ## Pane

@@ -11,7 +11,9 @@ from youtube_automation.production.shots import (
     EditorialReview,
     Overlay,
     Shot,
+    ShotBatch,
     ShotPlan,
+    _episode_strategy_guard,
     _validate_editorial_quality,
     _validate_interactive_graphics,
     ensure_editorial_review,
@@ -39,6 +41,42 @@ def shot(**updates):
         "composition": "Eye-level close-up",
     }
     return Shot(**(data | updates))
+
+
+def test_absolute_overlay_frames_are_normalized_to_shot_local_offsets():
+    item = shot(
+        start_frame=230,
+        end_frame=365,
+        overlays=[
+            {
+                "kind": "timer",
+                "start_frame": 230,
+                "end_frame": 365,
+                "text": "00:40",
+            }
+        ],
+    )
+
+    assert item.overlays[0].start_frame == 0
+    assert item.overlays[0].end_frame == 135
+
+
+def test_valid_large_local_overlay_offsets_are_not_shifted_twice():
+    item = shot(
+        start_frame=100,
+        end_frame=500,
+        overlays=[
+            {
+                "kind": "timer",
+                "start_frame": 150,
+                "end_frame": 300,
+                "text": "00:40",
+            }
+        ],
+    )
+
+    assert item.overlays[0].start_frame == 150
+    assert item.overlays[0].end_frame == 300
 
 
 def episode_brief():
@@ -142,6 +180,8 @@ def version_three_brief():
         pacing="Three quick hook beats followed by a calm challenge",
         motion_grammar=["Animate only focus and state changes"],
     )
+
+
     return Brief(
         version=3,
         source_sha256="a" * 64,
@@ -150,6 +190,13 @@ def version_three_brief():
         analysis=base.analysis,
         visual_strategy=strategy,
     )
+
+
+def test_episode_strategy_guard_is_a_closed_allowlist():
+    guard = _episode_strategy_guard(version_three_brief())
+
+    assert 'visual_mode must be exactly one of ["human_context", "kinetic_type", "challenge_ui"]' in guard
+    assert "Never invent, rename or substitute another visual_mode" in guard
 
 
 def semantic_hook_plan(brief):
@@ -503,8 +550,11 @@ def test_paged_plan_validates_real_canonical_spans_and_flow_roundtrip(tmp_path):
     assert '"asset_id": "a1"' in calls[1]
     assert "CONTINUITY-LOCKED ESTABLISHED ASSETS" in calls[1]
     assert "operation=generate is forbidden" in calls[1]
+    assert "narrative_role diagram requires framing diagram" in calls[0]
+    assert "forbidden generic_focus_portrait" in calls[0]
     assert "new pose, action, expression or visible state" in calls[1]
     assert "NON-DIAGRAM SCENE BUDGETS" in calls[1]
+    assert "a full-shot overlay is [0,135), not [230,365)" in calls[0]
     assert '"remaining": 2' in calls[1]
     assert plan.total_frames == 780
     prepare_flow(tmp_path, lambda _: pytest.fail("Validated plan should resume"))
@@ -512,6 +562,54 @@ def test_paged_plan_validates_real_canonical_spans_and_flow_roundtrip(tmp_path):
     assert len(parsed) == 4  # Deliberate local reuse never requests new diffusion output.
     assert parsed[0].raw_payload["adaptive_shot"]["asset_id"] == "a1"
     assert parsed[0].raw_payload["adaptive_shot"]["subject"] == "Cat watching a hand"
+
+
+def test_semantic_failure_repairs_the_rejected_batch_without_reupload(tmp_path, monkeypatch):
+    from youtube_automation.core.utils import atomic_write_json
+    from youtube_automation.production import shots as shots_module
+
+    raw = "A cat watches. It stays alert."
+    brief = episode_brief().model_copy(update={"source_sha256": fingerprint(raw)})
+    timeline = {
+        "fps": 30,
+        "total_frames": 60,
+        "spans": [
+            {"index": 0, "start_frame": 0, "end_frame": 30, "text": "A cat watches."},
+            {"index": 1, "start_frame": 30, "end_frame": 60, "text": "It stays alert."},
+        ],
+    }
+    (tmp_path / "raw_transcript.txt").write_text(raw, encoding="utf-8")
+    atomic_write_json(str(tmp_path / "episode_brief.json"), brief.model_dump())
+    atomic_write_json(str(tmp_path / "timeline.json"), timeline)
+    batches = [
+        ShotBatch(shots=[shot(end_frame=61)]),
+        ShotBatch(shots=[shot()]),
+    ]
+    calls = []
+
+    def fake_request_json(prompt, ask, model, attempts=3, **kwargs):
+        calls.append((prompt, kwargs))
+        return batches.pop(0)
+
+    class Ask:
+        def __init__(self):
+            self.rejections = []
+
+        def reject_last_response(self, error):
+            self.rejections.append(error)
+
+    ask = Ask()
+    monkeypatch.setattr(shots_module, "request_json", fake_request_json)
+
+    plan = shots_module.ensure_shot_plan(tmp_path, ask)
+
+    assert plan.total_frames == 60
+    assert len(calls) == 2
+    assert calls[0][1] == {}
+    assert calls[1][0] == calls[0][0]
+    assert "Shot coverage does not match canonical duration" in calls[1][1]["repair_error"]
+    assert '"end_frame":61' in calls[1][1]["repair_response"]
+    assert "Shot coverage does not match canonical duration" in ask.rejections[0]
 
 
 def test_sparse_long_spans_are_split_into_short_word_sliced_requests():
@@ -1759,6 +1857,26 @@ def test_generic_focus_portrait_classification_and_lapse_counterexamples():
     assert "generic_focus_portrait" not in _shot_visual_families(physical_action)
 
 
+def test_forbidden_family_classifier_ignores_bounded_negative_exclusions():
+    from youtube_automation.production.shots import _shot_visual_families
+
+    organic = shot(
+        purpose=(
+            "Offer an organic visual metaphor without mechanical cognition props, "
+            "gears, tracks or puzzles."
+        ),
+        narrative_role="background",
+        framing="overhead",
+        subject="Smooth river stone beneath still water",
+        visible_state="A faint natural ripple crosses the clear surface",
+        setting="Dark ceramic water basin on a plain stone floor",
+        composition="Birds-eye view centered on the submerged stone",
+        entity_ids=["water_basin", "river_stone"],
+    )
+
+    assert "mechanical_cognition" not in _shot_visual_families(organic)
+
+
 def test_perfect_mental_clarity_portrait_is_an_efficacy_transformation():
     from youtube_automation.production.shots import _shot_visual_families
 
@@ -1848,6 +1966,7 @@ def test_branded_schulte_composition_requires_all_playability_layers():
     ]
     branded = shot(**base, overlays=complete)
     assert branded.local_composition == "schulte_challenge"
+    assert Overlay(kind="challenge_frame", start_frame=0, end_frame=30).text == ""
     with pytest.raises(ValueError, match="less than or equal to 35"):
         Overlay(
             kind="target_indicator",

@@ -149,7 +149,6 @@ class Overlay(Contract):
             "timer",
             "card",
             "comparison",
-            "challenge_frame",
             "rule_reveal",
             "start_transition",
         } and not self.text.strip():
@@ -257,9 +256,20 @@ class Shot(Contract):
         normalized = dict(value)
         normalized_overlays = []
         for overlay in overlays:
-            if isinstance(overlay, dict) and isinstance(overlay.get("end_frame"), int):
+            if isinstance(overlay, dict):
                 overlay = dict(overlay)
-                overlay["end_frame"] = min(overlay["end_frame"], duration)
+                overlay_start = overlay.get("start_frame")
+                overlay_end = overlay.get("end_frame")
+                if isinstance(overlay_start, int) and isinstance(overlay_end, int):
+                    absolute_interval = (
+                        (overlay_start >= duration or overlay_end > duration)
+                        and start <= overlay_start < overlay_end <= end
+                    )
+                    if absolute_interval:
+                        overlay["start_frame"] = overlay_start - start
+                        overlay["end_frame"] = overlay_end - start
+                    else:
+                        overlay["end_frame"] = min(overlay_end, duration)
             normalized_overlays.append(overlay)
         normalized["overlays"] = normalized_overlays
         return normalized
@@ -494,7 +504,7 @@ def _affirmative_visible_description(text: str) -> str:
 
 def _shot_visual_families(shot: Shot) -> set[str]:
     """Classify recurring weak visual concepts using visible, reviewable shot text."""
-    visible_description = " ".join(
+    visible_description = _affirmative_visible_description(" ".join(
         (
             shot.subject,
             shot.visible_state,
@@ -502,8 +512,10 @@ def _shot_visual_families(shot: Shot) -> set[str]:
             shot.composition,
             " ".join(shot.entity_ids),
         )
-    ).casefold()
-    description = f"{shot.purpose} {visible_description}".casefold()
+    ))
+    description = _affirmative_visible_description(
+        f"{shot.purpose} {visible_description}"
+    )
     human = _contains_any(
         description,
         (
@@ -1433,6 +1445,20 @@ def require_editorial_review(
     return review
 
 
+def _episode_strategy_guard(brief: Brief) -> str:
+    strategy = brief.visual_strategy
+    if strategy is None:
+        return ""
+    return (
+        "\nEPISODE-SPECIFIC CLOSED ALLOWLIST:\n"
+        f"visual_mode must be exactly one of {json.dumps(strategy.visual_modes)}. "
+        "Never invent, rename or substitute another visual_mode. "
+        f"Local UI kinds must come from {json.dumps(strategy.local_ui_kit)}. "
+        f"Do not exceed {strategy.max_consecutive_visual_mode} consecutive shots with "
+        "the same visual_mode.\n"
+    )
+
+
 def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan:
     root = Path(run_dir)
     brief = load_brief(root)
@@ -1486,7 +1512,10 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         "or having attention captured by a competing environmental cue or distraction). Strictly avoid staged 'performing focus' "
         "B-roll, such as purposeless drafting, compass manipulation, drawing arbitrary lines or ink paths connecting dots, "
         "sorting cards on tables, walls of scattered notes, or intense staring close-ups. Staged productivity and generic "
-        "desk tasks are strictly rejected. When narration mentions sharpening the mind, do not show a person physically "
+        "desk tasks are strictly rejected. A person whose main visible action is thinking, pausing, concentrating, staring, "
+        "or gazing unfocused at a desk or into empty space is a forbidden generic_focus_portrait, even when labeled a metaphor. "
+        "Express attention lapses through an observable missed object, forgotten action, competing cue or purposeful local comparison. "
+        "When narration mentions sharpening the mind, do not show a person physically "
         "demonstrating improved focus or doing artificial paper tasks; preserve psychological restraint. "
         "Any exact words, numerals, tables, timers or instructions belong in deterministic local graphics, "
         "not in generated pixels. For a Schulte challenge, use a data_grid overlay with preset "
@@ -1495,6 +1524,8 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         "narrative_role must describe the visible subject's actual function. A presenter addresses the viewer, "
         "demonstrates to camera or carries the episode between otherwise unrelated scenes; never disguise that role "
         "as story_subject. If host_mode is NONE, do not use a presenter or recurring presenter surrogate. "
+        "narrative_role diagram requires framing diagram. A real object, room or tabletop seen from overhead is "
+        "story_subject or background with overhead framing; never relabel a physical setting as a diagram. "
         "When schulte_6x6 is used, the shot must be narrative_role diagram, framing diagram, operation local_canvas, "
         "contain no person, and place the grid as a clean near-full-frame local overlay rather than on an in-scene "
         "board or device. Establish one local_canvas asset, then reuse that exact asset for later grid states. "
@@ -1512,10 +1543,19 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         "For version 3 Schulte challenges, use fixation_cue and start_transition for those same beats, "
         "set local_composition to schulte_challenge, "
         "and keep timers in MM:SS. "
-        "and include challenge_frame, rule_reveal, fixation_cue, target_indicator and start_transition "
-        "beside the deterministic schulte_6x6 grid. Use masks, cards, progress_ring, tile_reveal, "
+        "Every individual shot whose local_composition is schulte_challenge must include its own "
+        "challenge_frame, rule_reveal, fixation_cue, target_indicator and start_transition beside the "
+        "deterministic schulte_6x6 grid. operation local_canvas is reserved for deterministic diagram "
+        "canvases and always requires a data_grid overlay; use generate or reuse for non-grid scenes. "
+        "Use masks, cards, progress_ring, tile_reveal, "
         "focus_sweep, comparison, trace_path and counter overlays only when they explain the active "
-        "narration beat. The newer Schulte layers replace generic highlight and countdown-label treatment. "
+        "narration beat. tile_reveal is a real grid: rows and columns must both be positive, cells must "
+        "contain exactly rows multiplied by columns visible values, and reveal_cells must index those cells. "
+        "For one standalone tile or card, use card instead of an empty 0-by-0 tile_reveal. "
+        "Every overlay start_frame and end_frame is a shot-local offset, never a global timeline frame. "
+        "For a shot [230,365), a full-shot overlay is [0,135), not [230,365). Require "
+        "non-empty text for label, timer, card, comparison, rule_reveal and start_transition overlays. "
+        "The newer Schulte layers replace generic highlight and countdown-label treatment. "
         f"VISUAL FAMILY DEFINITIONS: {json.dumps(VISUAL_FAMILY_GUIDANCE, ensure_ascii=False)}. "
         f"FORBIDDEN VISUAL FAMILIES: {json.dumps(brief.channel.forbidden_visual_families)}. "
         f"REPETITION-LIMITED VISUAL FAMILIES: "
@@ -1539,6 +1579,9 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         "Prefer reuse of the same asset with local overlays/crops when that conveys the change. "
         "Treat scene_id as a stable place-and-time continuity unit, not a new ID for every narration beat. "
         "entity_ids is mandatory and must name every continuity-critical visible character or object using stable IDs. "
+        "Each entity_id is bound to exactly one scene_id and must never migrate to another scene. If separate daily-life "
+        "examples occur in different places, use distinct anonymous people and distinct entity IDs rather than carrying "
+        "one invented named protagonist between locations. "
         "When any entity recurs in that scene, reuse the established asset or use an edit operation with its "
         "reference_asset_id; never regenerate recurring characters independently. If reference_asset_id is non-null, "
         "operation cannot be generate: use add, remove, replace or reframe. Generated edits require a previously "
@@ -1602,6 +1645,7 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         }
         prompt = (
             instructions
+            + _episode_strategy_guard(brief)
             + f"\nINTERVAL [{start}, {end}), fps={timeline['fps']}. ID prefix p{offset}_\n"
             + "CONTINUITY-LOCKED ESTABLISHED ASSETS:\n"
             + json.dumps(previous, ensure_ascii=False)
@@ -1616,9 +1660,10 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
             + "\nCANONICAL SPANS:\n"
             + json.dumps(section, ensure_ascii=False)
         )
-        error = ""
+        batch: ShotBatch | None = None
         for attempt in range(3):
-            batch = request_json(prompt + "\nValidation feedback: " + error, ask, ShotBatch)
+            if batch is None:
+                batch = request_json(prompt, ask, ShotBatch)
             if brief.version >= 3:
                 for shot in batch.shots:
                     shot.narration_excerpt = narration_excerpt_for_frames(
@@ -1657,6 +1702,13 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
                     reject_response(error)
                 if attempt == 2:
                     raise
+                batch = request_json(
+                    prompt,
+                    ask,
+                    ShotBatch,
+                    repair_response=batch.model_dump_json(),
+                    repair_error=error,
+                )
     plan = ShotPlan(
         version=3 if brief.version >= 3 else 2,
         shots=all_shots,

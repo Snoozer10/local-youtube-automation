@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -33,6 +34,21 @@ from .ledger import publication_guard
 Response = TypeVar("Response", bound=BaseModel)
 
 _BARE_JSON_LABEL = re.compile(r"^json\s*(?=[{[])", re.IGNORECASE)
+_PROVIDER_SOFT_REFUSALS = (
+    "i'm having a hard time fulfilling your request",
+    "i'm having hard time fulfilling your request",
+    "i'm having hard time fulfilling request",
+    "i am having a hard time fulfilling your request",
+    "can i help you with something else instead",
+    "i encountered an error doing what you asked",
+    "i encountered error doing what you asked",
+    "i seem to be encountering an error",
+    "i seem be encountering an error",
+    "i can't help with that request",
+    "i cannot help with that request",
+    "i'm unable to help with that request",
+    "لا يمكنني المساعدة في هذا الطلب",
+)
 _VISUAL_ONLY_PROFILE_FIELDS = {
     "version",
     "visual_directives",
@@ -42,6 +58,7 @@ _VISUAL_ONLY_PROFILE_FIELDS = {
     "max_visual_family_repetitions",
     "max_non_diagram_scene_appearances",
 }
+_MAX_BOUND_INLINE_QUERY_CHARS = 65_536
 
 
 def _decode_single_json_value(text: str) -> Any:
@@ -73,23 +90,64 @@ def _decode_response_value(text: str) -> Any:
         raise original_error
 
 
+def _is_provider_soft_refusal(text: str) -> bool:
+    normalized = " ".join(text.casefold().split())
+    return any(phrase in normalized for phrase in _PROVIDER_SOFT_REFUSALS)
+
+
+def _short_request_id(prompt_sha256: str) -> str:
+    """Return a compact UI-facing correlation ID while receipts keep the full digest."""
+    return base64.b32encode(bytes.fromhex(prompt_sha256)).decode("ascii").rstrip("=")[:8]
+
+
+def _file_submission_prompt(request_id: str) -> str:
+    return (
+        "Read the attached UTF-8 planning request completely. Follow every instruction in "
+        "that file and return only the requested JSON. Request ID: " + request_id
+    )
+
+
 def request_json(
-    prompt: str, ask: Callable[[str], str], model: type[Response], attempts: int = 3
+    prompt: str,
+    ask: Callable[[str], str],
+    model: type[Response],
+    attempts: int = 3,
+    *,
+    repair_response: str = "",
+    repair_error: str = "",
 ) -> Response:
-    validation_error = ""
+    validation_error = repair_error
+    baseline_response = repair_response
+    rejected_response = repair_response
+    repair_schema = json.dumps(
+        model.model_json_schema(), ensure_ascii=False, separators=(",", ":")
+    )
     last_transport_error: RuntimeError | None = None
-    for _ in range(attempts):
+    validation_failures = 0
+    transport_failures = 0
+    while validation_failures < attempts and transport_failures < attempts:
         try:
-            response = ask(
-                prompt
-                + (
-                    "\nRepair the previous validation error: " + validation_error
-                    if validation_error
-                    else ""
+            repair_json = getattr(ask, "repair_json", None)
+            if validation_error and callable(repair_json):
+                response = repair_json(
+                    prompt,
+                    validation_error,
+                    baseline_response,
+                    rejected_response,
+                    repair_schema,
                 )
-            )
+            else:
+                response = ask(
+                    prompt
+                    + (
+                        "\nRepair the previous validation error: " + validation_error
+                        if validation_error
+                        else ""
+                    )
+                )
         except RuntimeError as exc:
             last_transport_error = exc
+            transport_failures += 1
             continue
         try:
             text = response.strip()
@@ -100,7 +158,11 @@ def request_json(
             text = _BARE_JSON_LABEL.sub("", text.lstrip(), count=1)
             return model.model_validate(_decode_response_value(text))
         except (ValueError, ValidationError) as exc:
+            validation_failures += 1
             last_transport_error = None
+            if not baseline_response:
+                baseline_response = response
+            rejected_response = response
             reject_response = getattr(ask, "reject_last_response", None)
             if callable(reject_response):
                 reject_response(str(exc))
@@ -109,7 +171,7 @@ def request_json(
             validation_error = (
                 f"{str(exc)[:900]}; response excerpt={excerpt!r}; response tail={tail!r}"
             )
-    if last_transport_error is not None:
+    if transport_failures >= attempts and validation_failures < attempts:
         raise RuntimeError(
             f"Browser transport failed after {attempts} attempts: {str(last_transport_error)[:900]}"
         ) from last_transport_error
@@ -398,7 +460,8 @@ class BrowserTransport:
             raise RuntimeError("File attachment transport requires a receipt directory")
         directory = self.receipt_dir / "payloads"
         directory.mkdir(parents=True, exist_ok=True)
-        path = directory / f"planner-request-{prompt_sha256[:16]}.txt"
+        request_id = _short_request_id(prompt_sha256).lower()
+        path = directory / f"visual-plan-{request_id}.txt"
         if path.is_file() and path.read_text(encoding="utf-8") == prompt:
             return path
         temporary: Path | None = None
@@ -418,6 +481,7 @@ class BrowserTransport:
         return path
 
     def _attach_prompt_file(self, path: Path) -> None:
+        self._wait_for_page_ready()
         uploaded = False
         for _ in range(3):
             upload_tools = self.page.get_by_role("button", name="Upload & tools")
@@ -473,16 +537,163 @@ class BrowserTransport:
                     pass
         if not uploaded:
             raise RuntimeError("Gemini file chooser did not open")
-        self.page.wait_for_function(
-            """filename => [...document.querySelectorAll('[aria-describedby]')].some(el => {
-                if (!(el instanceof HTMLElement) || el.offsetParent === null) return false;
-                return (el.getAttribute('aria-describedby') || '').split(/\\s+/).some(id => {
-                    const tooltip = document.getElementById(id);
-                    return tooltip && (tooltip.textContent || '').trim() === filename;
-                });
-            })""",
-            arg=path.name,
-            timeout=30000,
+        self._wait_for_attachment_ready(path)
+
+    def _wait_for_page_ready(self) -> None:
+        """Require a fully hydrated, stable Gemini surface before file interaction."""
+        from youtube_automation.browser.gemini_utils import (
+            RESPONSE_SELECTOR,
+            USER_QUERY_SELECTOR,
+        )
+
+        deadline = time.monotonic() + min(max(self.timeout_seconds, 30), 90)
+        stable_samples = 0
+        prior_signature: tuple[str, int, int] | None = None
+        last_state: dict[str, Any] = {}
+        while time.monotonic() < deadline:
+            state = self.page.evaluate(
+                r"""() => {
+                    const visible = el => el instanceof HTMLElement
+                        && el.offsetParent !== null;
+                    const composer = [...document.querySelectorAll(
+                        'rich-textarea, textarea, [contenteditable="true"]'
+                    )].find(visible);
+                    const navigation = [...document.querySelectorAll(
+                        'a[href="/app"], [aria-label="New chat"], '
+                        + '[aria-label="Start a new chat"]'
+                    )].find(visible);
+                    const main = [...document.querySelectorAll(
+                        'main, [role="main"], bard-sidenav-container'
+                    )].find(visible) || document.body;
+                    const busySelector = [
+                        '[role="progressbar"]',
+                        '[aria-busy="true"]',
+                        'mat-progress-spinner',
+                        'mat-spinner',
+                        '.mat-mdc-progress-spinner',
+                        '[class*="skeleton" i]',
+                        '[class*="loading-placeholder" i]'
+                    ].join(',');
+                    const blockingBusy = [...main.querySelectorAll(busySelector)]
+                        .some(visible);
+                    return {
+                        document_complete: document.readyState === 'complete',
+                        composer: Boolean(composer),
+                        navigation: Boolean(navigation),
+                        blocking_busy: blockingBusy
+                    };
+                }"""
+            )
+            if isinstance(state, dict):
+                last_state = state
+            response_count = self.page.locator(RESPONSE_SELECTOR).count()
+            query_count = self.page.locator(USER_QUERY_SELECTOR).count()
+            signature = (self.page.url, response_count, query_count)
+            route = urlsplit(self.page.url)
+            ready = (
+                route.netloc == "gemini.google.com"
+                and route.path.startswith("/app")
+                and bool(last_state.get("document_complete"))
+                and bool(last_state.get("composer"))
+                and bool(last_state.get("navigation"))
+                and not bool(last_state.get("blocking_busy"))
+            )
+            stable_samples = stable_samples + 1 if ready and signature == prior_signature else 0
+            prior_signature = signature
+            if stable_samples >= 4:
+                return
+            self.page.wait_for_timeout(500)
+        raise RuntimeError(
+            "Gemini page did not fully hydrate before attachment interaction "
+            f"(url={self.page.url!r}, last_state={last_state})"
+        )
+
+    def _wait_for_attachment_ready(self, path: Path) -> None:
+        """Wait until Gemini finishes uploading a mounted planning attachment.
+
+        Gemini mounts the filename chip before its bytes are ready. Sending in that
+        interval can turn the Send control into a spinner and submit a prompt whose
+        attachment is still processing. Require four consecutive ready samples so a
+        briefly absent spinner cannot be mistaken for completion.
+        """
+        deadline = time.monotonic() + min(max(self.timeout_seconds, 30), 120)
+        stable_samples = 0
+        last_state: dict[str, Any] = {"mounted": False, "busy": True}
+        while time.monotonic() < deadline:
+            state = self.page.evaluate(
+                r"""filename => {
+                    const visible = el => el instanceof HTMLElement
+                        && el.offsetParent !== null;
+                    const inputs = [...document.querySelectorAll(
+                        'rich-textarea, textarea, [contenteditable="true"]'
+                    )].filter(visible);
+                    const input = inputs.at(-1);
+                    if (!input) return {mounted: false, busy: true, matches: 0};
+                    let composer = input.parentElement;
+                    for (let depth = 0; composer && depth < 12; depth += 1) {
+                        const hasUploadControl = [...composer.querySelectorAll(
+                            'button, [role="button"]'
+                        )].some(el => {
+                            if (!visible(el)) return false;
+                            const label = `${el.getAttribute('aria-label') || ''} `
+                                + `${el.getAttribute('title') || ''}`;
+                            return /upload\s*(?:&|and)?\s*tools|upload files|تحميل/i
+                                .test(label);
+                        });
+                        if (hasUploadControl) break;
+                        composer = composer.parentElement;
+                    }
+                    if (!composer || composer === document.body) {
+                        return {mounted: false, busy: true, matches: 0};
+                    }
+                    const matches = [...composer.querySelectorAll('[aria-describedby]')]
+                        .filter(el => visible(el)
+                            && (el.getAttribute('aria-describedby') || '')
+                                .split(/\s+/)
+                                .some(id => {
+                                    const tooltip = document.getElementById(id);
+                                    return tooltip
+                                        && (tooltip.textContent || '').trim() === filename;
+                                }));
+                    if (matches.length !== 1) {
+                        return {mounted: false, busy: true, matches: matches.length};
+                    }
+                    const busySelector = [
+                        '[role="progressbar"]',
+                        '[aria-busy="true"]',
+                        'mat-progress-spinner',
+                        'mat-spinner',
+                        '.mat-mdc-progress-spinner',
+                        '[class*="upload-progress" i]',
+                        '[class*="upload-spinner" i]',
+                        '[data-test-id*="upload-progress" i]',
+                        '[aria-label*="uploading" i]',
+                        '[aria-label*="processing file" i]'
+                    ].join(',');
+                    const busyNode = [...composer.querySelectorAll(busySelector)]
+                        .some(visible);
+                    const statusText = [...composer.querySelectorAll(
+                        '[role="status"], [aria-live="polite"], [aria-live="assertive"]'
+                    )]
+                        .filter(visible)
+                        .map(el => (el.textContent || '').trim())
+                        .join(' ');
+                    const busyText = /uploading|processing file|جار[ٍي]? التحميل|قيد التحميل/i
+                        .test(statusText);
+                    return {mounted: true, busy: busyNode || busyText, matches: 1};
+                }""",
+                path.name,
+            )
+            if isinstance(state, dict):
+                last_state = state
+            ready = bool(last_state.get("mounted")) and not bool(last_state.get("busy"))
+            stable_samples = stable_samples + 1 if ready else 0
+            if stable_samples >= 4:
+                return
+            self.page.wait_for_timeout(250)
+        raise RuntimeError(
+            f"Gemini attachment did not finish uploading: {path.name} "
+            f"(last_state={last_state})"
         )
 
     def _save_receipt(self, payload: dict[str, Any]) -> None:
@@ -494,6 +705,12 @@ class BrowserTransport:
         for attempt in reversed(payload["attempts"]):
             response = attempt.get("response")
             if attempt.get("state") == "completed" and isinstance(response, str) and response:
+                if _is_provider_soft_refusal(response):
+                    attempt["state"] = "provider_refusal"
+                    attempt["finished_at"] = attempt.get("finished_at", time.time())
+                    self._save_receipt(payload)
+                    self._chat_ready = False
+                    continue
                 return response
         return None
 
@@ -530,28 +747,88 @@ class BrowserTransport:
                 return None
             self.page.wait_for_timeout(min(100, remaining_ms))
 
+    def _optional_locator_count(self, selector: str) -> int | None:
+        """Count a locator when the browser surface exposes that selector."""
+        locator = getattr(self.page, "locator", None)
+        if not callable(locator):
+            return None
+        try:
+            return int(locator(selector).count())
+        except (AssertionError, AttributeError):
+            return None
+
+    def _locator_count(self, selector: str) -> int:
+        return self._optional_locator_count(selector) or 0
+
     def _recover_late_response(self, payload: dict[str, Any]) -> str | None:
         from youtube_automation.browser.gemini_utils import (
             RESPONSE_SELECTOR,
+            USER_QUERY_SELECTOR,
+            _clean_response_prefix,
+            _rendered_query_matches_prompt,
             wait_for_gemini_response,
         )
 
         for attempt in reversed(payload["attempts"]):
             chat_url = attempt.get("chat_url")
             prior_state = attempt.get("state")
-            if prior_state not in {"interrupted", "submitted", "timed_out"} or not self._is_bound_chat_url(chat_url):
+            if prior_state not in {
+                "interrupted",
+                "submitted",
+                "submission_uncertain",
+                "timed_out",
+            } or not self._is_bound_chat_url(chat_url):
                 continue
             try:
                 if self.page.url != chat_url:
                     self.page.goto(chat_url, wait_until="domcontentloaded", timeout=45000)
+                expected_query = attempt.get("query_text")
+                query_index = attempt.get("user_query_index")
+                exact_turn_bound = isinstance(expected_query, str) and isinstance(
+                    query_index, int
+                )
+                if exact_turn_bound:
+                    queries = self.page.locator(USER_QUERY_SELECTOR)
+                    if queries.count() <= query_index:
+                        return None
+                    rendered_query = queries.nth(query_index).evaluate(
+                        "el => el.innerText || el.textContent || ''", timeout=4000
+                    )
+                    if not _rendered_query_matches_prompt(
+                        str(rendered_query or ""), expected_query
+                    ):
+                        return None
+                elif self.attachment_mode == "file":
+                    # Old file receipts predate exact user-turn binding and are unsafe to replay.
+                    continue
                 self.page.wait_for_selector(RESPONSE_SELECTOR, timeout=15000)
                 initial_count = int(attempt.get("initial_response_count", 0))
-                text = wait_for_gemini_response(
+                observed = wait_for_gemini_response(
                     self.page,
                     initial_count=initial_count,
                     timeout_seconds=min(15, self.timeout_seconds),
                 )
+                if not observed:
+                    return None
+                if exact_turn_bound:
+                    responses = self.page.locator(RESPONSE_SELECTOR)
+                    if responses.count() <= initial_count:
+                        return None
+                    raw_text = responses.nth(initial_count).evaluate(
+                        "el => el.innerText", timeout=4000
+                    )
+                    text = _clean_response_prefix(str(raw_text or ""))
+                else:
+                    text = observed
                 if not text:
+                    return None
+                if _is_provider_soft_refusal(text):
+                    attempt["state"] = "provider_refusal"
+                    attempt["recovered_from_state"] = prior_state
+                    attempt["finished_at"] = time.time()
+                    attempt["response"] = text
+                    self._save_receipt(payload)
+                    self._chat_ready = False
                     return None
                 attempt["state"] = "completed"
                 attempt["recovered_from_state"] = prior_state
@@ -569,8 +846,66 @@ class BrowserTransport:
                 return None
         return None
 
+    def repair_json(
+        self,
+        original_prompt: str,
+        validation_error: str,
+        baseline_response: str,
+        rejected_response: str,
+        schema_json: str,
+    ) -> str:
+        """Repair the exact rejected candidate without re-uploading the full request.
+
+        Referring only to the previous turn caused Gemini to progressively replace
+        otherwise-valid fields while addressing one validation error. Bind the repair
+        to the rejected candidate and require a minimal, complete rewrite. The original
+        attachment remains available in the same chat for its full schema and rules.
+        """
+        rejected_chat_url: str | None = None
+        if self._last_prompt_sha256 is not None:
+            payload = self._load_receipt(self._last_prompt_sha256)
+            for attempt in reversed(payload["attempts"]):
+                if attempt.get("state") == "rejected":
+                    candidate_url = attempt.get("chat_url")
+                    if self._is_bound_chat_url(candidate_url):
+                        rejected_chat_url = candidate_url
+                    break
+        current_chat_url = self._wait_for_bound_chat_url(timeout_seconds=0.0)
+        if (
+            not self._chat_ready
+            or rejected_chat_url is None
+            or current_chat_url != rejected_chat_url
+        ):
+            self._chat_ready = False
+            return self._request(original_prompt, use_file=self.attachment_mode == "file")
+        compact = (
+            "Repair the latest rejected JSON candidate below under the original attached "
+            "request in this chat and the exact JSON schema below. Return one complete "
+            "corrected JSON object "
+            "with no commentary. Use the baseline candidate to restore every unaffected "
+            "field, while retaining only necessary corrections from the latest candidate. "
+            "Make the smallest changes required by the validation error. Do not omit properties, "
+            "shorten semantic descriptions, rename stable IDs, or introduce new entities "
+            "unless the error explicitly requires it.\n\nValidation error:\n"
+            + validation_error[:2400]
+            + "\n\nBaseline JSON candidate:\n"
+            + baseline_response
+            + "\n\nLatest rejected JSON candidate:\n"
+            + rejected_response
+            + "\n\nExact JSON schema:\n"
+            + schema_json
+        )
+        if len(compact) > _MAX_BOUND_INLINE_QUERY_CHARS:
+            return self._request(original_prompt, use_file=True)
+        return self._request(compact, use_file=self.attachment_mode == "file")
+
     def __call__(self, prompt: str) -> str:
+        return self._request(prompt, use_file=self.attachment_mode == "file")
+
+    def _request(self, prompt: str, *, use_file: bool) -> str:
         from youtube_automation.browser.gemini_utils import (
+            RESPONSE_SELECTOR,
+            USER_QUERY_SELECTOR,
             GeminiSessionClient,
             select_gemini_model,
             start_clean_gemini_chat,
@@ -586,36 +921,80 @@ class BrowserTransport:
         recovered = self._recover_late_response(receipt)
         if recovered is not None:
             return recovered
-        if not self.persistent_chat or not self._chat_ready:
-            start_clean_gemini_chat(self.page)
-            if not select_gemini_model(self.page, self.model_name):
-                raise RuntimeError("Could not select the requested analysis model")
-            self._chat_ready = True
         submitted_prompt = prompt
         attachment_path: Path | None = None
-        if self.attachment_mode == "file":
+        request_id: str | None = None
+        if use_file:
             attachment_path = self._attachment_path(prompt, prompt_sha256)
-            self._attach_prompt_file(attachment_path)
-            submitted_prompt = (
-                "Read the attached UTF-8 planning request completely. Follow every instruction in "
-                "that file and return only the requested JSON. Request SHA-256: "
-                + prompt_sha256
-            )
-        ok, count = GeminiSessionClient(self.page, self.model_name).dispatch_prompt(submitted_prompt)
-        if not ok:
-            raise RuntimeError("Could not submit analysis prompt")
-        bound_chat_url = self._wait_for_bound_chat_url()
+            request_id = _short_request_id(prompt_sha256)
+            submitted_prompt = _file_submission_prompt(request_id)
         attempt = {
-            "submitted_at": time.time(),
-            "chat_url": bound_chat_url,
-            "transient_url": self.page.url if bound_chat_url is None else None,
-            "initial_response_count": count,
-            "state": "submitted",
-            "transport": self.attachment_mode,
+            "started_at": time.time(),
+            "state": "preparing",
+            "transport": "file" if use_file else "inline-repair",
             "attachment": attachment_path.name if attachment_path is not None else None,
+            "request_id": request_id,
+            "query_text": submitted_prompt,
         }
         receipt["attempts"].append(attempt)
         self._save_receipt(receipt)
+        try:
+            if not self.persistent_chat or not self._chat_ready:
+                start_clean_gemini_chat(self.page)
+                if not select_gemini_model(self.page, self.model_name):
+                    raise RuntimeError("Could not select the requested analysis model")
+                self._chat_ready = True
+            if attachment_path is not None:
+                self._attach_prompt_file(attachment_path)
+                attempt["state"] = "attachment_ready"
+                self._save_receipt(receipt)
+            attempt["state"] = "submission_pending"
+            attempt["initial_response_count"] = self._locator_count(RESPONSE_SELECTOR)
+            attempt["user_query_index"] = self._optional_locator_count(
+                USER_QUERY_SELECTOR
+            )
+            self._save_receipt(receipt)
+            ok, count = GeminiSessionClient(self.page, self.model_name).dispatch_prompt(
+                submitted_prompt
+            )
+            if not ok:
+                raise RuntimeError("Could not submit analysis prompt")
+            bound_chat_url = self._wait_for_bound_chat_url()
+            mounted_query_count = self._optional_locator_count(USER_QUERY_SELECTOR)
+            attempt.update(
+                submitted_at=time.time(),
+                chat_url=bound_chat_url,
+                transient_url=self.page.url if bound_chat_url is None else None,
+                initial_response_count=count,
+                user_query_index=(
+                    max(0, mounted_query_count - 1)
+                    if mounted_query_count is not None
+                    else None
+                ),
+                state="submitted",
+            )
+            self._save_receipt(receipt)
+        except KeyboardInterrupt:
+            attempt["state"] = "interrupted"
+            attempt["finished_at"] = time.time()
+            attempt["chat_url"] = self._wait_for_bound_chat_url(timeout_seconds=0.0)
+            self._save_receipt(receipt)
+            self._chat_ready = False
+            raise
+        except Exception as exc:
+            attempt["state"] = (
+                "submission_uncertain"
+                if attempt.get("state") == "submission_pending"
+                else "transport_failed"
+            )
+            attempt["finished_at"] = time.time()
+            attempt["chat_url"] = self._wait_for_bound_chat_url(timeout_seconds=0.0)
+            attempt["error"] = str(exc)[:1200]
+            self._save_receipt(receipt)
+            self._chat_ready = False
+            if isinstance(exc, RuntimeError):
+                raise
+            raise RuntimeError(f"Gemini browser transport failed: {exc}") from exc
         try:
             result = wait_for_gemini_response(
                 self.page, count, timeout_seconds=self.timeout_seconds
@@ -631,7 +1010,16 @@ class BrowserTransport:
             attempt["finished_at"] = time.time()
             attempt["chat_url"] = self._wait_for_bound_chat_url(timeout_seconds=0.0)
             self._save_receipt(receipt)
+            self._chat_ready = False
             raise RuntimeError("Analysis turn did not complete")
+        if _is_provider_soft_refusal(str(result)):
+            attempt["state"] = "provider_refusal"
+            attempt["finished_at"] = time.time()
+            attempt["chat_url"] = self._wait_for_bound_chat_url(timeout_seconds=0.0)
+            attempt["response"] = str(result)
+            self._save_receipt(receipt)
+            self._chat_ready = False
+            raise RuntimeError("Gemini returned a provider soft refusal; retrying in a clean chat")
         attempt["state"] = "completed"
         attempt["finished_at"] = time.time()
         attempt["chat_url"] = self._wait_for_bound_chat_url(timeout_seconds=0.0)
