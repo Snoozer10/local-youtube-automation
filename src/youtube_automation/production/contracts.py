@@ -15,6 +15,27 @@ Identifier = Annotated[str, Field(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$")]
 Treatment = Literal[
     "subject_scene", "detail", "mechanism", "comparison", "timeline_map", "metaphor", "host"
 ]
+HookFunction = Literal["problem", "curiosity", "promise", "proof", "handoff"]
+VisualMode = Literal[
+    "human_context",
+    "environmental_detail",
+    "editorial_metaphor",
+    "mechanism",
+    "comparison",
+    "timeline",
+    "challenge_ui",
+    "kinetic_type",
+]
+LocalUIPrimitive = Literal[
+    "cards",
+    "counter",
+    "focus_sweep",
+    "highlight",
+    "progress_ring",
+    "tile_reveal",
+    "timer",
+    "trace_path",
+]
 VisualFamily = Literal[
     "generic_desk_task",
     "generic_focus_portrait",
@@ -115,12 +136,69 @@ class Analysis(Contract):
         return self
 
 
+class HookMicrobeat(Contract):
+    beat_id: Identifier
+    function: HookFunction
+    duration_seconds: float = Field(ge=1, le=6)
+    viewer_takeaway: Text
+    visual_mode: VisualMode
+    local_ui: list[LocalUIPrimitive] = Field(default_factory=list, max_length=3)
+
+
+class EpisodeVisualStrategy(Contract):
+    """Topic-specific visual direction compiled for one immutable source."""
+
+    version: Literal[1] = 1
+    source_sha256: Digest
+    topic: Text
+    viewer_question: Text
+    central_promise: Text
+    evidence_mode: Literal["observational", "explanatory", "demonstrative", "narrative", "mixed"]
+    emotional_arc: list[Text] = Field(min_length=2, max_length=8)
+    hook_archetype: Literal[
+        "cold_open_challenge",
+        "counterintuitive_claim",
+        "micro_story",
+        "mystery_gap",
+        "pattern_interrupt",
+        "visual_comparison",
+    ]
+    hook_microbeats: list[HookMicrobeat] = Field(min_length=3, max_length=5)
+    visual_modes: list[VisualMode] = Field(min_length=2, max_length=8)
+    local_ui_kit: list[LocalUIPrimitive] = Field(default_factory=list, max_length=8)
+    pacing: Text
+    motion_grammar: list[Text] = Field(min_length=1, max_length=8)
+    max_consecutive_visual_mode: int = Field(default=2, ge=1, le=4)
+    max_repeated_composition: int = Field(default=2, ge=1, le=4)
+
+    @model_validator(mode="after")
+    def validate_hook(self) -> EpisodeVisualStrategy:
+        duration = sum(beat.duration_seconds for beat in self.hook_microbeats)
+        if not 8 <= duration <= 15:
+            raise ValueError("Hook microbeats must total 8-15 seconds")
+        functions = {beat.function for beat in self.hook_microbeats}
+        if "problem" not in functions or "curiosity" not in functions or not functions & {
+            "promise",
+            "handoff",
+        }:
+            raise ValueError("Hook requires problem, curiosity and promise or handoff beats")
+        ids = [beat.beat_id for beat in self.hook_microbeats]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Hook beat IDs must be unique")
+        if len(self.visual_modes) != len(set(self.visual_modes)):
+            raise ValueError("Episode visual modes must be unique")
+        if len(self.local_ui_kit) != len(set(self.local_ui_kit)):
+            raise ValueError("Episode local UI primitives must be unique")
+        return self
+
+
 class Brief(Contract):
-    version: Literal[2] = 2
+    version: Literal[2, 3] = 2
     source_sha256: Digest
     profile_sha256: Digest
     channel: Channel
     analysis: Analysis
+    visual_strategy: EpisodeVisualStrategy | None = None
 
     @model_validator(mode="after")
     def check_policy(self) -> Brief:
@@ -128,6 +206,13 @@ class Brief(Contract):
             raise ValueError("Profile digest mismatch")
         if not set(self.analysis.treatments) <= set(self.channel.allowed_treatments):
             raise ValueError("Analysis selected a treatment outside channel policy")
+        if self.version == 3:
+            if self.channel.version < 3 or self.visual_strategy is None:
+                raise ValueError("Version 3 briefs require a version 3 channel and visual strategy")
+            if self.visual_strategy.source_sha256 != self.source_sha256:
+                raise ValueError("Episode visual strategy source digest mismatch")
+        elif self.visual_strategy is not None:
+            raise ValueError("Version 2 briefs cannot carry a visual strategy")
         return self
 
 
@@ -156,6 +241,8 @@ def narration_fingerprint(brief: Brief) -> str:
     channel.pop("max_visual_family_repetitions", None)
     channel.pop("max_non_diagram_scene_appearances", None)
     projected = brief.model_dump(mode="json")
+    projected["version"] = 2
+    projected.pop("visual_strategy", None)
     projected["channel"] = channel
     projected["profile_sha256"] = fingerprint(channel)
     return fingerprint(projected)
@@ -165,6 +252,8 @@ def _canonical_fingerprint_value(value: Any) -> Any:
     """Keep older channel fingerprints stable as visual-policy schemas evolve."""
     if isinstance(value, dict):
         normalized = {key: _canonical_fingerprint_value(item) for key, item in value.items()}
+        if normalized.get("visual_strategy") is None:
+            normalized.pop("visual_strategy", None)
         if "channel_id" in normalized and normalized.get("max_non_diagram_scene_appearances") is None:
             normalized.pop("max_non_diagram_scene_appearances", None)
         if normalized.get("version") == 1 and "channel_id" in normalized:

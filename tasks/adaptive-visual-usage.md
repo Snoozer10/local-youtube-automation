@@ -1,6 +1,6 @@
 # Adaptive production: staged pilot workflow
 
-This feature is opt-in and is not yet approved for unattended full episodes. The production package has offline regression coverage. The approved Snoozer pilot exercised live Flow generation, exact reference restoration, Arabic rendering, local preview composition and immutable master activation. The Professor pilot has also completed planning, nine Flow stills, one local canvas and a technically verified preview; its editorial approval remains open. Three reviewed pilots are still required in [the checklist](adaptive-visual-tasks.md).
+This feature is opt-in and is not yet approved for unattended full episodes. The production package has offline regression coverage. The approved Snoozer pilot exercised live Flow generation, exact reference restoration, Arabic rendering, local preview composition and immutable master activation. The first Professor pilot completed planning, nine Flow stills, one local canvas and a technically verified preview, but the user editorially rejected it at roughly 30% improvement because of narration mismatch, a weak opening hook and insufficiently attractive challenge presentation. It remains a rejected baseline and must not be approved or rendered as a master. Three reviewed pilots are still required in [the checklist](adaptive-visual-tasks.md).
 
 The three selected profiles are in `channels/`. The prepared pilot runs under `youtube_runs/adaptive-pilot-*` contain caption-derived `raw_transcript.txt`, `pilot_source.json` provenance and validated `episode_brief.json`. Snoozer has a hash-bound source narration excerpt, canonical timeline, accepted visuals and an approved master. A separate ignored `adaptive-pilot-professor-yashrah-local-narration` run now has a matched owner-archived voice track and canonical timeline. The archived voice track has not been proven identical to the published upload because the owner edited many final videos in CapCut. The originally selected 0–69.08-second caption pilot remains untouched; the local voice-track cut is 0–76.55 seconds to include its last spoken word. Soldier's selected Ardennes media remains unmatched in the supplied archive. Keep source video/audio files read-only.
 
@@ -11,6 +11,8 @@ The three selected profiles are in `channels/`. The prepared pilot runs under `y
 | [Snoozer Anime](https://www.youtube.com/watch?v=sViXav5CHlM) | Egyptian Arabic romance-comedy recap scene | 19.9–89.72 s | Preserve published audio; use original character continuity rather than screenshot imitation. |
 
 These excerpts are source material, not verified facts. Professor's claimed benefits of the Schulte grid and the Soldier's Sledger's historical reconstruction need human editorial checks. The anime recap is classified as fictional: its source-stated names, relationships and setting are continuity anchors rather than external evidence needs. Do not draw quantitative claims, historical specifics or character details that the brief cannot substantiate, and do not turn figurative phrases into literal visuals by default.
+
+The saved profile controls durable channel identity. Each pasted URL must produce a separate episode visual strategy before translation or shot planning. That strategy selects the episode hook, exact narration beats, visual modes, local UI treatment, pacing, motion and repetition limits. A different Professor topic should therefore look purpose-built for that topic while remaining recognizably Professor Yashrah.
 
 ## Select identity before analysis
 
@@ -93,7 +95,9 @@ Gemini and Flow use the existing authenticated browser/CDP setup. No new cloud S
 
 The shot planner sends at most about 20 seconds of canonical narration per Gemini request, retaining original span IDs and binding every validated partial batch to the brief, timeline and window boundaries in `shot_plan.partial.json`. Each window keeps one Gemini chat for validation repair. Persistent planning defaults to `IMAGE_PLANNER_TRANSPORT=file`: the complete prompt is stored as a content-addressed UTF-8 text file under `planner_responses/payloads/`, attached through Gemini's Upload & tools menu, and submitted with a short instruction containing the full SHA-256. Set the transport only to `file` or `inline`; any other value fails before browser submission. Transport retry sends the exact same request, and atomic files under `planner_responses/` bind the prompt hash, model, transport, attachment, frame window, stable `/app/<conversation-id>` URL and attempt states. Schema-invalid completed responses are marked rejected before repair. Ctrl+C persists an interrupted attempt before exiting. A restart first reopens submitted, interrupted or timed-out attempts and accepts only a new response that passes the normal Stop-free stability handshake; the transient blank `/app` route is never navigated as a receipt target, and valid completed responses are reused without submission. The planner wait defaults to 600 seconds and can be changed with `IMAGE_PLANNER_TIMEOUT_SECONDS`. Changed upstream or planner recipes archive the checkpoint with other mutable activations. A technically valid batch still needs editorial review; Professor Yashrah's archived gears/puzzle shorthand is an explicit reject.
 
-The local compositor supports deterministic `data_grid` and `timer` overlays in addition to labels, arrows and highlights. Use `preset: schulte_6x6` for the Professor challenge: it supplies the immutable 1–36 arrangement and renders the grid, focus cells and timer locally. A Schulte shot must use `narrative_role: diagram`, `framing: diagram`, contain no human, and give the grid a near-full-frame region. Do not ask Flow to generate exact numerals or Arabic text or place the exercise on a presenter-held prop.
+The version-3 planner first compiles a source-bound episode visual strategy, then binds every shot to exact canonical narration, one viewer takeaway, a semantic link and an episode-approved visual mode. A separate clean critic turn must approve every shot at 4/5 or better before `shot_plan.json` can reach Flow. Critic rejections remain in `editorial_review.json`; fix the plan instead of generating around them.
+
+The local compositor supports deterministic masks/cards, progress rings, tile reveals, focus sweeps, comparison states, trace paths and counters in addition to labels, arrows, highlights, grids and timers. Use `preset: schulte_6x6` for the Professor challenge: it supplies the immutable 1–36 arrangement. The branded challenge sequence adds a local challenge frame, rule reveal, fixation cue, target indicator and start transition while keeping the playable grid human-free and near full frame. Do not ask Flow to generate exact numerals or Arabic text or place the exercise on a presenter-held prop.
 
 Review `adaptive_review/index.html` and the video path inside `adaptive_preview.json`. Confirm subject relevance, factual meaning, consistent identities, meaningful cuts, crops, local Arabic labels and restrained motion. Contact sheets contain original assets; the rendered preview is necessary to review crops and overlays. Shape/font availability and mobile readability require visual inspection.
 The review table shows each shot's focal point and zoom. The renderer uses that point for the initial aspect crop and confines pans to travel that keeps it visible. Push/pull/pan with zoom 1 and pans without safe travel now fail planning/render validation; choose a hold or revise the composition. Re-preview and approve after a camera recipe change because cached clips and approval lineage are invalidated.
@@ -106,15 +110,30 @@ For an adaptive run with validated writing, `venv/Scripts/python.exe generate_th
 
 ## Explicit approval and master activation
 
-After an actual human review, record the reviewer's name:
+For a version-3 episode, save the seven 1–5 scores below as `preview-scores.json`. Every dimension must be at least 4; one failed dimension blocks approval.
+
+```json
+{
+  "semantic_match": 5,
+  "hook_strength": 4,
+  "attractiveness": 4,
+  "progression": 4,
+  "continuity": 5,
+  "readability": 5,
+  "motion": 4,
+  "notes": "Reviewed from start to finish at mobile playback size."
+}
+```
+
+After an actual human review, bind those scores and the reviewer's name to the current preview:
 
 ```powershell
-venv/Scripts/python.exe adaptive_production.py approve --run-dir "youtube_runs/pilot-science" --reviewer "Reviewer name"
+venv/Scripts/python.exe adaptive_production.py approve --run-dir "youtube_runs/pilot-science" --reviewer "Reviewer name" --scorecard-file "preview-scores.json"
 venv/Scripts/python.exe adaptive_production.py render --run-dir "youtube_runs/pilot-science"
 venv/Scripts/python.exe adaptive_production.py status --run-dir "youtube_runs/pilot-science"
 ```
 
-Approval requires a current rendered preview. Changes to the plan, assets, audio or render settings require a new preview and approval. Technical checks never approve editorial quality. `active_master.json` is the activation pointer; read its path and hash rather than assuming `youtube_ready_video.mp4` exists. This command renders a local file, not a YouTube upload.
+Approval requires a current rendered preview. Version-3 approvals also require the scorecard to match the current plan, preview hash and reviewer. Changes to the plan, assets, audio or render settings require a new preview, scorecard and approval. Technical checks never approve editorial quality. `active_master.json` is the activation pointer; read its path and hash rather than assuming `youtube_ready_video.mp4` exists. This command renders a local file, not a YouTube upload.
 
 ## Resume, lineage and rollback
 

@@ -16,7 +16,13 @@ from youtube_automation.core.utils import atomic_write_json
 from .assets import accepted_asset, ensure_local_canvas, pixel_digest, read_receipt
 from .contracts import Brief, load_brief
 from .ledger import publication_guard
-from .shots import Shot, ShotPlan, ensure_shot_plan, generation_prompt
+from .shots import (
+    Shot,
+    ShotPlan,
+    ensure_shot_plan,
+    generation_prompt,
+    require_editorial_review,
+)
 
 
 def _provider_image_id(url: str) -> str:
@@ -126,6 +132,8 @@ def _attach_uploaded_reference(
 def prepare_flow(root: Path, ask: Callable[[str], str]) -> tuple[ShotPlan, Brief]:
     brief = load_brief(root)
     plan = ensure_shot_plan(root, ask)
+    if brief.version >= 3:
+        require_editorial_review(root, plan, brief)
     for shot in plan.shots:
         if shot.operation == "local_canvas":
             ensure_local_canvas(root, shot, brief)

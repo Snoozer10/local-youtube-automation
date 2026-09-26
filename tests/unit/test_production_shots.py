@@ -1,11 +1,20 @@
 import pytest
 
-from youtube_automation.production.contracts import Analysis, Brief, Channel, fingerprint
+from youtube_automation.production.contracts import (
+    Analysis,
+    Brief,
+    Channel,
+    EpisodeVisualStrategy,
+    fingerprint,
+)
 from youtube_automation.production.shots import (
+    EditorialReview,
+    Overlay,
     Shot,
     ShotPlan,
     _validate_editorial_quality,
     _validate_interactive_graphics,
+    ensure_editorial_review,
     generation_prompt,
     resolve_editorial_policy,
     validate_plan,
@@ -91,6 +100,201 @@ def version_two_brief():
         channel=channel,
         analysis=analysis,
     )
+
+
+def version_three_brief():
+    base = version_two_brief()
+    channel = base.channel.model_copy(update={"version": 3})
+    strategy = EpisodeVisualStrategy(
+        source_sha256="a" * 64,
+        topic="Attention challenge",
+        viewer_question="Can you spot your attention gap?",
+        central_promise="Recognize the gap and test it",
+        evidence_mode="demonstrative",
+        emotional_arc=["recognition", "curiosity", "agency"],
+        hook_archetype="cold_open_challenge",
+        hook_microbeats=[
+            {
+                "beat_id": "problem",
+                "function": "problem",
+                "duration_seconds": 3,
+                "viewer_takeaway": "Attention slips",
+                "visual_mode": "human_context",
+            },
+            {
+                "beat_id": "gap",
+                "function": "curiosity",
+                "duration_seconds": 3,
+                "viewer_takeaway": "The gap can be exposed",
+                "visual_mode": "kinetic_type",
+            },
+            {
+                "beat_id": "promise",
+                "function": "promise",
+                "duration_seconds": 3,
+                "viewer_takeaway": "A challenge is coming",
+                "visual_mode": "challenge_ui",
+                "local_ui": ["timer"],
+            },
+        ],
+        visual_modes=["human_context", "kinetic_type", "challenge_ui"],
+        local_ui_kit=["timer"],
+        pacing="Three quick hook beats followed by a calm challenge",
+        motion_grammar=["Animate only focus and state changes"],
+    )
+    return Brief(
+        version=3,
+        source_sha256="a" * 64,
+        profile_sha256=fingerprint(channel),
+        channel=channel,
+        analysis=base.analysis,
+        visual_strategy=strategy,
+    )
+
+
+def semantic_hook_plan(brief):
+    timeline = {
+        "fps": 30,
+        "total_frames": 270,
+        "spans": [
+            {"index": i, "start_frame": i * 90, "end_frame": (i + 1) * 90, "text": text}
+            for i, text in enumerate(("Attention slips", "Can you see why", "Try this challenge"))
+        ],
+        "words": [
+            {"id": i, "text": text, "start": i * 3.0, "end": (i + 1) * 3.0}
+            for i, text in enumerate(("Attention slips", "Can you see why", "Try this challenge"))
+        ],
+    }
+    functions = (("problem", "problem"), ("gap", "curiosity"), ("promise", "promise"))
+    shots = []
+    for i, ((beat_id, function), text) in enumerate(
+        zip(functions, ("Attention slips", "Can you see why", "Try this challenge"), strict=True)
+    ):
+        shots.append(
+            shot(
+                shot_id=f"s{i}",
+                scene_id=f"scene{i}",
+                asset_id=f"asset{i}",
+                entity_ids=[f"subject{i}"],
+                span_ids=[i],
+                start_frame=i * 90,
+                end_frame=(i + 1) * 90,
+                subject=f"Subject{i} visible in an episode-specific composition",
+                visible_state=f"Subject{i} demonstrates only this narration beat",
+                composition=f"Distinct episode composition {i}",
+                framing=("wide", "close_up", "diagram")[i],
+                narrative_role="diagram" if i == 2 else "story_subject",
+                visual_mode=("human_context", "kinetic_type", "challenge_ui")[i],
+                beat_kind=("claim", "question", "instruction")[i],
+                narration_excerpt=text,
+                viewer_takeaway=("Attention fails", "There is a reason", "I can try it")[i],
+                semantic_link=("example", "direct", "instruction")[i],
+                hook_beat_id=beat_id,
+                hook_function=function,
+            )
+        )
+    return timeline, ShotPlan(
+        version=3,
+        shots=shots,
+        brief_sha256=fingerprint(brief),
+        timeline_sha256=fingerprint(timeline),
+        fps=30,
+        total_frames=270,
+        editorial_policy=resolve_editorial_policy(brief),
+    )
+
+
+def test_version_three_plan_requires_exact_narration_and_structural_hook():
+    brief = version_three_brief()
+    timeline, plan = semantic_hook_plan(brief)
+    validate_plan(plan, timeline, brief)
+    plan.shots[1].narration_excerpt = "Broad topic paraphrase"
+    with pytest.raises(ValueError, match="not exact canonical speech"):
+        validate_plan(plan, timeline, brief)
+
+
+def test_version_three_plan_enforces_episode_visual_mode_budget():
+    brief = version_three_brief()
+    timeline, plan = semantic_hook_plan(brief)
+    plan.shots[1].visual_mode = "human_context"
+    plan.shots[2].visual_mode = "human_context"
+    with pytest.raises(ValueError, match="repeats beyond the episode budget"):
+        validate_plan(plan, timeline, brief)
+
+
+def test_editorial_critic_persists_rejection_before_flow(tmp_path):
+    brief = version_three_brief()
+    timeline, plan = semantic_hook_plan(brief)
+    review = EditorialReview(
+        plan_sha256=fingerprint(plan),
+        approved=False,
+        shots=[
+            {
+                "shot_id": shot_item.shot_id,
+                "semantic_match": 3 if index == 1 else 5,
+                "takeaway_match": 3 if index == 1 else 5,
+                "visual_specificity": 2 if index == 1 else 5,
+                "verdict": "reject" if index == 1 else "accept",
+                "rationale": "Generic topical image" if index == 1 else "Exact visual beat",
+            }
+            for index, shot_item in enumerate(plan.shots)
+        ],
+    )
+    with pytest.raises(ValueError, match="rejected shot plan"):
+        ensure_editorial_review(tmp_path, plan, timeline, brief, lambda _: review.model_dump_json())
+    persisted = EditorialReview.model_validate_json(
+        (tmp_path / "editorial_review.json").read_text(encoding="utf-8")
+    )
+    assert persisted.shots[1].verdict == "reject"
+    assert len(list((tmp_path / "editorial_rejections").glob("*.json"))) == 1
+
+
+def test_editorial_critic_archives_stale_rejection_and_reviews_changed_plan(tmp_path):
+    brief = version_three_brief()
+    timeline, plan = semantic_hook_plan(brief)
+    stale = EditorialReview(
+        plan_sha256="f" * 64,
+        approved=False,
+        shots=[
+            {
+                "shot_id": item.shot_id,
+                "semantic_match": 2,
+                "takeaway_match": 2,
+                "visual_specificity": 2,
+                "verdict": "reject",
+                "rationale": "Previous plan was generic",
+            }
+            for item in plan.shots
+        ],
+    )
+    (tmp_path / "editorial_review.json").write_text(
+        stale.model_dump_json(), encoding="utf-8"
+    )
+    accepted = stale.model_copy(
+        update={
+            "approved": True,
+            "shots": [
+                decision.model_copy(
+                    update={
+                        "semantic_match": 5,
+                        "takeaway_match": 5,
+                        "visual_specificity": 5,
+                        "verdict": "accept",
+                        "rationale": "Exact repaired beat",
+                    }
+                )
+                for decision in stale.shots
+            ],
+        }
+    )
+
+    review = ensure_editorial_review(
+        tmp_path, plan, timeline, brief, lambda _: accepted.model_dump_json()
+    )
+
+    assert review.approved
+    assert review.plan_sha256 == fingerprint(plan)
+    assert len(list((tmp_path / "editorial_rejections").glob("*.json"))) == 1
 
 
 def editorial_policy():
@@ -1614,14 +1818,110 @@ def test_local_canvas_is_reserved_for_local_full_frame_data_diagrams():
     assert accepted.operation == "local_canvas"
     with pytest.raises(ValueError, match="reserved for full-frame diagrams"):
         shot(operation="local_canvas", overlays=[overlay])
+
+
+def test_branded_schulte_composition_requires_all_playability_layers():
+    base = {
+        "narrative_role": "diagram",
+        "treatment": "mechanism",
+        "framing": "diagram",
+        "operation": "local_canvas",
+        "local_composition": "schulte_challenge",
+    }
+    incomplete = [
+        {
+            "kind": "data_grid",
+            "preset": "schulte_6x6",
+            "start_frame": 0,
+            "end_frame": 60,
+        }
+    ]
+    with pytest.raises(ValueError, match="branded challenge layers"):
+        shot(**base, overlays=incomplete)
+
+    complete = incomplete + [
+        {"kind": "challenge_frame", "start_frame": 0, "end_frame": 60, "text": "Focus"},
+        {"kind": "rule_reveal", "start_frame": 0, "end_frame": 30, "text": "Find 1 to 36"},
+        {"kind": "fixation_cue", "start_frame": 0, "end_frame": 30},
+        {"kind": "target_indicator", "start_frame": 15, "end_frame": 45, "target_cell": 10},
+        {"kind": "start_transition", "start_frame": 30, "end_frame": 45, "text": "Start"},
+    ]
+    branded = shot(**base, overlays=complete)
+    assert branded.local_composition == "schulte_challenge"
+    with pytest.raises(ValueError, match="less than or equal to 35"):
+        Overlay(
+            kind="target_indicator",
+            start_frame=0,
+            end_frame=30,
+            target_cell=36,
+        )
     with pytest.raises(ValueError, match="data-grid overlay"):
         shot(
             narrative_role="diagram",
             treatment="mechanism",
             framing="diagram",
             operation="local_canvas",
-            overlays=[],
-        )
+        overlays=[],
+    )
+
+
+def test_branded_schulte_layers_satisfy_center_and_start_narration():
+    brief = version_three_brief()
+    timeline = {
+        "fps": 30,
+        "total_frames": 300,
+        "spans": [
+            {
+                "index": 0,
+                "start_frame": 0,
+                "end_frame": 150,
+                "text": "جدول شولتي ثبت نظرك على المركز",
+            },
+            {
+                "index": 1,
+                "start_frame": 150,
+                "end_frame": 300,
+                "text": "جاهز واحد اثنان ثلاثة ابدأ",
+            },
+        ],
+    }
+    overlays = [
+        {"kind": "data_grid", "preset": "schulte_6x6", "start_frame": 0, "end_frame": 300},
+        {"kind": "challenge_frame", "start_frame": 0, "end_frame": 300, "text": "Focus"},
+        {"kind": "rule_reveal", "start_frame": 0, "end_frame": 90, "text": "Find 1 to 36"},
+        {"kind": "fixation_cue", "start_frame": 0, "end_frame": 150},
+        {"kind": "target_indicator", "start_frame": 90, "end_frame": 210, "target_cell": 10},
+        {"kind": "start_transition", "start_frame": 150, "end_frame": 180, "text": "Start"},
+    ]
+    plan = ShotPlan(
+        version=3,
+        shots=[
+            shot(
+                scene_id="grid",
+                asset_id="grid_asset",
+                entity_ids=["schulte_grid"],
+                end_frame=300,
+                span_ids=[0, 1],
+                narrative_role="diagram",
+                treatment="mechanism",
+                subject="Schulte grid",
+                visible_state="Grid fills frame",
+                setting="Clean graphic field",
+                framing="diagram",
+                composition="Branded high-contrast local challenge",
+                operation="local_canvas",
+                local_composition="schulte_challenge",
+                overlays=overlays,
+            )
+        ],
+        brief_sha256=fingerprint(brief),
+        timeline_sha256=fingerprint(timeline),
+        fps=30,
+        total_frames=300,
+        editorial_policy=resolve_editorial_policy(brief),
+    )
+
+    _validate_interactive_graphics(plan, timeline, complete=True)
 
 
 def test_repeated_identical_local_canvas_declaration_normalizes_to_reuse():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import subprocess
 import tempfile
@@ -17,7 +18,7 @@ from .assets import file_digest, read_receipt
 from .contracts import fingerprint, load_brief
 from .flow import verify_generated_assets
 from .ledger import leased_resource, publication_guard, resource_database
-from .shots import Shot, ShotPlan, validate_plan
+from .shots import Shot, ShotPlan, require_editorial_review, validate_plan
 from .writing import atomic_text
 
 
@@ -178,6 +179,16 @@ def _ass_time(frame: int, fps: int) -> str:
     return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
 
 
+def _safe_ass_text(value: str) -> str:
+    return (
+        value.replace("\\", "＼")
+        .replace("{", "(")
+        .replace("}", ")")
+        .replace("\r", "")
+        .replace("\n", "\\N")
+    )
+
+
 def overlay_ass(shot: Shot, width: int, height: int, fps: int, font: str = "Arial") -> str:
     if any(c in font for c in "\n\r,"):
         raise ValueError("ASS font must be a single font family")
@@ -193,6 +204,14 @@ Style: Default,{font},{max(22, height // 25)},&H00FFFFFF,&H000000FF,&H00000000,&
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     events: list[str] = []
+    schulte_grid = next(
+        (
+            overlay
+            for overlay in shot.overlays
+            if overlay.kind == "data_grid" and overlay.preset == "schulte_6x6"
+        ),
+        None,
+    )
     for overlay in shot.overlays:
         x, y = round(overlay.x * width), round(overlay.y * height)
         w, h = round(overlay.width * width), round(overlay.height * height)
@@ -223,6 +242,161 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             contents.append(
                 f"{{\\pos({x},{y})\\p1\\bord3\\1a&HFF&\\3c&H00BFFF&}}m 0 0 l {w} {h} m {w - head} {h} l {w} {h} {w} {h - head}{{\\p0}}"
             )
+        elif overlay.kind == "mask":
+            contents.append(
+                f"{{\\pos({x},{y})\\p1\\bord0\\1c&H111827&\\1a&H58&}}"
+                f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0{{\\p0}}"
+            )
+        elif overlay.kind == "card":
+            contents.extend(
+                [
+                    f"{{\\pos({x},{y})\\p1\\bord2\\1c&H20283A&\\3c&H5AE0FF&}}"
+                    f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0{{\\p0}}",
+                    f"{{\\an5\\b1\\fs{max(22, h // 4)}\\pos({x + w // 2},{y + h // 2})}}"
+                    f"{_safe_ass_text(overlay.text)}",
+                ]
+            )
+        elif overlay.kind == "progress_ring":
+            cx, cy = w // 2, h // 2
+            radius = max(4, min(w, h) // 2 - 4)
+            sweep = max(1, round(36 * (overlay.progress or 0)))
+            points = [
+                (
+                    cx + round(radius * math.cos(math.radians(-90 + index * 10))),
+                    cy + round(radius * math.sin(math.radians(-90 + index * 10))),
+                )
+                for index in range(sweep + 1)
+            ]
+            ring_path = f"m {cx} {cy} l " + " ".join(f"{px} {py}" for px, py in points)
+            contents.append(
+                f"{{\\pos({x},{y})\\p1\\bord0\\1c&H5AE0FF&\\1a&H18&}}"
+                    f"{ring_path} {cx} {cy}{{\\p0}}"
+            )
+        elif overlay.kind == "tile_reveal":
+            reveal = overlay.reveal_cells or list(range(len(overlay.cells)))
+            cell_w = w / overlay.columns
+            cell_h = h / overlay.rows
+            available = max(1, overlay.end_frame - overlay.start_frame)
+            step = max(1, available // max(1, len(reveal)))
+            for order, cell_index in enumerate(reveal):
+                row, column = divmod(cell_index, overlay.columns)
+                left, top = round(column * cell_w), round(row * cell_h)
+                right, bottom = round((column + 1) * cell_w), round((row + 1) * cell_h)
+                reveal_frame = min(overlay.end_frame - 1, overlay.start_frame + order * step)
+                reveal_start = _ass_time(reveal_frame, fps)
+                shape = (
+                    f"{{\\pos({x},{y})\\p1\\bord2\\1c&H20283A&\\3c&H5AE0FF&\\fad(120,0)}}"
+                    f"m {left} {top} l {right} {top} {right} {bottom} {left} {bottom} {left} {top}{{\\p0}}"
+                )
+                label = (
+                    f"{{\\an5\\b1\\fs{max(18, round(min(cell_w, cell_h) * 0.32))}"
+                    f"\\pos({x + round((column + 0.5) * cell_w)},{y + round((row + 0.5) * cell_h)})"
+                    f"\\fad(120,0)}}{_safe_ass_text(overlay.cells[cell_index])}"
+                )
+                events.extend(
+                    [
+                        f"Dialogue: 0,{reveal_start},{end},Default,,0,0,0,,{shape}",
+                        f"Dialogue: 1,{reveal_start},{end},Default,,0,0,0,,{label}",
+                    ]
+                )
+            continue
+        elif overlay.kind == "focus_sweep":
+            bar = max(3, w // 35)
+            contents.append(
+                f"{{\\move({x},{y},{x + w - bar},{y})\\p1\\bord0\\1c&H5AE0FF&\\1a&H35&}}"
+                f"m 0 0 l {bar} 0 {bar} {h} 0 {h} 0 0{{\\p0}}"
+            )
+        elif overlay.kind == "comparison":
+            contents.extend(
+                [
+                    f"{{\\pos({x},{y})\\p1\\bord2\\1c&H20283A&\\3c&H697386&}}"
+                    f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0 m {w // 2} 0 l {w // 2} {h}{{\\p0}}",
+                    f"{{\\an5\\b1\\pos({x + w // 4},{y + h // 2})}}{_safe_ass_text(overlay.text)}",
+                    f"{{\\an5\\b1\\1c&H5AE0FF&\\pos({x + 3 * w // 4},{y + h // 2})}}"
+                    f"{_safe_ass_text(overlay.secondary_text)}",
+                ]
+            )
+        elif overlay.kind == "trace_path":
+            points = [(round(px * w), round(py * h)) for px, py in overlay.points]
+            trace_path = f"m {points[0][0]} {points[0][1]} l " + " ".join(
+                f"{px} {py}" for px, py in points[1:]
+            )
+            contents.append(
+                f"{{\\pos({x},{y})\\p1\\bord4\\1a&HFF&\\3c&H5AE0FF&}}{trace_path}{{\\p0}}"
+            )
+        elif overlay.kind == "counter":
+            assert overlay.value_from is not None and overlay.value_to is not None
+            values = list(range(overlay.value_from, overlay.value_to + 1))
+            available = overlay.end_frame - overlay.start_frame
+            for index, value in enumerate(values):
+                value_start = overlay.start_frame + round(index * available / len(values))
+                value_end = overlay.start_frame + round((index + 1) * available / len(values))
+                suffix = f" {_safe_ass_text(overlay.text)}" if overlay.text else ""
+                content = (
+                    f"{{\\an5\\b1\\fs{max(28, h // 2)}\\pos({x + w // 2},{y + h // 2})}}"
+                    f"{value}{suffix}"
+                )
+                events.append(
+                    f"Dialogue: 1,{_ass_time(value_start, fps)},{_ass_time(value_end, fps)},Default,,0,0,0,,{content}"
+                )
+            continue
+        elif overlay.kind == "challenge_frame":
+            contents.extend(
+                [
+                    f"{{\\pos({x},{y})\\p1\\bord3\\1a&HFF&\\3c&H5AE0FF&}}"
+                    f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0{{\\p0}}",
+                    f"{{\\an8\\b1\\fs{max(24, height // 22)}\\1c&H5AE0FF&"
+                    f"\\pos({x + w // 2},{max(36, y - height // 30)})}}{_safe_ass_text(overlay.text)}",
+                ]
+            )
+        elif overlay.kind == "rule_reveal":
+            contents.extend(
+                [
+                    f"{{\\pos({x},{y})\\p1\\bord0\\1c&H20283A&\\1a&H20&\\fad(180,0)}}"
+                    f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0{{\\p0}}",
+                    f"{{\\an5\\b1\\fs{max(22, h // 3)}\\pos({x + w // 2},{y + h // 2})"
+                    f"\\fad(180,0)}}{_safe_ass_text(overlay.text)}",
+                ]
+            )
+        elif overlay.kind == "fixation_cue":
+            cx, cy = x + w // 2, y + h // 2
+            radius = max(8, min(w, h) // 5)
+            duration_ms = max(1, round((overlay.end_frame - overlay.start_frame) * 1000 / fps))
+            contents.extend(
+                [
+                    f"{{\\pos({cx},{cy})\\p1\\bord3\\1a&HFF&\\3c&H5AE0FF&"
+                    f"\\t(0,{duration_ms},\\fscx125\\fscy125\\3a&H80&)}}"
+                    f"m {-radius} 0 l {radius} 0 m 0 {-radius} l 0 {radius}{{\\p0}}",
+                    f"{{\\an5\\b1\\fs{max(18, radius)}\\pos({cx},{cy})}}+",
+                ]
+            )
+        elif overlay.kind == "target_indicator":
+            if schulte_grid is None or overlay.target_cell is None:
+                raise ValueError("Schulte target indicator requires its deterministic grid")
+            grid_x = round(schulte_grid.x * width)
+            grid_y = round(schulte_grid.y * height)
+            cell_w = round(schulte_grid.width * width / 6)
+            cell_h = round(schulte_grid.height * height / 6)
+            row, column = divmod(overlay.target_cell, 6)
+            cx = grid_x + round((column + 0.5) * cell_w)
+            cy = grid_y + round((row + 0.5) * cell_h)
+            radius = max(8, round(min(cell_w, cell_h) * 0.38))
+            duration_ms = max(1, round((overlay.end_frame - overlay.start_frame) * 1000 / fps))
+            contents.append(
+                f"{{\\pos({cx},{cy})\\p1\\bord4\\1a&HFF&\\3c&H5AE0FF&"
+                f"\\t(0,{duration_ms},\\fscx112\\fscy112\\3c&H56D68B&)}}"
+                f"m {-radius} {-radius} l {radius} {-radius} {radius} {radius} {-radius} {radius} {-radius} {-radius}{{\\p0}}"
+            )
+        elif overlay.kind == "start_transition":
+            contents.extend(
+                [
+                    f"{{\\move(0,0,{width},0)\\p1\\bord0\\1c&H20283A&"
+                    f"\\clip(0,0,{width},{height})}}"
+                    f"m 0 0 l {width} 0 {width} {height} 0 {height} 0 0{{\\p0}}",
+                    f"{{\\an5\\b1\\fs{max(36, height // 12)}\\pos({width // 2},{height // 2})"
+                    f"\\fad(80,160)}}{_safe_ass_text(overlay.text)}",
+                ]
+            )
         else:
             cell_w = w / overlay.columns
             cell_h = h / overlay.rows
@@ -234,18 +408,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     f"{{\\pos({x},{y})\\p1\\bord0\\1c&H56D68B&\\1a&H30&}}"
                     f"m {left} {top} l {right} {top} {right} {bottom} {left} {bottom} {left} {top}{{\\p0}}"
                 )
-            path = [f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0"]
-            path.extend(
+            grid_path = [f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0"]
+            grid_path.extend(
                 f"m {round(column * cell_w)} 0 l {round(column * cell_w)} {h}"
                 for column in range(1, overlay.columns)
             )
-            path.extend(
+            grid_path.extend(
                 f"m 0 {round(row * cell_h)} l {w} {round(row * cell_h)}"
                 for row in range(1, overlay.rows)
             )
             contents.append(
                 f"{{\\pos({x},{y})\\p1\\bord2\\1a&HFF&\\3c&H303030&}}"
-                + " ".join(path)
+                + " ".join(grid_path)
                 + "{\\p0}"
             )
             font_size = max(18, round(min(cell_w, cell_h) * 0.36))
@@ -281,6 +455,8 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
     plan = ShotPlan.model_validate_json((root / "shot_plan.json").read_text(encoding="utf-8"))
     timeline = json.loads((root / "timeline.json").read_text(encoding="utf-8"))
     validate_plan(plan, timeline, brief)
+    if brief.version >= 3:
+        require_editorial_review(root, plan, brief)
     verify_generated_assets(root, plan, brief)
     receipts = {s.asset_id: read_receipt(root, s.asset_id) for s in plan.shots}
     asset_hashes = {key: r["sha256"] for key, r in receipts.items()}

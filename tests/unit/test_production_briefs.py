@@ -15,6 +15,7 @@ from youtube_automation.production.briefs import (
 from youtube_automation.production.contracts import (
     Analysis,
     Channel,
+    EpisodeVisualStrategy,
     fingerprint,
     narration_fingerprint,
 )
@@ -61,6 +62,112 @@ def test_identity_and_resume(tmp_path, channel):
     (tmp_path / "raw_transcript.txt").write_text("Changed script", encoding="utf-8")
     with pytest.raises(ValueError, match="downstream"):
         ensure_brief(tmp_path, channel, lambda _: response())
+
+
+def test_version_three_channel_compiles_source_bound_episode_visual_strategy(channel):
+    channel = channel.model_copy(
+        update={
+            "version": 3,
+            "visual_directives": ["Use episode-specific visual systems"],
+            "forbidden_motifs": ["generic productivity B-roll"],
+        }
+    )
+    raw = "Why does attention fail at a doorway, and how can a visual challenge test it?"
+    source_sha256 = fingerprint(raw)
+    strategy = EpisodeVisualStrategy(
+        source_sha256=source_sha256,
+        topic="Everyday attention failures and a visual search challenge",
+        viewer_question="Why does attention disappear at the moment we need it?",
+        central_promise="Recognize the failure and try one concrete attention challenge",
+        evidence_mode="demonstrative",
+        emotional_arc=["recognition", "curiosity", "agency"],
+        hook_archetype="cold_open_challenge",
+        hook_microbeats=[
+            {
+                "beat_id": "problem",
+                "function": "problem",
+                "duration_seconds": 3,
+                "viewer_takeaway": "My attention fails in familiar ways",
+                "visual_mode": "human_context",
+            },
+            {
+                "beat_id": "gap",
+                "function": "curiosity",
+                "duration_seconds": 3,
+                "viewer_takeaway": "The failure has a testable pattern",
+                "visual_mode": "kinetic_type",
+                "local_ui": ["focus_sweep"],
+            },
+            {
+                "beat_id": "promise",
+                "function": "promise",
+                "duration_seconds": 3,
+                "viewer_takeaway": "I will try the challenge now",
+                "visual_mode": "challenge_ui",
+                "local_ui": ["timer", "highlight"],
+            },
+        ],
+        visual_modes=["human_context", "kinetic_type", "challenge_ui"],
+        local_ui_kit=["focus_sweep", "timer", "highlight"],
+        pacing="Fast opening, then enough hold time to perform the challenge",
+        motion_grammar=["Use motion only for focus and state change"],
+    )
+    calls = []
+
+    def ask(prompt):
+        calls.append(prompt)
+        return response() if len(calls) == 1 else strategy.model_dump_json()
+
+    brief = analyze_script(raw, channel, ask)
+
+    assert brief.version == 3
+    assert brief.visual_strategy == strategy
+    assert len(calls) == 2
+    assert source_sha256 in calls[1]
+    assert "8-15 second hook" in calls[1]
+
+
+def test_matching_legacy_brief_is_upgraded_when_v3_strategy_is_missing(
+    tmp_path, channel
+):
+    raw = "Animal perception"
+    channel = channel.model_copy(
+        update={
+            "version": 3,
+            "visual_directives": ["Use episode-specific visual systems"],
+            "forbidden_motifs": ["generic B-roll"],
+        }
+    )
+    legacy = analyze_script(raw, channel.model_copy(update={"version": 2}), lambda _: response())
+    legacy = legacy.model_copy(
+        update={"channel": channel, "profile_sha256": fingerprint(channel)}
+    )
+    (tmp_path / "raw_transcript.txt").write_text(raw, encoding="utf-8")
+    (tmp_path / "episode_brief.json").write_text(
+        legacy.model_dump_json(), encoding="utf-8"
+    )
+    strategy = EpisodeVisualStrategy(
+        source_sha256=fingerprint(raw),
+        topic="Animal perception",
+        viewer_question="What does an animal notice?",
+        central_promise="See perception from another point of view",
+        evidence_mode="observational",
+        emotional_arc=["familiarity", "curiosity"],
+        hook_archetype="mystery_gap",
+        hook_microbeats=[
+            {"beat_id": "p", "function": "problem", "duration_seconds": 3, "viewer_takeaway": "I miss signals", "visual_mode": "human_context"},
+            {"beat_id": "c", "function": "curiosity", "duration_seconds": 3, "viewer_takeaway": "Animals see other signals", "visual_mode": "environmental_detail"},
+            {"beat_id": "h", "function": "handoff", "duration_seconds": 3, "viewer_takeaway": "The episode will compare them", "visual_mode": "comparison"},
+        ],
+        visual_modes=["human_context", "environmental_detail", "comparison"],
+        pacing="Quick question followed by observed examples",
+        motion_grammar=["Use a focus sweep only to reveal missed detail"],
+    )
+
+    upgraded = ensure_brief(tmp_path, channel, lambda _: strategy.model_dump_json())
+
+    assert upgraded.version == 3
+    assert upgraded.visual_strategy == strategy
 
 
 def test_channel_policy_cannot_be_overridden(channel):

@@ -136,6 +136,92 @@ def test_schulte_grid_values_are_replaced_with_the_deterministic_preset():
     assert overlay.cells == SCHULTE_6X6
 
 
+def test_editorial_overlay_primitives_render_deterministic_motion_and_states():
+    shot = fixture_shot(
+        end_frame=240,
+        overlays=[
+            Overlay(kind="card", start_frame=0, end_frame=240, text="Memory"),
+            Overlay(kind="progress_ring", start_frame=0, end_frame=120, progress=0.75),
+            Overlay(
+                kind="tile_reveal",
+                start_frame=15,
+                end_frame=135,
+                rows=2,
+                columns=2,
+                cells=["A", "B", "C", "D"],
+                reveal_cells=[0, 3],
+            ),
+            Overlay(kind="focus_sweep", start_frame=30, end_frame=90),
+            Overlay(
+                kind="comparison",
+                start_frame=60,
+                end_frame=180,
+                text="Before",
+                secondary_text="After",
+            ),
+            Overlay(
+                kind="trace_path",
+                start_frame=90,
+                end_frame=210,
+                x=0,
+                y=0,
+                width=1,
+                height=1,
+                points=[(0.0, 0.8), (0.5, 0.2), (1.0, 0.6)],
+            ),
+            Overlay(
+                kind="counter",
+                start_frame=120,
+                end_frame=240,
+                value_from=1,
+                value_to=3,
+                text="/ 3",
+            ),
+        ],
+    )
+
+    ass = overlay_ass(shot, 1000, 600, 30)
+
+    assert "Memory" in ass
+    assert "Before" in ass and "After" in ass
+    assert "\\move(" in ass
+    assert "m 0 480 l 500 120 1000 360" in ass
+    assert "}1 / 3" in ass and "}3 / 3" in ass
+    assert ass.count("Dialogue:") >= 12
+
+
+def test_branded_schulte_challenge_renders_rule_fixation_target_and_start_transition():
+    shot = fixture_shot(
+        end_frame=300,
+        narrative_role="diagram",
+        framing="diagram",
+        operation="local_canvas",
+        local_composition="schulte_challenge",
+        overlays=[
+            Overlay(kind="challenge_frame", start_frame=0, end_frame=300, text="اختبار التركيز"),
+            Overlay(kind="rule_reveal", start_frame=0, end_frame=90, text="ابحث من 1 إلى 36"),
+            Overlay(kind="fixation_cue", start_frame=60, end_frame=150),
+            Overlay(kind="target_indicator", start_frame=90, end_frame=210, target_cell=10),
+            Overlay(kind="start_transition", start_frame=150, end_frame=180, text="ابدأ"),
+            Overlay(
+                kind="data_grid",
+                preset="schulte_6x6",
+                start_frame=0,
+                end_frame=300,
+            ),
+        ],
+    )
+
+    ass = overlay_ass(shot, 1920, 1080, 30)
+
+    assert "اختبار التركيز" in ass
+    assert "ابحث من 1 إلى 36" in ass
+    assert "ابدأ" in ass
+    assert "\\t(" in ass
+    assert "\\clip(" in ass
+    assert all(f"}}{number}\n" in ass or f"}}{number}\r\n" in ass for number in map(str, range(1, 37)))
+
+
 def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
     import json
     import shutil

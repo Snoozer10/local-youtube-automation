@@ -83,6 +83,7 @@ def _stage_recipe(root: Path, args: argparse.Namespace) -> str:
         "brief": root / "episode_brief.json",
         "timeline": root / "timeline.json",
         "plan": root / "shot_plan.json",
+        "editorial_review": root / "editorial_review.json",
         "preview": root / "adaptive_preview.json",
         "approval": root / "editorial_approval.json",
         "config": Path(__file__).resolve().parents[3] / "video_config.txt",
@@ -92,11 +93,19 @@ def _stage_recipe(root: Path, args: argparse.Namespace) -> str:
         "write": ["raw", "brief"],
         "source-audio": ["raw", "brief"],
         "plan": ["brief", "timeline"],
-        "generate": ["brief", "plan"],
-        "report": ["plan"],
-        "preview": ["brief", "timeline", "plan", "config"],
+        "generate": ["brief", "plan", "editorial_review"],
+        "report": ["plan", "editorial_review"],
+        "preview": ["brief", "timeline", "plan", "editorial_review", "config"],
         "approve": ["preview"],
-        "render": ["brief", "timeline", "plan", "preview", "approval", "config"],
+        "render": [
+            "brief",
+            "timeline",
+            "plan",
+            "editorial_review",
+            "preview",
+            "approval",
+            "config",
+        ],
     }
     inputs["files"] = {name: _file_input(paths[name]) for name in stage_paths[stage]}
     if stage == "analyze":
@@ -132,6 +141,9 @@ def _stage_recipe(root: Path, args: argparse.Namespace) -> str:
             inputs["audio"] = None
     if stage == "approve":
         inputs["reviewer"] = args.reviewer
+        scorecard_file = getattr(args, "scorecard_file", None)
+        scorecard = Path(scorecard_file).resolve() if scorecard_file else None
+        inputs["scorecard_file"] = _file_input(scorecard)
     return fingerprint(inputs)
 
 
@@ -144,6 +156,10 @@ def _validated_plan(root: Path) -> tuple[Brief, ShotPlan, dict[str, Any]]:
     timeline = json.loads((root / "timeline.json").read_text(encoding="utf-8"))
     plan = ShotPlan.model_validate_json((root / "shot_plan.json").read_text(encoding="utf-8"))
     validate_plan(plan, timeline, brief)
+    if brief.version >= 3:
+        from .shots import require_editorial_review
+
+        require_editorial_review(root, plan, brief)
     return brief, plan, timeline
 
 
@@ -203,6 +219,10 @@ def _stage_complete(root: Path, args: argparse.Namespace) -> bool:
             return (
                 brief.source_sha256 == fingerprint(raw)
                 and brief.profile_sha256 == fingerprint(channel)
+                and (
+                    channel.version < 3
+                    or (brief.version >= 3 and brief.visual_strategy is not None)
+                )
             )
         if args.stage == "write":
             from .writing import verify_written_episode
@@ -230,7 +250,7 @@ def _stage_complete(root: Path, args: argparse.Namespace) -> bool:
         if args.stage == "approve":
             if not _render_output_complete(root, preview=True):
                 return False
-            _, plan, _ = _validated_plan(root)
+            brief, plan, _ = _validated_plan(root)
             from .assets import read_receipt
 
             assets = {
@@ -238,17 +258,23 @@ def _stage_complete(root: Path, args: argparse.Namespace) -> bool:
             }
             preview = json.loads((root / "adaptive_preview.json").read_text(encoding="utf-8"))
             approval = json.loads((root / "editorial_approval.json").read_text(encoding="utf-8"))
-            return bool(
-                approval
-                == {
-                    "version": 1,
-                    "plan": fingerprint(plan),
-                    "assets": assets,
-                    "generation": preview["generation"],
-                    "preview_sha256": preview["sha256"],
-                    "reviewer": args.reviewer.strip(),
-                }
-            )
+            expected = {
+                "version": 1,
+                "plan": fingerprint(plan),
+                "assets": assets,
+                "generation": preview["generation"],
+                "preview_sha256": preview["sha256"],
+                "reviewer": args.reviewer.strip(),
+            }
+            if brief.version >= 3:
+                from .review import PreviewScorecard
+
+                scorecard = PreviewScorecard.model_validate_json(
+                    (root / "preview_scorecard.json").read_text(encoding="utf-8")
+                )
+                expected["version"] = 2
+                expected["scorecard_sha256"] = fingerprint(scorecard)
+            return bool(approval == expected)
         if args.stage == "render":
             return _render_output_complete(root, preview=False)
     except Exception:
@@ -306,6 +332,14 @@ def _execute_stage(args: argparse.Namespace, root: Path, database: Path) -> None
     elif args.stage == "approve":
         if not args.reviewer:
             raise ValueError("approve requires --reviewer after an actual editorial review")
+        scorecard_file = getattr(args, "scorecard_file", None)
+        if scorecard_file:
+            from .review import record_preview_scorecard
+
+            score_payload = json.loads(
+                Path(scorecard_file).read_text(encoding="utf-8-sig")
+            )
+            record_preview_scorecard(root, args.reviewer, score_payload)
         approve_review(root, args.reviewer)
     else:
         from youtube_automation.video.compiler import load_video_config
@@ -339,6 +373,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--channel-profile")
     parser.add_argument("--reviewer")
+    parser.add_argument(
+        "--scorecard-file",
+        help="JSON scores for semantic match, hook, attraction, progression, continuity, readability and motion",
+    )
     parser.add_argument("--media-file")
     parser.add_argument("--start-seconds", type=float)
     parser.add_argument("--end-seconds", type=float)
