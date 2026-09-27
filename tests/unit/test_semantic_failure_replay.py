@@ -21,7 +21,7 @@ FIXTURE = (
     / "professor_lineage10_schulte_intro.json"
 )
 CORPUS = FIXTURE.parent
-LIVE_EVIDENCE = CORPUS / "evidence" / "professor_lineages_8_12.json"
+LIVE_EVIDENCE = CORPUS / "evidence" / "professor_lineages_8_13.json"
 
 
 def test_lineage10_schulte_failure_replays_at_the_addressable_compiler_boundary():
@@ -420,11 +420,11 @@ def test_validator_audit_assigns_every_final_rule_to_an_earlier_owner():
 def test_failure_intelligence_report_is_green_before_one_bounded_live_request():
     report = build_failure_intelligence_report(CORPUS, LIVE_EVIDENCE)
 
-    assert report.live_runs == 4
-    assert report.live_attempts == 4
+    assert report.live_runs == 5
+    assert report.live_attempts == 5
     assert report.accepted_windows == 2
-    assert report.live_attempts_per_accepted_window == 2.0
-    assert report.repair_count == 22
+    assert report.live_attempts_per_accepted_window == 2.5
+    assert report.repair_count == 26
     assert report.provider_refusals == 3
     assert report.quota_switches == 0
     assert report.checkpoint_progress == "2/4 windows, 7 shots"
@@ -432,6 +432,6 @@ def test_failure_intelligence_report_is_green_before_one_bounded_live_request():
     assert report.late_validator_escapes == []
     assert report.validator_audit_ready
     assert report.replay_corpus_ready
-    assert report.next_planner_version == 13
-    assert report.next_compiler_version == 5
+    assert report.next_planner_version == 14
+    assert report.next_compiler_version == 6
     assert report.ready_for_one_bounded_live_request

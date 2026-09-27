@@ -323,12 +323,13 @@ class ShotBatch(Contract):
     shots: list[Shot] = Field(min_length=1, max_length=300)
 
 
-SEMANTIC_PLANNER_VERSION = 13
-SHOT_COMPILER_VERSION = 5
+SEMANTIC_PLANNER_VERSION = 14
+SHOT_COMPILER_VERSION = 6
 SEMANTIC_CHECKPOINT_MIGRATIONS = {
-    (10, 2): (13, 5),
-    (11, 3): (13, 5),
-    (12, 4): (13, 5),
+    (10, 2): (14, 6),
+    (11, 3): (14, 6),
+    (12, 4): (14, 6),
+    (13, 5): (14, 6),
 }
 # One initial compile plus five targeted corrections. A valid correction can
 # expose a later deterministic constraint, so schema success is not terminal.
@@ -1417,6 +1418,43 @@ def _normalize_excerpt(value: str) -> str:
     return " ".join(value.split())
 
 
+def _semantic_composition_repetition_key(intent: SemanticShotIntent) -> str:
+    """Match repetition to the compiled viewer-visible Schulte state."""
+    if intent.graphic and intent.graphic.template == "schulte_challenge":
+        return json.dumps(
+            (
+                "schulte_challenge",
+                _normalize_excerpt(intent.graphic.primary_text).casefold(),
+                _normalize_excerpt(intent.graphic.secondary_text or "Start").casefold(),
+                _normalize_excerpt(intent.graphic.timer_text).casefold(),
+            ),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    return _normalize_excerpt(intent.composition).casefold()
+
+
+def _shot_composition_repetition_key(shot: Shot) -> str:
+    """Treat meaningful local Schulte UI progression as a distinct composition."""
+    if shot.local_composition == "schulte_challenge":
+        copy_by_kind = {
+            overlay.kind: _normalize_excerpt(overlay.text).casefold()
+            for overlay in shot.overlays
+            if overlay.kind in {"rule_reveal", "start_transition", "timer"}
+        }
+        return json.dumps(
+            (
+                "schulte_challenge",
+                copy_by_kind.get("rule_reveal", ""),
+                copy_by_kind.get("start_transition", ""),
+                copy_by_kind.get("timer", ""),
+            ),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    return _normalize_excerpt(shot.composition).casefold()
+
+
 def _validate_version_three_semantics(
     plan: ShotPlan, timeline: dict[str, Any], brief: Brief, *, complete: bool
 ) -> None:
@@ -1463,7 +1501,7 @@ def _validate_version_three_semantics(
             raise ValueError(
                 f"Communicative function {shot.beat_kind} repeats without progression"
             )
-        composition_key = _normalize_excerpt(shot.composition).casefold()
+        composition_key = _shot_composition_repetition_key(shot)
         composition_counts[composition_key] = composition_counts.get(composition_key, 0) + 1
         if composition_counts[composition_key] > strategy.max_repeated_composition:
             raise ValueError("A shot composition repeats beyond the episode budget")
@@ -1730,7 +1768,7 @@ def _semantic_issues(
         prior_mode = prior.visual_mode
         beat_run = beat_run + 1 if prior.beat_kind == prior_beat else 1
         prior_beat = prior.beat_kind
-        composition_key = _normalize_excerpt(prior.composition).casefold()
+        composition_key = _shot_composition_repetition_key(prior)
         composition_counts[composition_key] = composition_counts.get(composition_key, 0) + 1
     for intent in batch.shots:
         local: list[str] = []
@@ -1781,7 +1819,7 @@ def _semantic_issues(
             if beat_run > brief.visual_strategy.max_consecutive_visual_mode:
                 local.append("Beat kind must break the consecutive communicative-function budget")
                 beat_run = 0
-            composition_key = _normalize_excerpt(intent.composition).casefold()
+            composition_key = _semantic_composition_repetition_key(intent)
             composition_count = composition_counts.get(composition_key, 0) + 1
             if composition_count > brief.visual_strategy.max_repeated_composition:
                 local.append("Composition must stay within the episode repetition budget")

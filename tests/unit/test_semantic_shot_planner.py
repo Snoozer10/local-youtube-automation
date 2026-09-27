@@ -1719,6 +1719,99 @@ def test_hook_repair_exposes_slot_constraints_after_mechanical_content_failure(
     assert [shot.hook_beat_id for shot in shots] == ["problem", "gap", "promise", None]
 
 
+def test_progressive_schulte_states_do_not_escape_as_late_composition_repetition(
+    tmp_path,
+):
+    timeline = _timeline(
+        [
+            "problem",
+            "gap",
+            "promise",
+            "Schulte introduction",
+            "Schulte benefit",
+            "Schulte practice",
+        ]
+    )
+    source = " ".join(word["text"] for word in timeline["words"])
+    brief = _brief(source=source)
+    _write_run(tmp_path, brief, timeline, source)
+    units = _narration_units(timeline, 0, timeline["total_frames"])
+    batch = SemanticShotBatch(
+        shots=[
+            _intent("problem", units[0].unit_id, visual_mode="human_context"),
+            _intent(
+                "gap",
+                units[1].unit_id,
+                visual_mode="kinetic_type",
+                framing="close_up",
+                beat_kind="question",
+            ),
+            _intent(
+                "promise",
+                units[2].unit_id,
+                visual_mode="comparison",
+                framing="insert",
+                beat_kind="reveal",
+            ),
+            _intent(
+                "schulte_intro",
+                units[3].unit_id,
+                visual_mode="challenge_ui",
+                framing="diagram",
+                beat_kind="instruction",
+                composition="The full grid establishes the challenge",
+                entity_ids=["schulte_canvas_intro"],
+                graphic={
+                    "template": "schulte_challenge",
+                    "primary_text": "Find 1 through 36",
+                    "timer_text": "00:10",
+                },
+            ),
+            _intent(
+                "schulte_benefit",
+                units[4].unit_id,
+                visual_mode="comparison",
+                framing="diagram",
+                beat_kind="reveal",
+                composition="The grid highlights the attention benefit",
+                entity_ids=["schulte_canvas_benefit"],
+                graphic={
+                    "template": "schulte_challenge",
+                    "primary_text": "Keep the center steady",
+                    "timer_text": "00:07",
+                },
+            ),
+            _intent(
+                "schulte_practice",
+                units[5].unit_id,
+                visual_mode="challenge_ui",
+                framing="diagram",
+                beat_kind="instruction",
+                composition="The grid advances into deliberate practice",
+                entity_ids=["schulte_canvas_practice"],
+                graphic={
+                    "template": "schulte_challenge",
+                    "primary_text": "Continue in order",
+                    "timer_text": "00:04",
+                },
+            ),
+        ]
+    )
+    shot_ids = [
+        "p0_problem",
+        "p0_gap",
+        "p0_promise",
+        "p0_schulte_intro",
+        "p0_schulte_benefit",
+        "p0_schulte_practice",
+    ]
+
+    plan = ensure_shot_plan(tmp_path, _SemanticAsk([batch], shot_ids))
+
+    assert [shot.shot_id for shot in plan.shots] == shot_ids
+    assert len([shot for shot in plan.shots if shot.local_composition == "schulte_challenge"]) == 3
+
+
 def test_schulte_compiler_emits_immutable_grid_and_full_branded_layer_set():
     brief = _brief()
     timeline = _timeline(["one", "two", "three"])
@@ -1821,7 +1914,7 @@ def test_semantic_checkpoint_rejects_brief_timeline_window_and_compiler_drift(tm
         _load_semantic_partial_plan(path, brief, timeline, windows)
 
 
-@pytest.mark.parametrize("old_lineage", [(10, 2), (11, 3), (12, 4)])
+@pytest.mark.parametrize("old_lineage", [(10, 2), (11, 3), (12, 4), (13, 5)])
 def test_supported_checkpoint_rebuilds_before_the_first_narration_event(
     tmp_path, old_lineage
 ):

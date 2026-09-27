@@ -16,7 +16,7 @@ Versioned sanitized replay corpus for adaptive semantic-planner failures.
 
 ## Verification
 - Run `python -m pytest tests/unit/test_semantic_failure_replay.py -q`.
-- Run the public corpus report against `evidence/professor_lineages_8_12.json` and require both replay and validator-audit readiness before any live planning request.
+- Run the public corpus report against `evidence/professor_lineages_8_13.json` and require both replay and validator-audit readiness before any live planning request.
 
 ## Child DOX Index
 - None.
