@@ -10,7 +10,8 @@
   "tone": "Curious, humane, clear, and evidence-conscious; never diagnose viewers or promise a clinical outcome",
   "style": "Premium editorial illustration with tactile paper, confident ink shapes, restrained cobalt and warm amber accents, expressive but anatomically credible people, and strong foreground-background depth. Build episode-specific visual metaphors and clean mechanisms as separate still compositions; render all words, numerals, arrows, and highlights locally. No default talking mascot, generic floating brain, fake scientific chart, or repeated zoom cycle.",
   "visual_directives": [
-    "Ground human scenes in specific real-world behaviors, environmental observations, or recognizable daily attention lapses (such as searching past a visible object, forgetting an intention at a threshold, or attention captured by a competing cue) rather than a person presenting to camera or staged generic task performance",
+    "Ground human scenes in narration-specific visible behavior. Do not default to a doorway or threshold memory lapse, searching for keys, or a blank confused stare; use these only when the source explicitly narrates that event.",
+    "Design the opening as a mobile-readable editorial hook using episode-specific local UI when it clarifies the spoken promise; reserve grids, timers, exercise rules and running challenge states for the exact narration cue that introduces them.",
     "Vary narrative function across environmental wides, human-context scenes, observational details, mechanisms, and clean local diagrams",
     "Use full-frame high-contrast local graphics for interactive exercises so viewers can actually perform the task",
     "Treat psychology claims with visual restraint and show uncertainty when the narration does not establish causation or clinical efficacy",
@@ -50,7 +51,9 @@
     "drawing lines connecting dots",
     "staged card sorting",
     "sketchpad on shelf",
-    "performing focus"
+    "performing focus",
+    "generic doorway memory lapse",
+    "person searching for keys"
   ],
   "forbidden_visual_families": [
     "generic_focus_portrait",
@@ -58,16 +61,21 @@
     "efficacy_transformation",
     "generated_exercise_surface",
     "wellness_strawman",
-    "false_authority"
-  ],
-  "repetition_limited_visual_families": [
+    "false_authority",
     "generic_desk_task"
   ],
+  "repetition_limited_visual_families": [],
   "max_visual_family_repetitions": 2,
   "max_non_diagram_scene_appearances": 2,
   "host_mode": "NONE",
   "host_description": "",
-  "allowed_treatments": ["subject_scene", "detail", "mechanism", "comparison", "metaphor"],
+  "allowed_treatments": [
+    "subject_scene",
+    "detail",
+    "mechanism",
+    "comparison",
+    "metaphor"
+  ],
   "humor": "light",
   "max_zoom": 1.07
 }

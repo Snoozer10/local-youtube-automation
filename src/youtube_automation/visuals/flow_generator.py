@@ -1238,44 +1238,74 @@ def inject_prompt_safely(page: Any, input_locator: Any, prompt_text: str) -> Non
     page.wait_for_timeout(300)
 
 
-def dismiss_blocking_flow_modals(page: Any) -> bool:
-    """Detects and dismisses transient backdrop modals/toasts (ToS updates, errors, changelogs, cookie banners)
-    without blindly pressing Escape unless a dialog is affirmatively open.
+def dismiss_blocking_flow_modals(page: Any, timeout_seconds: float = 0.0) -> bool:
+    """Dismiss known non-destructive Flow overlays and wait until they are gone.
+
+    ``timeout_seconds`` is used after navigation so delayed changelog announcements
+    cannot appear between the readiness check and the next click. Hot-path callers
+    keep the default zero-second probe. Unknown dialogs are left untouched rather
+    than accepting or escaping a potentially meaningful confirmation.
     """
     dismissed = False
-    try:
-        cookie_accept = page.locator(
-            ".glue-cookie-notification-bar__accept, .glue-cookie-notification-bar button, button:has-text('حسنًا')"
-        ).first
-        if cookie_accept.is_visible():
-            cookie_accept.click(force=True)
-            dismissed = True
-            if hasattr(page, "wait_for_timeout"):
+    deadline = time.monotonic() + max(0.0, timeout_seconds)
+    while True:
+        clicked = False
+        try:
+            cookie_accept = page.locator(
+                ".glue-cookie-notification-bar__accept, .glue-cookie-notification-bar button"
+            ).first
+            if cookie_accept.is_visible():
+                cookie_accept.click(force=True)
+                dismissed = clicked = True
                 page.wait_for_timeout(300)
 
-        dialog_selectors = [
-            "[role='dialog']",
-            "[role='alertdialog']",
-            ".modal-backdrop",
-            "[class*='dialog-backdrop']",
-        ]
-        for sel in dialog_selectors:
-            modal = page.locator(sel).first
-            if modal.is_visible():
+            # Flow sometimes mounts release announcements without a dependable
+            # role=dialog wrapper. Scope the global action to known changelog text.
+            announcement = page.get_by_text(
+                re.compile(r"Flow is now on iOS|View all changelogs", re.IGNORECASE)
+            ).first
+            if announcement.is_visible():
+                get_started = page.get_by_role(
+                    "button", name=re.compile(r"^Get started$", re.IGNORECASE)
+                ).first
+                if get_started.is_visible():
+                    get_started.click(force=True)
+                    dismissed = clicked = True
+                    page.wait_for_timeout(300)
+
+            for sel in (
+                "[role='dialog']",
+                "[role='alertdialog']",
+                ".modal-backdrop",
+                "[class*='dialog-backdrop']",
+            ):
+                modal = page.locator(sel).first
+                if not modal.is_visible():
+                    continue
                 close_btn = modal.locator(
-                    "button[aria-label*='close' i], button:has-text('حسنًا'), button:has-text('Got it'), button:has-text('Get started'), button:has-text('Dismiss'), button:has-text('Close')"
+                    "button[aria-label*='close' i], button:has-text('حسنًا'), "
+                    "button:has-text('Got it'), button:has-text('Get started'), "
+                    "button:has-text('Dismiss'), button:has-text('Close')"
                 ).first
                 if close_btn.is_visible():
                     close_btn.click(force=True)
-                    dismissed = True
-                    page.wait_for_timeout(300)
-                else:
-                    page.keyboard.press("Escape")
-                    dismissed = True
+                    dismissed = clicked = True
+                    try:
+                        modal.wait_for(state="hidden", timeout=5000)
+                    except Exception:
+                        pass
                     page.wait_for_timeout(300)
                 break
-    except Exception:
-        pass
+        except Exception:
+            # A rerender can detach the modal between detection and click. Retry
+            # within the bounded navigation grace period.
+            pass
+
+        if clicked:
+            continue
+        if time.monotonic() >= deadline:
+            break
+        page.wait_for_timeout(250)
     return dismissed
 
 
@@ -1364,7 +1394,7 @@ def setup_flow_ui(
                     page.goto(project_url, wait_until="domcontentloaded", timeout=15000)
                     wake_up_page()
                     page.wait_for_timeout(2000)
-                    dismiss_blocking_flow_modals(page)
+                    dismiss_blocking_flow_modals(page, timeout_seconds=3.0)
 
                     if not is_flow_page_healthy(page):
                         print(
@@ -1374,7 +1404,7 @@ def setup_flow_ui(
                         page.reload(wait_until="domcontentloaded", timeout=15000)
                         wake_up_page()
                         page.wait_for_timeout(3000)
-                        dismiss_blocking_flow_modals(page)
+                        dismiss_blocking_flow_modals(page, timeout_seconds=3.0)
 
                     if is_flow_page_healthy(page) and "project" in page.url:
                         resumed = True
@@ -1394,12 +1424,13 @@ def setup_flow_ui(
 
         wake_up_page()
         page.wait_for_timeout(2000)
-        dismiss_blocking_flow_modals(page)
+        dismiss_blocking_flow_modals(page, timeout_seconds=5.0)
 
         # Check for '+ New project' button
         print("  Looking for '+ New project' button...", flush=True)
         new_project_btn = None
         for _attempt in range(4):
+            dismiss_blocking_flow_modals(page)
             try:
                 cand = page.get_by_text(FlowSelectors.NEW_PROJECT_PATTERN).first
                 if cand.is_visible():
@@ -1423,12 +1454,15 @@ def setup_flow_ui(
             new_project_btn.click(force=True)
             for _ in range(15):
                 page.wait_for_timeout(1000)
+                dismiss_blocking_flow_modals(page)
                 if "project" in page.url and "404" not in page.url:
                     break
         else:
             print("  Already inside a workspace project or direct UI ready.", flush=True)
 
-    dismiss_blocking_flow_modals(page)
+    dismiss_blocking_flow_modals(page, timeout_seconds=3.0)
+    if "project" in page.url and wait_for_flow_input_box(page, timeout_seconds=15.0) is None:
+        raise RuntimeError("Flow workspace did not finish loading its prompt composer")
 
     # Configure Model & Output Count Settings
     print(f"  Configuring Flow Model: {target_flow_model} | Count: {target_flow_count}...")

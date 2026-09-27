@@ -525,6 +525,59 @@ def check_gemini_error_state(page: Page) -> bool:
     return False
 
 
+_GEMINI_USAGE_LIMIT_PHRASES = (
+    "you've reached your limit",
+    "you have reached your limit",
+    "you've reached the usage limit",
+    "you have reached the usage limit",
+    "usage limit reached",
+    "daily limit reached",
+    "rate limit exceeded",
+    "your usage limit will reset",
+    "لقد وصلت إلى الحد الأقصى",
+    "لقد بلغت الحد الأقصى",
+    "تم بلوغ حد الاستخدام",
+    "تجاوزت حد الاستخدام",
+    "لقد وصلت إلى الحد المسموح",
+)
+_GEMINI_USAGE_LIMIT_SURFACES = (
+    "[role='dialog']",
+    "[role='alert']",
+    "[aria-live='assertive']",
+    "div[data-test-id='error-message']",
+    ".error-card",
+    "mat-dialog-container",
+    "[data-test-id*='limit']",
+)
+
+
+def is_gemini_usage_limit_text(text: str) -> bool:
+    """Return whether text is an explicit Gemini App usage-quota message."""
+    normalized = " ".join(str(text).casefold().replace("’", "'").split())
+    return any(phrase in normalized for phrase in _GEMINI_USAGE_LIMIT_PHRASES)
+
+
+def get_gemini_usage_limit_text(page: Page) -> str:
+    """Read quota text only from visible Gemini error/dialog surfaces.
+
+    Restricting this scan to status surfaces avoids treating quota wording in an
+    old conversation, uploaded request, or ordinary model response as live UI state.
+    """
+    for selector in _GEMINI_USAGE_LIMIT_SURFACES:
+        try:
+            locator = page.locator(selector)
+            for index in range(min(locator.count(), 12)):
+                item = locator.nth(index)
+                if not item.is_visible():
+                    continue
+                text = str(item.inner_text(timeout=1500) or "").strip()
+                if is_gemini_usage_limit_text(text):
+                    return text[:1200]
+        except Exception:
+            continue
+    return ""
+
+
 def wait_for_gemini_response(
     page: Page,
     initial_count: int = 0,

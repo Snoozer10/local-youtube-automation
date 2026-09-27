@@ -21,6 +21,54 @@ def test_flow_chip_count_does_not_double_count_nested_components():
     assert "form:has([contenteditable='true']) flow-ingredient-chip" in selector
 
 
+def test_flow_changelog_dialog_is_dismissed_and_confirmed_hidden():
+    from youtube_automation.visuals.flow_generator import dismiss_blocking_flow_modals
+
+    page = MagicMock()
+    hidden = MagicMock()
+    hidden.is_visible.return_value = False
+    modal = MagicMock()
+    modal.is_visible.side_effect = [True, False]
+    close = MagicMock()
+    close.is_visible.return_value = True
+    modal.locator.return_value.first = close
+
+    def locate(selector):
+        result = MagicMock()
+        result.first = modal if selector == "[role='dialog']" else hidden
+        return result
+
+    page.locator.side_effect = locate
+    page.get_by_text.return_value.first = hidden
+
+    assert dismiss_blocking_flow_modals(page) is True
+    close.click.assert_called_once_with(force=True)
+    modal.wait_for.assert_called_once_with(state="hidden", timeout=5000)
+    page.keyboard.press.assert_not_called()
+
+
+def test_unknown_flow_dialog_is_not_blindly_escaped_or_accepted():
+    from youtube_automation.visuals.flow_generator import dismiss_blocking_flow_modals
+
+    page = MagicMock()
+    hidden = MagicMock()
+    hidden.is_visible.return_value = False
+    modal = MagicMock()
+    modal.is_visible.return_value = True
+    modal.locator.return_value.first = hidden
+
+    def locate(selector):
+        result = MagicMock()
+        result.first = modal if selector == "[role='dialog']" else hidden
+        return result
+
+    page.locator.side_effect = locate
+    page.get_by_text.return_value.first = hidden
+
+    assert dismiss_blocking_flow_modals(page) is False
+    page.keyboard.press.assert_not_called()
+
+
 def test_exact_reference_gate_rejects_a_missing_prompt_chip(tmp_path, monkeypatch):
     from youtube_automation.visuals import flow_generator
 

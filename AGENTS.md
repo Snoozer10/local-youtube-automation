@@ -88,6 +88,8 @@ When the user requests a durable behavior change, record it here or in the relev
 - Before a new approval gate, audit the concrete action and recommend the strongest safe option. Proceed without repeating the question when the session already authorizes it; platform-enforced disclosure, destructive-action or irreversible-publication gates still require the explicit response they request.
 - When the user reports that the five-hour quota has reached 10%, prepare a self-contained Antigravity 2.0 delegation prompt for the remaining bounded work. The user owns starting and stopping that external session and will stop it when this task's quota resets.
 - Before costly live browser runs, proactively audit likely failure states instead of waiting for the user to spot them. Use a small number of bounded, non-overlapping subagents only when parallel review can prevent reruns; choose model and effort deliberately, stop agents once their evidence is complete, and avoid unnecessary token or quota consumption.
+- Treat repeated adaptive-production failures as durable engineering evidence rather than discarded attempts. Preserve raw receipts and checkpoints, extract minimal sanitized versioned replay cases, classify each failure by stable code and responsible layer, and replay the corpus before another costly live run. Move constraints that are decidable from canonical local inputs into deterministic compiler/preflight contracts instead of repeatedly expanding Gemini prompts.
+- When Gemini App explicitly reports that the current active profile has exhausted its usage quota, preserve a `quota_exhausted` receipt, finish that failed durable attempt, switch only the pipeline-owned CDP browser to the next profile index after verifying its listener and profile, recompute the profile-bound recipe, and retry the exact request. Bound the failover ring and never terminate an unowned browser.
 
 ## Ownership & Domain Boundaries
 
@@ -121,6 +123,7 @@ When the user requests a durable behavior change, record it here or in the relev
 - `channels/AGENTS.md`: saved adaptive channel identities and pilot voice/visual policy.
 - `tasks/AGENTS.md`: implementation plans, checklists and verification evidence.
 - `src/youtube_automation/production/AGENTS.md`: adaptive channel/episode contracts and editorial production.
+- `tests/AGENTS.md`: test isolation, regression evidence and fixture ownership.
 - Domain scopes governed directly by root contracts:
   - `src/youtube_automation/` (`core`, `audio`, `speech`, `timeline`, `nlp`, `prompts`, `browser`, `visuals`, `video`, `orchestrator`)
   - `exercises/` (pedagogy scaffold & pre-flight diagnostic drills)
@@ -130,7 +133,7 @@ When the user requests a durable behavior change, record it here or in the relev
 ## **Parent AI Agent:** Dispatch/Delegate Multi-Agent Orchestration & Quality Gates
 - **Coordinator (Tier 1)**: Claude 3.7 Sonnet / Gemini Pro — spec design, refactor strategy.
 - **Executor (Tier 2)**: Gemini Flash / DeepSeek V3 — fast TDD, linting, regression tests.
-- **Codex subagent routing**: Choose model and reasoning effort explicitly from task difficulty. Use Luna or Sol at low/medium effort for mechanical edits, test execution and bounded routine work; Sol High for complex implementation; Astra High for architecture, ambiguous failure analysis and final risk review. Do not spend Astra quota on routine work, and do not leave a consequential delegation on an accidental inherited default.
+- **Codex subagent routing**: Every delegation must name its model, reasoning effort and task-fit/quota rationale; consequential work may never inherit an accidental default. Treat the user's latest model-rating snapshot as advisory evidence alongside task complexity, observed reliability and remaining quota. As of 2026-09-26, prefer Astra Medium for architecture, ambiguous failure analysis and final risk review, and GPT-5.6 Sol XHigh for bounded complex implementation or code review; keep mechanical inspection, test execution and trivial edits on the coordinator or a lower-cost model. Use only a small number of non-overlapping agents when parallel evidence is likely to prevent a costly rerun, and stop them when their bounded evidence is complete.
 - **Quality Gates**: Unit tests green (`python -m pytest tests/unit`), clean lint (`ruff check`), exercise lint clean, drills green.
 
 <!-- pane-agent-context:start -->

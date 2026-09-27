@@ -356,6 +356,43 @@ def test_regression_6_gemini_shows_error_card_preserves_behavior():
     assert result == ""
 
 
+def test_gemini_usage_limit_detection_reads_only_visible_status_surfaces():
+    class Item:
+        def __init__(self, text, visible=True):
+            self.text = text
+            self.visible = visible
+
+        def is_visible(self):
+            return self.visible
+
+        def inner_text(self, timeout):
+            assert timeout == 1500
+            return self.text
+
+    class Items:
+        def __init__(self, values):
+            self.values = values
+
+        def count(self):
+            return len(self.values)
+
+        def nth(self, index):
+            return self.values[index]
+
+    class Page:
+        def locator(self, selector):
+            if selector == "[role='dialog']":
+                return Items([Item("You’ve reached your limit for Gemini Pro")])
+            return Items([])
+
+    assert gemini_utils.get_gemini_usage_limit_text(Page()).startswith("You’ve reached")
+    assert gemini_utils.is_gemini_usage_limit_text("Usage limit reached; try later")
+    assert gemini_utils.is_gemini_usage_limit_text("لقد وصلت إلى الحد الأقصى")
+    assert not gemini_utils.is_gemini_usage_limit_text(
+        "Discuss usage limits in the attached planning document"
+    )
+
+
 def test_regression_7_response_completes_on_final_timeout_boundary_observation(monkeypatch):
     """7. The response completes on the final timeout-boundary observation: return it instead of raising a false timeout."""
     # The final observation is the third stable sample after the Stop control is gone.

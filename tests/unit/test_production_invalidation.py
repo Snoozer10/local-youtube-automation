@@ -14,6 +14,9 @@ from youtube_automation.production.invalidation import invalidate_stage, reconci
 def test_changed_plan_archives_downstream_pointers_but_preserves_accepted_bytes(tmp_path):
     (tmp_path / "shot_plan.json").write_text('{"old": true}', encoding="utf-8")
     (tmp_path / "shot_plan.partial.json").write_text('{"partial": true}', encoding="utf-8")
+    (tmp_path / "shot_plan.semantic.partial.json").write_text(
+        '{"semantic_partial": true}', encoding="utf-8"
+    )
     receipts = tmp_path / "asset_receipts"
     receipts.mkdir()
     (receipts / "scene.json").write_text('{"sha256": "old"}', encoding="utf-8")
@@ -34,6 +37,7 @@ def test_changed_plan_archives_downstream_pointers_but_preserves_accepted_bytes(
     assert set(archived) == {
         "shot_plan.json",
         "shot_plan.partial.json",
+        "shot_plan.semantic.partial.json",
         "asset_receipts/scene.json",
         "adaptive_preview.json",
         "active_master.json",
@@ -45,7 +49,26 @@ def test_changed_plan_archives_downstream_pointers_but_preserves_accepted_bytes(
     history = tmp_path / ".adaptive_history" / ("a" * 12 + "-to-" + "b" * 12) / "plan"
     assert (history / "shot_plan.json").is_file()
     assert (history / "shot_plan.partial.json").is_file()
+    assert (history / "shot_plan.semantic.partial.json").is_file()
     assert not (tmp_path / ".publication_journal" / "stage-invalidation.json").exists()
+
+
+def test_plan_invalidation_can_preserve_a_revalidated_semantic_checkpoint(tmp_path):
+    semantic = tmp_path / "shot_plan.semantic.partial.json"
+    semantic.write_text('{"planner_version": 11}', encoding="utf-8")
+    (tmp_path / "shot_plan.json").write_text('{"old": true}', encoding="utf-8")
+
+    archived = invalidate_stage(
+        tmp_path,
+        "plan",
+        "a" * 64,
+        "b" * 64,
+        preserve_paths={"shot_plan.semantic.partial.json"},
+    )
+
+    assert semantic.read_text(encoding="utf-8") == '{"planner_version": 11}'
+    assert "shot_plan.semantic.partial.json" not in archived
+    assert "shot_plan.json" in archived
 
 
 def test_interrupted_invalidation_reconciles_without_losing_outputs(tmp_path, monkeypatch):

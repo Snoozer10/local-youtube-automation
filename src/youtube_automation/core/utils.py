@@ -458,6 +458,89 @@ def rotate_profile_index() -> int:
     return new_idx
 
 
+def active_profile_index() -> int:
+    """Return the normalized numeric index for the active browser profile."""
+    raw = get_runtime_state("ACTIVE_PROFILE_INDEX", "1")
+    match = re.search(r"\d+", str(raw))
+    return max(1, int(match.group(0))) if match else 1
+
+
+def next_profile_index(current: str | int | None = None) -> int:
+    """Return the next configured account index using the established failover ring."""
+    if current is None:
+        current_idx = active_profile_index()
+    else:
+        match = re.search(r"\d+", str(current))
+        current_idx = max(1, int(match.group(0))) if match else 1
+    target = current_idx + 1
+    return 2 if target > 5 else target
+
+
+def failover_owned_browser_profile() -> int:
+    """Switch from an exhausted account to the next verified owned CDP profile."""
+    current_idx = active_profile_index()
+    target_idx = next_profile_index(current_idx)
+    if not switch_owned_browser_profile(target_idx):
+        raise RuntimeError(
+            f"Could not switch the owned CDP browser from account {current_idx} "
+            f"to account {target_idx} after Gemini quota exhaustion"
+        )
+    logger.warning(
+        f"[FAILOVER SYSTEM] Gemini quota exhausted on account {current_idx}; "
+        f"verified account {target_idx} and committed it as active."
+    )
+    send_telegram_notification(
+        f"⚠️ [Alert] Gemini quota exhausted on Account {current_idx}. "
+        f"Switched to verified Account {target_idx}."
+    )
+    return target_idx
+
+
+def switch_owned_browser_profile(
+    target_profile_index: str | int,
+    *,
+    browser_type: str | None = None,
+    port: int | None = None,
+) -> bool:
+    """Switch the pipeline-owned CDP browser and commit state only after verification.
+
+    This is an operator-directed capacity switch, so it deliberately emits no failover
+    notification and never labels the previous account as failed.
+    """
+    cdp_port = int(port or get_config_value("CDP_PORT", "9222"))
+    browser = browser_type or get_config_value("BROWSER_TYPE", "chrome")
+    previous = get_runtime_state("ACTIVE_PROFILE_INDEX", "1")
+    target = str(target_profile_index).strip()
+    expected_profile = map_profile_index(target)
+    registry = _read_owned_browsers()
+    prior_record = registry.get(str(cdp_port))
+    had_owned_listener = bool(prior_record and is_port_in_use(cdp_port))
+
+    if is_port_in_use(cdp_port) and not kill_cdp_chrome(cdp_port):
+        logger.error(
+            f"[OWNERSHIP] Refusing profile switch because CDP port {cdp_port} is not owned."
+        )
+        return False
+
+    if launch_browser_with_profile(browser, target, cdp_port):
+        active = _read_owned_browsers().get(str(cdp_port), {})
+        if active.get("profile") == expected_profile and is_port_in_use(cdp_port):
+            set_runtime_state("ACTIVE_PROFILE_INDEX", target)
+            logger.info(
+                f"[SYSTEM] Switched owned browser from account {previous} to {target} "
+                f"({expected_profile})."
+            )
+            return True
+        kill_cdp_chrome(cdp_port)
+
+    logger.error(
+        f"[ERROR] Could not verify account {target} ({expected_profile}); runtime state remains {previous}."
+    )
+    if had_owned_listener:
+        launch_browser_with_profile(browser, previous, cdp_port)
+    return False
+
+
 def _dispatch_telegram(bot_token, chat_id, message):
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     data = json.dumps({"chat_id": chat_id, "text": message}, ensure_ascii=False).encode("utf-8")

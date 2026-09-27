@@ -19,6 +19,7 @@ from youtube_automation.production.shots import (
     ensure_editorial_review,
     generation_prompt,
     resolve_editorial_policy,
+    span_ids_for_frames,
     validate_plan,
 )
 
@@ -554,6 +555,8 @@ def test_paged_plan_validates_real_canonical_spans_and_flow_roundtrip(tmp_path):
     assert "forbidden generic_focus_portrait" in calls[0]
     assert "new pose, action, expression or visible state" in calls[1]
     assert "NON-DIAGRAM SCENE BUDGETS" in calls[1]
+    assert "LOCAL UI OWNS ITS GEOMETRY" in calls[0]
+    assert "do not show a ready state" in calls[0]
     assert "a full-shot overlay is [0,135), not [230,365)" in calls[0]
     assert '"remaining": 2' in calls[1]
     assert plan.total_frames == 780
@@ -658,6 +661,19 @@ def test_multiple_shots_can_share_one_narration_span():
         editorial_policy=editorial_policy(),
     )
     assert [s.span_ids for s in plan.shots] == [[0], [0]]
+
+
+def test_span_ids_are_derived_from_end_exclusive_canonical_timing():
+    timeline = {
+        "spans": [
+            {"index": 0, "start_frame": 0, "end_frame": 30},
+            {"index": 1, "start_frame": 30, "end_frame": 60},
+            {"index": 2, "start_frame": 60, "end_frame": 90},
+        ]
+    }
+
+    assert span_ids_for_frames(timeline, 15, 60) == [0, 1]
+    assert span_ids_for_frames(timeline, 30, 60) == [1]
 
 
 def test_harmless_overlay_overrun_and_generic_human_entity_are_normalized():
@@ -801,6 +817,30 @@ def test_editorial_quality_rejects_invisible_entity_and_literalized_idiom():
         validate_plan(literal, timeline, brief)
 
 
+def test_surface_entity_matches_visible_background_synonym():
+    brief = episode_brief()
+    candidate = ShotPlan(
+        shots=[
+            shot(
+                entity_ids=["challenge_surface"],
+                narrative_role="background",
+                treatment="detail",
+                subject="Editorial tactile backdrop",
+                visible_state="Deep cobalt textured background",
+                setting="Clean graphic environment",
+                framing="diagram",
+            )
+        ],
+        brief_sha256=fingerprint(brief),
+        timeline_sha256="b" * 64,
+        fps=30,
+        total_frames=60,
+        editorial_policy=resolve_editorial_policy(brief),
+    )
+
+    _validate_editorial_quality(candidate, brief, complete=False)
+
+
 def test_version_two_channel_requires_roles_and_rejects_forbidden_motifs():
     brief = version_two_brief()
     missing_role = ShotPlan(
@@ -882,6 +922,41 @@ def test_close_up_thoughtful_focus_portrait_is_classified_semantically():
         editorial_policy=resolve_editorial_policy(brief),
     )
     with pytest.raises(ValueError, match="forbidden visual family: generic_focus_portrait"):
+        _validate_editorial_quality(plan, brief, complete=False)
+
+
+@pytest.mark.parametrize(
+    ("visible_state", "setting"),
+    [
+        ("Looking down at paperwork while rubbing their temples", "Modern office desk"),
+        ("Holding a pen motionless above a report", "Home office desk"),
+    ],
+)
+def test_professional_paperwork_scene_is_a_generic_desk_task(visible_state, setting):
+    brief = version_two_brief()
+    channel = brief.channel.model_copy(
+        update={"forbidden_visual_families": ["generic_desk_task"]}
+    )
+    brief = brief.model_copy(
+        update={"channel": channel, "profile_sha256": fingerprint(channel)}
+    )
+    plan = ShotPlan(
+        shots=[
+            shot(
+                narrative_role="story_subject",
+                entity_ids=["office_professional"],
+                subject="An adult professional at a desk",
+                visible_state=visible_state,
+                setting=setting,
+            )
+        ],
+        brief_sha256="a" * 64,
+        timeline_sha256="b" * 64,
+        fps=30,
+        total_frames=60,
+        editorial_policy=resolve_editorial_policy(brief),
+    )
+    with pytest.raises(ValueError, match="forbidden visual family: generic_desk_task"):
         _validate_editorial_quality(plan, brief, complete=False)
 
 
@@ -1741,6 +1816,98 @@ def test_generic_desk_task_rejects_real_staged_drafting_and_card_concepts():
     for s in rejected_concepts:
         families = _shot_visual_families(s)
         assert "generic_desk_task" in families, f"Expected generic_desk_task for: {s.subject}"
+
+
+def test_local_card_overlay_is_not_a_generated_exercise_surface():
+    from youtube_automation.production.shots import _shot_visual_families
+
+    candidate = shot(
+        purpose="Introduce a series of mental exercises",
+        subject="Abstract tactile paper planes",
+        visible_state="Layered cobalt and amber shapes form a clean background",
+        setting="Textured paper studio",
+        entity_ids=["paper_planes"],
+        overlays=[
+            {
+                "kind": "card",
+                "start_frame": 0,
+                "end_frame": 60,
+                "text": "تمارين ذهنية",
+            }
+        ],
+    )
+
+    assert "generated_exercise_surface" not in _shot_visual_families(candidate)
+
+
+def test_local_text_highlight_is_not_a_generated_exercise_surface():
+    from youtube_automation.production.shots import _shot_visual_families
+
+    candidate = shot(
+        purpose="Highlight the mental exercise promise",
+        subject="Plain tactile paper background",
+        visible_state="Empty background reserved for local typography",
+        setting="Editorial studio background",
+        composition="Centered foreground card layout",
+        entity_ids=["paper_background"],
+        overlays=[
+            {
+                "kind": "highlight",
+                "start_frame": 0,
+                "end_frame": 60,
+                "text": "تركيز حاد",
+            }
+        ],
+    )
+
+    assert "generated_exercise_surface" not in _shot_visual_families(candidate)
+
+
+def test_reused_asset_allows_purposeful_local_overlay_progression():
+    brief = version_two_brief()
+    first = shot(
+        shot_id="s1",
+        asset_id="shared_background",
+        end_frame=60,
+        span_ids=[0],
+        narrative_role="background",
+        treatment="detail",
+        framing="diagram",
+        purpose="Introduce the exercise series",
+        overlays=[
+            Overlay(kind="card", start_frame=0, end_frame=60, text="تمارين ذهنية", x=0.1)
+        ],
+    )
+    second = shot(
+        shot_id="s2",
+        asset_id="shared_background",
+        operation="reuse",
+        start_frame=60,
+        end_frame=120,
+        span_ids=[1],
+        narrative_role="background",
+        treatment="detail",
+        framing="diagram",
+        purpose="Reveal the focus promise",
+        overlays=[
+            Overlay(kind="card", start_frame=0, end_frame=60, text="تركيز حاد", x=0.55)
+        ],
+    )
+    plan = ShotPlan(
+        shots=[first, second],
+        brief_sha256="a" * 64,
+        timeline_sha256="b" * 64,
+        fps=30,
+        total_frames=120,
+        editorial_policy=resolve_editorial_policy(brief),
+    )
+
+    _validate_editorial_quality(plan, brief, complete=False)
+
+    second.overlays = first.overlays
+    second.purpose = first.purpose
+    with pytest.raises(ValueError, match="Adjacent non-diagram shots"):
+        _validate_editorial_quality(plan, brief, complete=False)
 
 
 def test_generic_desk_task_permits_relatable_daily_attention_lapses():

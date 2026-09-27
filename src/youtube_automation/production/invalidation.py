@@ -26,6 +26,7 @@ _STAGE_PATTERNS: dict[str, tuple[str, ...]] = {
         "timeline.json",
         "shot_plan.json",
         "shot_plan.partial.json",
+        "shot_plan.semantic.partial.json",
         "editorial_review.json",
         "editorial_rejections/*.json",
         "asset_receipts/*.json",
@@ -51,6 +52,7 @@ _STAGE_PATTERNS: dict[str, tuple[str, ...]] = {
         "timeline.json",
         "shot_plan.json",
         "shot_plan.partial.json",
+        "shot_plan.semantic.partial.json",
         "editorial_review.json",
         "asset_receipts/*.json",
         "adaptive_review/*",
@@ -70,6 +72,7 @@ _STAGE_PATTERNS: dict[str, tuple[str, ...]] = {
         "timeline.json",
         "shot_plan.json",
         "shot_plan.partial.json",
+        "shot_plan.semantic.partial.json",
         "editorial_review.json",
         "asset_receipts/*.json",
         "adaptive_review/*",
@@ -82,6 +85,7 @@ _STAGE_PATTERNS: dict[str, tuple[str, ...]] = {
     "plan": (
         "shot_plan.json",
         "shot_plan.partial.json",
+        "shot_plan.semantic.partial.json",
         "editorial_review.json",
         "asset_receipts/*.json",
         "adaptive_review/*",
@@ -168,6 +172,8 @@ def invalidate_stage(
     stage: str,
     previous_recipe: str,
     next_recipe: str,
+    *,
+    preserve_paths: set[str] | None = None,
 ) -> list[str]:
     """Archive mutable activations for a changed stage and every downstream stage."""
     if stage not in _STAGE_PATTERNS:
@@ -176,6 +182,9 @@ def invalidate_stage(
     reconcile_invalidation(root)
     if previous_recipe == next_recipe:
         return []
+    preserved = {Path(value).as_posix() for value in (preserve_paths or set())}
+    if any(Path(value).is_absolute() or ".." in Path(value).parts for value in preserved):
+        raise ValueError("Preserved invalidation paths must stay inside the run")
     transition = f"{previous_recipe[:12]}-to-{next_recipe[:12]}"
     records: list[dict[str, str]] = []
     seen: set[Path] = set()
@@ -185,6 +194,8 @@ def invalidate_stage(
                 continue
             seen.add(source)
             relative = source.relative_to(root)
+            if relative.as_posix() in preserved:
+                continue
             archive = Path(".adaptive_history") / transition / stage / relative
             records.append(
                 {

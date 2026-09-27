@@ -137,6 +137,59 @@ def test_stage_recipe_changes_with_inputs_not_outputs(tmp_path):
     assert cli._stage_recipe(tmp_path, args) != first
 
 
+def test_planner_recipe_tracks_runtime_profile_index(tmp_path, monkeypatch):
+    from youtube_automation.production import cli
+
+    args = SimpleNamespace(
+        stage="plan",
+        channel_profile=None,
+        media_file=None,
+        start_seconds=None,
+        end_seconds=None,
+        reviewer=None,
+    )
+    profiles = iter(["2", "3"])
+    monkeypatch.setattr(cli, "get_runtime_state", lambda *_args: next(profiles))
+    first = cli._stage_recipe(tmp_path, args)
+    assert cli._stage_recipe(tmp_path, args) != first
+
+
+def test_cli_retries_same_stage_after_verified_quota_profile_failover(
+    tmp_path, monkeypatch
+):
+    from contextlib import nullcontext
+
+    from youtube_automation.production import cli
+    from youtube_automation.production.briefs import GeminiUsageLimitError
+
+    profile = {"value": 2}
+    attempts = []
+
+    def run_stage(_args, _root, _database):
+        attempts.append(profile["value"])
+        if len(attempts) == 1:
+            raise GeminiUsageLimitError("quota")
+
+    def failover():
+        profile["value"] = 3
+        return 3
+
+    monkeypatch.setattr(cli, "resource_database", lambda: tmp_path / "jobs.db")
+    monkeypatch.setattr(cli, "_run_stage_attempt", run_stage)
+    monkeypatch.setattr(cli, "active_profile_index", lambda: profile["value"])
+    monkeypatch.setattr(cli, "failover_owned_browser_profile", failover)
+    monkeypatch.setattr(cli, "leased_resource", lambda *_args: nullcontext())
+    monkeypatch.setattr(
+        cli,
+        "get_config_value",
+        lambda key, default: "4" if key == "FAILOVER_RETRY_LIMIT" else default,
+    )
+
+    cli.main(["plan", "--run-dir", str(tmp_path)])
+
+    assert attempts == [2, 3]
+
+
 def test_generation_stage_recipe_includes_effective_flow_model(tmp_path, monkeypatch):
     from youtube_automation.production import cli
 
@@ -248,6 +301,71 @@ def test_cli_adopts_content_bound_existing_output_without_repeating_stage(
     row = cli.Ledger(database).status()[0]
     assert row["state"] == "SUCCEEDED"
     assert row["key"].endswith(":analyze")
+
+
+def test_strategy_feedback_never_adopts_the_stale_existing_brief(tmp_path, monkeypatch):
+    from youtube_automation.core.utils import atomic_write_json
+    from youtube_automation.production import cli
+    from youtube_automation.production.contracts import Analysis, Brief, Channel, fingerprint
+
+    database = tmp_path / "jobs.db"
+    raw = "Existing source"
+    (tmp_path / "raw_transcript.txt").write_text(raw, encoding="utf-8")
+    feedback = tmp_path / "strategy-feedback.txt"
+    feedback.write_text("Remove the rejected mechanism palette.", encoding="utf-8")
+    channel = Channel(
+        channel_id="test",
+        name="Test",
+        audience="adults",
+        language="Arabic",
+        dialect="MSA",
+        voice="voice",
+        tone="calm",
+        style="illustration",
+        allowed_treatments=["subject_scene"],
+    )
+    profile = tmp_path / "channel.json"
+    atomic_write_json(str(profile), channel.model_dump(mode="json"))
+    brief = Brief(
+        source_sha256=fingerprint(raw),
+        profile_sha256=fingerprint(channel),
+        channel=channel,
+        analysis=Analysis(
+            topics=["test"],
+            claim_basis="factual",
+            form="explanation",
+            proposition="Scene",
+            narrative_strategy="Observe",
+            treatments=["subject_scene"],
+            rationale="Concrete",
+        ),
+    )
+    atomic_write_json(str(tmp_path / "episode_brief.json"), brief.model_dump(mode="json"))
+    revise = MagicMock()
+
+    @contextmanager
+    def transport(**_kwargs):
+        yield MagicMock()
+
+    monkeypatch.setattr(cli, "resource_database", lambda: database)
+    monkeypatch.setattr(cli, "gemini_transport", transport)
+    monkeypatch.setattr(cli, "ensure_brief", revise)
+
+    cli.main(
+        [
+            "analyze",
+            "--run-dir",
+            str(tmp_path),
+            "--channel-profile",
+            str(profile),
+            "--strategy-feedback-file",
+            str(feedback),
+            "--force-retry",
+        ]
+    )
+
+    assert revise.call_count == 1
+    assert revise.call_args.kwargs["strategy_feedback"] == feedback.read_text(encoding="utf-8")
 
 
 def test_changed_source_archives_only_active_generation_and_reanalyzes_same_run(

@@ -15,6 +15,7 @@ from youtube_automation.production.briefs import (
 )
 from youtube_automation.production.contracts import (
     Analysis,
+    Brief,
     Channel,
     EpisodeVisualStrategy,
     fingerprint,
@@ -171,6 +172,66 @@ def test_matching_legacy_brief_is_upgraded_when_v3_strategy_is_missing(
     assert upgraded.visual_strategy == strategy
 
 
+def test_editorial_feedback_revises_only_strategy_and_archives_prior_brief(
+    tmp_path, channel
+):
+    raw = "The exercise is introduced later in the narration."
+    channel = channel.model_copy(
+        update={
+            "version": 3,
+            "visual_directives": ["Use a source-timed visual system"],
+            "forbidden_motifs": ["premature exercise UI"],
+        }
+    )
+    source_sha256 = fingerprint(raw)
+
+    def make_strategy(topic: str) -> EpisodeVisualStrategy:
+        return EpisodeVisualStrategy(
+            source_sha256=source_sha256,
+            topic=topic,
+            viewer_question="When does the exercise begin?",
+            central_promise="Follow the narration before starting the exercise",
+            evidence_mode="demonstrative",
+            emotional_arc=["recognition", "curiosity", "participation"],
+            hook_archetype="mystery_gap",
+            hook_microbeats=[
+                {"beat_id": "p", "function": "problem", "duration_seconds": 3, "viewer_takeaway": "Notice the problem", "visual_mode": "human_context"},
+                {"beat_id": "c", "function": "curiosity", "duration_seconds": 3, "viewer_takeaway": "A challenge is coming", "visual_mode": "editorial_metaphor"},
+                {"beat_id": "h", "function": "handoff", "duration_seconds": 3, "viewer_takeaway": "Continue to the explanation", "visual_mode": "challenge_ui"},
+            ],
+            visual_modes=["human_context", "editorial_metaphor", "challenge_ui"],
+            pacing="Hook first, exercise only at its spoken cue",
+            motion_grammar=["Use motion for hierarchy"],
+        )
+
+    first = make_strategy("Premature exercise")
+    revised = make_strategy("Narration-timed exercise")
+    replies = iter([response(), first.model_dump_json()])
+    (tmp_path / "raw_transcript.txt").write_text(raw, encoding="utf-8")
+    original = ensure_brief(tmp_path, channel, lambda _: next(replies))
+    prompts = []
+
+    def revise(prompt):
+        prompts.append(prompt)
+        return revised.model_dump_json()
+
+    result = ensure_brief(
+        tmp_path,
+        channel,
+        revise,
+        strategy_feedback="Do not start the exercise before it is named.",
+    )
+
+    assert result.analysis == original.analysis
+    assert result.source_sha256 == original.source_sha256
+    assert result.visual_strategy == revised
+    assert "HUMAN EDITORIAL REJECTION TO REPAIR" in prompts[0]
+    assert "Do not start the exercise before it is named." in prompts[0]
+    archived = list((tmp_path / "brief_rejections").glob("*.json"))
+    assert len(archived) == 1
+    assert Brief.model_validate_json(archived[0].read_text()).visual_strategy == first
+
+
 def test_channel_policy_cannot_be_overridden(channel):
     with pytest.raises(ValueError, match="outside channel policy"):
         analyze_script("animals", channel, lambda _: response(treatments=["host"]))
@@ -284,6 +345,59 @@ def test_request_json_preserves_transport_error_after_retry_budget(channel):
             Analysis,
             attempts=2,
         )
+
+
+def test_request_json_propagates_quota_without_retrying_same_profile():
+    from youtube_automation.production.briefs import GeminiUsageLimitError
+
+    calls = []
+
+    def ask(_prompt):
+        calls.append(None)
+        raise GeminiUsageLimitError("quota")
+
+    with pytest.raises(GeminiUsageLimitError, match="quota"):
+        request_json("prompt", ask, Analysis)
+    assert calls == [None]
+
+
+def test_browser_transport_receipts_quota_exhaustion(tmp_path, monkeypatch):
+    from youtube_automation.browser import gemini_utils
+    from youtube_automation.production.briefs import GeminiUsageLimitError
+
+    class Items:
+        def count(self):
+            return 0
+
+    class Page:
+        url = "https://gemini.google.com/app/quota-chat"
+
+        def locator(self, _selector):
+            return Items()
+
+    class Client:
+        def __init__(self, _page, _model):
+            pass
+
+        def dispatch_prompt(self, _prompt):
+            return True, 0
+
+    monkeypatch.setattr(gemini_utils, "GeminiSessionClient", Client)
+    monkeypatch.setattr(gemini_utils, "start_clean_gemini_chat", lambda _page: None)
+    monkeypatch.setattr(gemini_utils, "select_gemini_model", lambda _page, _model: True)
+    monkeypatch.setattr(
+        gemini_utils,
+        "wait_for_gemini_response",
+        lambda *_args, **_kwargs: "You've reached your limit for Gemini Pro",
+    )
+    transport = BrowserTransport(Page(), "Pro", True, tmp_path, 600)
+
+    with pytest.raises(GeminiUsageLimitError, match="usage limit"):
+        transport("quota prompt")
+
+    receipt = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
+    assert receipt["attempts"][-1]["state"] == "quota_exhausted"
+    assert "reached your limit" in receipt["attempts"][-1]["response"]
 
 
 def test_request_json_preserves_first_candidate_across_multiple_repairs():
@@ -622,7 +736,12 @@ def test_file_validation_repair_uses_a_bound_repair_attachment(tmp_path, monkeyp
     )
     monkeypatch.setattr(transport, "_attach_prompt_file", lambda path: attached.append(path))
 
-    parsed = request_json("large request", transport, Analysis)
+    parsed = request_json(
+        "large request",
+        transport,
+        Analysis,
+        repair_context="CURRENT CORRECTION CONTRACT: return exactly one constrained record",
+    )
 
     assert parsed.proposition == "Animal perception"
     assert len(starts) == 1
@@ -634,6 +753,7 @@ def test_file_validation_repair_uses_a_bound_repair_attachment(tmp_path, monkeyp
     assert "Baseline JSON candidate:\nnot json" in repair_packet
     assert "Latest rejected JSON candidate:\nnot json" in repair_packet
     assert "restore every unaffected field" in repair_packet
+    assert "CURRENT CORRECTION CONTRACT: return exactly one constrained record" in repair_packet
     assert "Exact JSON schema:" in repair_packet
     assert "large request" not in repair_packet
     repair_receipt = next(

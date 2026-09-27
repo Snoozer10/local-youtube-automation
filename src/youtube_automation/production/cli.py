@@ -9,16 +9,35 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal
 
-from youtube_automation.core.utils import get_config_value
+from youtube_automation.core.utils import (
+    active_profile_index,
+    failover_owned_browser_profile,
+    get_config_value,
+    get_runtime_state,
+    next_profile_index,
+)
 
 from .assets import file_digest
-from .briefs import browser_ask, ensure_brief, is_visual_policy_update, rebind_visual_policy
+from .briefs import (
+    GeminiUsageLimitError,
+    browser_ask,
+    ensure_brief,
+    is_visual_policy_update,
+    rebind_visual_policy,
+)
 from .contracts import Brief, fingerprint, load_brief, load_channel
 from .invalidation import invalidate_stage, reconcile_invalidation
 from .ledger import Ledger, durable_stage, leased_resource, resource_database
 from .render import probe_video, render_plan
 from .review import approve_review, write_review
-from .shots import ShotPlan, ensure_shot_plan, validate_plan
+from .shots import (
+    SEMANTIC_PLANNER_VERSION,
+    SHOT_COMPILER_VERSION,
+    ShotPlan,
+    ensure_shot_plan,
+    migrate_semantic_checkpoint,
+    validate_plan,
+)
 from .writing import write_episode
 
 
@@ -111,10 +130,20 @@ def _stage_recipe(root: Path, args: argparse.Namespace) -> str:
     if stage == "analyze":
         profile = Path(args.channel_profile).resolve() if args.channel_profile else None
         inputs["channel_profile"] = _file_input(profile)
+        feedback_file = getattr(args, "strategy_feedback_file", None)
+        feedback = (
+            Path(feedback_file).resolve()
+            if feedback_file
+            else None
+        )
+        inputs["strategy_feedback"] = _file_input(feedback)
     if stage in {"analyze", "write", "plan"}:
         inputs["planner_model"] = get_config_value("IMAGE_PLANNER_MODEL", "Pro")
+        inputs["planner_profile_index"] = get_runtime_state("ACTIVE_PROFILE_INDEX", "1")
     if stage == "plan":
         inputs["planner_transport"] = get_config_value("IMAGE_PLANNER_TRANSPORT", "file")
+        inputs["semantic_planner_version"] = SEMANTIC_PLANNER_VERSION
+        inputs["shot_compiler_version"] = SHOT_COMPILER_VERSION
     if stage == "source-audio":
         media = Path(args.media_file).resolve() if args.media_file else None
         inputs.update(
@@ -289,9 +318,13 @@ def _execute_stage(args: argparse.Namespace, root: Path, database: Path) -> None
         channel = load_channel(args.channel_profile)
         if is_visual_policy_update(root, channel):
             rebind_visual_policy(root, channel)
-            return
+        feedback = ""
+        if args.strategy_feedback_file:
+            feedback = Path(args.strategy_feedback_file).read_text(encoding="utf-8-sig")
+            if not feedback.strip():
+                raise ValueError("Strategy feedback file is empty")
         with leased_resource(database, "browser"), gemini_transport() as ask:
-            ensure_brief(root, channel, ask)
+            ensure_brief(root, channel, ask, strategy_feedback=feedback)
     elif args.stage in {"write", "plan"}:
         planning = args.stage == "plan"
         with leased_resource(database, "browser"), gemini_transport(
@@ -351,6 +384,93 @@ def _execute_stage(args: argparse.Namespace, root: Path, database: Path) -> None
         )
 
 
+def _run_stage_attempt(args: argparse.Namespace, root: Path, database: Path) -> None:
+    """Run one content-bound stage attempt for the currently active profile."""
+    reconcile_invalidation(root)
+    recipe = _stage_recipe(root, args)
+    key = _stage_key(root, args.stage)
+    existing = Ledger(database).get(key)
+    complete = _stage_complete(root, args)
+    visual_policy_transition: tuple[str, str] | None = None
+    if args.stage == "analyze" and args.channel_profile:
+        requested_channel = load_channel(args.channel_profile)
+        if is_visual_policy_update(root, requested_channel):
+            visual_policy_transition = (
+                load_brief(root).profile_sha256,
+                fingerprint(requested_channel),
+            )
+        elif args.strategy_feedback_file:
+            feedback_path = Path(args.strategy_feedback_file).resolve()
+            visual_policy_transition = (
+                fingerprint(load_brief(root)),
+                _file_input(feedback_path) or "missing-feedback",
+            )
+    visual_policy_rebind = visual_policy_transition is not None
+    # A feedback file is an explicit request to replace the current strategy.
+    # The existing brief can still be valid without proving that feedback was applied.
+    adoptable = args.stage != "report" and not bool(args.strategy_feedback_file)
+    repair_success = bool(
+        existing
+        and existing["state"] == "SUCCEEDED"
+        and existing["recipe"] == recipe
+        and not complete
+    )
+    recover_complete = bool(
+        adoptable and complete and existing and existing["state"] == "BLOCKED"
+    )
+    with durable_stage(
+        database,
+        key,
+        recipe,
+        force=(
+            args.force_retry
+            or repair_success
+            or recover_complete
+            or visual_policy_rebind
+        ),
+        detail={"stage": args.stage, "run": str(root)},
+    ) as execute:
+        if not execute:
+            print(f"Stage already succeeded for unchanged inputs: {args.stage}")
+            return
+        if visual_policy_transition is not None:
+            archived = invalidate_stage(
+                root, "plan", visual_policy_transition[0], visual_policy_transition[1]
+            )
+            if archived:
+                print(
+                    f"Archived {len(archived)} invalidated activation file(s) "
+                    f"before retrying stage: {args.stage}"
+                )
+            complete = _stage_complete(root, args)
+        elif existing and existing["recipe"] != recipe:
+            preserve_paths: set[str] | None = None
+            if args.stage == "plan" and migrate_semantic_checkpoint(root):
+                preserve_paths = {"shot_plan.semantic.partial.json"}
+            if preserve_paths:
+                archived = invalidate_stage(
+                    root,
+                    args.stage,
+                    existing["recipe"],
+                    recipe,
+                    preserve_paths=preserve_paths,
+                )
+            else:
+                archived = invalidate_stage(
+                    root, args.stage, existing["recipe"], recipe
+                )
+            if archived:
+                print(
+                    f"Archived {len(archived)} invalidated activation file(s) "
+                    f"before retrying stage: {args.stage}"
+                )
+            complete = _stage_complete(root, args)
+        if adoptable and complete:
+            print(f"Registered existing verified stage output: {args.stage}")
+            return
+        _execute_stage(args, root, database)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Adaptive multi-channel production (explicit run, opt-in)"
@@ -372,6 +492,10 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--channel-profile")
+    parser.add_argument(
+        "--strategy-feedback-file",
+        help="UTF-8 editorial rejection used to revise a v3 episode visual strategy",
+    )
     parser.add_argument("--reviewer")
     parser.add_argument(
         "--scorecard-file",
@@ -393,6 +517,10 @@ def main(argv: list[str] | None = None) -> None:
     database = resource_database()
     if args.stage == "analyze" and not args.channel_profile:
         parser.error("analyze requires --channel-profile")
+    if args.strategy_feedback_file and args.stage != "analyze":
+        parser.error("--strategy-feedback-file applies only to analyze")
+    if args.strategy_feedback_file and not args.force_retry:
+        parser.error("--strategy-feedback-file requires --force-retry")
     if args.stage == "source-audio" and (
         args.media_file is None or args.start_seconds is None or args.end_seconds is None
     ):
@@ -404,71 +532,35 @@ def main(argv: list[str] | None = None) -> None:
         for row in Ledger(database).status():
             print(row)
     else:
-        try:
-            reconcile_invalidation(root)
-            recipe = _stage_recipe(root, args)
-            key = _stage_key(root, args.stage)
-            existing = Ledger(database).get(key)
-            complete = _stage_complete(root, args)
-            visual_policy_transition: tuple[str, str] | None = None
-            if args.stage == "analyze" and args.channel_profile:
-                requested_channel = load_channel(args.channel_profile)
-                if is_visual_policy_update(root, requested_channel):
-                    visual_policy_transition = (
-                        load_brief(root).profile_sha256,
-                        fingerprint(requested_channel),
-                    )
-            visual_policy_rebind = visual_policy_transition is not None
-            adoptable = args.stage != "report"
-            repair_success = bool(
-                existing
-                and existing["state"] == "SUCCEEDED"
-                and existing["recipe"] == recipe
-                and not complete
-            )
-            recover_complete = bool(
-                adoptable and complete and existing and existing["state"] == "BLOCKED"
-            )
-            with durable_stage(
-                database,
-                key,
-                recipe,
-                force=(
-                    args.force_retry
-                    or repair_success
-                    or recover_complete
-                    or visual_policy_rebind
-                ),
-                detail={"stage": args.stage, "run": str(root)},
-            ) as execute:
-                if not execute:
-                    print(f"Stage already succeeded for unchanged inputs: {args.stage}")
-                    return
-                if visual_policy_transition is not None:
-                    archived = invalidate_stage(
-                        root, "plan", visual_policy_transition[0], visual_policy_transition[1]
-                    )
-                    if archived:
-                        print(
-                            f"Archived {len(archived)} invalidated activation file(s) "
-                            f"before retrying stage: {args.stage}"
-                        )
-                    # The earlier completion check examined the prior activation.
-                    # Recheck after archiving before adopting any remaining output.
-                    complete = _stage_complete(root, args)
-                elif existing and existing["recipe"] != recipe:
-                    archived = invalidate_stage(root, args.stage, existing["recipe"], recipe)
-                    if archived:
-                        print(
-                            f"Archived {len(archived)} invalidated activation file(s) "
-                            f"before retrying stage: {args.stage}"
-                        )
-                    # The earlier completion check examined the prior activation.
-                    # Recheck after archiving before adopting any remaining output.
-                    complete = _stage_complete(root, args)
-                if adoptable and complete:
-                    print(f"Registered existing verified stage output: {args.stage}")
-                    return
-                _execute_stage(args, root, database)
-        except ValueError as exc:
-            parser.error(str(exc))
+        failover_stages = {"analyze", "write", "plan"}
+        attempted_profiles = {active_profile_index()}
+        failover_limit = max(0, int(get_config_value("FAILOVER_RETRY_LIMIT", "4")))
+        failovers = 0
+        while True:
+            try:
+                _run_stage_attempt(args, root, database)
+                return
+            except GeminiUsageLimitError as exc:
+                if args.stage not in failover_stages:
+                    raise
+                current = active_profile_index()
+                target = next_profile_index(current)
+                if failovers >= failover_limit or target in attempted_profiles:
+                    raise RuntimeError(
+                        "Gemini App quota is exhausted across the bounded profile failover ring"
+                    ) from exc
+                with leased_resource(database, "browser"):
+                    activated = failover_owned_browser_profile()
+                if activated != target:
+                    raise RuntimeError(
+                        f"Gemini profile failover selected unexpected account {activated}; "
+                        f"expected {target}"
+                    ) from exc
+                attempted_profiles.add(activated)
+                failovers += 1
+                print(
+                    f"Gemini App quota exhausted on profile {current}; "
+                    f"retrying the exact stage request on verified profile {activated}."
+                )
+            except ValueError as exc:
+                parser.error(str(exc))
