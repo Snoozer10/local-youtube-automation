@@ -377,6 +377,29 @@ def test_archived_critic_feedback_requires_rejected_current_input_lineage(tmp_pa
         shots.require_editorial_review(tmp_path, plan, brief)
 
 
+def test_recompiled_overlay_feedback_never_authorizes_changed_semantics(tmp_path):
+    from youtube_automation.production import shots
+
+    brief = version_three_brief()
+    timeline, plan = semantic_hook_plan(brief)
+    review = EditorialReview(plan_sha256=fingerprint(plan), approved=False, shots=[
+        {"shot_id": item.shot_id, "semantic_match": 2, "takeaway_match": 2,
+         "visual_specificity": 2, "verdict": "reject", "rationale": "Repair exact narration"}
+        for item in plan.shots])
+    shots._archive_editorial_rejection(tmp_path, review, plan)
+    recompiled = plan.model_copy(update={"shots": [
+        item.model_copy(update={"local_composition": "kinetic_type"}) for item in plan.shots]})
+    assert shots._prior_editorial_rejection(tmp_path, brief, timeline, plan=recompiled) is None
+    assert shots._prior_editorial_rejection(
+        tmp_path, brief, timeline, plan=recompiled, allow_render_recompile=True) == review
+    changed = recompiled.model_copy(update={"shots": [
+        item.model_copy(update={"viewer_takeaway": "A different claim"}) for item in recompiled.shots]})
+    assert shots._prior_editorial_rejection(
+        tmp_path, brief, timeline, plan=changed, allow_render_recompile=True) is None
+    with pytest.raises(ValueError, match="no editorial review receipt"):
+        shots.require_editorial_review(tmp_path, recompiled, brief)
+
+
 def test_editorial_critic_archives_stale_rejection_and_reviews_changed_plan(tmp_path):
     brief = version_three_brief()
     timeline, plan = semantic_hook_plan(brief)

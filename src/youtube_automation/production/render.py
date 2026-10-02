@@ -230,6 +230,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 contents.append(
                     f"{{\\an5\\b1\\fs{max(28, h // 2)}\\bord3\\pos({x + w // 2},{y + h // 2})}}{text}"
                 )
+            elif shot.local_composition in {"kinetic_type", "focus_sweep"}:
+                longest_line = max(len(line) for line in overlay.text.splitlines())
+                font_size = max(22, min(64, h // 2, round(w / max(1, longest_line * 0.6))))
+                contents.append(
+                    f"{{\\an5\\b1\\fs{font_size}\\bord3\\fad(120,0)"
+                    f"\\pos({x + w // 2},{y + h // 2})}}{text}"
+                )
             else:
                 contents.append(f"{{\\pos({x},{y})}}{text}")
         elif overlay.kind == "highlight":

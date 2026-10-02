@@ -2,6 +2,24 @@ from youtube_automation.production.render import camera_filter, overlay_ass
 from youtube_automation.production.shots import SCHULTE_6X6, Overlay, Shot
 
 
+def test_semantic_title_templates_retain_copy_in_rendered_ass():
+    from youtube_automation.production.shots import SemanticGraphic, _graphic_overlays
+
+    for template in ("kinetic_type", "focus_sweep"):
+        graphic = SemanticGraphic(template=template, primary_text="مستعد تصدم نفسك؟",
+                                  secondary_text="اختبر قدراتك الآن")
+        overlays = _graphic_overlays(graphic, 180)
+        shot = fixture_shot(local_composition=template, overlays=overlays)
+        rendered = overlay_ass(shot, 1920, 1080, 30)
+        assert graphic.primary_text in rendered
+        assert graphic.secondary_text in rendered
+        assert "\\an5\\b1\\fs64" in rendered
+        assert "\\pos(960,508)" in rendered
+        assert "\\pos(960,777)" in rendered
+        if template == "focus_sweep":
+            assert "\\move(" in rendered
+
+
 def fixture_shot(**updates):
     return Shot(
         **(

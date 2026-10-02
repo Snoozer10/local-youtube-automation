@@ -229,7 +229,7 @@ class Shot(Contract):
     focal_x: float = Field(default=0.5, ge=0, le=1)
     focal_y: float = Field(default=0.5, ge=0, le=1)
     zoom: float = Field(default=1, ge=1, le=1.15)
-    local_composition: Literal["schulte_challenge"] | None = None
+    local_composition: Literal["schulte_challenge", "kinetic_type", "focus_sweep"] | None = None
     overlays: list[Overlay] = Field(default_factory=list, max_length=12)
 
     @model_validator(mode="before")
@@ -324,20 +324,21 @@ class ShotBatch(Contract):
     shots: list[Shot] = Field(min_length=1, max_length=300)
 
 
-SEMANTIC_PLANNER_VERSION = 21
-SHOT_COMPILER_VERSION = 10
+SEMANTIC_PLANNER_VERSION = 22
+SHOT_COMPILER_VERSION = 11
 SEMANTIC_CHECKPOINT_MIGRATIONS = {
-    (10, 2): (21, 10),
-    (11, 3): (21, 10),
-    (12, 4): (21, 10),
-    (13, 5): (21, 10),
-    (14, 6): (21, 10),
-    (15, 6): (21, 10),
-    (16, 7): (21, 10),
-    (17, 8): (21, 10),
-    (18, 9): (21, 10),
-    (19, 9): (21, 10),
-    (20, 10): (21, 10),
+    (10, 2): (22, 11),
+    (11, 3): (22, 11),
+    (12, 4): (22, 11),
+    (13, 5): (22, 11),
+    (14, 6): (22, 11),
+    (15, 6): (22, 11),
+    (16, 7): (22, 11),
+    (17, 8): (22, 11),
+    (18, 9): (22, 11),
+    (19, 9): (22, 11),
+    (20, 10): (22, 11),
+    (21, 10): (22, 11),
 }
 # One initial compile plus five targeted corrections. A valid correction can
 # expose a later deterministic constraint, so schema success is not terminal.
@@ -414,7 +415,7 @@ class SemanticGraphic(Contract):
 
     @model_validator(mode="after")
     def required_copy(self) -> SemanticGraphic:
-        if self.template in {"kinetic_type", "comparison", "schulte_challenge"}:
+        if self.template in {"kinetic_type", "comparison", "focus_sweep", "schulte_challenge"}:
             if not self.primary_text.strip():
                 raise ValueError(f"{self.template} requires concise visible copy")
         if self.template == "comparison" and not self.secondary_text.strip():
@@ -2060,8 +2061,20 @@ def _semantic_issues(
 def _graphic_overlays(graphic: SemanticGraphic | None, duration: int) -> list[Overlay]:
     if graphic is None:
         return []
-    if graphic.template == "kinetic_type":
-        return [Overlay(kind="label", start_frame=0, end_frame=duration, text=graphic.primary_text)]
+    if graphic.template in {"kinetic_type", "focus_sweep"}:
+        labels = [
+            Overlay(kind="label", start_frame=0, end_frame=duration,
+                    text=graphic.primary_text, x=0.1, y=0.32, width=0.8, height=0.3)
+        ]
+        if graphic.secondary_text.strip():
+            labels.append(
+                Overlay(kind="label", start_frame=0, end_frame=duration,
+                        text=graphic.secondary_text, x=0.1, y=0.65, width=0.8, height=0.14)
+            )
+        if graphic.template == "focus_sweep":
+            labels.insert(0, Overlay(kind="focus_sweep", start_frame=0, end_frame=duration,
+                                     x=0.08, y=0.18, width=0.84, height=0.64))
+        return labels
     if graphic.template == "comparison":
         return [
             Overlay(
@@ -2075,10 +2088,6 @@ def _graphic_overlays(graphic: SemanticGraphic | None, duration: int) -> list[Ov
                 width=0.84,
                 height=0.64,
             )
-        ]
-    if graphic.template == "focus_sweep":
-        return [
-            Overlay(kind="focus_sweep", start_frame=0, end_frame=duration, x=0.08, y=0.18, width=0.84, height=0.64)
         ]
     start_copy = graphic.secondary_text or "Start"
     return [
@@ -2222,7 +2231,8 @@ def _compile_semantic_batch(
             focal_x=0.5,
             focal_y=0.5,
             zoom=1,
-            local_composition="schulte_challenge" if local_schulte else None,
+            local_composition=(intent.graphic.template if intent.graphic and
+                               intent.graphic.template != "comparison" else None),
             overlays=_graphic_overlays(intent.graphic, duration),
         )
         compiled.append(shot)
@@ -2893,7 +2903,7 @@ def _load_semantic_partial_plan(
         or not 0 < next_window <= len(windows)
     ):
         raise ValueError("Semantic partial shot plan does not match current planning inputs")
-    if migrating and checkpoint_lineage not in {(17, 8), (18, 9), (20, 10)}:
+    if migrating and checkpoint_lineage not in {(17, 8), (18, 9), (20, 10), (21, 10)}:
         accepted_end = windows[next_window - 1][1]
         if any(
             event.introduction_frame < accepted_end
@@ -3002,7 +3012,8 @@ def _archive_editorial_rejection(root: Path, review: EditorialReview, plan: Shot
 
 
 def _prior_editorial_rejection(
-    root: Path, brief: Brief, timeline: dict[str, Any], *, plan: ShotPlan | None = None
+    root: Path, brief: Brief, timeline: dict[str, Any], *, plan: ShotPlan | None = None,
+    allow_render_recompile: bool = False,
 ) -> EditorialReview | None:
     """Recover feedback only from a rejected, fully bound reviewed candidate."""
     directory = root / "editorial_rejections"
@@ -3037,9 +3048,15 @@ def _prior_editorial_rejection(
                 or reviewed.brief_sha256 != fingerprint(brief)
                 or reviewed.timeline_sha256 != fingerprint(timeline)
                 or [item.shot_id for item in review.shots] != [item.shot_id for item in reviewed.shots]
-                or (plan is not None and review.plan_sha256 != fingerprint(plan))
             ):
                 continue
+            if plan is not None and review.plan_sha256 != fingerprint(plan):
+                if not allow_render_recompile or (
+                    reviewed.model_dump(exclude={"shots"}) != plan.model_dump(exclude={"shots"})
+                    or [shot.model_dump(exclude={"overlays", "local_composition"}) for shot in reviewed.shots]
+                    != [shot.model_dump(exclude={"overlays", "local_composition"}) for shot in plan.shots]
+                ):
+                    continue
             if not review.approved or any(
                 item.verdict == "reject"
                 or min(item.semantic_match, item.takeaway_match, item.visual_specificity) < 4
@@ -3351,9 +3368,9 @@ def _plan_semantic_windows(
         current = ShotPlan(version=3, shots=all_shots, brief_sha256=fingerprint(brief),
                            timeline_sha256=fingerprint(timeline), fps=timeline["fps"],
                            total_frames=timeline["total_frames"], editorial_policy=resolve_editorial_policy(brief))
-        review = _prior_editorial_rejection(root, brief, timeline, plan=current)
+        review = _prior_editorial_rejection(root, brief, timeline, plan=current, allow_render_recompile=True)
         if review is not None:
-            if review.plan_sha256 == fingerprint(current) and [s.shot_id for s in review.shots] == [s.shot_id for s in all_shots]:
+            if [s.shot_id for s in review.shots] == [s.shot_id for s in all_shots]:
                 rejected = {s.shot_id for s in review.shots if s.verdict == "reject" or min(s.semantic_match, s.takeaway_match, s.visual_specificity) < 4}
                 reopen = next((i for i, batch in enumerate(accepted_batches)
                                if any(f"p{i}_{intent.beat_id}" in rejected for intent in batch.shots)), 0)

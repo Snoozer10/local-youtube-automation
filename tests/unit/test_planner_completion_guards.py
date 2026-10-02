@@ -15,6 +15,11 @@ from youtube_automation.production.failure_replay import (
 CORPUS = Path(__file__).parents[1] / "fixtures" / "semantic_failures"
 
 
+def test_semantic_focus_sweep_requires_visible_meaning():
+    with pytest.raises(ValueError, match="focus_sweep requires concise visible copy"):
+        shots.SemanticGraphic(template="focus_sweep", primary_text=" ")
+
+
 def countdown_case():
     return load_semantic_failure_case(CORPUS / "professor_lineage16_countdown_coverage.json")
 
@@ -128,13 +133,15 @@ def test_critic_reuse_constraints_expose_only_overlapping_references():
     assert slots[0]["forbidden_unchanged_reuse_reference_ids"] == ["rejected_asset"]
 
 
-def test_lineage20_checkpoint_migrates_without_resetting_grid_progress(tmp_path):
+@pytest.mark.parametrize("planner_version", [20, 21])
+def test_previous_checkpoint_migrates_without_resetting_grid_progress(tmp_path, planner_version):
     case = countdown_case()
     path = tmp_path / "shot_plan.semantic.partial.json"
     windows = shots._planning_windows(case.timeline)
     shots._save_semantic_partial_plan(path, case.brief, case.timeline, windows, [case.corrected_candidate.to_semantic_batch()])
     checkpoint = json.loads(path.read_text())
-    checkpoint["planner_version"] = 20
+    checkpoint["planner_version"] = planner_version
+    checkpoint["compiler_version"] = 10
     path.write_text(json.dumps(checkpoint))
     index, _, compiled = shots._load_semantic_partial_plan(path, case.brief, case.timeline, windows)
     assert index == 1 and len(compiled) == 3
