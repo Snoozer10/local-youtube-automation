@@ -1,23 +1,20 @@
-# Planner handoff — 19/9
+# Planner handoff — 20/10
 
-Date: 2026-10-02
-Branch: `codex/adaptive-multi-channel-visual-engine`; PR 21 draft, do not merge.
+Date: 2026-10-02; branch `codex/adaptive-multi-channel-visual-engine`; PR21 draft, do not merge.
 Run: `youtube_runs/adaptive-pilot-professor-yashrah-local-narration`.
 
 ## Done
-- 17/8: countdown compiler gate, entity/typography guards, critic coverage repair and rejected-window reopening; 858 unit tests passed.
-- Live 17/8 accepted third window (13 shots), then exhausted framing repairs in a diagram-only final window. Original receipts/checkpoint preserved.
-- 18/9 moves diversity repair to the last editable beat. Eighth sanitized replay passes; migration archives the rejected prefix and reopens window 3 while preserving the first seven shots.
-- User forbids Astra delegation. Coordinator implements; allowed workers Luna Max, 6.1 Sol XHigh, external agy.
+- Countdown coverage, entity/typography guards, critic coverage/reopening, early framing reserve and exhausted scene-reference binding implemented and regression tested.
+- 19/9 completed four windows/19 shots/2296 frames, but critic rejected eight shots. No final shot_plan.json was published.
+- Matching checkpoint and review archived in editorial_rejections; active checkpoint removed for explicit window-0 regeneration.
+- 20/10 canonicalizes Schulte mode to challenge_ui and resets mandatory-grid mode/beat-kind budgets in semantic and final validation. All 863 unit tests, eight-case replay, Ruff and 16-file production mypy pass.
 
 ## Next
-- 19/9 gates pass: 861 unit tests, eight-case replay, Ruff, production mypy. Run one bounded Flash/file attempt. H9 remains open until complete plan and critic approval; visual approval is later.
-- Budget baseline 21%, ceiling 28%, closeout reserve 27%; last read 26%.
-- Preserve unrelated CONTINUITY.md/runtime_state.json; verify owned PID19700, port9222, Profile2/index3.
+- User renewed seven quota points from28% to35%; reserve closeout at34%. Commit verified20/10, then run one bounded Flash/file attempt from window0 with critic feedback. H9 remains open until approved plan, followed later by visual approval.
+- Last pushed commit ff112ae (19/9);20/10 verified diff is being committed. Preserve evidence/professor_lineages_8_19.json. No Astra; coordinator owns implementation.
+- Preserve unrelated CONTINUITY.md/runtime_state.json; owned browser PID19700, port9222, Profile2/index3.
 
 ## Failures / Fixes
-- Inline Python/nested PowerShell blocked; use ignored .runtime scripts. Receipt replay helper failed schema reconstruction and was stopped.
-- Synthetic fixture descriptions must preserve reuse equality against compiled asset fields, not just earlier semantic intents. The corrected fixture uses compiled references.
-- Ledger 8–17 preserves nine attempts/three newly accepted windows/54 repairs; older snapshots remain unchanged.
-
-- Live 18/9 exhausted repairs on prefix scene repetition. 19/9 excludes exhausted non-grid references and rejects binding before compile. Run its bounded attempt only after gates. Current checkpoint 18/9, next_window2, seven shots; previous rejected checkpoints and receipts remain preserved.
+- Stop failed temporary receipt reconstruction; use validated loaders. Synthetic prose must preserve reuse equality against compiled references.
+- Mandatory UI cannot change mode labels to satisfy variety. Compiler and final validator must apply the same exemption.
+- Raw receipts, rejected checkpoints and versioned ledgers through8–19 remain preserved.

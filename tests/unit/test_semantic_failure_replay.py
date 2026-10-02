@@ -21,7 +21,7 @@ FIXTURE = (
     / "professor_lineage10_schulte_intro.json"
 )
 CORPUS = FIXTURE.parent
-LIVE_EVIDENCE = CORPUS / "evidence" / "professor_lineages_8_18.json"
+LIVE_EVIDENCE = CORPUS / "evidence" / "professor_lineages_8_19.json"
 
 
 def test_lineage10_schulte_failure_replays_at_the_addressable_compiler_boundary():
@@ -451,18 +451,18 @@ def test_validator_audit_assigns_every_final_rule_to_an_earlier_owner():
 def test_failure_intelligence_report_is_green_before_one_bounded_live_request():
     report = build_failure_intelligence_report(CORPUS, LIVE_EVIDENCE)
 
-    assert report.live_runs == 10
-    assert report.live_attempts == 10
-    assert report.accepted_windows == 3
-    assert report.live_attempts_per_accepted_window == 10 / 3
-    assert report.repair_count == 59
+    assert report.live_runs == 11
+    assert report.live_attempts == 11
+    assert report.accepted_windows == 5
+    assert report.live_attempts_per_accepted_window == 11 / 5
+    assert report.repair_count == 64
     assert report.provider_refusals == 3
     assert report.quota_switches == 0
-    assert report.checkpoint_progress == "2/4 windows, 7 shots"
+    assert report.checkpoint_progress == "4/4 windows, 19 shots"
     assert report.repeated_failure_codes == {"SEMANTIC_RECORD_INVALID": 3}
     assert report.late_validator_escapes == []
     assert report.validator_audit_ready
     assert report.replay_corpus_ready
-    assert report.next_planner_version == 19
-    assert report.next_compiler_version == 9
+    assert report.next_planner_version == 20
+    assert report.next_compiler_version == 10
     assert report.ready_for_one_bounded_live_request

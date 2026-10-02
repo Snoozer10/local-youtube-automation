@@ -87,6 +87,32 @@ def compile_corrected(case):
     )
 
 
+def test_mandatory_grid_compiles_truthful_mode_without_fake_variety():
+    case = countdown_case()
+    batch = case.corrected_candidate.to_semantic_batch()
+    batch = batch.model_copy(update={"shots": [intent.model_copy(update={
+        "visual_mode": "kinetic_type", "beat_kind": "instruction"}) for intent in batch.shots]})
+    compiled = shots._compile_semantic_batch(batch, case.failed_units, case.brief, case.timeline, [], 0)
+    assert [shot.visual_mode for shot in compiled] == ["challenge_ui"] * 3
+    shots.validate_plan(full_plan(case, compiled), case.timeline, case.brief)
+
+
+def test_mandatory_grid_does_not_consume_next_window_mode_budget():
+    case = countdown_case()
+    prefix = compile_corrected(case)
+    timeline = {**case.timeline, "total_frames": 600, "spans": case.timeline["spans"] + [
+        {"index": 3, "start_frame": 450, "end_frame": 600, "text": "Next attention task"}]}
+    unit = shots.NarrationUnit(unit_id="u450_600", start_frame=450, end_frame=600, text="Next attention task")
+    intent = shots.SemanticShotIntent(beat_id="next_task", first_unit_id=unit.unit_id, last_unit_id=unit.unit_id,
+        visual_mode="challenge_ui", beat_kind="instruction", semantic_link="instruction",
+        viewer_takeaway="Focus on a single point", subject="A plain local canvas",
+        visible_state="A fixation point appears", setting="A clean studio backdrop",
+        framing="diagram", composition="A single fixation point", entity_ids=["canvas_99"],
+        continuity="new", reference_id=None, graphic=shots.SemanticGraphic(template="focus_sweep", primary_text="Focus"))
+    compiled = shots._compile_semantic_batch(shots.SemanticShotBatch(shots=[intent]), [unit], case.brief, timeline, prefix, 1)
+    assert compiled[0].start_frame == 450
+
+
 def full_plan(case, compiled):
     return shots.ShotPlan(
         version=3,
@@ -302,7 +328,7 @@ def test_unreplayed_recorded_escape_blocks_live_readiness(tmp_path):
     shutil.copytree(CORPUS, corpus)
     (corpus / "professor_lineage16_countdown_coverage.json").unlink()
     report = build_failure_intelligence_report(
-        corpus, corpus / "evidence/professor_lineages_8_18.json"
+        corpus, corpus / "evidence/professor_lineages_8_19.json"
     )
     assert report.replay_corpus_ready
     assert report.late_validator_escapes == ["professor_lineage16_countdown_escape"]

@@ -324,18 +324,19 @@ class ShotBatch(Contract):
     shots: list[Shot] = Field(min_length=1, max_length=300)
 
 
-SEMANTIC_PLANNER_VERSION = 19
-SHOT_COMPILER_VERSION = 9
+SEMANTIC_PLANNER_VERSION = 20
+SHOT_COMPILER_VERSION = 10
 SEMANTIC_CHECKPOINT_MIGRATIONS = {
-    (10, 2): (19, 9),
-    (11, 3): (19, 9),
-    (12, 4): (19, 9),
-    (13, 5): (19, 9),
-    (14, 6): (19, 9),
-    (15, 6): (19, 9),
-    (16, 7): (19, 9),
-    (17, 8): (19, 9),
-    (18, 9): (19, 9),
+    (10, 2): (20, 10),
+    (11, 3): (20, 10),
+    (12, 4): (20, 10),
+    (13, 5): (20, 10),
+    (14, 6): (20, 10),
+    (15, 6): (20, 10),
+    (16, 7): (20, 10),
+    (17, 8): (20, 10),
+    (18, 9): (20, 10),
+    (19, 9): (20, 10),
 }
 # One initial compile plus five targeted corrections. A valid correction can
 # expose a later deterministic constraint, so schema success is not terminal.
@@ -1555,6 +1556,10 @@ def _validate_version_three_semantics(
     for shot in plan.shots:
         visual_run = visual_run + 1 if shot.visual_mode == prior_mode else 1
         beat_run = beat_run + 1 if shot.beat_kind == prior_beat else 1
+        if any(overlay.kind == "data_grid" and overlay.preset == "schulte_6x6" for overlay in shot.overlays):
+            visual_run = beat_run = 0
+            if plan.version == 3 and shot.visual_mode != "challenge_ui":
+                raise ValueError("Schulte grid visual mode must match its challenge_ui rendering")
         if visual_run > strategy.max_consecutive_visual_mode:
             raise ValueError(
                 f"Visual mode {shot.visual_mode} repeats beyond the episode budget"
@@ -1830,6 +1835,9 @@ def _semantic_issues(
         prior_mode = prior.visual_mode
         beat_run = beat_run + 1 if prior.beat_kind == prior_beat else 1
         prior_beat = prior.beat_kind
+        if not prior_framing:
+            prior_mode = prior_beat = ""
+            mode_run = beat_run = 0
         composition_key = _shot_composition_repetition_key(prior)
         composition_counts[composition_key] = composition_counts.get(composition_key, 0) + 1
     for intent in batch.shots:
@@ -1870,7 +1878,14 @@ def _semantic_issues(
         )
         if forbidden_motif:
             local.append(f"Visible concept uses channel-forbidden motif: {forbidden_motif}")
-        if brief.visual_strategy:
+        is_schulte = bool(intent.graphic and intent.graphic.template == "schulte_challenge")
+        if is_schulte and allowed_modes and "challenge_ui" not in allowed_modes:
+            local.append("Schulte graphics require challenge_ui in the episode palette")
+        if is_schulte:
+            # Mandatory continuous UI varies its local copy, not its mode label.
+            prior_mode = prior_beat = ""
+            mode_run = beat_run = 0
+        if brief.visual_strategy and not is_schulte:
             mode_run = mode_run + 1 if intent.visual_mode == prior_mode else 1
             prior_mode = intent.visual_mode
             if mode_run > brief.visual_strategy.max_consecutive_visual_mode:
@@ -2187,7 +2202,7 @@ def _compile_semantic_batch(
             start_frame=start_frame,
             end_frame=end_frame,
             purpose=f"{intent.beat_kind}: {intent.viewer_takeaway}",
-            visual_mode=intent.visual_mode,
+            visual_mode=("challenge_ui" if intent.graphic and intent.graphic.template == "schulte_challenge" else intent.visual_mode),
             beat_kind=intent.beat_kind,
             narration_excerpt=narration_excerpt_for_frames(timeline, start_frame, end_frame),
             viewer_takeaway=intent.viewer_takeaway,
@@ -3265,7 +3280,7 @@ def _plan_semantic_windows(
             prompt += "\nCOMPILER-OWNED CONTINUOUS GRAPHIC RANGE: " + json.dumps({
                 "start_frame": required_start, "end_frame": required_end,
                 "required_graphic_template": "schulte_challenge",
-                "rule": "Every overlapping record keeps the local grid dominant. Express its exact narration with distinct rule/start/timer copy; visual_mode and beat_kind may vary within the episode palette without cutting away from the grid.",
+                "rule": "Every overlapping record keeps the local grid dominant. Express its exact narration with distinct rule/start/timer/history copy. Python compiles these records as challenge_ui and exempts consecutive mode/beat-kind limits; do not invent a different mode to satisfy variety.",
             })
         batch = request_json(prompt, ask, batch_model)
         hook_repair_partition: list[dict[str, str]] = []

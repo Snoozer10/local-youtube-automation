@@ -48,7 +48,9 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 
 - Fixed diagram tails must meet framing diversity in the last editable window. Migration from 17/8 recompiles across the event boundary, archives an insufficient prefix, and reopens only its affected suffix; older migrations retain the pre-event restriction.
 
-- Repair slots exclude prefix references whose non-grid scene budget is exhausted; binding rejects their reuse/edit before compilation. Fresh scenes require distinct entities. Checkpoint 18/9 recompiles under 19/9 because the compiled contract is unchanged.
+- Repair slots exclude prefix references whose non-grid scene budget is exhausted; binding rejects their reuse/edit before compilation. Fresh scenes require distinct entities. Rejected post-event 19/9 checkpoints require explicit archived regeneration.
+
+- Schulte templates compile to challenge_ui. Mandatory continuous grid shots and their preceding prefixes reset consecutive mode/beat-kind budgets in semantic and final validation; local copy must still progress. The episode palette must include challenge_ui. Python owns this rendered-mode canonicalization.
 
 ## Work Guidance
 - New adaptive execution is opt-in until reviewed pilots pass.

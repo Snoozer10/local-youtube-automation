@@ -228,3 +228,12 @@ I1-I8 acceptance: historical failures are executable regression knowledge rather
 - Last quota read 25%; baseline 21%, ceiling 28%, closeout reserve 27%. No complete plan or critic approval yet.
 
 - 19/9 offline gate: 861 unit tests, eight-case replay, whole-workspace Ruff and 16-file production mypy pass; exercise lint/drills passed earlier without related changes. Initial planning exposes remaining scene appearances. Last quota 26%.
+
+### Lineage 19 completed plan / 20 coherent UI correction
+
+- 19/9 completed four windows/19 shots/2296 frames and passed deterministic validation. Independent critic rejected eight shots: older-prefix semantic mismatches and false mode labels on a mandatory grid. No final shot_plan.json was published.
+- The matching rejected checkpoint and review were archived before reopening window 0.
+- 20/10 compiles Schulte templates as challenge_ui, resets mandatory-grid mode/beat-kind budgets in both compiler and final validator, and carries critic feedback into regeneration. Regression checks cover full-plan validation and cross-window mode budgets.
+- Ledger 8–19 preserved separately; all earlier snapshots remain unchanged. Quota reached28%, baseline21%, cap consumed. Stop before 20/10 live. Final full-suite rerun remains required after correcting the new test constructor; all 13 completion regressions, replay, lint and type checks pass. 20/10 working diff remains uncommitted; last pushed ff112ae. H9 remains open.
+
+- Renewed authorization: another seven weekly points from28% to35%, with closeout reserved at34%. Final20/10 verification:863 unit tests, eight-case replay, whole-workspace Ruff and16-file production mypy pass. Owned ChromePID19700/profile2/port9222 verified with no competing production worker. Proceed with one bounded window0 regeneration using the rejected critic feedback.
