@@ -54,6 +54,9 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 
 - Schulte templates compile to challenge_ui. Mandatory continuous grid shots and their preceding prefixes reset consecutive mode/beat-kind budgets in semantic and final validation; local copy must still progress. The episode palette must include challenge_ui. Python owns this rendered-mode canonicalization.
 
+- Planner21/10 supplies compact rejected-only correction targets with exact source ranges, prior visible states and reasons. Unchanged non-grid assets rejected for overlapping narration raise SEMANTIC_CRITIC_REJECTED_REUSE inside bounded repair; slots expose the forbidden reuse references. Edits that change meaning remain available. Compiler10 is unchanged, so20/10 checkpoints migrate across events before reopening the critic-rejected suffix. Critic review evaluates rendered overlays and valid static holds while retaining strict narration matching.
+- Correction targets label prior takeaways as rejected_viewer_takeaway; replacement takeaways must derive from exact canonical narration, not preserve the rejected claim.
+
 ## Work Guidance
 - New adaptive execution is opt-in until reviewed pilots pass.
 - Do not equate technical verification with editorial approval.
@@ -65,5 +68,3 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 
 ## Child DOX Index
 - None.
-
-- Planner21/10 supplies compact rejected-only correction targets with exact source ranges, prior visible states and reasons. Unchanged non-grid assets rejected for overlapping narration raise SEMANTIC_CRITIC_REJECTED_REUSE inside bounded repair; slots expose the forbidden reuse references. Edits that change meaning remain available. Compiler10 is unchanged, so20/10 checkpoints migrate across events before reopening the critic-rejected suffix. Critic review evaluates rendered overlays and valid static holds while retaining strict narration matching.

@@ -3079,7 +3079,7 @@ def _editorial_correction_targets(root: Path, review: EditorialReview) -> list[d
             continue
         targets.append({
             "shot_id": shot.shot_id, "start_frame": shot.start_frame, "end_frame": shot.end_frame,
-            "narration_excerpt": shot.narration_excerpt, "viewer_takeaway": shot.viewer_takeaway,
+            "narration_excerpt": shot.narration_excerpt, "rejected_viewer_takeaway": shot.viewer_takeaway,
             "rejected_subject": shot.subject, "rejected_visible_state": shot.visible_state,
             "rejected_composition": shot.composition, "reason": decision.rationale,
             "forbidden_unchanged_reuse_asset_id": shot.asset_id if not any(
@@ -3583,6 +3583,7 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
                 "\nBINDING EDITORIAL CORRECTION TARGETS:\n"
                 + json.dumps(_editorial_correction_targets(root, prior_review), ensure_ascii=False)
                 + "\nFor overlapping narration ranges, change the communicated action/state, not just wording, camera or backdrop. "
+                "Derive the corrected viewer_takeaway from the exact narration; rejected_viewer_takeaway is prior rejected output, not a binding goal. "
                 "Do not reuse an unchanged rejected asset. New scenes or real edits must serve the exact source narration. "
                 "Keep mandatory grids visible while their local instructional state progresses; preserve accepted prior windows."
             )

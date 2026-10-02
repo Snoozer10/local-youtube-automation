@@ -339,6 +339,8 @@ def test_changed_plan_recipe_restores_rejection_but_requires_fresh_review(tmp_pa
 
     result = shots.ensure_shot_plan(tmp_path, critic)
     assert "BINDING EDITORIAL CORRECTION TARGETS" in feedback[0]
+    assert '"rejected_viewer_takeaway"' in feedback[0]
+    assert '"viewer_takeaway":' not in feedback[0]
     assert "Repair the exact spoken beat" in feedback[0]
     assert len(critic_calls) == 1
     assert shots.require_editorial_review(tmp_path, result, brief).approved
