@@ -41,6 +41,8 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 
 - Mechanical-cognition checks require visible mechanical staging. Editorial purpose labels and cognitive takeaways may establish context but cannot supply the visible gears, tracks, tiles or mechanisms; plain local graphics remain valid.
 
+- A recorded unfixed final-validator escape blocks another live planning request even when the older replay corpus is green. Preserve the pending evidence and complete its compiler regression first.
+
 ## Work Guidance
 - New adaptive execution is opt-in until reviewed pilots pass.
 - Do not equate technical verification with editorial approval.

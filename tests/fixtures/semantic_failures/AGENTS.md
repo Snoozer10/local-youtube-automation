@@ -11,12 +11,14 @@ Versioned sanitized replay corpus for adaptive semantic-planner failures.
 - Corpus replay is offline-only and must not import or invoke Gemini, Flow or browser transport.
 - Add a new case only for a distinct independently understandable boundary; repeated occurrences belong in sanitized evidence metrics.
 
+- A versioned pending escape record under `evidence/` blocks live advancement until its minimal candidate replay and fix are verified. The six-case corpus alone does not clear `professor_lineage16_countdown_escape.json`.
+
 ## Work Guidance
 - Preserve existing cases as regression evidence. If a deliberate contract change alters a sanitized model dump, recalculate hashes and explain the lineage change in `tasks/adaptive-visual-tasks.md`.
 
 ## Verification
 - Run `python -m pytest tests/unit/test_semantic_failure_replay.py -q`.
-- Run the public corpus report against `evidence/professor_lineages_8_15.json` and require both replay and validator-audit readiness before any live planning request.
+- Run the public corpus report against `evidence/professor_lineages_8_16.json` and require both replay and validator-audit readiness before any live planning request.
 
 ## Child DOX Index
 - None.
