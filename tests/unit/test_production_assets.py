@@ -6,7 +6,61 @@ from PIL import Image
 
 from youtube_automation.production import assets
 from youtube_automation.production.contracts import Analysis, Brief, Channel, fingerprint
-from youtube_automation.production.shots import Overlay, Shot
+from youtube_automation.production.shots import Overlay, SemanticGraphic, Shot, _graphic_overlays
+
+
+@pytest.mark.parametrize("operation", ["generate", "replace", "reuse"])
+def test_schulte_edit_history_uses_local_bytes_without_provider_reference(tmp_path, monkeypatch, operation):
+    shot, brief = fixture_shot_and_brief()
+    shot = shot.model_copy(update={"operation": operation, "local_composition": "schulte_challenge",
+        "reference_asset_id": "missing-provider-reference", "entity_ids": ["schulte_grid"],
+        "overlays": _graphic_overlays(SemanticGraphic(template="schulte_challenge", primary_text="Find in order",
+                                                      secondary_text="Ready", timer_text="00:40"), 180)})
+    monkeypatch.setattr(assets, "_detect_via_pytesseract", lambda *_: [])
+    original_read = assets.read_receipt
+
+    def read(root, asset_id):
+        assert asset_id != "missing-provider-reference"
+        return original_read(root, asset_id)
+
+    monkeypatch.setattr(assets, "read_receipt", read)
+    receipt = assets.ensure_local_canvas(tmp_path, shot, brief)
+    assert receipt["source_url"] == "local://deterministic-diagram-canvas"
+    assert receipt["reference_sha256"] is None
+    assert assets.accepted_asset(tmp_path, shot, brief) == receipt
+    assert receipt["recipe"] == assets.recipe(shot, brief, None)
+    assert "no texture, pattern, grid, text, numerals" in receipt["prompt"]
+
+
+def test_local_grid_variant_preserves_provider_receipt_with_same_semantic_id(tmp_path, monkeypatch):
+    shot, brief = fixture_shot_and_brief()
+    monkeypatch.setattr(assets, "_detect_via_pytesseract", lambda *_: [])
+    path = tmp_path / "provider.png"
+    Image.new("RGB", (640, 360), "red").save(path)
+    provider = assets.register_asset(tmp_path, shot, brief, path, source_url="https://flow/image/original")
+    grid = shot.model_copy(update={"operation":"reuse", "local_composition":"schulte_challenge"})
+    local = assets.ensure_local_canvas(tmp_path, grid, brief)
+    assert local["sha256"] != provider["sha256"]
+    assert assets.read_shot_receipt(tmp_path, shot) == provider
+    assert assets.read_shot_receipt(tmp_path, grid) == local
+    assert assets.accepted_asset(tmp_path, shot, brief) == provider
+    assert assets.accepted_asset(tmp_path, grid, brief) == local
+
+
+def test_compiler_owned_blank_graphics_share_one_text_free_substrate(tmp_path, monkeypatch):
+    shot, brief = fixture_shot_and_brief()
+    monkeypatch.setattr(assets, "_detect_via_pytesseract", lambda *_: [])
+    quiet = "Quiet background reserved for deterministic local graphics"
+    first = shot.model_copy(update={"visible_state":quiet,"local_composition":"kinetic_type"})
+    second = shot.model_copy(update={"asset_id":"second", "visible_state":quiet,
+        "operation":"replace", "reference_asset_id":"missing", "local_composition":"focus_sweep"})
+    a = assets.ensure_local_canvas(tmp_path, first, brief)
+    b = assets.ensure_local_canvas(tmp_path, second, brief)
+    assert a == b
+    assert a["asset_id"] == "diagram_canvas_v1"
+    assert len(list((tmp_path / "asset_receipts").glob("*.json"))) == 1
+    assert a["source_url"] == "local://deterministic-diagram-canvas"
+    assert a["reference_sha256"] is None
 
 
 def fixture_shot_and_brief():

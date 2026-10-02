@@ -3885,8 +3885,14 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
     return plan
 
 
+def uses_local_canvas(shot: Shot) -> bool:
+    """Exact Schulte graphics own their substrate regardless of semantic edit history."""
+    return (shot.operation == "local_canvas" or shot.local_composition == "schulte_challenge"
+            or shot.visible_state == "Quiet background reserved for deterministic local graphics")
+
+
 def generation_prompt(shot: Shot, brief: Brief) -> str:
-    if shot.operation == "local_canvas":
+    if uses_local_canvas(shot):
         return (
             "Deterministic locally rendered high-contrast diagram canvas: warm ivory to pale blue "
             "gradient, no texture, pattern, grid, text, numerals, people, props, or generated marks."

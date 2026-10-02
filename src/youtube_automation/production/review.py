@@ -12,7 +12,7 @@ from pydantic import Field, model_validator
 
 from youtube_automation.core.utils import atomic_write_json
 
-from .assets import file_digest, read_receipt
+from .assets import asset_storage_id, file_digest, read_shot_receipt
 from .contracts import Brief, Contract, Digest, Text, fingerprint, load_brief
 from .flow import verify_generated_assets
 from .shots import ShotPlan, require_editorial_review, validate_plan
@@ -99,7 +99,7 @@ def write_review(run_dir: str | Path) -> Path:
             status = "missing or invalid"
             prompt = ""
             try:
-                receipt = read_receipt(root, shot.asset_id)
+                receipt = read_shot_receipt(root, shot)
                 with Image.open(root / receipt["path"]) as image:
                     thumbnail = image.convert("RGB")
                     thumbnail.thumbnail((320, 180))
@@ -167,7 +167,7 @@ def approve_review(run_dir: str | Path, reviewer: str) -> None:
     root = Path(run_dir)
     brief, plan = review_context(root)
     verify_generated_assets(root, plan, brief)
-    hashes = {s.asset_id: read_receipt(root, s.asset_id)["sha256"] for s in plan.shots}
+    hashes = {asset_storage_id(s): read_shot_receipt(root, s)["sha256"] for s in plan.shots}
     preview = json.loads((root / "adaptive_preview.json").read_text(encoding="utf-8"))
     artifact = (root / preview["path"]).resolve()
     if not artifact.is_relative_to(root.resolve()) or file_digest(artifact) != preview["sha256"]:

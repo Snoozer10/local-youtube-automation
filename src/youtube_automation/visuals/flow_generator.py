@@ -1572,6 +1572,13 @@ def main(run_folder: str | None = None) -> None:
 
 def _main(run_folder: str | None = None) -> None:
     """Main CLI execution loop for Google Flow visual generation."""
+    from pathlib import Path
+
+    from youtube_automation.production.visual_gate import (
+        VisualBudgetExceeded,
+        enforce_visual_budget,
+        reserve_flow_submission,
+    )
     if run_folder is not None:
         batch_queue = [run_folder]
     elif len(sys.argv) > 1:
@@ -1583,6 +1590,15 @@ def _main(run_folder: str | None = None) -> None:
     if not batch_queue:
         print("No active folders found.")
         return
+
+    for folder in batch_queue:
+        root = Path(folder)
+        if (root / "episode_brief.json").is_file() and (root / "shot_plan.json").is_file():
+            from youtube_automation.production.shots import ShotPlan
+
+            enforce_visual_budget(root, ShotPlan.model_validate_json((root / "shot_plan.json").read_text(encoding="utf-8")))
+            if get_config_value("FLOW_IMAGE_COUNT", "1x") != "1x":
+                raise VisualBudgetExceeded("Adaptive image budgets require FLOW_IMAGE_COUNT=1x")
 
     consecutive_failures = 0
     max_retries_no_switch = 3
@@ -2115,6 +2131,8 @@ def _main(run_folder: str | None = None) -> None:
                                     except Exception:
                                         pass
 
+                                    if adaptive_shot:
+                                        reserve_flow_submission(Path(subfolder), adaptive_plan)
                                     submit_btn = flow_page.locator("button[aria-label*='Start generation' i], button:has-text('arrow_forward')").first
                                     if submit_btn.is_visible() and submit_btn.is_enabled():
                                         submit_btn.click(force=True)
@@ -2142,6 +2160,8 @@ def _main(run_folder: str | None = None) -> None:
                                             print(
                                                 "  🔄 Submission not detected. Re-triggering Enter..."
                                             )
+                                            if adaptive_shot:
+                                                reserve_flow_submission(Path(subfolder), adaptive_plan)
                                             flow_page.keyboard.press("Enter")
                                             card_spawned = card_spawn_handshake(
                                                 flow_page, pre_card_count, timeout_seconds=15.0, pre_image_srcs=pre_image_srcs
@@ -2204,6 +2224,8 @@ def _main(run_folder: str | None = None) -> None:
                                                         print(
                                                             f"  🔄 Clicking Google Flow's card retry button (Attempt {retry_attempt}/3)..."
                                                         )
+                                                        if adaptive_shot:
+                                                            reserve_flow_submission(Path(subfolder), adaptive_plan)
                                                         retry_btn.click(force=True)
                                                         flow_page.wait_for_timeout(5000)
                                                         if not failed_media_locator.is_visible():
@@ -2212,6 +2234,8 @@ def _main(run_folder: str | None = None) -> None:
                                                             )
                                                             card_retry_success = True
                                                             break
+                                                except VisualBudgetExceeded:
+                                                    raise
                                                 except Exception:
                                                     pass
                                                 flow_page.wait_for_timeout(2000)
@@ -2429,6 +2453,8 @@ def _main(run_folder: str | None = None) -> None:
                                         manifest.save()
                                         break
 
+                                except VisualBudgetExceeded:
+                                    raise
                                 except PlaywrightTimeoutError:
                                     last_attempt_error = "Playwright Timeout Error"
                                     print("  ⚠️ Playwright Timeout Error.")
@@ -2499,6 +2525,8 @@ def _main(run_folder: str | None = None) -> None:
                                     except Exception:
                                         pass
                                     print(f"❌ Frame {idx} skipped due to transient errors.")
+                        except VisualBudgetExceeded:
+                            raise
                         except Exception as e:
                             print(f"[RECOVERY] Framework error: {e}")
                             consecutive_failures += 1
@@ -2533,6 +2561,8 @@ def _main(run_folder: str | None = None) -> None:
                     print("\n✅ All topics processed successfully. Exiting.")
                     break
 
+        except VisualBudgetExceeded:
+            raise
         except KeyboardInterrupt:
             print("\n[MAIN] Interrupted by user. Shutting down gracefully...")
             sys.exit(130)

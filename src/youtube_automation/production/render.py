@@ -14,7 +14,7 @@ from typing import Any
 from youtube_automation.core.utils import atomic_write_json
 from youtube_automation.video.encoder import _build_encoder_config, detect_hardware_encoder
 
-from .assets import file_digest, read_receipt
+from .assets import asset_storage_id, file_digest, read_receipt, read_shot_receipt
 from .contracts import fingerprint, load_brief
 from .flow import verify_generated_assets
 from .ledger import leased_resource, publication_guard, resource_database
@@ -174,6 +174,9 @@ def camera_filter(
     )
 
 
+RENDERER_VERSION = 4
+
+
 def _ass_time(frame: int, fps: int) -> str:
     cs = round(frame * 100 / fps)
     return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
@@ -228,13 +231,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             )
             if overlay.kind == "timer":
                 contents.append(
-                    f"{{\\an5\\b1\\fs{max(28, h // 2)}\\bord3\\pos({x + w // 2},{y + h // 2})}}{text}"
+                    f"{{\\an5\\b1\\fs{max(54, h // 2)}\\bord3\\pos({x + w // 2},{y + h // 2})}}{text}"
                 )
             elif shot.local_composition in {"kinetic_type", "focus_sweep"}:
                 longest_line = max(len(line) for line in overlay.text.splitlines())
-                font_size = max(22, min(64, h // 2, round(w / max(1, longest_line * 0.6))))
+                font_size = max(54, min(80, round(w / max(1, longest_line * 0.5))))
                 contents.append(
-                    f"{{\\an5\\b1\\fs{font_size}\\bord3\\fad(120,0)"
+                    f"{{\\an5\\b1\\fs{font_size}\\bord2\\1c&H332017&\\3c&HFFFFFF&\\fad(120,0)"
                     f"\\pos({x + w // 2},{y + h // 2})}}{text}"
                 )
             else:
@@ -318,8 +321,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 [
                     f"{{\\pos({x},{y})\\p1\\bord2\\1c&H20283A&\\3c&H697386&}}"
                     f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0 m {w // 2} 0 l {w // 2} {h}{{\\p0}}",
-                    f"{{\\an5\\b1\\pos({x + w // 4},{y + h // 2})}}{_safe_ass_text(overlay.text)}",
-                    f"{{\\an5\\b1\\1c&H5AE0FF&\\pos({x + 3 * w // 4},{y + h // 2})}}"
+                     f"{{\\an5\\b1\\fs{max(54,height // 15)}\\pos({x + w // 4},{y + h // 2})}}{_safe_ass_text(overlay.text)}",
+                     f"{{\\an5\\b1\\fs{max(54,height // 15)}\\1c&H5AE0FF&\\pos({x + 3 * w // 4},{y + h // 2})}}"
                     f"{_safe_ass_text(overlay.secondary_text)}",
                 ]
             )
@@ -352,7 +355,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 [
                     f"{{\\pos({x},{y})\\p1\\bord3\\1a&HFF&\\3c&H5AE0FF&}}"
                     f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0{{\\p0}}",
-                    f"{{\\an8\\b1\\fs{max(24, height // 22)}\\1c&H5AE0FF&"
+                    f"{{\\an8\\b1\\fs{max(54, height // 16)}\\1c&H5AE0FF&"
                     f"\\pos({x + w // 2},{max(36, y - height // 30)})}}{_safe_ass_text(overlay.text)}",
                 ]
             )
@@ -361,7 +364,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 [
                     f"{{\\pos({x},{y})\\p1\\bord0\\1c&H20283A&\\1a&H20&\\fad(180,0)}}"
                     f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0{{\\p0}}",
-                    f"{{\\an5\\b1\\fs{max(22, h // 3)}\\pos({x + w // 2},{y + h // 2})"
+                    f"{{\\an5\\b1\\fs{max(48, height // 22)}\\pos({x + w // 2},{y + h // 2})"
                     f"\\fad(180,0)}}{_safe_ass_text(overlay.text)}",
                 ]
             )
@@ -396,9 +399,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             )
         elif overlay.kind == "start_transition":
             badge_y = round(height * 0.075)
+            if overlay.text == "Start":
+                continue  # Generic readiness chrome must not announce a premature start.
             contents.extend(
                 [
-                    f"{{\\an5\\b1\\fs{max(26, height // 30)}\\pos({width // 2},{badge_y})"
+                    f"{{\\an5\\b1\\fs{max(54, height // 18)}\\pos({width // 2},{badge_y})"
                     f"\\fad(80,160)}}{_safe_ass_text(overlay.text)}",
                 ]
             )
@@ -439,7 +444,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 + " ".join(grid_path)
                 + "{\\p0}"
             )
-            font_size = max(18, round(min(cell_w, cell_h) * 0.36))
+            font_size = max(18, round(min(cell_w, cell_h) * 0.48))
             for cell_index, cell in enumerate(overlay.cells):
                 row, column = divmod(cell_index, overlay.columns)
                 cell_x = x + round((column + 0.5) * cell_w)
@@ -470,10 +475,11 @@ def overlay_review_evidence(shot: Shot, fps: int) -> dict[str, Any]:
         "local_position_animation": "\\move(" in rendered,
         "local_property_animation": "\\t(" in rendered,
         "local_fade_animation": "\\fad(" in rendered,
-        "visible_copy": [overlay.text for overlay in shot.overlays if overlay.text],
+        "visible_copy": [overlay.text for overlay in shot.overlays if overlay.text
+                         and not (overlay.kind == "start_transition" and overlay.text == "Start")],
         "timer_behavior": "fixed readout" if any(o.kind == "timer" for o in shot.overlays) else None,
         "start_transition_behavior": "fading header badge; grid unobscured"
-            if any(o.kind == "start_transition" for o in shot.overlays) else None,
+            if any(o.kind == "start_transition" and o.text != "Start" for o in shot.overlays) else None,
     }
 
 
@@ -491,8 +497,11 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
     if brief.version >= 3:
         require_editorial_review(root, plan, brief)
     verify_generated_assets(root, plan, brief)
-    receipts = {s.asset_id: read_receipt(root, s.asset_id) for s in plan.shots}
-    asset_hashes = {key: r["sha256"] for key, r in receipts.items()}
+    from .visual_gate import require_visual_audit
+
+    require_visual_audit(root, plan, brief)
+    receipts = {asset_storage_id(s): read_shot_receipt(root, s) for s in plan.shots}
+    asset_hashes = {asset_storage_id(s): read_shot_receipt(root, s)["sha256"] for s in plan.shots}
     if not preview:
         approval = json.loads((root / "editorial_approval.json").read_text(encoding="utf-8"))
         if approval.get("plan") != fingerprint(plan) or approval.get("assets") != asset_hashes:
@@ -528,7 +537,7 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
         ["ffmpeg", "-version"], capture_output=True, text=True, timeout=15, check=True
     ).stdout.splitlines()[0]
     inputs = {
-        "renderer_version": 3,
+        "renderer_version": RENDERER_VERSION,
         "tool": tool_version,
         "plan": fingerprint(plan),
         "assets": asset_hashes,
@@ -553,7 +562,7 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
     invocation = uuid.uuid4().hex
     clips = []
     for index, shot in enumerate(plan.shots):
-        receipt = receipts[shot.asset_id]
+        receipt = receipts[asset_storage_id(shot)]
         iw, ih = receipt["dimensions"]
         if max(width / iw, height / ih) * shot.zoom > 2:
             raise ValueError(

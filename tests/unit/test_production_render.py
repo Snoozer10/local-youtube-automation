@@ -17,7 +17,9 @@ def test_semantic_title_templates_retain_copy_in_rendered_ass():
         rendered = overlay_ass(shot, 1920, 1080, 30)
         assert graphic.primary_text in rendered
         assert graphic.secondary_text in rendered
-        assert "\\an5\\b1\\fs64" in rendered
+        import re
+
+        assert min(int(size) for size in re.findall(r"\\an5\\b1\\fs(\d+)", rendered)) >= 64
         assert "\\pos(960,508)" in rendered
         assert "\\pos(960,777)" in rendered
         if template == "focus_sweep":

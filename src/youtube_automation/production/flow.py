@@ -22,7 +22,9 @@ from .shots import (
     ensure_shot_plan,
     generation_prompt,
     require_editorial_review,
+    uses_local_canvas,
 )
+from .visual_gate import enforce_visual_budget
 
 
 def _provider_image_id(url: str) -> str:
@@ -132,12 +134,13 @@ def _attach_uploaded_reference(
 def prepare_flow(root: Path, ask: Callable[[str], str]) -> tuple[ShotPlan, Brief]:
     brief = load_brief(root)
     plan = ensure_shot_plan(root, ask)
+    enforce_visual_budget(root, plan)
     if brief.version >= 3:
         require_editorial_review(root, plan, brief)
     for shot in plan.shots:
-        if shot.operation == "local_canvas":
+        if uses_local_canvas(shot):
             ensure_local_canvas(root, shot, brief)
-    generated = [s for s in plan.shots if s.operation not in {"reuse", "local_canvas"}]
+    generated = [s for s in plan.shots if s.operation != "reuse" and not uses_local_canvas(s)]
     payloads = []
     for i, shot in enumerate(generated, 1):
         second = shot.start_frame // plan.fps
@@ -229,7 +232,7 @@ def verify_generated_assets(root: Path, plan: ShotPlan, brief: Brief) -> None:
     missing = [
         s.asset_id
         for s in plan.shots
-        if s.operation != "reuse" and accepted_asset(root, s, brief) is None
+        if (s.operation != "reuse" or uses_local_canvas(s)) and accepted_asset(root, s, brief) is None
     ]
     if missing:
         raise RuntimeError("Incomplete adaptive generation: " + ", ".join(missing))

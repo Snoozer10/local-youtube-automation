@@ -81,6 +81,9 @@ Default section order:
 
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
+- Give direct, evidence-based criticism. Challenge assumptions and expose missing evidence; do not flatter, agree reflexively or claim zero defects from passing tests.
+- Adaptive topics have an absolute400-image ceiling; short videos receive lower duration budgets. The current Professor pilot is limited to twenty images. Inspect every actual rendered shot for narration relevance, coherent progression, continuity and readability; no stage after visuals may advance until its current visual audit passes.
+
 - Use `GEMINI.md` as current project guidance where older instructions here differ.
 - Give direct, evidence-based advice; challenge unsupported assumptions, identify blind spots and avoid agreement or praise that obscures unresolved failures.
 - Adaptive production selects a saved channel, analyzes raw scripts before translation, and uses stills plus selective local animation. Track progress in `tasks/adaptive-visual-tasks.md`.

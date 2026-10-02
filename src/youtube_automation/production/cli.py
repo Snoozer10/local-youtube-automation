@@ -17,7 +17,7 @@ from youtube_automation.core.utils import (
     next_profile_index,
 )
 
-from .assets import file_digest
+from .assets import asset_storage_id, file_digest, read_shot_receipt
 from .briefs import (
     GeminiUsageLimitError,
     browser_ask,
@@ -28,7 +28,7 @@ from .briefs import (
 from .contracts import Brief, fingerprint, load_brief, load_channel
 from .invalidation import invalidate_stage, reconcile_invalidation
 from .ledger import Ledger, durable_stage, leased_resource, resource_database
-from .render import probe_video, render_plan
+from .render import RENDERER_VERSION, probe_video, render_plan
 from .review import approve_review, write_review
 from .shots import (
     SEMANTIC_PLANNER_VERSION,
@@ -107,6 +107,8 @@ def _stage_recipe(root: Path, args: argparse.Namespace) -> str:
         "preview": root / "adaptive_preview.json",
         "approval": root / "editorial_approval.json",
         "config": Path(__file__).resolve().parents[3] / "video_config.txt",
+        "visual_budget": root / "visual_budget.json",
+        "visual_audit": root / "visual_audit.json",
     }
     stage_paths = {
         "analyze": ["raw"],
@@ -128,6 +130,10 @@ def _stage_recipe(root: Path, args: argparse.Namespace) -> str:
         ],
     }
     inputs["files"] = {name: _file_input(paths[name]) for name in stage_paths[stage]}
+    if stage in {"generate", "report", "preview", "approve", "render"}:
+        inputs["files"]["visual_budget"] = _file_input(paths["visual_budget"])
+    if stage in {"report", "preview", "approve", "render"}:
+        inputs["files"]["visual_audit"] = _file_input(paths["visual_audit"])
     if stage == "analyze":
         profile = Path(args.channel_profile).resolve() if args.channel_profile else None
         inputs["channel_profile"] = _file_input(profile)
@@ -162,6 +168,7 @@ def _stage_recipe(root: Path, args: argparse.Namespace) -> str:
     if stage in {"preview", "render"}:
         from youtube_automation.video.compiler import load_video_config
 
+        inputs["renderer_version"] = RENDERER_VERSION
         inputs["render_config"] = load_video_config("video_config.txt")
         try:
             timeline = json.loads((root / "timeline.json").read_text(encoding="utf-8"))
@@ -196,12 +203,11 @@ def _validated_plan(root: Path) -> tuple[Brief, ShotPlan, dict[str, Any]]:
 def _render_output_complete(root: Path, *, preview: bool) -> bool:
     from youtube_automation.video.compiler import load_video_config
 
-    from .assets import read_receipt
     from .flow import verify_generated_assets
 
     brief, plan, timeline = _validated_plan(root)
     verify_generated_assets(root, plan, brief)
-    assets = {shot.asset_id: read_receipt(root, shot.asset_id)["sha256"] for shot in plan.shots}
+    assets = {asset_storage_id(shot): read_shot_receipt(root, shot)["sha256"] for shot in plan.shots}
     audio = (root / timeline["audio_file"]).resolve()
     if not audio.is_relative_to(root) or not audio.is_file():
         return False
@@ -222,6 +228,7 @@ def _render_output_complete(root: Path, *, preview: bool) -> bool:
         or inputs.get("assets") != assets
         or inputs.get("audio") != file_digest(audio)
         or inputs.get("config") != expected_config
+        or inputs.get("renderer_version") != RENDERER_VERSION
     ):
         return False
     probe_video(artifact, plan.total_frames, plan.fps, require_audio=True)
@@ -281,10 +288,9 @@ def _stage_complete(root: Path, args: argparse.Namespace) -> bool:
             if not _render_output_complete(root, preview=True):
                 return False
             brief, plan, _ = _validated_plan(root)
-            from .assets import read_receipt
 
             assets = {
-                shot.asset_id: read_receipt(root, shot.asset_id)["sha256"] for shot in plan.shots
+                asset_storage_id(shot): read_shot_receipt(root, shot)["sha256"] for shot in plan.shots
             }
             preview = json.loads((root / "adaptive_preview.json").read_text(encoding="utf-8"))
             approval = json.loads((root / "editorial_approval.json").read_text(encoding="utf-8"))
@@ -535,6 +541,11 @@ def main(argv: list[str] | None = None) -> None:
         for row in Ledger(database).status():
             print(row)
     else:
+        if args.stage in {"report", "preview", "approve", "render"} and (root / "visual_budget.json").is_file():
+            from .visual_gate import require_visual_audit
+
+            brief, plan, _ = _validated_plan(root)
+            require_visual_audit(root, plan, brief)
         failover_stages = {"analyze", "write", "plan"}
         attempted_profiles = {active_profile_index()}
         failover_limit = max(0, int(get_config_value("FAILOVER_RETRY_LIMIT", "4")))

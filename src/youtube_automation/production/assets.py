@@ -17,7 +17,7 @@ from youtube_automation.visuals.text_gate import _detect_via_pytesseract
 
 from .contracts import Brief, fingerprint
 from .ledger import publication_guard
-from .shots import Shot, generation_prompt
+from .shots import Shot, generation_prompt, uses_local_canvas
 
 _PUBLICATION_JOURNAL_VERSION = 1
 LOCAL_CANVAS_SIZE = (1920, 1080)
@@ -63,7 +63,7 @@ def validate_background(path: str | Path) -> tuple[int, int]:
 
 
 def recipe(shot: Shot, brief: Brief, reference_hash: str | None) -> str:
-    if shot.operation == "local_canvas":
+    if uses_local_canvas(shot):
         return fingerprint(
             {
                 "version": 1,
@@ -156,21 +156,21 @@ def accepted_asset(root: Path, shot: Shot, brief: Brief) -> dict[str, Any] | Non
     try:
         ref = (
             read_receipt(root, shot.reference_asset_id)["sha256"]
-            if shot.reference_asset_id
+            if shot.reference_asset_id and not uses_local_canvas(shot)
             else None
         )
     except (OSError, KeyError, ValueError):
         return None
     expected_recipe = recipe(shot, brief, ref)
     try:
-        receipt = read_receipt(root, shot.asset_id)
+        receipt = read_shot_receipt(root, shot)
         if receipt["recipe"] == expected_recipe:
             return receipt
     except (OSError, KeyError, ValueError):
         pass
     return _recover_pending_asset(
         root,
-        shot.asset_id,
+        asset_storage_id(shot),
         expected_recipe=expected_recipe,
         expected_reference=ref,
     )
@@ -178,14 +178,14 @@ def accepted_asset(root: Path, shot: Shot, brief: Brief) -> dict[str, Any] | Non
 
 def ensure_local_canvas(root: Path, shot: Shot, brief: Brief) -> dict[str, Any]:
     """Publish a deterministic text-free substrate for locally rendered diagrams."""
-    if shot.operation != "local_canvas":
-        raise ValueError("Only local_canvas shots may request a local diagram substrate")
+    if not uses_local_canvas(shot):
+        raise ValueError("Only deterministic canvas shots may request a local diagram substrate")
     existing = accepted_asset(root, shot, brief)
     if existing is not None:
         return existing
     candidates = root / ".local_assets"
     candidates.mkdir(exist_ok=True)
-    path = candidates / f"{shot.asset_id}-{recipe(shot, brief, None)[:16]}.png"
+    path = candidates / f"{asset_storage_id(shot)}-{recipe(shot, brief, None)[:16]}.png"
     if not path.is_file():
         gradient = Image.linear_gradient("L").resize(LOCAL_CANVAS_SIZE)
         canvas = ImageOps.colorize(gradient, LOCAL_CANVAS_DARK, LOCAL_CANVAS_LIGHT)
@@ -218,7 +218,8 @@ def register_asset(
         raise ValueError("Generated assets must be inside the selected run")
     dimensions = validate_background(path)
     reference = (
-        read_receipt(root, shot.reference_asset_id)["sha256"] if shot.reference_asset_id else None
+        read_receipt(root, shot.reference_asset_id)["sha256"]
+        if shot.reference_asset_id and not uses_local_canvas(shot) else None
     )
     # Preserve accepted bytes even when the provider adapter overwrites its candidate path.
     digest = file_digest(path)
@@ -230,7 +231,7 @@ def register_asset(
         raise ValueError("Candidate geometry changed during asset registration")
     receipt = {
         "version": 1,
-        "asset_id": shot.asset_id,
+        "asset_id": asset_storage_id(shot),
         "path": str(accepted.resolve().relative_to(root.resolve())),
         "sha256": digest,
         "pixel_sha256": candidate_pixels,
@@ -243,7 +244,7 @@ def register_asset(
         "technical_status": "verified",
         "editorial_status": "pending",
     }
-    journal = _journal_path(root, shot.asset_id)
+    journal = _journal_path(root, asset_storage_id(shot))
     journal.parent.mkdir(parents=True, exist_ok=True)
     with publication_guard():
         atomic_write_json(
@@ -273,10 +274,19 @@ def register_asset(
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
-    _validate_receipt_payload(root, shot.asset_id, receipt)
+    _validate_receipt_payload(root, asset_storage_id(shot), receipt)
     destination = root / "asset_receipts"
     destination.mkdir(exist_ok=True)
     with publication_guard():
-        atomic_write_json(str(destination / f"{shot.asset_id}.json"), receipt)
+        atomic_write_json(str(destination / f"{asset_storage_id(shot)}.json"), receipt)
     _remove_journal(journal)
     return receipt
+
+
+def asset_storage_id(shot: Shot) -> str:
+    """Local grid pixels cannot overwrite a provider asset reused by semantic ID."""
+    return "diagram_canvas_v1" if uses_local_canvas(shot) and shot.operation != "local_canvas" else shot.asset_id
+
+
+def read_shot_receipt(root: Path, shot: Shot) -> dict[str, Any]:
+    return read_receipt(root, asset_storage_id(shot))

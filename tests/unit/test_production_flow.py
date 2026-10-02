@@ -5,6 +5,23 @@ import pytest
 from youtube_automation.production import flow
 
 
+def test_schulte_edit_history_never_reaches_flow_payloads(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    calls = []
+    diagrams = [SimpleNamespace(operation=operation, local_composition="schulte_challenge", asset_id=f"grid_{index}")
+                for index, operation in enumerate(("generate", "replace", "reuse"))]
+    plan = SimpleNamespace(shots=diagrams, total_frames=600, fps=30)
+    brief = SimpleNamespace(version=2)
+    monkeypatch.setattr(flow, "load_brief", lambda _: brief)
+    monkeypatch.setattr(flow, "ensure_shot_plan", lambda *_: plan)
+    monkeypatch.setattr(flow, "ensure_local_canvas", lambda root, shot, _brief: calls.append(shot))
+    flow.prepare_flow(tmp_path, lambda _: pytest.fail("No model call expected"))
+    assert calls == diagrams
+    assert json.loads((tmp_path / "flow_prompts.json").read_text()) == []
+
+
 def test_flow_chip_count_does_not_double_count_nested_components():
     from youtube_automation.visuals.flow_generator import count_attached_prompt_chips
 
