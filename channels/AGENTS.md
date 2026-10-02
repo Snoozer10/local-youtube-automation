@@ -14,6 +14,7 @@
 - Keep Professor Yashrah on Achird until the user changes that choice. Prefer a coherent illustrated documentary system over the legacy curly-haired mascot.
 - Professor Yashrah is host-free. Use concrete human contexts and clean local exercise graphics; reject presenter surrogates, generic cognition symbols and false clinical authority.
 - Soldier's Sledger and Snoozer Anime source-audio pilots keep their published narration; select a real TTS voice before synthesizing new episodes.
+- New Soldier's Sledger episodes follow current/trending topic research, Gemini script creation, then Gemini refinement before narration and visuals. Source-URL copying is not its intake requirement. `C:\Users\Snoozer\Downloads\YouTube Stuff\Channels\Documentary History\New Project German` contains owner backups for comparison; do not treat a backup as the selected episode or import its narration without a matching script.
 
 # Verification
 - Validate every profile with `load_channel` and check its selected pilot brief hash before downstream work.
