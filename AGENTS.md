@@ -82,6 +82,7 @@ Default section order:
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
 - Use `GEMINI.md` as current project guidance where older instructions here differ.
+- Give direct, evidence-based advice; challenge unsupported assumptions, identify blind spots and avoid agreement or praise that obscures unresolved failures.
 - Adaptive production selects a saved channel, analyzes raw scripts before translation, and uses stills plus selective local animation. Track progress in `tasks/adaptive-visual-tasks.md`.
 - Treat a saved channel profile as stable brand identity only. Every pasted source URL must compile a content-bound episode visual strategy before translation and planning, with its own hook, semantic beat map, visual-mode palette, local UI treatment, motion grammar and repetition limits.
 - The three pilot channels are saved in `channels/`; Professor Yashrah keeps Achird, while the Soldier's Sledger and Snoozer Anime pilots preserve their published narration. Their unselected synthesis voices remain null and must block TTS.

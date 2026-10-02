@@ -237,3 +237,9 @@ I1-I8 acceptance: historical failures are executable regression knowledge rather
 - Ledger 8–19 preserved separately; all earlier snapshots remain unchanged. Quota reached28%, baseline21%, cap consumed. Stop before 20/10 live. Final full-suite rerun remains required after correcting the new test constructor; all 13 completion regressions, replay, lint and type checks pass. 20/10 working diff remains uncommitted; last pushed ff112ae. H9 remains open.
 
 - Renewed authorization: another seven weekly points from28% to35%, with closeout reserved at34%. Final20/10 verification:863 unit tests, eight-case replay, whole-workspace Ruff and16-file production mypy pass. Owned ChromePID19700/profile2/port9222 verified with no competing production worker. Proceed with one bounded window0 regeneration using the rejected critic feedback.
+
+### Planner21 focused editorial recovery
+
+-20/10 full generation produced21shots but critic ID typo prevented publication. Corrected transport rejection callback and ordered-ID prompt; critic retry covered all21shots but rejected3semantic matches. User-directed suffix regeneration preservedwindow0 and produced22shots, but repeated two rejected non-grid references and received two grid-state critiques.
+-21/10 replaces full-review dumping with compact rejected-only source/visual correction targets and a deterministic unchanged-reference prohibition for the rejected narration ranges. Reuse restrictions appear in repair slots; meaningful edits remain allowed. Compiler10 unchanged;20/10 migration preserves progress and only the rejected suffix reopens. Fresh review remains mandatory.
+- Lastquota33%, ceiling35%; all880 unit tests, eight-case replay, full22-shot checkpoint recompile, Ruff and16-file production mypy pass before bounded21/10 request. Owning productionDOX updated; parent scopes/indices unchanged.

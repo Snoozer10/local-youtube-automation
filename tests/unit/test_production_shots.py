@@ -297,6 +297,84 @@ def test_editorial_critic_persists_rejection_before_flow(tmp_path):
     assert len(list((tmp_path / "editorial_rejections").glob("*.json"))) == 1
 
 
+def test_changed_plan_recipe_restores_rejection_but_requires_fresh_review(tmp_path, monkeypatch):
+    import json
+
+    from youtube_automation.production import shots
+    from youtube_automation.production.invalidation import invalidate_stage
+
+    brief = version_three_brief()
+    timeline, plan = semantic_hook_plan(brief)
+    rejected = EditorialReview(
+        plan_sha256=fingerprint(plan), approved=False,
+        shots=[{"shot_id": item.shot_id, "semantic_match": 2, "takeaway_match": 2,
+                "visual_specificity": 2, "verdict": "reject", "rationale": "Repair the exact spoken beat"}
+               for item in plan.shots],
+    )
+    with pytest.raises(ValueError, match="rejected shot plan"):
+        ensure_editorial_review(tmp_path, plan, timeline, brief, lambda _: rejected.model_dump_json())
+    (tmp_path / "timeline.json").write_text(json.dumps(timeline), encoding="utf-8")
+    invalidate_stage(tmp_path, "plan", "old-recipe", "new-recipe")
+    with pytest.raises(ValueError, match="no editorial review receipt"):
+        shots.require_editorial_review(tmp_path, plan, brief)
+
+    feedback = []
+    monkeypatch.setattr(shots, "load_brief", lambda _: brief)
+
+    def plan_windows(root, _brief, _timeline, _windows, _ask, prior_feedback):
+        feedback.append(prior_feedback)
+        return plan.shots, root / "shot_plan.semantic.partial.json"
+
+    monkeypatch.setattr(shots, "_plan_semantic_windows", plan_windows)
+    accepted = rejected.model_copy(update={"approved": True, "shots": [
+        decision.model_copy(update={"semantic_match": 5, "takeaway_match": 5,
+                                    "visual_specificity": 5, "verdict": "accept"})
+        for decision in rejected.shots
+    ]})
+    critic_calls = []
+
+    def critic(prompt):
+        critic_calls.append(prompt)
+        return accepted.model_dump_json()
+
+    result = shots.ensure_shot_plan(tmp_path, critic)
+    assert "BINDING EDITORIAL CORRECTION TARGETS" in feedback[0]
+    assert "Repair the exact spoken beat" in feedback[0]
+    assert len(critic_calls) == 1
+    assert shots.require_editorial_review(tmp_path, result, brief).approved
+
+
+@pytest.mark.parametrize("changed", ["brief", "strategy", "timeline", "approved", "plan_hash", "coverage"])
+def test_archived_critic_feedback_requires_rejected_current_input_lineage(tmp_path, changed):
+    from youtube_automation.production import shots
+
+    brief = version_three_brief()
+    timeline, plan = semantic_hook_plan(brief)
+    review = EditorialReview(
+        plan_sha256=fingerprint(plan), approved=changed == "approved",
+        shots=[{"shot_id": item.shot_id, "semantic_match": 5 if changed == "approved" else 2,
+                "takeaway_match": 5 if changed == "approved" else 2,
+                "visual_specificity": 5 if changed == "approved" else 2,
+                "verdict": "accept" if changed == "approved" else "reject", "rationale": "Bound candidate"}
+               for item in plan.shots],
+    )
+    if changed == "plan_hash":
+        review = review.model_copy(update={"plan_sha256": "f" * 64})
+    if changed == "coverage":
+        review = review.model_copy(update={"shots": review.shots[:-1]})
+    shots._archive_editorial_rejection(tmp_path, review, plan)
+    if changed == "brief":
+        brief = brief.model_copy(update={"source_sha256": "b" * 64})
+    elif changed == "strategy":
+        brief = brief.model_copy(update={"visual_strategy": brief.visual_strategy.model_copy(
+            update={"central_promise": "Different episode promise"})})
+    elif changed == "timeline":
+        timeline = dict(timeline, total_frames=timeline["total_frames"] + 1)
+    assert shots._prior_editorial_rejection(tmp_path, brief, timeline) is None
+    with pytest.raises(ValueError, match="no editorial review receipt"):
+        shots.require_editorial_review(tmp_path, plan, brief)
+
+
 def test_editorial_critic_archives_stale_rejection_and_reviews_changed_plan(tmp_path):
     brief = version_three_brief()
     timeline, plan = semantic_hook_plan(brief)

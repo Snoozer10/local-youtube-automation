@@ -97,6 +97,50 @@ def test_mandatory_grid_compiles_truthful_mode_without_fake_variety():
     shots.validate_plan(full_plan(case, compiled), case.timeline, case.brief)
 
 
+@pytest.mark.parametrize("operation,asset_id,start,end,forbidden,expected", [
+    ("reuse", "bad_asset", 0, 150, "bad_asset", True),
+    ("reuse", "fresh_asset", 0, 150, "bad_asset", False),
+    ("replace", "bad_asset", 0, 150, "bad_asset", False),
+    ("reuse", "bad_asset", 150, 300, "bad_asset", False),
+    ("reuse", "bad_asset", 0, 150, None, False),
+])
+def test_critic_reuse_guard_is_bound_to_rejected_asset_and_narration(operation, asset_id, start, end, forbidden, expected):
+    case = countdown_case()
+    batch = case.corrected_candidate.to_semantic_batch()
+    compiled = compile_corrected(case)
+    compiled[0] = compiled[0].model_copy(update={"operation": operation, "asset_id": asset_id, "start_frame": start, "end_frame": end})
+    targets = [{"start_frame": 0, "end_frame": 150, "forbidden_unchanged_reuse_asset_id": forbidden}]
+    issues = shots._critic_reuse_issues(batch, compiled, targets)
+    assert bool(issues) is expected
+    if expected:
+        assert issues[0].code == "SEMANTIC_CRITIC_REJECTED_REUSE"
+        assert issues[0].beat_ids == [batch.shots[0].beat_id]
+
+
+def test_critic_reuse_constraints_expose_only_overlapping_references():
+    unit = shots.NarrationUnit(unit_id="u150_300", start_frame=150, end_frame=300, text="Next exact beat")
+    slots = [{"first_unit_id": unit.unit_id, "last_unit_id": unit.unit_id, "continuity_rules": {"reuse": "Keep pixels unchanged."}}]
+    targets = [
+        {"start_frame": 0, "end_frame": 150, "forbidden_unchanged_reuse_asset_id": "earlier_asset"},
+        {"start_frame": 150, "end_frame": 250, "forbidden_unchanged_reuse_asset_id": "rejected_asset"},
+    ]
+    shots._bind_critic_reuse_constraints(slots, targets, [unit])
+    assert slots[0]["forbidden_unchanged_reuse_reference_ids"] == ["rejected_asset"]
+
+
+def test_lineage20_checkpoint_migrates_without_resetting_grid_progress(tmp_path):
+    case = countdown_case()
+    path = tmp_path / "shot_plan.semantic.partial.json"
+    windows = shots._planning_windows(case.timeline)
+    shots._save_semantic_partial_plan(path, case.brief, case.timeline, windows, [case.corrected_candidate.to_semantic_batch()])
+    checkpoint = json.loads(path.read_text())
+    checkpoint["planner_version"] = 20
+    path.write_text(json.dumps(checkpoint))
+    index, _, compiled = shots._load_semantic_partial_plan(path, case.brief, case.timeline, windows)
+    assert index == 1 and len(compiled) == 3
+    assert json.loads(path.read_text())["planner_version"] == shots.SEMANTIC_PLANNER_VERSION
+
+
 def test_mandatory_grid_does_not_consume_next_window_mode_budget():
     case = countdown_case()
     prefix = compile_corrected(case)
@@ -265,6 +309,45 @@ def test_incomplete_critic_coverage_is_repaired_before_publication(tmp_path, mon
         ).shots
         == decisions
     )
+
+
+@pytest.mark.parametrize("coverage_defect", ["missing", "reordered", "wrong_id"])
+def test_critic_coverage_repair_marks_transport_receipt_rejected(tmp_path, coverage_defect):
+    case = countdown_case()
+    plan = full_plan(case, compile_corrected(case))
+    decisions = [shots.EditorialShotDecision(
+        shot_id=shot.shot_id, semantic_match=4, takeaway_match=4,
+        visual_specificity=4, verdict="accept", rationale="Exact narration-specific rule"
+    ) for shot in plan.shots]
+    complete = shots.EditorialReview(plan_sha256=fingerprint(plan), approved=True, shots=decisions)
+    defective = decisions[:1] if coverage_defect == "missing" else list(reversed(decisions))
+    if coverage_defect == "wrong_id":
+        defective = [decisions[0].model_copy(update={"shot_id": "wrong_window_shot"}), *decisions[1:]]
+    incomplete = complete.model_copy(update={"shots": defective})
+
+    class Transport:
+        rejected = False
+        repair_calls = 0
+
+        def __call__(self, prompt):
+            return incomplete.model_dump_json()
+
+        def reject_last_response(self, error):
+            assert "every shot" in error
+            self.rejected = True
+
+        def repair_json(self, prompt, error, baseline, latest, schema, context):
+            # The real browser transport can bind a repair only to a rejected receipt.
+            assert self.rejected
+            assert json.loads(latest)["shots"] == incomplete.model_dump(mode="json")["shots"]
+            assert "exact PLAN order" in context
+            self.repair_calls += 1
+            return complete.model_dump_json()
+
+    transport = Transport()
+    review = shots.ensure_editorial_review(tmp_path, plan, case.timeline, case.brief, transport)
+    review.assert_approved(plan)
+    assert transport.repair_calls == 1
 
 
 def test_edit_cannot_import_an_entity_owned_by_another_scene():

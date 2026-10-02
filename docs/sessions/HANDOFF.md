@@ -1,20 +1,19 @@
-# Planner handoff — 20/10
+# Planner handoff —21/10
 
-Date: 2026-10-02; branch `codex/adaptive-multi-channel-visual-engine`; PR21 draft, do not merge.
-Run: `youtube_runs/adaptive-pilot-professor-yashrah-local-narration`.
+2026-10-02; branch codex/adaptive-multi-channel-visual-engine; PR21 draft, do not merge.
+Run: youtube_runs/adaptive-pilot-professor-yashrah-local-narration.
 
 ## Done
-- Countdown coverage, entity/typography guards, critic coverage/reopening, early framing reserve and exhausted scene-reference binding implemented and regression tested.
-- 19/9 completed four windows/19 shots/2296 frames, but critic rejected eight shots. No final shot_plan.json was published.
-- Matching checkpoint and review archived in editorial_rejections; active checkpoint removed for explicit window-0 regeneration.
-- 20/10 canonicalizes Schulte mode to challenge_ui and resets mandatory-grid mode/beat-kind budgets in semantic and final validation. All 863 unit tests, eight-case replay, Ruff and 16-file production mypy pass.
+-20/10 compiled4windows/22shots/2296frames; critic still rejected4shots. No final plan published.
+- Fixed critic receipt callback, explicit ordered review IDs, durable rejected review+exact plan binding, and compatible recipe-transition capture.
+-21/10 adds rejected-only source/visual correction targets and deterministic rejection of unchanged bad non-grid reuse. Grid base continuity remains valid; critic judges local overlay progression.
+- User directs preservewindow0/regenerate1–3/freshcompletecritic. Window0 unchanged verified against archived semantic batch. Compiler10 unchanged;20/10 migration preserves checkpoint lineage.
 
 ## Next
-- User renewed seven quota points from28% to35%; reserve closeout at34%. Commit verified20/10, then run one bounded Flash/file attempt from window0 with critic feedback. H9 remains open until approved plan, followed later by visual approval.
-- Last pushed commit ff112ae (19/9);20/10 verified diff is being committed. Preserve evidence/professor_lineages_8_19.json. No Astra; coordinator owns implementation.
-- Preserve unrelated CONTINUITY.md/runtime_state.json; owned browser PID19700, port9222, Profile2/index3.
+- All880 unit tests, replay/recompile, Ruff and production mypy pass. Commit verified21/10, then one bounded Flash/file attempt; lastpushed6b804c3.
+- Quota baseline28%, ceiling35%, latest33%; reserve closeout at34%. NoAstra; sole6.1SolXHigh worker completed.
+- Preserve unrelated CONTINUITY.md/runtime_state.json. OwnedChromePID19700/profile2/port9222. H9 andH10 open.
 
-## Failures / Fixes
-- Stop failed temporary receipt reconstruction; use validated loaders. Synthetic prose must preserve reuse equality against compiled references.
-- Mandatory UI cannot change mode labels to satisfy variety. Compiler and final validator must apply the same exemption.
-- Raw receipts, rejected checkpoints and versioned ledgers through8–19 remain preserved.
+## Failures/Fixes
+- Rawreviewfeedback repeated fatigued-worker/comparison reuse; prohibit unchanged rejected assets by source range and expose exact correction context.
+- Raw receipts, rejected full checkpoints/reviews and paired reviewed plans preserved. Do not treat schema/compiler success as editorial approval.

@@ -34,6 +34,7 @@ from .shots import (
     SEMANTIC_PLANNER_VERSION,
     SHOT_COMPILER_VERSION,
     ShotPlan,
+    archive_editorial_rejection_for_retry,
     ensure_shot_plan,
     migrate_semantic_checkpoint,
     validate_plan,
@@ -445,6 +446,8 @@ def _run_stage_attempt(args: argparse.Namespace, root: Path, database: Path) -> 
             complete = _stage_complete(root, args)
         elif existing and existing["recipe"] != recipe:
             preserve_paths: set[str] | None = None
+            if args.stage == "plan":
+                archive_editorial_rejection_for_retry(root)
             if args.stage == "plan" and migrate_semantic_checkpoint(root):
                 preserve_paths = {"shot_plan.semantic.partial.json"}
             if preserve_paths:

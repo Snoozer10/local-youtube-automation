@@ -45,6 +45,8 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 
 - Continuous narration-bound Schulte coverage extends from grid introduction through the spoken start cue across windows. Compiler issues address cutaways to their beat; affected repair slots require schulte_challenge while semantic copy/modes may vary. A final deterministic prefix failure stays inside bounded semantic repair. Entity scene migration and generated typography in graphic compositions reject before checkpointing.
 - A critic-rejected complete checkpoint reopens the earliest rejected window and continuity-dependent suffix; preserve earlier accepted windows and archive the rejected checkpoint. An interrupted full restart leaves no invalid empty checkpoint. Repair incomplete critic coverage before publishing a review.
+- Rejected critic receipts retain the exact reviewed plan under `editorial_rejections/plans/`. Plan-recipe invalidation may recover feedback only when the review hash, ordered shot coverage and reviewed plan match the current brief and timeline; archived feedback never authorizes a plan or replaces a fresh active critic review. Bind a legacy active rejection to its complete revalidated checkpoint before invalidating it.
+- Critic coverage repairs mark the transport receipt through `reject_last_response` and carry explicit ordered target IDs before another response can be accepted.
 
 - Fixed diagram tails must meet framing diversity in the last editable window. Migration from 17/8 recompiles across the event boundary, archives an insufficient prefix, and reopens only its affected suffix; older migrations retain the pre-event restriction.
 
@@ -63,3 +65,5 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 
 ## Child DOX Index
 - None.
+
+- Planner21/10 supplies compact rejected-only correction targets with exact source ranges, prior visible states and reasons. Unchanged non-grid assets rejected for overlapping narration raise SEMANTIC_CRITIC_REJECTED_REUSE inside bounded repair; slots expose the forbidden reuse references. Edits that change meaning remain available. Compiler10 is unchanged, so20/10 checkpoints migrate across events before reopening the critic-rejected suffix. Critic review evaluates rendered overlays and valid static holds while retaining strict narration matching.

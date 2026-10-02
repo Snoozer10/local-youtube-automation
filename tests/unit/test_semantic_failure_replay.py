@@ -463,6 +463,6 @@ def test_failure_intelligence_report_is_green_before_one_bounded_live_request():
     assert report.late_validator_escapes == []
     assert report.validator_audit_ready
     assert report.replay_corpus_ready
-    assert report.next_planner_version == 20
+    assert report.next_planner_version == 21
     assert report.next_compiler_version == 10
     assert report.ready_for_one_bounded_live_request

@@ -324,19 +324,20 @@ class ShotBatch(Contract):
     shots: list[Shot] = Field(min_length=1, max_length=300)
 
 
-SEMANTIC_PLANNER_VERSION = 20
+SEMANTIC_PLANNER_VERSION = 21
 SHOT_COMPILER_VERSION = 10
 SEMANTIC_CHECKPOINT_MIGRATIONS = {
-    (10, 2): (20, 10),
-    (11, 3): (20, 10),
-    (12, 4): (20, 10),
-    (13, 5): (20, 10),
-    (14, 6): (20, 10),
-    (15, 6): (20, 10),
-    (16, 7): (20, 10),
-    (17, 8): (20, 10),
-    (18, 9): (20, 10),
-    (19, 9): (20, 10),
+    (10, 2): (21, 10),
+    (11, 3): (21, 10),
+    (12, 4): (21, 10),
+    (13, 5): (21, 10),
+    (14, 6): (21, 10),
+    (15, 6): (21, 10),
+    (16, 7): (21, 10),
+    (17, 8): (21, 10),
+    (18, 9): (21, 10),
+    (19, 9): (21, 10),
+    (20, 10): (21, 10),
 }
 # One initial compile plus five targeted corrections. A valid correction can
 # expose a later deterministic constraint, so schema success is not terminal.
@@ -2688,6 +2689,8 @@ def _repair_slot_constraints(
                 }
             )
             slot = required_slots[slot_id]
+            constraints[-1]["first_unit_id"] = slot["first_unit_id"]
+            constraints[-1]["last_unit_id"] = slot["last_unit_id"]
             first = positions.get(str(slot["first_unit_id"]))
             last = positions.get(str(slot["last_unit_id"]))
             if first and last and last.end_frame > required_start and first.start_frame < required_end:
@@ -2890,7 +2893,7 @@ def _load_semantic_partial_plan(
         or not 0 < next_window <= len(windows)
     ):
         raise ValueError("Semantic partial shot plan does not match current planning inputs")
-    if migrating and checkpoint_lineage not in {(17, 8), (18, 9)}:
+    if migrating and checkpoint_lineage not in {(17, 8), (18, 9), (20, 10)}:
         accepted_end = windows[next_window - 1][1]
         if any(
             event.introduction_frame < accepted_end
@@ -2987,6 +2990,130 @@ def _save_semantic_partial_plan(
         )
 
 
+def _archive_editorial_rejection(root: Path, review: EditorialReview, plan: ShotPlan) -> None:
+    """Preserve the exact reviewed candidate separately from active approval receipts."""
+    directory = root / "editorial_rejections"
+    plans = directory / "plans"
+    plans.mkdir(parents=True, exist_ok=True)
+    name = f"{fingerprint(review)}.json"
+    with publication_guard():
+        atomic_write_json(str(plans / name), plan.model_dump(mode="json"))
+        atomic_write_json(str(directory / name), review.model_dump(mode="json"))
+
+
+def _prior_editorial_rejection(
+    root: Path, brief: Brief, timeline: dict[str, Any], *, plan: ShotPlan | None = None
+) -> EditorialReview | None:
+    """Recover feedback only from a rejected, fully bound reviewed candidate."""
+    directory = root / "editorial_rejections"
+    active = root / "editorial_review.json"
+    paths = ([active] if active.exists() else []) + sorted(
+        directory.glob("*.json"), key=lambda path: path.stat().st_mtime_ns, reverse=True
+    )
+    for path in paths:
+        try:
+            review = EditorialReview.model_validate_json(path.read_text(encoding="utf-8"))
+            if path == active:
+                reviewed = plan
+                if reviewed is None:
+                    windows = _planning_windows(timeline)
+                    completed, _, shots = _load_semantic_partial_plan(
+                        root / "shot_plan.semantic.partial.json", brief, timeline, windows
+                    )
+                    if completed != len(windows):
+                        continue
+                    reviewed = ShotPlan(
+                        version=3, shots=shots, brief_sha256=fingerprint(brief),
+                        timeline_sha256=fingerprint(timeline), fps=timeline["fps"],
+                        total_frames=timeline["total_frames"], editorial_policy=resolve_editorial_policy(brief),
+                    )
+            else:
+                reviewed = ShotPlan.model_validate_json(
+                    (directory / "plans" / path.name).read_text(encoding="utf-8")
+                )
+            if (
+                (path != active and path.stem != fingerprint(review))
+                or review.plan_sha256 != fingerprint(reviewed)
+                or reviewed.brief_sha256 != fingerprint(brief)
+                or reviewed.timeline_sha256 != fingerprint(timeline)
+                or [item.shot_id for item in review.shots] != [item.shot_id for item in reviewed.shots]
+                or (plan is not None and review.plan_sha256 != fingerprint(plan))
+            ):
+                continue
+            if not review.approved or any(
+                item.verdict == "reject"
+                or min(item.semantic_match, item.takeaway_match, item.visual_specificity) < 4
+                for item in review.shots
+            ):
+                if path == active:
+                    _archive_editorial_rejection(root, review, reviewed)
+                return review
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def archive_editorial_rejection_for_retry(run_dir: str | Path) -> None:
+    """Bind legacy active rejection evidence before a plan recipe deactivates it."""
+    root = Path(run_dir)
+    if not (root / "editorial_review.json").exists():
+        return
+    try:
+        brief = load_brief(root)
+        timeline = json.loads((root / "timeline.json").read_text(encoding="utf-8"))
+        if brief.version >= 3:
+            _prior_editorial_rejection(root, brief, timeline)
+    except (OSError, ValueError):
+        return
+
+
+def _editorial_correction_targets(root: Path, review: EditorialReview) -> list[dict[str, Any]]:
+    reviewed = ShotPlan.model_validate_json(
+        (root / "editorial_rejections" / "plans" / f"{fingerprint(review)}.json").read_text(encoding="utf-8")
+    )
+    if fingerprint(reviewed) != review.plan_sha256:
+        raise ValueError("Editorial correction target lineage mismatch")
+    targets = []
+    for shot, decision in zip(reviewed.shots, review.shots, strict=True):
+        if decision.verdict == "accept" and min(decision.semantic_match, decision.takeaway_match, decision.visual_specificity) >= 4:
+            continue
+        targets.append({
+            "shot_id": shot.shot_id, "start_frame": shot.start_frame, "end_frame": shot.end_frame,
+            "narration_excerpt": shot.narration_excerpt, "viewer_takeaway": shot.viewer_takeaway,
+            "rejected_subject": shot.subject, "rejected_visible_state": shot.visible_state,
+            "rejected_composition": shot.composition, "reason": decision.rationale,
+            "forbidden_unchanged_reuse_asset_id": shot.asset_id if not any(
+                item.kind == "data_grid" and item.preset == "schulte_6x6" for item in shot.overlays
+            ) else None,
+        })
+    return targets
+
+
+def _critic_reuse_issues(batch: SemanticShotBatch, compiled: list[Shot], targets: list[dict[str, Any]]) -> list[SemanticIssue]:
+    return [SemanticIssue(
+        beat_ids=[intent.beat_id], code="SEMANTIC_CRITIC_REJECTED_REUSE",
+        requirement="This unchanged asset was editorially rejected for this narration range. Choose a fresh scene or edit its visible action/state to serve the exact narration.",
+    ) for intent, shot in zip(batch.shots, compiled, strict=True) if shot.operation == "reuse" and any(
+        target["forbidden_unchanged_reuse_asset_id"] == shot.asset_id
+        and shot.start_frame < target["end_frame"] and shot.end_frame > target["start_frame"]
+        for target in targets
+    )]
+
+
+def _bind_critic_reuse_constraints(slots: list[dict[str, Any]], targets: list[dict[str, Any]], units: list[NarrationUnit]) -> None:
+    if not targets:
+        return
+    positions = {unit.unit_id: unit for unit in units}
+    for slot in slots:
+        first, last = positions[str(slot["first_unit_id"])], positions[str(slot["last_unit_id"])]
+        slot["forbidden_unchanged_reuse_reference_ids"] = sorted({
+            target["forbidden_unchanged_reuse_asset_id"] for target in targets
+            if target["forbidden_unchanged_reuse_asset_id"] is not None
+            and first.start_frame < target["end_frame"] and last.end_frame > target["start_frame"]
+        })
+        slot["continuity_rules"]["reuse"] += " Never reuse a reference listed in forbidden_unchanged_reuse_reference_ids; choose a genuinely changed edit or fresh scene."
+
+
 def ensure_editorial_review(
     run_dir: str | Path,
     plan: ShotPlan,
@@ -3020,6 +3147,9 @@ def ensure_editorial_review(
         "narration, weak opening microbeats, and any visual whose visible state does not directly "
         "serve the spoken beat. Score strictly: 4 means clearly publishable; 5 is exceptional. "
         "approved may be true only when every shot verdict is accept and every score is at least 4. "
+        "Evaluate the rendered overlays as well as the base asset. Static holds are valid when they directly show the spoken fact. "
+        "A narration-bound Schulte challenge must keep its grid visible through the start cue; judge meaningful local rule, timer and target-state progression, "
+        "rather than requiring a cutaway or different base asset merely for variety. Reject repeated visuals when their communicated meaning fails to progress. "
         "Return one JSON object matching this schema without commentary:\n"
         + json.dumps(EditorialReview.model_json_schema(), ensure_ascii=False)
         + "\nPLAN SHA-256: "
@@ -3028,6 +3158,8 @@ def ensure_editorial_review(
         + (brief.visual_strategy.model_dump_json() if brief.visual_strategy else "null")
         + "\nSHOT PLAN:\n"
         + plan.model_dump_json()
+        + "\nREQUIRED SHOT IDS IN EXACT ORDER:\n"
+        + json.dumps([shot.shot_id for shot in plan.shots])
     )
     review_response = ""
     review_error = ""
@@ -3040,8 +3172,11 @@ def ensure_editorial_review(
         if [s.shot_id for s in review.shots] == [s.shot_id for s in plan.shots]:
             break
         review_response = review.model_dump_json()
-        review_error = "Editorial review must cover every shot in plan order"
-        reject_response = getattr(ask, "reject_response", None)
+        review_error = (
+            "Editorial review must cover every shot in plan order. Required shot IDs: "
+            + json.dumps([shot.shot_id for shot in plan.shots])
+        )
+        reject_response = getattr(ask, "reject_last_response", None)
         if callable(reject_response):
             reject_response(review_error)
         if coverage_attempt == 2:
@@ -3053,13 +3188,7 @@ def ensure_editorial_review(
     try:
         review.assert_approved(plan)
     except ValueError:
-        rejection_dir = root / "editorial_rejections"
-        rejection_dir.mkdir(exist_ok=True)
-        with publication_guard():
-            atomic_write_json(
-                str(rejection_dir / f"{fingerprint(review)}.json"),
-                review.model_dump(mode="json"),
-            )
+        _archive_editorial_rejection(root, review, plan)
         raise
     return review
 
@@ -3216,13 +3345,14 @@ def _plan_semantic_windows(
     next_window, accepted_batches, all_shots = _load_semantic_partial_plan(
         checkpoint_path, brief, timeline, windows
     )
+    prior_review = _prior_editorial_rejection(root, brief, timeline) if prior_critic_feedback else None
+    correction_targets = _editorial_correction_targets(root, prior_review) if prior_review is not None else []
     if prior_critic_feedback and next_window == len(windows) and accepted_batches:
-        review_path = root / "editorial_review.json"
-        if review_path.exists():
-            review = EditorialReview.model_validate_json(review_path.read_text(encoding="utf-8"))
-            current = ShotPlan(version=3, shots=all_shots, brief_sha256=fingerprint(brief),
-                               timeline_sha256=fingerprint(timeline), fps=timeline["fps"],
-                               total_frames=timeline["total_frames"], editorial_policy=resolve_editorial_policy(brief))
+        current = ShotPlan(version=3, shots=all_shots, brief_sha256=fingerprint(brief),
+                           timeline_sha256=fingerprint(timeline), fps=timeline["fps"],
+                           total_frames=timeline["total_frames"], editorial_policy=resolve_editorial_policy(brief))
+        review = _prior_editorial_rejection(root, brief, timeline, plan=current)
+        if review is not None:
             if review.plan_sha256 == fingerprint(current) and [s.shot_id for s in review.shots] == [s.shot_id for s in all_shots]:
                 rejected = {s.shot_id for s in review.shots if s.verdict == "reject" or min(s.semantic_match, s.takeaway_match, s.visual_specificity) < 4}
                 reopen = next((i for i, batch in enumerate(accepted_batches)
@@ -3289,6 +3419,9 @@ def _plan_semantic_windows(
                 compiled = _compile_semantic_batch(
                     batch, units, brief, timeline, all_shots, offset
                 )
+                critic_issues = _critic_reuse_issues(batch, compiled, correction_targets)
+                if critic_issues:
+                    raise SemanticPlanError(critic_issues)
                 partial = ShotPlan(
                     version=3,
                     shots=all_shots + compiled,
@@ -3346,6 +3479,7 @@ def _plan_semantic_windows(
                     slot_constraints = _repair_slot_constraints(
                         batch, required_patch_shape, brief, all_shots, timeline, units
                     )
+                    _bind_critic_reuse_constraints(slot_constraints, correction_targets, units)
                     hook_note = (
                         " The continuation is not hook-tagged by Python."
                         if hook_patch_shape
@@ -3442,18 +3576,15 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         return existing
     editorial_policy = resolve_editorial_policy(brief)
     prior_critic_feedback = ""
-    review_path = root / "editorial_review.json"
-    if brief.version >= 3 and review_path.exists():
-        prior_review = EditorialReview.model_validate_json(
-            review_path.read_text(encoding="utf-8")
-        )
-        if not prior_review.approved or any(
-            s.verdict == "reject" or min(s.semantic_match, s.takeaway_match, s.visual_specificity) < 4
-            for s in prior_review.shots
-        ):
+    if brief.version >= 3:
+        prior_review = _prior_editorial_rejection(root, brief, timeline)
+        if prior_review is not None:
             prior_critic_feedback = (
-                "\nPRIOR EDITORIAL CRITIC REJECTION TO REPAIR:\n"
-                + prior_review.model_dump_json()
+                "\nBINDING EDITORIAL CORRECTION TARGETS:\n"
+                + json.dumps(_editorial_correction_targets(root, prior_review), ensure_ascii=False)
+                + "\nFor overlapping narration ranges, change the communicated action/state, not just wording, camera or backdrop. "
+                "Do not reuse an unchanged rejected asset. New scenes or real edits must serve the exact source narration. "
+                "Keep mandatory grids visible while their local instructional state progresses; preserve accepted prior windows."
             )
     maximum_shot_frames = round(editorial_policy.max_shot_seconds * timeline["fps"])
     instructions = (
