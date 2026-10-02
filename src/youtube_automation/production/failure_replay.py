@@ -138,7 +138,7 @@ class SemanticFailureCheckpoint(Contract):
 
 
 class SanitizedRepairContract(Contract):
-    """Exact-cardinality request-contract evidence without provider response text."""
+    """Cardinality and episode-palette evidence without provider response text."""
 
     required_count: int = Field(ge=1, le=40)
     candidate_contents: list[SanitizedSemanticIntent]
@@ -479,7 +479,10 @@ def _replay_repair_contract(
 ]:
     assert case.repair_contract is not None
     contract = case.repair_contract
-    model = _exact_semantic_repair_batch_model(contract.required_count)
+    visual_modes = (
+        tuple(case.brief.visual_strategy.visual_modes) if case.brief.visual_strategy else ()
+    )
+    model = _exact_semantic_repair_batch_model(contract.required_count, visual_modes)
     candidate_payload = {
         "shots": [
             item.to_repair_content().model_dump(mode="json")

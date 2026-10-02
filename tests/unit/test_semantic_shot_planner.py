@@ -254,6 +254,134 @@ class _SemanticAsk:
         return self.batches.pop(0).model_dump_json()
 
 
+def test_initial_schema_binds_visual_modes_to_the_episode_palette(tmp_path, monkeypatch):
+    from youtube_automation.production import shots as shots_module
+
+    brief = _brief()
+    timeline = _timeline(["one", "two", "three"])
+    units = _narration_units(timeline, 0, timeline["total_frames"])
+    initial = _batch_for_units(units, HOOK_IDS)
+
+    def fake_request_json(prompt, ask, model, **kwargs):
+        schema = model.model_json_schema()
+        item_ref = schema["properties"]["shots"]["items"]["$ref"].split("/")[-1]
+        allowed = schema["$defs"][item_ref]["properties"]["visual_mode"]["enum"]
+        assert allowed == brief.visual_strategy.visual_modes
+        assert schema == json.loads(
+            prompt.split("SCHEMA:\n", 1)[1].split("\nCHANNEL POLICY:", 1)[0]
+        )
+        return model.model_validate(initial.model_dump())
+
+    monkeypatch.setattr(shots_module, "request_json", fake_request_json)
+    planned, _ = _plan_semantic_windows(
+        tmp_path, brief, timeline, [(0, timeline["total_frames"])], lambda _: "", ""
+    )
+    assert len(planned) == 3
+
+
+@pytest.mark.parametrize("route", ["initial", "topology", "content"])
+def test_episode_palette_rejects_global_only_modes_in_every_response_contract(route):
+    from youtube_automation.production.shots import (
+        _episode_semantic_models,
+        _exact_semantic_repair_batch_model,
+    )
+
+    palette = tuple(_brief().visual_strategy.visual_modes)
+    batch_model, patch_model, _ = _episode_semantic_models(palette)
+    intent = _intent("purpose", "u0_30", visual_mode="editorial_metaphor").model_dump()
+    if route == "initial":
+        model = batch_model
+        payload = {"shots": [intent]}
+        record = payload["shots"][0]
+    elif route == "topology":
+        model = patch_model
+        payload = {"replacements": [{"target_beat_id": "purpose", "shots": [intent]}]}
+        record = payload["replacements"][0]["shots"][0]
+    else:
+        model = _exact_semantic_repair_batch_model(1, palette)
+        payload = {
+            "shots": [
+                {
+                    key: value
+                    for key, value in intent.items()
+                    if key not in {"beat_id", "first_unit_id", "last_unit_id"}
+                }
+            ]
+        }
+        record = payload["shots"][0]
+
+    with pytest.raises(ValueError, match="episode palette"):
+        model.model_validate(payload)
+    record["visual_mode"] = "comparison"
+    accepted = model.model_validate(payload)
+    assert isinstance(accepted, (SemanticShotBatch, SemanticShotPatch, SemanticRepairBatch))
+    mode_schemas = [
+        item["properties"]["visual_mode"]
+        for item in model.model_json_schema()["$defs"].values()
+        if "visual_mode" in item.get("properties", {})
+    ]
+    assert mode_schemas and all(item["enum"] == list(palette) for item in mode_schemas)
+
+
+def test_nested_schema_correction_retains_palette_and_compiler_owned_slots(tmp_path):
+    brief = _brief(source="one two three four")
+    timeline = _timeline(["one", "two", "three", "four"], seconds_per_word=4)
+    units = _narration_units(timeline, 0, timeline["total_frames"])
+    initial = _batch_for_units(units[:3])
+    initial.shots[-1].last_unit_id = units[3].unit_id
+    records = [
+        _intent(
+            "promise",
+            units[2].unit_id,
+            visual_mode="challenge_ui",
+            framing="insert",
+            beat_kind="reveal",
+        ),
+        _intent(
+            "continuation",
+            units[3].unit_id,
+            visual_mode="comparison",
+            framing="medium",
+            beat_kind="transition",
+        ),
+    ]
+    corrected = {
+        "shots": [
+            record.model_dump(exclude={"beat_id", "first_unit_id", "last_unit_id"})
+            for record in records
+        ]
+    }
+    invalid = deepcopy(corrected)
+    invalid["shots"][0]["visual_mode"] = "editorial_metaphor"
+
+    class Ask:
+        def __init__(self):
+            self.repairs = []
+
+        def __call__(self, prompt):
+            return initial.model_dump_json()
+
+        def repair_json(self, prompt, error, baseline, latest, schema, context):
+            self.repairs.append((error, schema, context))
+            return json.dumps(invalid if len(self.repairs) == 1 else corrected)
+
+    ask = Ask()
+    planned, _ = _plan_semantic_windows(
+        tmp_path, brief, timeline, [(0, timeline["total_frames"])], ask, ""
+    )
+    assert len(ask.repairs) == 2
+    assert "episode palette" in ask.repairs[-1][0]
+    assert ask.repairs[0][1:] == ask.repairs[1][1:]
+    assert (
+        '"allowed_visual_modes": ["human_context", "kinetic_type", "challenge_ui", "comparison"]'
+        in ask.repairs[-1][2]
+    )
+    assert "EPISODE VISUAL MODES:" in ask.repairs[-1][2]
+    assert "COMPILER-OWNED REPAIR SLOTS:" in ask.repairs[-1][2]
+    assert [shot.subject for shot in planned[:2]] == [shot.subject for shot in initial.shots[:2]]
+    assert len(planned) == 4
+
+
 def test_three_beat_hook_compiles_deterministically_to_nine_seconds():
     brief = _brief()
     timeline = _timeline(["problem words", "gap words", "promise words"])
@@ -484,7 +612,7 @@ def test_hook_repair_binds_model_content_to_compiler_owned_slots(tmp_path, monke
     repair_prompts = []
 
     def fake_request_json(prompt, ask, model, **kwargs):
-        if model is SemanticShotBatch:
+        if issubclass(model, SemanticShotBatch):
             return initial
         assert model.__name__ == "SemanticRepairBatch"
         repair_prompts.append(prompt)
@@ -778,7 +906,7 @@ def test_ensure_repairs_only_the_record_with_an_invisible_declared_entity(
     repair_calls = []
 
     def fake_request_json(prompt, ask_callback, model, **kwargs):
-        if model is SemanticShotBatch:
+        if issubclass(model, SemanticShotBatch):
             return initial
         if issubclass(model, SemanticRepairBatch):
             repair_calls.append((prompt, kwargs))
@@ -843,7 +971,7 @@ def test_forbidden_visual_family_repairs_only_its_semantic_record(
     patch_calls = []
 
     def fake_request_json(prompt, ask, model, **kwargs):
-        if model is SemanticShotBatch:
+        if issubclass(model, SemanticShotBatch):
             return initial
         assert issubclass(model, SemanticRepairBatch)
         patch_calls.append((prompt, kwargs))
@@ -930,7 +1058,7 @@ def test_recurring_entity_with_new_continuity_repairs_only_the_later_beat(
     patch_calls = []
 
     def fake_request_json(prompt, ask, model, **kwargs):
-        if model is SemanticShotBatch:
+        if issubclass(model, SemanticShotBatch):
             return initial
         assert issubclass(model, SemanticRepairBatch)
         repair_schema = model.model_json_schema()
@@ -1004,7 +1132,7 @@ def test_new_local_graphic_repair_gets_a_distinct_compiler_owned_canvas_id(
 
     def fake_request_json(prompt, ask_callback, model, **kwargs):
         nonlocal repair_calls
-        if model is SemanticShotBatch:
+        if issubclass(model, SemanticShotBatch):
             return initial
         if issubclass(model, SemanticRepairBatch):
             repair_calls += 1
@@ -1368,7 +1496,7 @@ def test_hook_repair_with_missing_semantic_slot_is_repaired_in_the_same_window(
     patch_prompts = []
 
     def fake_request_json(prompt, ask, model, **kwargs):
-        if model is SemanticShotBatch:
+        if issubclass(model, SemanticShotBatch):
             return initial
         assert model.__name__ == "SemanticRepairBatch"
         patch_prompts.append(prompt)
@@ -1435,7 +1563,7 @@ def test_progressing_semantic_defects_retain_a_final_content_correction(
         return valid_compiled
 
     def fake_request_json(_prompt, _ask, model, **_kwargs):
-        if model is SemanticShotBatch:
+        if issubclass(model, SemanticShotBatch):
             return initial
         assert issubclass(model, SemanticRepairBatch)
         repair_calls.append(None)
@@ -1485,7 +1613,7 @@ def test_semantic_compiler_corrections_remain_bounded(tmp_path, monkeypatch):
         )
 
     def fake_request_json(_prompt, _ask, model, **_kwargs):
-        if model is SemanticShotBatch:
+        if issubclass(model, SemanticShotBatch):
             return initial
         assert issubclass(model, SemanticRepairBatch)
         repair_calls.append(None)
@@ -1690,7 +1818,7 @@ def test_hook_repair_exposes_slot_constraints_after_mechanical_content_failure(
     patch_prompts = []
 
     def fake_request_json(prompt, ask, model, **kwargs):
-        if model is SemanticShotBatch:
+        if issubclass(model, SemanticShotBatch):
             return initial
         assert model.__name__ == "SemanticRepairBatch"
         patch_prompts.append(prompt)
@@ -1914,7 +2042,7 @@ def test_semantic_checkpoint_rejects_brief_timeline_window_and_compiler_drift(tm
         _load_semantic_partial_plan(path, brief, timeline, windows)
 
 
-@pytest.mark.parametrize("old_lineage", [(10, 2), (11, 3), (12, 4), (13, 5)])
+@pytest.mark.parametrize("old_lineage", [(10, 2), (11, 3), (12, 4), (13, 5), (14, 6)])
 def test_supported_checkpoint_rebuilds_before_the_first_narration_event(
     tmp_path, old_lineage
 ):

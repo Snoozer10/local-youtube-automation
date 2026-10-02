@@ -8,9 +8,10 @@ import re
 from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
+from types import GenericAlias
 from typing import Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, create_model, field_validator, model_validator
 
 from youtube_automation.core.utils import atomic_write_json
 
@@ -323,13 +324,14 @@ class ShotBatch(Contract):
     shots: list[Shot] = Field(min_length=1, max_length=300)
 
 
-SEMANTIC_PLANNER_VERSION = 14
+SEMANTIC_PLANNER_VERSION = 15
 SHOT_COMPILER_VERSION = 6
 SEMANTIC_CHECKPOINT_MIGRATIONS = {
-    (10, 2): (14, 6),
-    (11, 3): (14, 6),
-    (12, 4): (14, 6),
-    (13, 5): (14, 6),
+    (10, 2): (15, 6),
+    (11, 3): (15, 6),
+    (12, 4): (15, 6),
+    (13, 5): (15, 6),
+    (14, 6): (15, 6),
 }
 # One initial compile plus five targeted corrections. A valid correction can
 # expose a later deterministic constraint, so schema success is not terminal.
@@ -495,22 +497,72 @@ class SemanticRepairBatch(Contract):
     shots: list[SemanticRepairContent] = Field(min_length=1, max_length=40)
 
 
-@lru_cache(maxsize=40)
+@lru_cache(maxsize=128)
+def _episode_semantic_models(
+    visual_modes: tuple[VisualMode, ...],
+) -> tuple[type[SemanticShotBatch], type[SemanticShotPatch], type[SemanticRepairContent]]:
+    """Bind both request schemas and response validation to the episode palette."""
+    if not visual_modes:
+        raise ValueError("Semantic planning requires an episode visual-mode palette")
+
+    def require_episode_mode(value: VisualMode) -> VisualMode:
+        if value not in visual_modes:
+            raise ValueError(
+                f"visual_mode must be one of the episode palette: {list(visual_modes)}"
+            )
+        return value
+
+    validators = {"episode_visual_mode": field_validator("visual_mode")(require_episode_mode)}
+    mode_field = (VisualMode, Field(json_schema_extra={"enum": list(visual_modes)}))
+    intent_model = create_model(
+        "SemanticShotIntent",
+        __base__=SemanticShotIntent,
+        __validators__=validators,
+        visual_mode=mode_field,
+    )
+    content_model = create_model(
+        "SemanticRepairContent",
+        __base__=SemanticRepairContent,
+        __validators__=validators,
+        visual_mode=mode_field,
+    )
+    batch_model = create_model(
+        "SemanticShotBatch",
+        __base__=SemanticShotBatch,
+        shots=(GenericAlias(list, intent_model), Field(min_length=1, max_length=40)),
+    )
+    replacement_model = create_model(
+        "SemanticReplacement",
+        __base__=SemanticReplacement,
+        shots=(GenericAlias(list, intent_model), Field(min_length=1, max_length=40)),
+    )
+    patch_model = create_model(
+        "SemanticShotPatch",
+        __base__=SemanticShotPatch,
+        replacements=(GenericAlias(list, replacement_model), Field(min_length=1, max_length=40)),
+    )
+    return batch_model, patch_model, content_model
+
+
+@lru_cache(maxsize=128)
 def _exact_semantic_repair_batch_model(
     required_count: int,
+    visual_modes: tuple[VisualMode, ...] = (),
 ) -> type[SemanticRepairBatch]:
-    """Return a repair contract whose JSON schema matches compiler slot cardinality."""
+    """Bind the exact slot count and, when supplied, the episode palette."""
     if not 1 <= required_count <= 40:
         raise ValueError("Semantic repair slot count must be between 1 and 40")
-
-    class ExactSemanticRepairBatch(SemanticRepairBatch):
-        shots: list[SemanticRepairContent] = Field(
-            min_length=required_count, max_length=required_count
-        )
-
-    ExactSemanticRepairBatch.__name__ = SemanticRepairBatch.__name__
-    ExactSemanticRepairBatch.__qualname__ = SemanticRepairBatch.__qualname__
-    return ExactSemanticRepairBatch
+    content_model = (
+        _episode_semantic_models(visual_modes)[2] if visual_modes else SemanticRepairContent
+    )
+    return create_model(
+        "SemanticRepairBatch",
+        __base__=SemanticRepairBatch,
+        shots=(
+            GenericAlias(list, content_model),
+            Field(min_length=required_count, max_length=required_count),
+        ),
+    )
 
 
 class SemanticIssue(Contract):
@@ -2506,6 +2558,9 @@ def _repair_slot_constraints(
             constraints.append(
                 {
                     "beat_id": slot_id,
+                    "allowed_visual_modes": (
+                        brief.visual_strategy.visual_modes if brief.visual_strategy else []
+                    ),
                     "current_framing": compiled_framing,
                     "current_continuity": intent.continuity,
                     "current_reference_id": intent.reference_id,
@@ -2986,7 +3041,7 @@ def _semantic_planning_prompt(
         "Use their beat_id values for the opening records. The last hook record must end between 8 and 15 seconds; "
         "the supplied unit times are reference data, not values to copy into output.\n"
         "Return one JSON object matching the schema, without commentary.\n"
-        f"SCHEMA:\n{json.dumps(SemanticShotBatch.model_json_schema(), ensure_ascii=False)}\n"
+        f"SCHEMA:\n{json.dumps(_episode_semantic_models(tuple(strategy.visual_modes))[0].model_json_schema(), ensure_ascii=False)}\n"
         f"CHANNEL POLICY:\n{json.dumps(channel_policy, ensure_ascii=False)}\n"
         f"VISUAL FAMILY DEFINITIONS:\n{json.dumps(VISUAL_FAMILY_GUIDANCE, ensure_ascii=False)}\n"
         f"EPISODE STRATEGY:\n{strategy.model_dump_json()}\n"
@@ -3013,6 +3068,10 @@ def _plan_semantic_windows(
     prior_critic_feedback: str,
 ) -> tuple[list[Shot], Path]:
     """Plan v3 as semantic records, repairing only records rejected by Python."""
+    if brief.visual_strategy is None:
+        raise ValueError("Semantic planning requires an episode visual strategy")
+    visual_modes = tuple(brief.visual_strategy.visual_modes)
+    batch_model, patch_model, _ = _episode_semantic_models(visual_modes)
     checkpoint_path = root / "shot_plan.semantic.partial.json"
     next_window, accepted_batches, all_shots = _load_semantic_partial_plan(
         checkpoint_path, brief, timeline, windows
@@ -3044,7 +3103,7 @@ def _plan_semantic_windows(
         prompt = _semantic_planning_prompt(
             brief, units, established, events, offset, prior_critic_feedback
         )
-        batch = request_json(prompt, ask, SemanticShotBatch)
+        batch = request_json(prompt, ask, batch_model)
         hook_repair_partition: list[dict[str, str]] = []
         for attempt in range(SEMANTIC_COMPILER_ATTEMPTS):
             try:
@@ -3132,13 +3191,20 @@ def _plan_semantic_windows(
                         + "A target may split into multiple shots, but the first replacement must retain "
                         + "the target beat_id so unchanged continuity references remain valid."
                     )
+                patch_context += (
+                    "\nEPISODE VISUAL MODES: "
+                    + json.dumps(visual_modes)
+                    + ". Use only these exact visual_mode values."
+                )
                 patch_prompt = prompt + "\n" + patch_context
                 rejected_response = batch.model_dump_json()
                 patch_error = error
                 for patch_attempt in range(3):
                     repair: SemanticRepairBatch | SemanticShotPatch
                     if required_patch_shape:
-                        repair_model = _exact_semantic_repair_batch_model(required_count)
+                        repair_model = _exact_semantic_repair_batch_model(
+                            required_count, visual_modes
+                        )
                         repair = request_json(
                             patch_prompt,
                             ask,
@@ -3151,7 +3217,7 @@ def _plan_semantic_windows(
                         repair = request_json(
                             patch_prompt,
                             ask,
-                            SemanticShotPatch,
+                            patch_model,
                             repair_response=rejected_response,
                             repair_error=patch_error,
                             repair_context=patch_context,

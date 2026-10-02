@@ -7,7 +7,7 @@ Versioned sanitized replay corpus for adaptive semantic-planner failures.
 ## Local Contracts
 - Every case must validate through `load_semantic_failure_case`, including its input and candidate SHA-256 values.
 - Link immutable raw receipts only by digest. Never commit provider response text, chat URLs, profile data, cookies, credentials or secrets.
-- Keep request-contract, semantic-compiler and final-validator boundaries explicit. A corrected candidate must pass the compiled prefix without a late deterministic validator escape.
+- Keep request-contract, semantic-compiler and final-validator boundaries explicit. Repair-contract replay binds cardinality and the case brief's episode palette; global-only modes must reject before compilation. A corrected candidate must pass the compiled prefix without a late deterministic validator escape.
 - Corpus replay is offline-only and must not import or invoke Gemini, Flow or browser transport.
 - Add a new case only for a distinct independently understandable boundary; repeated occurrences belong in sanitized evidence metrics.
 
@@ -16,7 +16,7 @@ Versioned sanitized replay corpus for adaptive semantic-planner failures.
 
 ## Verification
 - Run `python -m pytest tests/unit/test_semantic_failure_replay.py -q`.
-- Run the public corpus report against `evidence/professor_lineages_8_13.json` and require both replay and validator-audit readiness before any live planning request.
+- Run the public corpus report against `evidence/professor_lineages_8_14.json` and require both replay and validator-audit readiness before any live planning request.
 
 ## Child DOX Index
 - None.

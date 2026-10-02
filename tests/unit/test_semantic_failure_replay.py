@@ -21,7 +21,7 @@ FIXTURE = (
     / "professor_lineage10_schulte_intro.json"
 )
 CORPUS = FIXTURE.parent
-LIVE_EVIDENCE = CORPUS / "evidence" / "professor_lineages_8_13.json"
+LIVE_EVIDENCE = CORPUS / "evidence" / "professor_lineages_8_14.json"
 
 
 def test_lineage10_schulte_failure_replays_at_the_addressable_compiler_boundary():
@@ -64,12 +64,14 @@ def test_professor_failure_corpus_replays_every_distinct_boundary_offline():
 
     assert report.case_ids == [
         "professor_lineage10_schulte_intro",
+        "professor_lineage14_episode_visual_mode",
         "professor_lineage8_entity_visibility",
         "professor_lineage9_exact_repair_cardinality",
         "professor_lineage9_recurring_entity",
     ]
     assert report.observed_boundaries == {
         "professor_lineage10_schulte_intro": "semantic_compiler",
+        "professor_lineage14_episode_visual_mode": "request_contract",
         "professor_lineage8_entity_visibility": "semantic_compiler",
         "professor_lineage9_exact_repair_cardinality": "request_contract",
         "professor_lineage9_recurring_entity": "semantic_compiler",
@@ -77,6 +79,18 @@ def test_professor_failure_corpus_replays_every_distinct_boundary_offline():
     assert report.accepted_checkpoint_batches == 2
     assert report.late_validator_escapes == []
     assert report.ready
+
+
+def test_lineage14_global_only_visual_mode_replays_at_the_request_contract():
+    result = replay_semantic_failure_case(
+        CORPUS / "professor_lineage14_episode_visual_mode.json"
+    )
+
+    assert result.observed_boundary == "request_contract"
+    assert result.issues[0].code == "SCHEMA_EPISODE_VISUAL_MODE"
+    assert result.issues[0].beat_ids == ["beat_schulte_purpose"]
+    assert result.corrected_boundary == "accepted"
+    assert result.late_validator_escape is None
 
 
 def test_literalized_visual_is_addressable_before_final_validation():
@@ -420,11 +434,11 @@ def test_validator_audit_assigns_every_final_rule_to_an_earlier_owner():
 def test_failure_intelligence_report_is_green_before_one_bounded_live_request():
     report = build_failure_intelligence_report(CORPUS, LIVE_EVIDENCE)
 
-    assert report.live_runs == 5
-    assert report.live_attempts == 5
+    assert report.live_runs == 6
+    assert report.live_attempts == 6
     assert report.accepted_windows == 2
-    assert report.live_attempts_per_accepted_window == 2.5
-    assert report.repair_count == 26
+    assert report.live_attempts_per_accepted_window == 3
+    assert report.repair_count == 32
     assert report.provider_refusals == 3
     assert report.quota_switches == 0
     assert report.checkpoint_progress == "2/4 windows, 7 shots"
@@ -432,6 +446,6 @@ def test_failure_intelligence_report_is_green_before_one_bounded_live_request():
     assert report.late_validator_escapes == []
     assert report.validator_audit_ready
     assert report.replay_corpus_ready
-    assert report.next_planner_version == 14
+    assert report.next_planner_version == 15
     assert report.next_compiler_version == 6
     assert report.ready_for_one_bounded_live_request
