@@ -22,7 +22,7 @@ Versioned sanitized replay corpus for adaptive semantic-planner failures.
 - Run `python -m pytest tests/unit/test_semantic_failure_replay.py -q`.
 - Run the public corpus report against `evidence/professor_lineages_8_19.json` and require both replay and validator-audit readiness before any live planning request.
 
-- Latest operating snapshot: evidence/professor_lineages_8_21.json;8_19 remains the pinned historical regression baseline. Deterministic readiness does not grant critic approval.
+- Latest operating snapshot: evidence/professor_lineages_8_22.json;8_19 remains the pinned historical regression baseline. Deterministic readiness does not grant critic approval.
 
 ## Child DOX Index
 - None.

@@ -3,11 +3,15 @@ from youtube_automation.production.shots import SCHULTE_6X6, Overlay, Shot
 
 
 def test_semantic_title_templates_retain_copy_in_rendered_ass():
+    import json
+    from pathlib import Path
+
     from youtube_automation.production.shots import SemanticGraphic, _graphic_overlays
 
-    for template in ("kinetic_type", "focus_sweep"):
-        graphic = SemanticGraphic(template=template, primary_text="مستعد تصدم نفسك؟",
-                                  secondary_text="اختبر قدراتك الآن")
+    case = json.loads((Path(__file__).parents[1] / "fixtures" / "semantic_graphic_copy_v1.json").read_text())
+    assert case["version"] == 1
+    for template in case["templates"]:
+        graphic = SemanticGraphic.model_validate({**case["graphic"], "template": template})
         overlays = _graphic_overlays(graphic, 180)
         shot = fixture_shot(local_composition=template, overlays=overlays)
         rendered = overlay_ass(shot, 1920, 1080, 30)
@@ -139,6 +143,14 @@ def test_schulte_grid_and_timer_are_deterministic_local_graphics():
     assert "00:40" in ass
     assert "m 0 0 l 1344 0 1344 756" in ass
     assert all(f"}}{number}\n" in ass or f"}}{number}\r\n" in ass for number in map(str, range(1, 37)))
+    from youtube_automation.production.render import overlay_review_evidence
+
+    evidence = overlay_review_evidence(shot, 30)
+    assert evidence["camera_motion"] == "hold"
+    assert evidence["local_property_animation"] is False
+    assert evidence["local_fade_animation"] is False
+    assert evidence["start_transition_behavior"] is None
+    assert evidence["timer_behavior"] == "fixed readout"
 
 
 def test_schulte_grid_values_are_replaced_with_the_deterministic_preset():
@@ -236,8 +248,47 @@ def test_branded_schulte_challenge_renders_rule_fixation_target_and_start_transi
     assert "ابحث من 1 إلى 36" in ass
     assert "ابدأ" in ass
     assert "\\t(" in ass
-    assert "\\clip(" in ass
+    assert "\\pos(960,81)" in ass
+    assert "\\clip(" not in ass
+    assert "m 0 0 l 1920 0 1920 1080" not in ass
+    from youtube_automation.production.render import overlay_review_evidence
+
+    evidence = overlay_review_evidence(shot, 30)
+    assert evidence["local_property_animation"] is True
+    assert evidence["local_fade_animation"] is True
+    assert evidence["start_transition_behavior"] == "fading header badge; grid unobscured"
     assert all(f"}}{number}\n" in ass or f"}}{number}\r\n" in ass for number in map(str, range(1, 37)))
+
+
+def test_real_schulte_render_keeps_grid_lines_and_numbers_visible(tmp_path):
+    import shutil
+    import subprocess
+
+    import pytest
+    from PIL import Image
+
+    from youtube_automation.production.shots import SemanticGraphic, _graphic_overlays
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("Real FFmpeg unavailable")
+    shot = fixture_shot(narrative_role="diagram", framing="diagram", operation="local_canvas",
+                        local_composition="schulte_challenge", overlays=_graphic_overlays(
+                            SemanticGraphic(template="schulte_challenge", primary_text="Find in order",
+                                            secondary_text="Get ready", timer_text="00:40"), 180))
+    timer = next(o for o in shot.overlays if o.kind == "timer")
+    grid = next(o for o in shot.overlays if o.kind == "data_grid")
+    assert timer.y + timer.height < grid.y
+    (tmp_path / "grid.ass").write_text(overlay_ass(shot, 1920, 1080, 30), encoding="utf-8-sig")
+    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+                    "color=c=white:s=1920x1080:r=30", "-vf", "ass=grid.ass",
+                    "-frames:v", "1", "-update", "1", "grid.png"],
+                   cwd=tmp_path, check=True, timeout=30, capture_output=True)
+    with Image.open(tmp_path / "grid.png") as frame:
+        pixels = frame.convert("RGB")
+        assert max(pixels.getpixel((513, 250))) < 100
+        assert max(pixels.getpixel((700, 289))) < 100
+        assert any(max(pixels.getpixel((x, y))) < 100
+                   for x in range(375, 425) for y in range(210, 240))
 
 
 def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):

@@ -99,12 +99,14 @@ def test_mandatory_grid_compiles_truthful_mode_without_fake_variety():
         "visual_mode": "kinetic_type", "beat_kind": "instruction"}) for intent in batch.shots]})
     compiled = shots._compile_semantic_batch(batch, case.failed_units, case.brief, case.timeline, [], 0)
     assert [shot.visual_mode for shot in compiled] == ["challenge_ui"] * 3
+    assert all(overlay.target_cell == shots.SCHULTE_6X6.index("1")
+               for shot in compiled for overlay in shot.overlays if overlay.kind == "target_indicator")
     shots.validate_plan(full_plan(case, compiled), case.timeline, case.brief)
 
 
 @pytest.mark.parametrize("operation,asset_id,start,end,forbidden,expected", [
     ("reuse", "bad_asset", 0, 150, "bad_asset", True),
-    ("reuse", "fresh_asset", 0, 150, "bad_asset", False),
+    ("reuse", "earlier_accepted_asset", 0, 150, "bad_asset", True),
     ("replace", "bad_asset", 0, 150, "bad_asset", False),
     ("reuse", "bad_asset", 150, 300, "bad_asset", False),
     ("reuse", "bad_asset", 0, 150, None, False),
@@ -131,17 +133,29 @@ def test_critic_reuse_constraints_expose_only_overlapping_references():
     ]
     shots._bind_critic_reuse_constraints(slots, targets, [unit])
     assert slots[0]["forbidden_unchanged_reuse_reference_ids"] == ["rejected_asset"]
+    assert slots[0]["forbid_unchanged_reuse"] is True
 
 
-@pytest.mark.parametrize("planner_version", [20, 21])
-def test_previous_checkpoint_migrates_without_resetting_grid_progress(tmp_path, planner_version):
+def test_critic_repair_binding_rejects_any_unchanged_reference():
+    intent = countdown_case().corrected_candidate.to_semantic_batch().shots[0]
+    content = intent.model_dump(exclude={"beat_id", "first_unit_id", "last_unit_id"})
+    content.update(continuity="reuse", reference_id="earlier_accepted_asset")
+    repair = shots.SemanticRepairBatch(shots=[shots.SemanticRepairContent.model_validate(content)])
+    shape = [{"target_beat_id": intent.beat_id, "shots": [{"beat_id": intent.beat_id,
+        "first_unit_id": intent.first_unit_id, "last_unit_id": intent.last_unit_id}]}]
+    with pytest.raises(ValueError, match="requires a fresh scene or a real edit"):
+        shots._bind_repair_content(repair, shape, [{"beat_id": intent.beat_id, "forbid_unchanged_reuse": True}])
+
+
+@pytest.mark.parametrize("planner_version,compiler_version", [(20, 10), (21, 10), (22, 11)])
+def test_previous_checkpoint_migrates_without_resetting_grid_progress(tmp_path, planner_version, compiler_version):
     case = countdown_case()
     path = tmp_path / "shot_plan.semantic.partial.json"
     windows = shots._planning_windows(case.timeline)
     shots._save_semantic_partial_plan(path, case.brief, case.timeline, windows, [case.corrected_candidate.to_semantic_batch()])
     checkpoint = json.loads(path.read_text())
     checkpoint["planner_version"] = planner_version
-    checkpoint["compiler_version"] = 10
+    checkpoint["compiler_version"] = compiler_version
     path.write_text(json.dumps(checkpoint))
     index, _, compiled = shots._load_semantic_partial_plan(path, case.brief, case.timeline, windows)
     assert index == 1 and len(compiled) == 3

@@ -395,12 +395,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f"m {-radius} {-radius} l {radius} {-radius} {radius} {radius} {-radius} {radius} {-radius} {-radius}{{\\p0}}"
             )
         elif overlay.kind == "start_transition":
+            badge_y = round(height * 0.075)
             contents.extend(
                 [
-                    f"{{\\move(0,0,{width},0)\\p1\\bord0\\1c&H20283A&"
-                    f"\\clip(0,0,{width},{height})}}"
-                    f"m 0 0 l {width} 0 {width} {height} 0 {height} 0 0{{\\p0}}",
-                    f"{{\\an5\\b1\\fs{max(36, height // 12)}\\pos({width // 2},{height // 2})"
+                    f"{{\\an5\\b1\\fs{max(26, height // 30)}\\pos({width // 2},{badge_y})"
                     f"\\fad(80,160)}}{_safe_ass_text(overlay.text)}",
                 ]
             )
@@ -423,6 +421,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             grid_path.extend(
                 f"m 0 {round(row * cell_h)} l {w} {round(row * cell_h)}"
                 for row in range(1, overlay.rows)
+            )
+            # libass may discard zero-area line subpaths; filled thin strips remain visible.
+            interior = []
+            for column in range(1, overlay.columns):
+                line_x = round(column * cell_w)
+                interior.append(f"m {line_x} 0 l {line_x + 2} 0 {line_x + 2} {h} {line_x} {h}")
+            for row in range(1, overlay.rows):
+                line_y = round(row * cell_h)
+                interior.append(f"m 0 {line_y} l {w} {line_y} {w} {line_y + 2} 0 {line_y + 2}")
+            contents.append(
+                f"{{\\pos({x},{y})\\p1\\bord0\\1a&H00&\\1c&H303030&}}"
+                + " ".join(interior) + "{\\p0}"
             )
             contents.append(
                 f"{{\\pos({x},{y})\\p1\\bord2\\1a&HFF&\\3c&H303030&}}"
@@ -449,6 +459,22 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             f"Dialogue: 0,{start},{end},Default,,0,0,0,,{content}" for content in contents
         )
     return header + "\n".join(events) + "\n"
+
+
+def overlay_review_evidence(shot: Shot, fps: int) -> dict[str, Any]:
+    """Describe actual compiled ASS behavior, independently of camera motion."""
+    rendered = overlay_ass(shot, 1920, 1080, fps)
+    return {
+        "shot_id": shot.shot_id,
+        "camera_motion": shot.motion,
+        "local_position_animation": "\\move(" in rendered,
+        "local_property_animation": "\\t(" in rendered,
+        "local_fade_animation": "\\fad(" in rendered,
+        "visible_copy": [overlay.text for overlay in shot.overlays if overlay.text],
+        "timer_behavior": "fixed readout" if any(o.kind == "timer" for o in shot.overlays) else None,
+        "start_transition_behavior": "fading header badge; grid unobscured"
+            if any(o.kind == "start_transition" for o in shot.overlays) else None,
+    }
 
 
 def render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool = False) -> Path:

@@ -58,6 +58,8 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 - Correction targets label prior takeaways as rejected_viewer_takeaway; replacement takeaways must derive from exact canonical narration, not preserve the rejected claim.
 - Planner22/compiler11 preserves supplied primary and secondary copy for kinetic_type and focus_sweep, renders centered readable title geometry, and rejects a standalone semantic focus_sweep without visible copy. Earlier accepted semantic windows remain unchanged on21/10 migration, but recompile under the corrected overlay contract and require a fresh complete critic review.
 - Recompiled overlay/local-composition changes may recover rejection feedback only when every other reviewed plan and shot field matches exactly. Semantic changes retain strict plan-hash binding; recovered rejection never substitutes for current approval.
+- Planner23/compiler12 blocks every unchanged non-grid reuse on a critic-rejected source range, including older accepted prefix assets. Repair slots enforce fresh scenes or real edits. Schulte target cues point to the cell containing1; start transitions use fading header badges that never cover the persistent grid. Critic requests include actual ASS-derived local animation evidence and distinguish an announced fixed time limit from a running countdown.
+- Opening hook goals and hook_microbeats are supplied only to window0. Later-window context retains episode policy but derives beat kind, semantic link and takeaway from its own canonical units, preventing repeated opening problem/curiosity/promise goals from overriding later narration.
 
 ## Work Guidance
 - New adaptive execution is opt-in until reviewed pilots pass.

@@ -47,6 +47,22 @@ from youtube_automation.production.shots import (
 HOOK_IDS = ("problem", "gap", "promise")
 
 
+def test_later_window_context_does_not_reseed_opening_hook_goals():
+    from youtube_automation.production.shots import _semantic_planning_prompt
+
+    brief = _brief()
+    units = [NarrationUnit(unit_id="u900_1050", start_frame=900, end_frame=1050,
+                           text="Enjoyable exercises challenge your intelligence")]
+    opening = _semantic_planning_prompt(brief, units, [], [], 0, "")
+    later = _semantic_planning_prompt(brief, units, [], [], 1, "")
+    assert "A concrete attention failure matters" in opening
+    assert '"hook_microbeats"' in opening
+    assert "A concrete attention failure matters" not in later
+    assert '"hook_microbeats"' not in later
+    assert "Do not recycle opening-hook goals" in later
+    assert "Enjoyable exercises challenge your intelligence" in later
+
+
 def _brief(*, version: int = 3, source: str = "semantic narration") -> Brief:
     channel = Channel(
         version=version,

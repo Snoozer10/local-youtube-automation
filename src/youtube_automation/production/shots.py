@@ -324,21 +324,22 @@ class ShotBatch(Contract):
     shots: list[Shot] = Field(min_length=1, max_length=300)
 
 
-SEMANTIC_PLANNER_VERSION = 22
-SHOT_COMPILER_VERSION = 11
+SEMANTIC_PLANNER_VERSION = 23
+SHOT_COMPILER_VERSION = 12
 SEMANTIC_CHECKPOINT_MIGRATIONS = {
-    (10, 2): (22, 11),
-    (11, 3): (22, 11),
-    (12, 4): (22, 11),
-    (13, 5): (22, 11),
-    (14, 6): (22, 11),
-    (15, 6): (22, 11),
-    (16, 7): (22, 11),
-    (17, 8): (22, 11),
-    (18, 9): (22, 11),
-    (19, 9): (22, 11),
-    (20, 10): (22, 11),
-    (21, 10): (22, 11),
+    (10, 2): (23, 12),
+    (11, 3): (23, 12),
+    (12, 4): (23, 12),
+    (13, 5): (23, 12),
+    (14, 6): (23, 12),
+    (15, 6): (23, 12),
+    (16, 7): (23, 12),
+    (17, 8): (23, 12),
+    (18, 9): (23, 12),
+    (19, 9): (23, 12),
+    (20, 10): (23, 12),
+    (21, 10): (23, 12),
+    (22, 11): (23, 12),
 }
 # One initial compile plus five targeted corrections. A valid correction can
 # expose a later deterministic constraint, so schema success is not terminal.
@@ -2092,11 +2093,12 @@ def _graphic_overlays(graphic: SemanticGraphic | None, duration: int) -> list[Ov
     start_copy = graphic.secondary_text or "Start"
     return [
         Overlay(kind="data_grid", preset="schulte_6x6", start_frame=0, end_frame=duration),
-        Overlay(kind="timer", start_frame=0, end_frame=duration, text=graphic.timer_text),
+        Overlay(kind="timer", start_frame=0, end_frame=duration, text=graphic.timer_text,
+                x=0.82, y=0.025, width=0.15, height=0.08),
         Overlay(kind="challenge_frame", start_frame=0, end_frame=duration),
         Overlay(kind="rule_reveal", start_frame=0, end_frame=duration, text=graphic.primary_text),
         Overlay(kind="fixation_cue", start_frame=0, end_frame=duration),
-        Overlay(kind="target_indicator", start_frame=0, end_frame=duration, target_cell=0),
+        Overlay(kind="target_indicator", start_frame=0, end_frame=duration, target_cell=SCHULTE_6X6.index("1")),
         Overlay(kind="start_transition", start_frame=0, end_frame=duration, text=start_copy),
     ]
 
@@ -2787,6 +2789,8 @@ def _bind_repair_content(
                 and not (graphic and graphic["template"] == "schulte_challenge")
             ):
                 raise ValueError(f"Repair slot {slot['beat_id']} cannot reuse/edit an exhausted scene reference; choose a fresh scene and distinct entities")
+            if constraint.get("forbid_unchanged_reuse") and content.get("continuity") == "reuse":
+                raise ValueError(f"Repair slot {slot['beat_id']} requires a fresh scene or a real edit; unchanged reuse cannot repair its rejected meaning")
             shots.append(SemanticShotIntent.model_validate({**content, **slot}))
             content_index += 1
         replacements.append(
@@ -2903,7 +2907,7 @@ def _load_semantic_partial_plan(
         or not 0 < next_window <= len(windows)
     ):
         raise ValueError("Semantic partial shot plan does not match current planning inputs")
-    if migrating and checkpoint_lineage not in {(17, 8), (18, 9), (20, 10), (21, 10)}:
+    if migrating and checkpoint_lineage not in {(17, 8), (18, 9), (20, 10), (21, 10), (22, 11)}:
         accepted_end = windows[next_window - 1][1]
         if any(
             event.introduction_frame < accepted_end
@@ -3111,7 +3115,7 @@ def _critic_reuse_issues(batch: SemanticShotBatch, compiled: list[Shot], targets
         beat_ids=[intent.beat_id], code="SEMANTIC_CRITIC_REJECTED_REUSE",
         requirement="This unchanged asset was editorially rejected for this narration range. Choose a fresh scene or edit its visible action/state to serve the exact narration.",
     ) for intent, shot in zip(batch.shots, compiled, strict=True) if shot.operation == "reuse" and any(
-        target["forbidden_unchanged_reuse_asset_id"] == shot.asset_id
+        target["forbidden_unchanged_reuse_asset_id"] is not None
         and shot.start_frame < target["end_frame"] and shot.end_frame > target["start_frame"]
         for target in targets
     )]
@@ -3128,7 +3132,8 @@ def _bind_critic_reuse_constraints(slots: list[dict[str, Any]], targets: list[di
             if target["forbidden_unchanged_reuse_asset_id"] is not None
             and first.start_frame < target["end_frame"] and last.end_frame > target["start_frame"]
         })
-        slot["continuity_rules"]["reuse"] += " Never reuse a reference listed in forbidden_unchanged_reuse_reference_ids; choose a genuinely changed edit or fresh scene."
+        slot["forbid_unchanged_reuse"] = bool(slot["forbidden_unchanged_reuse_reference_ids"])
+        slot["continuity_rules"]["reuse"] += " If forbid_unchanged_reuse is true, do not reuse any unchanged non-grid asset, even an accepted prefix asset; choose a genuinely changed edit or fresh scene."
 
 
 def ensure_editorial_review(
@@ -3139,6 +3144,8 @@ def ensure_editorial_review(
     ask: Callable[[str], str],
 ) -> EditorialReview:
     """Run a clean, content-bound semantic review before a v3 plan reaches Flow."""
+    from .render import overlay_review_evidence
+
     root = Path(run_dir)
     path = root / "editorial_review.json"
     if path.exists():
@@ -3167,6 +3174,10 @@ def ensure_editorial_review(
         "Evaluate the rendered overlays as well as the base asset. Static holds are valid when they directly show the spoken fact. "
         "A narration-bound Schulte challenge must keep its grid visible through the start cue; judge meaningful local rule, timer and target-state progression, "
         "rather than requiring a cutaway or different base asset merely for variety. Reject repeated visuals when their communicated meaning fails to progress. "
+        "A hold is camera motion only; local overlays may still animate. Use the supplied renderer evidence. "
+        "A fixed timer readout before the spoken start is the announced time limit, not a running countdown. "
+        "Keep the exact grid fixed while instructions progress; do not demand invented timer decrements, shuffling, premature target solving or a historical cutaway during mandatory grid coverage. "
+        "A source-specific creator/name caption on the persistent exercise grid can communicate historical attribution; judge its exact copy and readability. "
         "Return one JSON object matching this schema without commentary:\n"
         + json.dumps(EditorialReview.model_json_schema(), ensure_ascii=False)
         + "\nPLAN SHA-256: "
@@ -3175,6 +3186,8 @@ def ensure_editorial_review(
         + (brief.visual_strategy.model_dump_json() if brief.visual_strategy else "null")
         + "\nSHOT PLAN:\n"
         + plan.model_dump_json()
+        + "\nRENDERER EVIDENCE FROM COMPILED ASS:\n"
+        + json.dumps([overlay_review_evidence(shot, plan.fps) for shot in plan.shots], ensure_ascii=False)
         + "\nREQUIRED SHOT IDS IN EXACT ORDER:\n"
         + json.dumps([shot.shot_id for shot in plan.shots])
     )
@@ -3303,6 +3316,21 @@ def _semantic_planning_prompt(
         }
         for event in events
     ]
+    strategy_context = strategy.model_dump(mode="json")
+    if window_index == 0:
+        hook_rule = (
+            "7. This opening window must begin with exactly these ordered hook beats: "
+            + json.dumps([beat.model_dump(mode="json") for beat in strategy.hook_microbeats], ensure_ascii=False)
+            + ". Use their beat_id values for the opening records. The last hook record must end between 8 and 15 seconds; "
+            "the supplied unit times are reference data, not values to copy into output.\n"
+        )
+    else:
+        strategy_context.pop("hook_microbeats", None)
+        hook_rule = (
+            "7. This window is after the opening hook. Derive each beat_kind, semantic_link and viewer_takeaway "
+            "from this window's exact narration units. Do not recycle opening-hook goals or impose a problem/curiosity/promise sequence. "
+            "Leave hook_beat_id and hook_function null.\n"
+        )
     return (
         "You are selecting semantic storyboard decisions for a still-image YouTube video. "
         "Python owns IDs, exact frames, narration excerpts, span IDs, scene IDs, asset IDs, treatments, "
@@ -3322,15 +3350,12 @@ def _semantic_planning_prompt(
         "5. Framing is an editorial meaning choice, not a repeating camera cycle. Use diagram only for the local "
         "Schulte canvas. Keep ordinary staging plausible and source-grounded.\n"
         f"6. Use only these visual modes: {json.dumps(strategy.visual_modes)}.\n"
-        f"7. The first window must begin with exactly these ordered hook beats: "
-        f"{json.dumps([beat.model_dump(mode='json') for beat in strategy.hook_microbeats], ensure_ascii=False)}. "
-        "Use their beat_id values for the opening records. The last hook record must end between 8 and 15 seconds; "
-        "the supplied unit times are reference data, not values to copy into output.\n"
-        "Return one JSON object matching the schema, without commentary.\n"
+        + hook_rule
+        + "Return one JSON object matching the schema, without commentary.\n"
         f"SCHEMA:\n{json.dumps(_episode_semantic_models(tuple(strategy.visual_modes))[0].model_json_schema(), ensure_ascii=False)}\n"
         f"CHANNEL POLICY:\n{json.dumps(channel_policy, ensure_ascii=False)}\n"
         f"VISUAL FAMILY DEFINITIONS:\n{json.dumps(VISUAL_FAMILY_GUIDANCE, ensure_ascii=False)}\n"
-        f"EPISODE STRATEGY:\n{strategy.model_dump_json()}\n"
+        f"EPISODE STRATEGY:\n{json.dumps(strategy_context, ensure_ascii=False)}\n"
         f"ESTABLISHED ASSETS:\n{json.dumps(established, ensure_ascii=False)}\n"
         "NARRATION-BOUND VISUAL EVENTS:\n"
         f"{json.dumps(event_obligations, ensure_ascii=False)}\n"

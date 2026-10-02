@@ -7,6 +7,7 @@ Offline verification, regression evidence and deterministic test fixtures.
 ## Local Contracts
 - Unit tests must not invoke live Gemini, Flow, browser transport or paid/network services. Use fakes, preserved sanitized fixtures and public production seams.
 - Preserve historical regression evidence that remains linked from a durable replay contract. Do not replace a failing fixture merely to make a changed implementation pass.
+- fixtures/semantic_graphic_copy_v1.json records sanitized GRAPHIC_COPY_LOSS evidence; the compiler-to-ASS regression must preserve primary and secondary copy for kinetic_type and focus_sweep.
 - Test behavior and externally meaningful failure boundaries rather than incidental private call order.
 
 ## Work Guidance
