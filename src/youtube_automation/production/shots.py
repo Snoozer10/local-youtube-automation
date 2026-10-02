@@ -324,17 +324,18 @@ class ShotBatch(Contract):
     shots: list[Shot] = Field(min_length=1, max_length=300)
 
 
-SEMANTIC_PLANNER_VERSION = 18
+SEMANTIC_PLANNER_VERSION = 19
 SHOT_COMPILER_VERSION = 9
 SEMANTIC_CHECKPOINT_MIGRATIONS = {
-    (10, 2): (18, 9),
-    (11, 3): (18, 9),
-    (12, 4): (18, 9),
-    (13, 5): (18, 9),
-    (14, 6): (18, 9),
-    (15, 6): (18, 9),
-    (16, 7): (18, 9),
-    (17, 8): (18, 9),
+    (10, 2): (19, 9),
+    (11, 3): (19, 9),
+    (12, 4): (19, 9),
+    (13, 5): (19, 9),
+    (14, 6): (19, 9),
+    (15, 6): (19, 9),
+    (16, 7): (19, 9),
+    (17, 8): (19, 9),
+    (18, 9): (19, 9),
 }
 # One initial compile plus five targeted corrections. A valid correction can
 # expose a later deterministic constraint, so schema success is not terminal.
@@ -2590,6 +2591,15 @@ def _repair_slot_constraints(
     known_entity_ids = {
         entity_id for shot in prior_shots for entity_id in shot.entity_ids
     }
+    scene_counts: dict[str, int] = {}
+    for shot in prior_shots:
+        if not any(overlay.kind == "data_grid" and overlay.preset == "schulte_6x6" for overlay in shot.overlays):
+            scene_counts[shot.scene_id] = scene_counts.get(shot.scene_id, 0) + 1
+    max_scene_appearances = brief.channel.max_non_diagram_scene_appearances or 4
+    exhausted_references = {
+        shot.asset_id for shot in prior_shots
+        if scene_counts.get(shot.scene_id, 0) >= max_scene_appearances
+    }
     for shot in prior_shots:
         if any(
             overlay.kind == "data_grid" and overlay.preset == "schulte_6x6"
@@ -2638,7 +2648,12 @@ def _repair_slot_constraints(
                     "maximum_consecutive_framing": policy.max_consecutive_framing,
                     "preceding_compiled_framing": prior_framing or None,
                     "preceding_framing_run": framing_run,
-                    "available_reference_ids": sorted(known_references),
+                    "available_reference_ids": sorted(known_references - exhausted_references),
+                    "exhausted_non_grid_reference_ids": sorted(exhausted_references),
+                    "non_grid_scene_rule": (
+                        "Non-Schulte content cannot reuse or edit an exhausted reference. "
+                        "Choose a fresh scene with genuinely distinct entities."
+                    ),
                     "continuity_rules": {
                         "new": (
                             "reference_id must be null; new requires entity_ids distinct from "
@@ -2739,6 +2754,11 @@ def _bind_repair_content(
             graphic = content.get("graphic")
             if required_graphic and (not graphic or graphic["template"] != required_graphic):
                 raise ValueError(f"Repair slot {slot['beat_id']} requires graphic.template={required_graphic}")
+            if (
+                content.get("reference_id") in constraint.get("exhausted_non_grid_reference_ids", [])
+                and not (graphic and graphic["template"] == "schulte_challenge")
+            ):
+                raise ValueError(f"Repair slot {slot['beat_id']} cannot reuse/edit an exhausted scene reference; choose a fresh scene and distinct entities")
             shots.append(SemanticShotIntent.model_validate({**content, **slot}))
             content_index += 1
         replacements.append(
@@ -2855,7 +2875,7 @@ def _load_semantic_partial_plan(
         or not 0 < next_window <= len(windows)
     ):
         raise ValueError("Semantic partial shot plan does not match current planning inputs")
-    if migrating and checkpoint_lineage != (17, 8):
+    if migrating and checkpoint_lineage not in {(17, 8), (18, 9)}:
         accepted_end = windows[next_window - 1][1]
         if any(
             event.introduction_frame < accepted_end
@@ -3225,6 +3245,11 @@ def _plan_semantic_windows(
                 "visible_state": shot.visible_state,
                 "setting": shot.setting,
                 "framing": shot.framing,
+                "remaining_non_grid_appearances": max(0,
+                    (brief.channel.max_non_diagram_scene_appearances or 4) - sum(
+                        earlier.scene_id == shot.scene_id for earlier in all_shots
+                        if not any(overlay.kind == "data_grid" and overlay.preset == "schulte_6x6"
+                                   for overlay in earlier.overlays))),
             }
             for shot in all_shots
             if shot.operation != "reuse"
@@ -3232,6 +3257,7 @@ def _plan_semantic_windows(
         prompt = _semantic_planning_prompt(
             brief, units, established, events, offset, prior_critic_feedback
         )
+        prompt += "\nNON-GRID SCENE BUDGET: An established asset with remaining_non_grid_appearances=0 cannot be reused or edited for non-Schulte content. Choose a genuinely fresh scene with distinct entity IDs instead."
         cues = _schulte_start_cue_spans(timeline)
         if cues:
             required_start = min(event.introduction_frame for event in narration_bound_visual_events(timeline) if event.preset == "schulte_6x6")

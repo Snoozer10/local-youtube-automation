@@ -27,6 +27,36 @@ def test_fixed_tail_reserves_diversity_in_editable_window():
     assert result.corrected_boundary == "accepted"
 
 
+def test_repair_excludes_exhausted_prefix_scenes_and_accepts_fresh_scene():
+    case = load_semantic_failure_case(CORPUS / "professor_lineage17_fixed_tail_framing.json")
+    prefix = []
+    for index, batch in enumerate(case.checkpoint.batches):
+        prefix.extend(shots._compile_semantic_batch(batch.to_semantic_batch(),
+            case.checkpoint.units_by_window[index], case.brief, case.timeline, prefix, index))
+    batch = case.corrected_candidate.to_semantic_batch()
+    intent = batch.shots[0]
+    shape = [{"target_beat_id": intent.beat_id, "shots": [{
+        "beat_id": intent.beat_id, "first_unit_id": intent.first_unit_id,
+        "last_unit_id": intent.last_unit_id}]}]
+    brief = case.brief.model_copy(update={"channel": case.brief.channel.model_copy(
+        update={"max_non_diagram_scene_appearances": 2})})
+    constraints = shots._repair_slot_constraints(batch, shape, brief, prefix, case.timeline, case.failed_units)
+    exhausted = constraints[0]["exhausted_non_grid_reference_ids"]
+    assert exhausted
+    assert not set(exhausted).intersection(constraints[0]["available_reference_ids"])
+    content = shots.SemanticRepairContent.model_validate(intent.model_dump(exclude={"beat_id", "first_unit_id", "last_unit_id"}))
+    invalid = content.model_copy(update={"continuity": "edit", "reference_id": exhausted[0]})
+    with pytest.raises(ValueError, match="exhausted scene reference"):
+        shots._bind_repair_content(shots.SemanticRepairBatch(shots=[invalid]), shape, constraints)
+    fresh = content.model_copy(update={"continuity": "new", "reference_id": None,
+        "entity_ids": ["fresh_subject_01"], "subject": "A fresh subject",
+        "visible_state": "The fresh subject waits", "setting": "A grounded room"})
+    patch = shots._bind_repair_content(shots.SemanticRepairBatch(shots=[fresh]), shape, constraints)
+    assert patch.replacements[0].shots[0].reference_id is None
+    corrected = batch.model_copy(update={"shots": patch.replacements[0].shots + batch.shots[1:]})
+    assert shots._compile_semantic_batch(corrected, case.failed_units, brief, case.timeline, prefix, 2)
+
+
 def test_fixed_tail_migration_archives_and_reopens_only_affected_suffix(tmp_path):
     case = load_semantic_failure_case(CORPUS / "professor_lineage17_fixed_tail_framing.json")
     path = tmp_path / "shot_plan.semantic.partial.json"
@@ -272,7 +302,7 @@ def test_unreplayed_recorded_escape_blocks_live_readiness(tmp_path):
     shutil.copytree(CORPUS, corpus)
     (corpus / "professor_lineage16_countdown_coverage.json").unlink()
     report = build_failure_intelligence_report(
-        corpus, corpus / "evidence/professor_lineages_8_17.json"
+        corpus, corpus / "evidence/professor_lineages_8_18.json"
     )
     assert report.replay_corpus_ready
     assert report.late_validator_escapes == ["professor_lineage16_countdown_escape"]

@@ -220,3 +220,11 @@ I1-I8 acceptance: historical failures are executable regression knowledge rather
 - 18/9 reserves four distinct framings before the locked tail. The sanitized eighth replay case rejects the editable beat and accepts its correction; migration archives and reopens only the affected suffix.
 - Ledger 8–17: nine attempts, three newly accepted windows, 54 repairs, three historical refusals, no quota switches. No final plan or critic approval yet.
 - Quota: baseline 21%, ceiling 28%, last read 24%; preserve closeout reserve at 27%.
+
+### Lineage 18 scene-budget repair / 19 remediation
+
+- 18/9 exhausted window-3 repairs on an already exhausted prefix scene. Preserve its failed receipts and 8–18 ledger.
+- 19/9 removes those references from repair choices and rejects their binding; a fresh-scene regression passes. Fixture metadata trimmed to canonical word/span data, without audio paths/checksums.
+- Last quota read 25%; baseline 21%, ceiling 28%, closeout reserve 27%. No complete plan or critic approval yet.
+
+- 19/9 offline gate: 861 unit tests, eight-case replay, whole-workspace Ruff and 16-file production mypy pass; exercise lint/drills passed earlier without related changes. Initial planning exposes remaining scene appearances. Last quota 26%.

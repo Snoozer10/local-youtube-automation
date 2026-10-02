@@ -48,6 +48,8 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 
 - Fixed diagram tails must meet framing diversity in the last editable window. Migration from 17/8 recompiles across the event boundary, archives an insufficient prefix, and reopens only its affected suffix; older migrations retain the pre-event restriction.
 
+- Repair slots exclude prefix references whose non-grid scene budget is exhausted; binding rejects their reuse/edit before compilation. Fresh scenes require distinct entities. Checkpoint 18/9 recompiles under 19/9 because the compiled contract is unchanged.
+
 ## Work Guidance
 - New adaptive execution is opt-in until reviewed pilots pass.
 - Do not equate technical verification with editorial approval.
