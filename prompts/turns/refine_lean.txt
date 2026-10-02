@@ -1,0 +1,9 @@
+Refine Paragraph {index}/{total}:
+
+{context_bridge}
+[RATIO LOCK]: Persona '{persona}' — {config:ratios}.
+[TAG LOCK]: Draft inside <thinking>...</thinking>; output ONLY the final Arabic paragraph inside <final_script>...</final_script>.
+{tone_block}
+{slang_restriction}
+ORIGINAL PARAGRAPH:
+{source_paragraph}

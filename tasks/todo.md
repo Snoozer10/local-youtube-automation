@@ -1,3 +1,9 @@
+# Active adaptive visual engine work
+
+See [adaptive-visual-tasks.md](adaptive-visual-tasks.md).
+
+---
+
 # Todo: flow_image_generator.py hardening (Tiers 1-3)
 
 ## Tier 1 — silent TargetClosedError death

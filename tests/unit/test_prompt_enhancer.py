@@ -251,85 +251,50 @@ def test_mad_token_conflict_purge():
     assert "custom watermark" in built
 
 
-def test_build_mode_a_prompt():
-    from youtube_automation.prompts.prompt_enhancer import (
-        build_mode_a_prompt,
-    )
-
-    prompt = build_mode_a_prompt("antique brass double-pan balance scale", setting="dark walnut drafting table")
-    assert "antique brass double-pan balance scale" in prompt
-    assert "Orthographic flat 2D projection plane" in prompt
-    assert "zero barrel distortion" in prompt
-    assert "neutral light studio limbo ground (#F8F8FA)" in prompt
-    assert "High-end 2D graphic vector animation explainer style" in prompt
-    assert "da vinci sketchbook" not in prompt.lower()
-    # Length check: 60-110 words typical
-    word_count = len(prompt.split())
-    assert 60 <= word_count <= 110
-
-
-def test_build_mode_b_prompt():
-    from youtube_automation.prompts.prompt_enhancer import build_mode_b_prompt
-
-    prompt = build_mode_b_prompt("small brass weight", spatial_direction="in the left pan")
-    assert prompt.startswith("In the attached reference image, maintain identical subject, background, and lighting. Add small brass weight in the left pan.")
-    assert len(prompt.split()) < 25
-
-
-def test_16_9_compositional_foveal_safe_zones():
-    vp = VisualPrompt(
-        subject="scientific apparatus",
-        style="2D vector",
-    )
-    enhanced = enhance_visual_prompt(vp)
-    assert "X: 180 to 1740" in enhanced.composition
-    assert "Y: 90 to 980" in enhanced.composition
-    assert "10% peripheral bleed padding" in enhanced.composition
-
-
-def test_universal_6part_grammar_mode_a():
+def test_mode_a_preserves_subject_and_environment_without_decoration():
     from youtube_automation.prompts.prompt_enhancer import build_mode_a_prompt
-
-    prompt = build_mode_a_prompt(
-        subject="quantum wave packet",
-        spatial_direction="centered focal composition",
-        setting="SCENE_ISOLATED_WHITE_ENV",
-    )
-    # Part 1: Master Style Anchor
-    assert "High-end 2D graphic vector animation explainer style" in prompt
-    assert "uniform 3px deep charcoal (#2D3444) contour linework" in prompt
-    assert "flat 2-step cel-shading" in prompt
-    assert "zero gradients" in prompt
-
-    # Part 2: Camera Optical Model
-    assert "Orthographic flat 2D projection plane" in prompt
-    assert "zero barrel distortion" in prompt
-    assert "zero keystoning" in prompt
-
-    # Part 3: 16:9 Safe Composition
-    assert "coordinates X: 180 to 1740, Y: 90 to 980" in prompt
-    assert "10% peripheral bleed padding" in prompt
-
-    # Part 4: Substrate Ground
-    assert "Locked studio substrate" in prompt
-    assert "isolated clean white background (#FFFFFF)" in prompt
-
-    # Part 5: Semantic Data Entity
-    assert "quantum wave packet" in prompt
-    assert "abstract non-textual proportion meters" in prompt
-
-    # Part 6: Codec-Safe Accents
-    assert "60%" in prompt and "30%" in prompt and "10%" in prompt
-    assert "#00E5FF" in prompt
-    assert "#FFB300" in prompt
-    assert "#EB191E" in prompt
-
-    # Word count
-    word_count = len(prompt.split())
-    assert 60 <= word_count <= 110
+    prompt = build_mode_a_prompt("dog looking at a hand", setting="sunlit garden")
+    assert prompt.startswith("dog looking at a hand")
+    assert "sunlit garden" in prompt
+    assert "displaying" not in prompt
+    assert "placard" not in prompt
+    assert "coordinates X:" not in prompt
 
 
-def test_unified_substrate_and_codec_safe_color_anchoring():
+def test_mode_b_preserves_late_edit_clause_and_reframe():
+    from youtube_automation.prompts.prompt_enhancer import build_mode_b_prompt
+    delta = "a close view of the original animal eye with the same iris and eyelid features while retaining the tiny reflection of the hand"
+    prompt = build_mode_b_prompt(delta, "eye fills the frame", operation="reframe")
+    assert delta in prompt
+    assert "Reframe:" in prompt
+    assert "eye fills the frame" in prompt
+    assert "maintain identical subject, background" not in prompt
+
+
+def test_composition_uses_prose_without_coordinate_literals():
+    enhanced = enhance_visual_prompt(VisualPrompt(subject="scientific apparatus", style="2D vector"))
+    assert "X: 180" not in enhanced.composition
+    assert "Y: 90" not in enhanced.composition
+    assert "frame edges" in enhanced.composition
+
+
+def test_requested_diagram_is_explicit():
+    from youtube_automation.prompts.prompt_enhancer import build_mode_a_prompt
+    plain = build_mode_a_prompt("dog")
+    diagram = build_mode_a_prompt("water movement", telemetry_type="FLOW_DIAGRAMS")
+    assert "Requested diagram:" not in plain
+    assert "Requested diagram:" in diagram
+
+
+def test_mode_b_rejects_unknown_operation():
+    import pytest
+
+    from youtube_automation.prompts.prompt_enhancer import build_mode_b_prompt
+    with pytest.raises(ValueError, match="Unsupported"):
+        build_mode_b_prompt("cat", operation="execute")
+
+
+def test_codec_safe_palette_and_negative_constraints_preserved():
     from youtube_automation.prompts.prompt_enhancer import (
         AHWA_STUDIO_GROUND,
         CODEC_SAFE_RED,
@@ -338,24 +303,19 @@ def test_unified_substrate_and_codec_safe_color_anchoring():
         build_mode_a_prompt,
         sanitize_negative_prompt,
     )
-
     assert "#F8F8FA" in LIGHT_LIMBO_SUBSTRATE
     assert "#2A2420" in AHWA_STUDIO_GROUND
     assert CODEC_SAFE_RED == "#EB191E"
+    assert "warm cafe interior" in build_mode_a_prompt("philosophical debate", setting="SCENE_AHWA_STUDIO_ENV")
+    for text in (STRICT_ZERO_TEXT_NEGATIVE, sanitize_negative_prompt()):
+        assert "no saturated pure red" in text
+        assert "no pure red RGB(255,0,0)" in text
 
-    # Default fallback is Light Limbo
-    prompt_default = build_mode_a_prompt("quantum gyroscope")
-    assert "#F8F8FA" in prompt_default
-    assert "#EB191E" in prompt_default
-    assert "60% base ground" in prompt_default
 
-    # Ahwa studio substrate
-    prompt_ahwa = build_mode_a_prompt("philosophical debate", setting="SCENE_AHWA_STUDIO_ENV")
-    assert "#2A2420" in prompt_ahwa
+def test_active_asset_presets_have_no_literal_framing_coordinates():
+    import json
+    import re
 
-    # Negative bans pure red RGB(255,0,0) and crushed blacks
-    assert "no saturated pure red" in STRICT_ZERO_TEXT_NEGATIVE
-    assert "no pure red RGB(255,0,0)" in STRICT_ZERO_TEXT_NEGATIVE
-    sanitized_neg = sanitize_negative_prompt()
-    assert "no saturated pure red" in sanitized_neg
-    assert "no pure red RGB(255,0,0)" in sanitized_neg
+    from youtube_automation.visuals.asset_studio import FLOW_ASSET_PRESETS
+    prompts = json.dumps(FLOW_ASSET_PRESETS)
+    assert not re.search(r"coordinates [XY]: ?[0-9]", prompts)

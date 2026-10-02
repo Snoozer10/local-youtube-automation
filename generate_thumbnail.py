@@ -11,6 +11,7 @@ import base64  # noqa: E402
 import glob  # noqa: E402
 import json  # noqa: E402
 import re  # noqa: E402
+import tempfile  # noqa: E402
 import time  # noqa: E402
 
 from playwright.sync_api import sync_playwright  # noqa: E402
@@ -559,11 +560,33 @@ def generate_images_via_gemini(page, items, output_dir):
 
 
 def main():
+    from youtube_automation.production.contracts import load_brief
+    from youtube_automation.production.ledger import leased_resource, resource_database
+    from youtube_automation.production.thumbnails import (
+        concept_prompt as adaptive_concept_prompt,
+    )
+    from youtube_automation.production.thumbnails import critique_prompt as adaptive_critique_prompt
+    from youtube_automation.production.thumbnails import (
+        image_prompt as adaptive_image_prompt,
+    )
+    from youtube_automation.production.thumbnails import (
+        publish as publish_adaptive_thumbnails,
+    )
+    from youtube_automation.production.thumbnails import recipe as adaptive_thumbnail_recipe
+    from youtube_automation.production.thumbnails import (
+        validate_concepts,
+        validate_critique,
+        validate_receipt,
+    )
+    from youtube_automation.production.writing import verify_written_episode
+
     print("=" * 60)
     print(" THUMBNAIL: YouTube Thumbnail Generation Pipeline")
     print("=" * 60)
 
-    if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]):
+    if len(sys.argv) > 1:
+        if not os.path.isdir(sys.argv[1]):
+            raise FileNotFoundError(f"Selected thumbnail run does not exist: {sys.argv[1]}")
         folder = os.path.abspath(sys.argv[1])
     else:
         folder = get_latest_run_folder()
@@ -574,8 +597,13 @@ def main():
     video_title = os.path.basename(os.path.normpath(folder))
     print(f"Processing: {video_title}")
 
+    adaptive_brief = None
+    if os.path.isfile(os.path.join(folder, "episode_brief.json")):
+        verify_written_episode(folder)
+        adaptive_brief = load_brief(folder)
+
     output_dir = os.path.join(folder, "thumbnails")
-    if os.path.exists(output_dir) and len(os.listdir(output_dir)) >= TOP_N:
+    if not adaptive_brief and os.path.exists(output_dir) and len(os.listdir(output_dir)) >= TOP_N:
         print(f"Thumbnails already generated ({len(os.listdir(output_dir))} files). Skipping.")
         return
 
@@ -583,16 +611,26 @@ def main():
     script_excerpt = script_text[:6000]
 
     model_name = get_config_value("THUMBNAIL_MODEL", get_config_value("REFINE_MODEL", "Pro"))
+    source_titles = read_titles(folder)
+    titles = source_titles or [{"index": 1, "text": video_title.replace("_", " ").replace("-", " ")}]
+    if adaptive_brief:
+        current_recipe = adaptive_thumbnail_recipe(adaptive_brief, script_text, titles, model_name)
+        accepted = validate_receipt(folder, current_recipe)
+        if accepted is not None:
+            print(f"Verified {len(accepted)} accepted adaptive thumbnails. Skipping generation.")
+            return
     browser_type = get_config_value("BROWSER_TYPE", "chrome")
     raw_profile = get_config_value("ACTIVE_PROFILE_INDEX", "1")
     match = re.search(r"\d+", str(raw_profile))
     profile_index = int(match.group(0)) if match else 1
     cdp_port = int(get_config_value("CDP_PORT", "9222"))
 
-    prompts_path = os.path.join(folder, "thumbnail_prompts.json")
-    critique_path = os.path.join(folder, "thumbnail_critique.json")
+    suffix = f"_adaptive_{current_recipe[:16]}" if adaptive_brief else ""
+    prompts_path = os.path.join(folder, f"thumbnail_prompts{suffix}.json")
+    critique_path = os.path.join(folder, f"thumbnail_critique{suffix}.json")
 
-    with sync_playwright() as p:
+    browser_lease = leased_resource(resource_database(), "browser")
+    with browser_lease, sync_playwright() as p:
         try:
             # Attempt to connect to an existing running session on the IPv4 loopback
             browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
@@ -619,13 +657,9 @@ def main():
         select_gemini_model(page, model_name)
         time.sleep(2)
 
-        titles = read_titles(folder)
-        if titles:
-            titles_formatted = "\n".join([f"{t['index']}. {t['text']}" for t in titles])
-        else:
-            titles_formatted = f"1. {video_title.replace('_', ' ').replace('-', ' ')}"
+        titles_formatted = "\n".join([f"{t['index']}. {t['text']}" for t in titles])
 
-        concept_prompt = (
+        concept_prompt = adaptive_concept_prompt(adaptive_brief, titles, script_text) if adaptive_brief else (
             f"{THUMBNAIL_SETUP_PROMPT}\n\n"
             f"TITLES FROM titles.txt:\n{titles_formatted}\n\n"
             f"SCRIPT EXCERPT:\n{script_excerpt}"
@@ -647,6 +681,8 @@ def main():
             print("[FATAL] Could not extract concepts.")
             page.close()
             sys.exit(1)
+        if adaptive_brief:
+            concepts = validate_concepts(concepts, titles)
 
         print(f"[OK] Generated {len(concepts)} title-matched concepts.")
 
@@ -655,9 +691,17 @@ def main():
             json.dump(concepts, f, ensure_ascii=False, indent=2)
 
         # Step 2: Send Critique Prompt directly in the SAME chat session!
-        critique_msg = CRITIQUE_PROMPT_TEMPLATE.format(top_n=TOP_N)
+        critique_msg = (
+            adaptive_critique_prompt(adaptive_brief, min(TOP_N, len(titles)))
+            if adaptive_brief
+            else CRITIQUE_PROMPT_TEMPLATE.format(top_n=TOP_N)
+        )
         critique_response = send_and_wait(page, critique_msg, timeout=180)
-        critique = parse_critique_json(critique_response, concepts, top_n=TOP_N)
+        critique = (
+            validate_critique(extract_json_from_response(critique_response), titles, TOP_N)
+            if adaptive_brief
+            else parse_critique_json(critique_response, concepts, top_n=TOP_N)
+        )
 
         if critique_response and extract_json_from_response(critique_response):
             with open(critique_path, "w", encoding="utf-8") as f:
@@ -674,8 +718,12 @@ def main():
         for concept in concepts:
             t_idx = concept.get("title_index", 1)
             if t_idx in winners:
-                prompt_str = build_webcomic_thumbnail_prompt(concept, t_idx)
-                if str(t_idx) in improvements:
+                prompt_str = (
+                    adaptive_image_prompt(adaptive_brief, concept, STRICT_NEGATIVE_PROMPT)
+                    if adaptive_brief
+                    else build_webcomic_thumbnail_prompt(concept, t_idx)
+                )
+                if not adaptive_brief and str(t_idx) in improvements:
                     prompt_str += f"\nVisual Refinement: {improvements[str(t_idx)]}"
 
                 winning_items.append(
@@ -692,7 +740,20 @@ def main():
         select_gemini_model(page, model_name)
         time.sleep(2)
 
-        generated = generate_images_via_gemini(page, winning_items, output_dir)
+        if adaptive_brief:
+            if len(winning_items) != min(TOP_N, len(titles)):
+                raise ValueError("Adaptive thumbnail critique did not select the required title concepts")
+            with tempfile.TemporaryDirectory(prefix="adaptive-thumbnail-", dir=folder) as scratch:
+                generated = generate_images_via_gemini(page, winning_items, scratch)
+                if len(generated) != len(winning_items):
+                    raise ValueError("Adaptive thumbnail generation is incomplete; no receipt published")
+                if read_titles(folder) != source_titles:
+                    raise ValueError("Thumbnail titles changed during generation")
+                generated = publish_adaptive_thumbnails(
+                    folder, adaptive_brief, script_text, titles, model_name, generated
+                )
+        else:
+            generated = generate_images_via_gemini(page, winning_items, output_dir)
 
         page.close()
 
@@ -700,12 +761,14 @@ def main():
         print(f"\n{'=' * 60}")
         print(f" THUMBNAILS COMPLETE: {len(generated)} images for {video_title}")
         print(f"{'=' * 60}")
-        send_telegram_notification(
-            f"✅ Thumbnails generated: {video_title} ({len(generated)} variants)"
-        )
+        if not adaptive_brief:
+            send_telegram_notification(
+                f"✅ Thumbnails generated: {video_title} ({len(generated)} variants)"
+            )
     else:
         print("\n[WARNING] No thumbnails were generated.")
-        send_telegram_notification(f"⚠️ Thumbnail generation failed: {video_title}")
+        if not adaptive_brief:
+            send_telegram_notification(f"⚠️ Thumbnail generation failed: {video_title}")
 
 
 if __name__ == "__main__":

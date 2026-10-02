@@ -62,7 +62,7 @@ def build_ken_burns_filter(
     norm = f",scale=out_color_matrix=bt709:flags=lanczos+accurate_rnd,setsar=1,format={pix_fmt}"
 
     den = max(1, frames - 1)
-    t = f"((on-1)/{den})"
+    t = f"(clip(on,0,{den})/{den})"
     ease = f"({t}*{t}*(3-2*{t}))"
 
     # Bounded expressions prevent floating-point edge flashes & sub-pixel aliasing
@@ -106,13 +106,8 @@ def build_ken_burns_filter(
         z_expr = f"max(1.0,1.03-0.03*(clip(on,0,{frames})/max(1,{frames})))"
         x_expr = safe_center_x
         y_expr = safe_center_y
-    else:  # static or static_hold (handles static clips & animations disabled)
-        if duration >= 3.5:
-            # Audit §6.4 & User Directive: Zero static dead-holds (>=3.5s).
-            # Zero-safe clamped evaluation eliminates frame on=0 pop and d=1 division by zero.
-            z_expr = f"min(1.03,1.0+0.03*(clip(on,0,{frames})/max(1,{frames})))"
-        else:
-            z_expr = "1.0"
+    else:  # Explicit static holds must remain still, regardless of duration.
+        z_expr = "1.0"
         x_expr = safe_center_x
         y_expr = safe_center_y
 

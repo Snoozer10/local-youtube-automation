@@ -1,0 +1,1857 @@
+{
+    "version": 1,
+    "case_id": "professor_lineage17_fixed_tail_framing",
+    "title": "Framing diversity must be repaired before a fixed diagram tail",
+    "failure_code": "SEMANTIC_FRAMING_DIVERSITY",
+    "root_cause_class": "deterministic_topology",
+    "responsible_layer": "python_compiler",
+    "stage": "plan",
+    "window_index": 2,
+    "raw_evidence_sha256s": [
+        "66cb6c701905580e76ba4655b4ffaa0499a93fdf2eb9e3bcb9e807b90ab449e1"
+    ],
+    "input_sha256": "0eb5b38a50a76019790a4c1d4549cdcffbdfcb945013354a5f790b9ee09c0a46",
+    "candidate_sha256": "91f35917cb5111d50b48777de29a086f4b4bdc1de670869bd403ae7ea034b711",
+    "brief": {
+        "version": 3,
+        "source_sha256": "e20cd3343fdc8405b4bb87530122275f2556af8d7fa75022f3fc411f76a55b2f",
+        "profile_sha256": "2042b2c301cf9f6130273d5fb18cec2b185cd6b17e99db7f9d5874e2567c4fdf",
+        "channel": {
+            "version": 3,
+            "channel_id": "professor_failure_fixture",
+            "name": "Sanitized Professor Fixture",
+            "audience": "Arabic-speaking adults",
+            "language": "Arabic",
+            "dialect": "MSA",
+            "asr_language": null,
+            "voice": "achird",
+            "tone": "clear evidence-conscious",
+            "style": "restrained editorial illustration",
+            "visual_directives": [
+                "Use narration-specific scenes"
+            ],
+            "forbidden_motifs": [
+                "Avoid generic focus portraits"
+            ],
+            "forbidden_visual_families": [],
+            "repetition_limited_visual_families": [],
+            "max_visual_family_repetitions": 3,
+            "max_non_diagram_scene_appearances": null,
+            "host_mode": "NONE",
+            "host_description": "",
+            "allowed_treatments": [
+                "subject_scene",
+                "detail",
+                "comparison"
+            ],
+            "humor": "none",
+            "max_zoom": 1.06
+        },
+        "analysis": {
+            "topics": [
+                "attention exercise"
+            ],
+            "claim_basis": "factual",
+            "form": "tutorial",
+            "proposition": "A narrated exercise requires a synchronized local visual",
+            "narrative_strategy": "Introduce the exercise before showing its deterministic interface",
+            "evidence_needs": [],
+            "continuity_anchors": [],
+            "figurative_phrases": [],
+            "treatments": [
+                "subject_scene",
+                "detail",
+                "comparison"
+            ],
+            "rationale": "The visual event must follow the source narration"
+        },
+        "visual_strategy": {
+            "version": 1,
+            "source_sha256": "e20cd3343fdc8405b4bb87530122275f2556af8d7fa75022f3fc411f76a55b2f",
+            "topic": "Attention exercise",
+            "viewer_question": "When does the interactive exercise begin?",
+            "central_promise": "The local visual follows the spoken introduction",
+            "evidence_mode": "demonstrative",
+            "emotional_arc": [
+                "curiosity",
+                "readiness",
+                "participation"
+            ],
+            "hook_archetype": "cold_open_challenge",
+            "hook_microbeats": [
+                {
+                    "beat_id": "beat_1_problem",
+                    "function": "problem",
+                    "duration_seconds": 5.0,
+                    "viewer_takeaway": "A concrete attention problem matters",
+                    "visual_mode": "human_context",
+                    "local_ui": []
+                },
+                {
+                    "beat_id": "beat_2_curiosity",
+                    "function": "curiosity",
+                    "duration_seconds": 5.0,
+                    "viewer_takeaway": "A hidden gap can be exposed",
+                    "visual_mode": "comparison",
+                    "local_ui": [
+                        "cards"
+                    ]
+                },
+                {
+                    "beat_id": "beat_3_promise",
+                    "function": "promise",
+                    "duration_seconds": 4.0,
+                    "viewer_takeaway": "A designed challenge will reveal it",
+                    "visual_mode": "kinetic_type",
+                    "local_ui": []
+                }
+            ],
+            "visual_modes": [
+                "human_context",
+                "comparison",
+                "kinetic_type",
+                "challenge_ui"
+            ],
+            "local_ui_kit": [
+                "cards",
+                "focus_sweep",
+                "timer"
+            ],
+            "pacing": "Use concise semantic beats around the exercise introduction",
+            "motion_grammar": [
+                "Animate only meaningful state changes"
+            ],
+            "max_consecutive_visual_mode": 2,
+            "max_repeated_composition": 2
+        }
+    },
+    "timeline": {
+        "fps": 30,
+        "total_frames": 2296,
+        "words": [
+            {
+                "id": 0,
+                "text": "قد",
+                "start": 0.0,
+                "end": 0.16,
+                "pause_after": 0.16
+            },
+            {
+                "id": 1,
+                "text": "مر",
+                "start": 0.32,
+                "end": 0.52,
+                "pause_after": 0.01
+            },
+            {
+                "id": 2,
+                "text": "عليك",
+                "start": 0.53,
+                "end": 0.88,
+                "pause_after": 0.01
+            },
+            {
+                "id": 3,
+                "text": "يوم",
+                "start": 0.89,
+                "end": 1.12,
+                "pause_after": 0.01
+            },
+            {
+                "id": 4,
+                "text": "حسيت",
+                "start": 1.13,
+                "end": 1.58,
+                "pause_after": 0.01
+            },
+            {
+                "id": 5,
+                "text": "فيه",
+                "start": 1.59,
+                "end": 1.86,
+                "pause_after": 0.01
+            },
+            {
+                "id": 6,
+                "text": "ان",
+                "start": 1.87,
+                "end": 2.205,
+                "pause_after": 0.01
+            },
+            {
+                "id": 7,
+                "text": "تفكيرك",
+                "start": 2.215,
+                "end": 2.55,
+                "pause_after": 0.01
+            },
+            {
+                "id": 8,
+                "text": "مشوش",
+                "start": 2.56,
+                "end": 2.895,
+                "pause_after": 0.01
+            },
+            {
+                "id": 9,
+                "text": "وان",
+                "start": 2.905,
+                "end": 3.24,
+                "pause_after": 0.01
+            },
+            {
+                "id": 10,
+                "text": "تركيزك",
+                "start": 3.25,
+                "end": 3.585,
+                "pause_after": 0.01
+            },
+            {
+                "id": 11,
+                "text": "مو",
+                "start": 3.595,
+                "end": 3.93,
+                "pause_after": 0.01
+            },
+            {
+                "id": 12,
+                "text": "زي",
+                "start": 3.94,
+                "end": 4.275,
+                "pause_after": 0.345
+            },
+            {
+                "id": 13,
+                "text": "اول",
+                "start": 4.62,
+                "end": 4.92,
+                "pause_after": 0.01
+            },
+            {
+                "id": 14,
+                "text": "اليوم",
+                "start": 4.93,
+                "end": 5.98,
+                "pause_after": 0.01
+            },
+            {
+                "id": 15,
+                "text": "بنمر",
+                "start": 5.99,
+                "end": 6.4,
+                "pause_after": 0.01
+            },
+            {
+                "id": 16,
+                "text": "على",
+                "start": 6.41,
+                "end": 6.62,
+                "pause_after": 0.01
+            },
+            {
+                "id": 17,
+                "text": "سلسله",
+                "start": 6.63,
+                "end": 6.927,
+                "pause_after": 0.01
+            },
+            {
+                "id": 18,
+                "text": "تمارين",
+                "start": 6.937,
+                "end": 7.233,
+                "pause_after": 0.307
+            },
+            {
+                "id": 19,
+                "text": "ذهنيه",
+                "start": 7.54,
+                "end": 8.0,
+                "pause_after": 0.01
+            },
+            {
+                "id": 20,
+                "text": "خاصه",
+                "start": 8.01,
+                "end": 8.52,
+                "pause_after": 0.01
+            },
+            {
+                "id": 21,
+                "text": "جدا",
+                "start": 8.53,
+                "end": 8.76,
+                "pause_after": 0.01
+            },
+            {
+                "id": 22,
+                "text": "تمارين",
+                "start": 8.77,
+                "end": 9.26,
+                "pause_after": 0.01
+            },
+            {
+                "id": 23,
+                "text": "قادره",
+                "start": 9.27,
+                "end": 9.76,
+                "pause_after": 0.01
+            },
+            {
+                "id": 24,
+                "text": "ترجع",
+                "start": 9.77,
+                "end": 10.26,
+                "pause_after": 0.5
+            },
+            {
+                "id": 25,
+                "text": "لعقلك",
+                "start": 10.76,
+                "end": 11.18,
+                "pause_after": 0.01
+            },
+            {
+                "id": 26,
+                "text": "نشاطه",
+                "start": 11.19,
+                "end": 11.82,
+                "pause_after": 0.01
+            },
+            {
+                "id": 27,
+                "text": "وتخليه",
+                "start": 11.83,
+                "end": 12.23,
+                "pause_after": 0.01
+            },
+            {
+                "id": 28,
+                "text": "حاد",
+                "start": 12.24,
+                "end": 12.64,
+                "pause_after": 0.01
+            },
+            {
+                "id": 29,
+                "text": "ومركز",
+                "start": 12.65,
+                "end": 13.05,
+                "pause_after": 0.41
+            },
+            {
+                "id": 30,
+                "text": "اكثر",
+                "start": 13.46,
+                "end": 13.86,
+                "pause_after": 0.01
+            },
+            {
+                "id": 31,
+                "text": "من",
+                "start": 13.87,
+                "end": 14.02,
+                "pause_after": 0.01
+            },
+            {
+                "id": 32,
+                "text": "اي",
+                "start": 14.03,
+                "end": 14.26,
+                "pause_after": 0.01
+            },
+            {
+                "id": 33,
+                "text": "وقت",
+                "start": 14.27,
+                "end": 14.44,
+                "pause_after": 0.01
+            },
+            {
+                "id": 34,
+                "text": "فات",
+                "start": 14.45,
+                "end": 14.8,
+                "pause_after": 0.01
+            },
+            {
+                "id": 35,
+                "text": "انسى",
+                "start": 14.81,
+                "end": 15.68,
+                "pause_after": 0.01
+            },
+            {
+                "id": 36,
+                "text": "الحلول",
+                "start": 15.69,
+                "end": 15.9,
+                "pause_after": 0.01
+            },
+            {
+                "id": 37,
+                "text": "الممله",
+                "start": 15.91,
+                "end": 16.38,
+                "pause_after": 0.01
+            },
+            {
+                "id": 38,
+                "text": "لا",
+                "start": 16.39,
+                "end": 16.94,
+                "pause_after": 0.01
+            },
+            {
+                "id": 39,
+                "text": "تامل",
+                "start": 16.95,
+                "end": 17.32,
+                "pause_after": 0.01
+            },
+            {
+                "id": 40,
+                "text": "ولا",
+                "start": 17.33,
+                "end": 17.9,
+                "pause_after": 0.01
+            },
+            {
+                "id": 41,
+                "text": "تمارين",
+                "start": 17.91,
+                "end": 18.325,
+                "pause_after": 0.01
+            },
+            {
+                "id": 42,
+                "text": "تنفس",
+                "start": 18.335,
+                "end": 18.75,
+                "pause_after": 0.01
+            },
+            {
+                "id": 43,
+                "text": "التمارين",
+                "start": 18.76,
+                "end": 19.175,
+                "pause_after": 0.425
+            },
+            {
+                "id": 44,
+                "text": "اللي",
+                "start": 19.6,
+                "end": 19.72,
+                "pause_after": 0.01
+            },
+            {
+                "id": 45,
+                "text": "بنسويها",
+                "start": 19.73,
+                "end": 20.2,
+                "pause_after": 0.01
+            },
+            {
+                "id": 46,
+                "text": "اليوم",
+                "start": 20.21,
+                "end": 20.58,
+                "pause_after": 0.01
+            },
+            {
+                "id": 47,
+                "text": "ممتعه",
+                "start": 20.59,
+                "end": 20.86,
+                "pause_after": 0.28
+            },
+            {
+                "id": 48,
+                "text": "لدرجه",
+                "start": 21.14,
+                "end": 21.66,
+                "pause_after": 0.01
+            },
+            {
+                "id": 49,
+                "text": "انك",
+                "start": 21.67,
+                "end": 21.9,
+                "pause_after": 0.01
+            },
+            {
+                "id": 50,
+                "text": "بتدور",
+                "start": 21.91,
+                "end": 22.3,
+                "pause_after": 0.01
+            },
+            {
+                "id": 51,
+                "text": "عليها",
+                "start": 22.31,
+                "end": 22.68,
+                "pause_after": 0.01
+            },
+            {
+                "id": 52,
+                "text": "بوقت",
+                "start": 22.69,
+                "end": 22.9,
+                "pause_after": 0.01
+            },
+            {
+                "id": 53,
+                "text": "فراغك",
+                "start": 22.91,
+                "end": 23.4,
+                "pause_after": 0.01
+            },
+            {
+                "id": 54,
+                "text": "لانها",
+                "start": 23.41,
+                "end": 24.02,
+                "pause_after": 0.01
+            },
+            {
+                "id": 55,
+                "text": "ببساطه",
+                "start": 24.03,
+                "end": 24.6,
+                "pause_after": 0.01
+            },
+            {
+                "id": 56,
+                "text": "تلعب",
+                "start": 24.61,
+                "end": 24.92,
+                "pause_after": 0.01
+            },
+            {
+                "id": 57,
+                "text": "على",
+                "start": 24.93,
+                "end": 25.08,
+                "pause_after": 0.01
+            },
+            {
+                "id": 58,
+                "text": "وتر",
+                "start": 25.09,
+                "end": 25.42,
+                "pause_after": 0.01
+            },
+            {
+                "id": 59,
+                "text": "المتعه",
+                "start": 25.43,
+                "end": 26.12,
+                "pause_after": 0.01
+            },
+            {
+                "id": 60,
+                "text": "وتتحدى",
+                "start": 26.13,
+                "end": 26.8,
+                "pause_after": 0.01
+            },
+            {
+                "id": 61,
+                "text": "ذكائك",
+                "start": 26.81,
+                "end": 27.36,
+                "pause_after": 0.01
+            },
+            {
+                "id": 62,
+                "text": "يمكن",
+                "start": 27.37,
+                "end": 28.16,
+                "pause_after": 0.01
+            },
+            {
+                "id": 63,
+                "text": "تقول",
+                "start": 28.17,
+                "end": 28.44,
+                "pause_after": 0.01
+            },
+            {
+                "id": 64,
+                "text": "في",
+                "start": 28.45,
+                "end": 28.56,
+                "pause_after": 0.01
+            },
+            {
+                "id": 65,
+                "text": "نفسك",
+                "start": 28.57,
+                "end": 28.86,
+                "pause_after": 0.01
+            },
+            {
+                "id": 66,
+                "text": "الحين",
+                "start": 28.87,
+                "end": 29.22,
+                "pause_after": 0.01
+            },
+            {
+                "id": 67,
+                "text": "انا",
+                "start": 29.23,
+                "end": 29.82,
+                "pause_after": 0.01
+            },
+            {
+                "id": 68,
+                "text": "عقلي",
+                "start": 29.83,
+                "end": 30.14,
+                "pause_after": 0.01
+            },
+            {
+                "id": 69,
+                "text": "دائما",
+                "start": 30.15,
+                "end": 30.32,
+                "pause_after": 0.18
+            },
+            {
+                "id": 70,
+                "text": "شغال",
+                "start": 30.5,
+                "end": 30.78,
+                "pause_after": 0.01
+            },
+            {
+                "id": 71,
+                "text": "تمام",
+                "start": 30.79,
+                "end": 31.46,
+                "pause_after": 0.01
+            },
+            {
+                "id": 72,
+                "text": "طيب",
+                "start": 31.47,
+                "end": 31.98,
+                "pause_after": 0.01
+            },
+            {
+                "id": 73,
+                "text": "خلينا",
+                "start": 31.99,
+                "end": 32.27,
+                "pause_after": 0.29
+            },
+            {
+                "id": 74,
+                "text": "نختبر",
+                "start": 32.56,
+                "end": 32.9,
+                "pause_after": 0.01
+            },
+            {
+                "id": 75,
+                "text": "هذه",
+                "start": 32.91,
+                "end": 33.1,
+                "pause_after": 0.01
+            },
+            {
+                "id": 76,
+                "text": "الثقه",
+                "start": 33.11,
+                "end": 33.34,
+                "pause_after": 0.01
+            },
+            {
+                "id": 77,
+                "text": "اليوم",
+                "start": 33.35,
+                "end": 33.64,
+                "pause_after": 0.01
+            },
+            {
+                "id": 78,
+                "text": "مع",
+                "start": 33.65,
+                "end": 33.76,
+                "pause_after": 0.01
+            },
+            {
+                "id": 79,
+                "text": "بعض",
+                "start": 33.77,
+                "end": 34.3,
+                "pause_after": 0.01
+            },
+            {
+                "id": 80,
+                "text": "ونشوف",
+                "start": 34.31,
+                "end": 34.74,
+                "pause_after": 0.01
+            },
+            {
+                "id": 81,
+                "text": "اذا",
+                "start": 34.75,
+                "end": 34.96,
+                "pause_after": 0.01
+            },
+            {
+                "id": 82,
+                "text": "نقدر",
+                "start": 34.97,
+                "end": 35.28,
+                "pause_after": 0.01
+            },
+            {
+                "id": 83,
+                "text": "نقوي",
+                "start": 35.29,
+                "end": 35.72,
+                "pause_after": 0.01
+            },
+            {
+                "id": 84,
+                "text": "هذا",
+                "start": 35.73,
+                "end": 35.96,
+                "pause_after": 0.01
+            },
+            {
+                "id": 85,
+                "text": "العقل",
+                "start": 35.97,
+                "end": 36.4,
+                "pause_after": 0.01
+            },
+            {
+                "id": 86,
+                "text": "ونوصله",
+                "start": 36.41,
+                "end": 37.22,
+                "pause_after": 0.01
+            },
+            {
+                "id": 87,
+                "text": "لمرحله",
+                "start": 37.23,
+                "end": 37.68,
+                "pause_after": 0.01
+            },
+            {
+                "id": 88,
+                "text": "اعلى",
+                "start": 37.69,
+                "end": 38.04,
+                "pause_after": 0.01
+            },
+            {
+                "id": 89,
+                "text": "بكثير",
+                "start": 38.05,
+                "end": 38.54,
+                "pause_after": 0.01
+            },
+            {
+                "id": 90,
+                "text": "مستعد",
+                "start": 38.55,
+                "end": 39.4,
+                "pause_after": 0.01
+            },
+            {
+                "id": 91,
+                "text": "تصدم",
+                "start": 39.41,
+                "end": 39.74,
+                "pause_after": 0.01
+            },
+            {
+                "id": 92,
+                "text": "نفسك؟",
+                "start": 39.75,
+                "end": 40.64,
+                "pause_after": 0.01
+            },
+            {
+                "id": 93,
+                "text": "اول",
+                "start": 40.65,
+                "end": 40.88,
+                "pause_after": 0.01
+            },
+            {
+                "id": 94,
+                "text": "تمرين",
+                "start": 40.89,
+                "end": 41.3,
+                "pause_after": 0.01
+            },
+            {
+                "id": 95,
+                "text": "عندنا",
+                "start": 41.31,
+                "end": 41.74,
+                "pause_after": 0.01
+            },
+            {
+                "id": 96,
+                "text": "هو",
+                "start": 41.75,
+                "end": 41.96,
+                "pause_after": 0.01
+            },
+            {
+                "id": 97,
+                "text": "جدول",
+                "start": 41.97,
+                "end": 42.36,
+                "pause_after": 0.01
+            },
+            {
+                "id": 98,
+                "text": "شولتي",
+                "start": 42.37,
+                "end": 42.82,
+                "pause_after": 0.01
+            },
+            {
+                "id": 99,
+                "text": "المتقدم",
+                "start": 42.83,
+                "end": 43.52,
+                "pause_after": 0.01
+            },
+            {
+                "id": 100,
+                "text": "تمرين",
+                "start": 43.53,
+                "end": 44.14,
+                "pause_after": 0.01
+            },
+            {
+                "id": 101,
+                "text": "مصمم",
+                "start": 44.15,
+                "end": 44.68,
+                "pause_after": 0.01
+            },
+            {
+                "id": 102,
+                "text": "عشان",
+                "start": 44.69,
+                "end": 45.06,
+                "pause_after": 0.01
+            },
+            {
+                "id": 103,
+                "text": "يستفز",
+                "start": 45.07,
+                "end": 45.54,
+                "pause_after": 0.01
+            },
+            {
+                "id": 104,
+                "text": "عقلك",
+                "start": 45.55,
+                "end": 45.79,
+                "pause_after": 0.25
+            },
+            {
+                "id": 105,
+                "text": "الطبيب",
+                "start": 46.04,
+                "end": 46.92,
+                "pause_after": 0.01
+            },
+            {
+                "id": 106,
+                "text": "النفسي",
+                "start": 46.93,
+                "end": 47.34,
+                "pause_after": 0.01
+            },
+            {
+                "id": 107,
+                "text": "ولتر",
+                "start": 47.35,
+                "end": 47.52,
+                "pause_after": 0.18
+            },
+            {
+                "id": 108,
+                "text": "شولتي",
+                "start": 47.7,
+                "end": 48.14,
+                "pause_after": 0.01
+            },
+            {
+                "id": 109,
+                "text": "ابتكر",
+                "start": 48.15,
+                "end": 48.88,
+                "pause_after": 0.01
+            },
+            {
+                "id": 110,
+                "text": "هذا",
+                "start": 48.89,
+                "end": 49.18,
+                "pause_after": 0.01
+            },
+            {
+                "id": 111,
+                "text": "الجدول",
+                "start": 49.19,
+                "end": 49.58,
+                "pause_after": 0.01
+            },
+            {
+                "id": 112,
+                "text": "بالاساس",
+                "start": 49.59,
+                "end": 50.1,
+                "pause_after": 0.01
+            },
+            {
+                "id": 113,
+                "text": "عشان",
+                "start": 50.11,
+                "end": 50.5,
+                "pause_after": 0.01
+            },
+            {
+                "id": 114,
+                "text": "يقيس",
+                "start": 50.51,
+                "end": 50.7,
+                "pause_after": 0.2
+            },
+            {
+                "id": 115,
+                "text": "ويسرع",
+                "start": 50.9,
+                "end": 51.4,
+                "pause_after": 0.01
+            },
+            {
+                "id": 116,
+                "text": "قدرات",
+                "start": 51.41,
+                "end": 51.84,
+                "pause_after": 0.01
+            },
+            {
+                "id": 117,
+                "text": "الادراك",
+                "start": 51.85,
+                "end": 52.36,
+                "pause_after": 0.01
+            },
+            {
+                "id": 118,
+                "text": "والانتباه",
+                "start": 52.37,
+                "end": 52.94,
+                "pause_after": 0.01
+            },
+            {
+                "id": 119,
+                "text": "بالعقل",
+                "start": 52.95,
+                "end": 53.17,
+                "pause_after": 0.23
+            },
+            {
+                "id": 120,
+                "text": "البشري",
+                "start": 53.4,
+                "end": 54.18,
+                "pause_after": 0.01
+            },
+            {
+                "id": 121,
+                "text": "واليوم",
+                "start": 54.19,
+                "end": 54.78,
+                "pause_after": 0.01
+            },
+            {
+                "id": 122,
+                "text": "بنستخدمه",
+                "start": 54.79,
+                "end": 55.3,
+                "pause_after": 0.52
+            },
+            {
+                "id": 123,
+                "text": "عشان",
+                "start": 55.82,
+                "end": 56.3,
+                "pause_after": 0.01
+            },
+            {
+                "id": 124,
+                "text": "نختبرك",
+                "start": 56.31,
+                "end": 56.98,
+                "pause_after": 0.01
+            },
+            {
+                "id": 125,
+                "text": "بتشوف",
+                "start": 56.99,
+                "end": 57.8,
+                "pause_after": 0.01
+            },
+            {
+                "id": 126,
+                "text": "قدامك",
+                "start": 57.81,
+                "end": 58.36,
+                "pause_after": 0.01
+            },
+            {
+                "id": 127,
+                "text": "جدول",
+                "start": 58.37,
+                "end": 58.8,
+                "pause_after": 0.01
+            },
+            {
+                "id": 128,
+                "text": "في",
+                "start": 58.81,
+                "end": 59.0,
+                "pause_after": 0.01
+            },
+            {
+                "id": 129,
+                "text": "ارقام",
+                "start": 59.01,
+                "end": 59.48,
+                "pause_after": 0.01
+            },
+            {
+                "id": 130,
+                "text": "من",
+                "start": 59.49,
+                "end": 59.64,
+                "pause_after": 0.01
+            },
+            {
+                "id": 131,
+                "text": "واحد",
+                "start": 59.65,
+                "end": 59.813,
+                "pause_after": 0.01
+            },
+            {
+                "id": 132,
+                "text": "ل",
+                "start": 59.823,
+                "end": 59.987,
+                "pause_after": 0.173
+            },
+            {
+                "id": 133,
+                "text": "36",
+                "start": 60.16,
+                "end": 60.78,
+                "pause_after": 0.01
+            },
+            {
+                "id": 134,
+                "text": "الارقام",
+                "start": 60.79,
+                "end": 61.8,
+                "pause_after": 0.01
+            },
+            {
+                "id": 135,
+                "text": "هذه",
+                "start": 61.81,
+                "end": 62.02,
+                "pause_after": 0.01
+            },
+            {
+                "id": 136,
+                "text": "متوزعه",
+                "start": 62.03,
+                "end": 62.3,
+                "pause_after": 0.28
+            },
+            {
+                "id": 137,
+                "text": "بشكل",
+                "start": 62.58,
+                "end": 62.9,
+                "pause_after": 0.01
+            },
+            {
+                "id": 138,
+                "text": "عشوائي",
+                "start": 62.91,
+                "end": 63.46,
+                "pause_after": 0.32
+            },
+            {
+                "id": 139,
+                "text": "والمطلوب",
+                "start": 63.78,
+                "end": 64.38,
+                "pause_after": 0.01
+            },
+            {
+                "id": 140,
+                "text": "منك",
+                "start": 64.39,
+                "end": 64.82,
+                "pause_after": 0.01
+            },
+            {
+                "id": 141,
+                "text": "تركز",
+                "start": 64.83,
+                "end": 65.64,
+                "pause_after": 0.01
+            },
+            {
+                "id": 142,
+                "text": "عينك",
+                "start": 65.65,
+                "end": 66.08,
+                "pause_after": 0.01
+            },
+            {
+                "id": 143,
+                "text": "بس",
+                "start": 66.09,
+                "end": 66.38,
+                "pause_after": 0.01
+            },
+            {
+                "id": 144,
+                "text": "على",
+                "start": 66.39,
+                "end": 66.52,
+                "pause_after": 0.01
+            },
+            {
+                "id": 145,
+                "text": "المركز",
+                "start": 66.53,
+                "end": 67.04,
+                "pause_after": 0.01
+            },
+            {
+                "id": 146,
+                "text": "وتحاول",
+                "start": 67.05,
+                "end": 67.9,
+                "pause_after": 0.01
+            },
+            {
+                "id": 147,
+                "text": "تطلع",
+                "start": 67.91,
+                "end": 68.18,
+                "pause_after": 0.28
+            },
+            {
+                "id": 148,
+                "text": "كل",
+                "start": 68.46,
+                "end": 68.68,
+                "pause_after": 0.01
+            },
+            {
+                "id": 149,
+                "text": "الارقام",
+                "start": 68.69,
+                "end": 69.26,
+                "pause_after": 0.01
+            },
+            {
+                "id": 150,
+                "text": "بالترتيب",
+                "start": 69.27,
+                "end": 69.88,
+                "pause_after": 0.01
+            },
+            {
+                "id": 151,
+                "text": "التصاعدي",
+                "start": 69.89,
+                "end": 70.66,
+                "pause_after": 0.01
+            },
+            {
+                "id": 152,
+                "text": "في",
+                "start": 70.67,
+                "end": 70.78,
+                "pause_after": 0.01
+            },
+            {
+                "id": 153,
+                "text": "40",
+                "start": 70.79,
+                "end": 71.22,
+                "pause_after": 0.01
+            },
+            {
+                "id": 154,
+                "text": "ثانيه",
+                "start": 71.23,
+                "end": 71.82,
+                "pause_after": 0.01
+            },
+            {
+                "id": 155,
+                "text": "بس",
+                "start": 71.83,
+                "end": 72.16,
+                "pause_after": 0.01
+            },
+            {
+                "id": 156,
+                "text": "جاهز",
+                "start": 72.17,
+                "end": 73.04,
+                "pause_after": 0.01
+            },
+            {
+                "id": 157,
+                "text": "1",
+                "start": 73.05,
+                "end": 73.736,
+                "pause_after": 0.01
+            },
+            {
+                "id": 158,
+                "text": "2",
+                "start": 73.746,
+                "end": 74.432,
+                "pause_after": 0.01
+            },
+            {
+                "id": 159,
+                "text": "3",
+                "start": 74.442,
+                "end": 75.128,
+                "pause_after": 0.01
+            },
+            {
+                "id": 160,
+                "text": "ابدا",
+                "start": 75.138,
+                "end": 75.824,
+                "pause_after": 0.696
+            }
+        ],
+        "spans": [
+            {
+                "index": 0,
+                "start_word_id": 0,
+                "end_word_id": 24,
+                "start": 0.0,
+                "end": 10.26,
+                "start_frame": 0,
+                "end_frame": 308,
+                "text": "قد مر عليك يوم حسيت فيه ان تفكيرك مشوش وان تركيزك مو زي اول اليوم بنمر على سلسله تمارين ذهنيه خاصه جدا تمارين قادره ترجع"
+            },
+            {
+                "index": 1,
+                "start_word_id": 25,
+                "end_word_id": 92,
+                "start": 10.76,
+                "end": 40.64,
+                "start_frame": 308,
+                "end_frame": 1219,
+                "text": "لعقلك نشاطه وتخليه حاد ومركز اكثر من اي وقت فات انسى الحلول الممله لا تامل ولا تمارين تنفس التمارين اللي بنسويها اليوم ممتعه لدرجه انك بتدور عليها بوقت فراغك لانها ببساطه تلعب على وتر المتعه وتتحدى ذكائك يمكن تقول في نفسك الحين انا عقلي دائما شغال تمام طيب خلينا نختبر هذه الثقه اليوم مع بعض ونشوف اذا نقدر نقوي هذا العقل ونوصله لمرحله اعلى بكثير مستعد تصدم نفسك؟"
+            },
+            {
+                "index": 2,
+                "start_word_id": 93,
+                "end_word_id": 122,
+                "start": 40.65,
+                "end": 55.3,
+                "start_frame": 1219,
+                "end_frame": 1659,
+                "text": "اول تمرين عندنا هو جدول شولتي المتقدم تمرين مصمم عشان يستفز عقلك الطبيب النفسي ولتر شولتي ابتكر هذا الجدول بالاساس عشان يقيس ويسرع قدرات الادراك والانتباه بالعقل البشري واليوم بنستخدمه"
+            },
+            {
+                "index": 3,
+                "start_word_id": 123,
+                "end_word_id": 160,
+                "start": 55.82,
+                "end": 75.824,
+                "start_frame": 1659,
+                "end_frame": 2296,
+                "text": "عشان نختبرك بتشوف قدامك جدول في ارقام من واحد ل 36 الارقام هذه متوزعه بشكل عشوائي والمطلوب منك تركز عينك بس على المركز وتحاول تطلع كل الارقام بالترتيب التصاعدي في 40 ثانيه بس جاهز 1 2 3 ابدا"
+            }
+        ]
+    },
+    "checkpoint": {
+        "planner_version": 17,
+        "compiler_version": 8,
+        "windows": [
+            [
+                0,
+                575
+            ],
+            [
+                575,
+                1156
+            ],
+            [
+                1156,
+                1734
+            ],
+            [
+                1734,
+                2296
+            ]
+        ],
+        "next_window": 2,
+        "units_by_window": [
+            [
+                {
+                    "unit_id": "u0_87",
+                    "start_frame": 0,
+                    "end_frame": 87,
+                    "text": "قد مر عليك يوم حسيت فيه ان تفكيرك مشوش"
+                },
+                {
+                    "unit_id": "u87_179",
+                    "start_frame": 87,
+                    "end_frame": 179,
+                    "text": "وان تركيزك مو زي اول اليوم"
+                },
+                {
+                    "unit_id": "u179_263",
+                    "start_frame": 179,
+                    "end_frame": 263,
+                    "text": "اليوم بنمر على سلسله تمارين ذهنيه خاصه جدا"
+                },
+                {
+                    "unit_id": "u263_355",
+                    "start_frame": 263,
+                    "end_frame": 355,
+                    "text": "تمارين قادره ترجع لعقلك نشاطه وتخليه"
+                },
+                {
+                    "unit_id": "u355_444",
+                    "start_frame": 355,
+                    "end_frame": 444,
+                    "text": "وتخليه حاد ومركز اكثر من اي وقت فات"
+                },
+                {
+                    "unit_id": "u444_575",
+                    "start_frame": 444,
+                    "end_frame": 575,
+                    "text": "انسى الحلول الممله لا تامل ولا تمارين تنفس التمارين"
+                }
+            ],
+            [
+                {
+                    "unit_id": "u575_669",
+                    "start_frame": 575,
+                    "end_frame": 669,
+                    "text": "التمارين اللي بنسويها اليوم ممتعه لدرجه انك بتدور"
+                },
+                {
+                    "unit_id": "u669_763",
+                    "start_frame": 669,
+                    "end_frame": 763,
+                    "text": "عليها بوقت فراغك لانها ببساطه تلعب على وتر المتعه"
+                },
+                {
+                    "unit_id": "u763_853",
+                    "start_frame": 763,
+                    "end_frame": 853,
+                    "text": "المتعه وتتحدى ذكائك يمكن تقول"
+                },
+                {
+                    "unit_id": "u853_944",
+                    "start_frame": 853,
+                    "end_frame": 944,
+                    "text": "تقول في نفسك الحين انا عقلي دائما شغال تمام"
+                },
+                {
+                    "unit_id": "u944_1029",
+                    "start_frame": 944,
+                    "end_frame": 1029,
+                    "text": "طيب خلينا نختبر هذه الثقه اليوم مع بعض"
+                },
+                {
+                    "unit_id": "u1029_1156",
+                    "start_frame": 1029,
+                    "end_frame": 1156,
+                    "text": "ونشوف اذا نقدر نقوي هذا العقل ونوصله لمرحله اعلى بكثير"
+                }
+            ]
+        ],
+        "batches": [
+            {
+                "shots": [
+                    {
+                        "beat_id": "beat_1_problem",
+                        "first_unit_id": "u0_87",
+                        "last_unit_id": "u87_179",
+                        "visual_mode": "human_context",
+                        "beat_kind": "claim",
+                        "framing": "medium",
+                        "graphic_template": null,
+                        "semantic_link": "direct",
+                        "viewer_takeaway": "Sanitized viewer takeaway 93ec149d72",
+                        "subject": "Sanitized subject bb80b01e0e containing office backdrop 01",
+                        "visible_state": "Sanitized visible state 0499f9f6d7",
+                        "setting": "A grounded room Sanitized setting e3dc261fa1",
+                        "composition": "Sanitized composition 8627ca7e27",
+                        "entity_ids": [
+                            "office_backdrop_01"
+                        ],
+                        "continuity": "new",
+                        "reference_id": null
+                    },
+                    {
+                        "beat_id": "beat_2_curiosity",
+                        "first_unit_id": "u179_263",
+                        "last_unit_id": "u179_263",
+                        "visual_mode": "comparison",
+                        "beat_kind": "contrast",
+                        "framing": "wide",
+                        "graphic_template": "comparison",
+                        "semantic_link": "contrast",
+                        "viewer_takeaway": "Sanitized viewer takeaway 5f55e3ec00",
+                        "subject": "Sanitized subject 81f63573e4 containing graphic canvas 01",
+                        "visible_state": "Sanitized visible state 942ec28434",
+                        "setting": "A grounded room Sanitized setting 211df0202f",
+                        "composition": "Sanitized composition fad4ed3118",
+                        "entity_ids": [
+                            "graphic_canvas_01"
+                        ],
+                        "continuity": "new",
+                        "reference_id": null
+                    },
+                    {
+                        "beat_id": "beat_3_promise",
+                        "first_unit_id": "u263_355",
+                        "last_unit_id": "u355_444",
+                        "visual_mode": "kinetic_type",
+                        "beat_kind": "instruction",
+                        "framing": "wide",
+                        "graphic_template": "kinetic_type",
+                        "semantic_link": "direct",
+                        "viewer_takeaway": "Sanitized viewer takeaway 22fc7af763",
+                        "subject": "Sanitized subject 121edba1f5 containing dark canvas 01",
+                        "visible_state": "Sanitized visible state 557632fbc1",
+                        "setting": "A grounded room Sanitized setting c362d10b06",
+                        "composition": "Sanitized composition 1462ea8874",
+                        "entity_ids": [
+                            "dark_canvas_01"
+                        ],
+                        "continuity": "new",
+                        "reference_id": null
+                    },
+                    {
+                        "beat_id": "beat_3_promise__continuation",
+                        "first_unit_id": "u444_575",
+                        "last_unit_id": "u444_575",
+                        "visual_mode": "kinetic_type",
+                        "beat_kind": "instruction",
+                        "framing": "medium",
+                        "graphic_template": "focus_sweep",
+                        "semantic_link": "direct",
+                        "viewer_takeaway": "Sanitized viewer takeaway 22fc7af763",
+                        "subject": "Sanitized subject 1d4731d2e5 containing dark canvas 02",
+                        "visible_state": "Sanitized visible state 6d71a763d9",
+                        "setting": "A grounded room Sanitized setting c362d10b06",
+                        "composition": "Sanitized composition 08fcc8b074",
+                        "entity_ids": [
+                            "dark_canvas_02"
+                        ],
+                        "continuity": "new",
+                        "reference_id": null
+                    }
+                ]
+            },
+            {
+                "shots": [
+                    {
+                        "beat_id": "beat_1_problem",
+                        "first_unit_id": "u575_669",
+                        "last_unit_id": "u669_763",
+                        "visual_mode": "human_context",
+                        "beat_kind": "example",
+                        "framing": "medium",
+                        "graphic_template": null,
+                        "semantic_link": "direct",
+                        "viewer_takeaway": "Sanitized viewer takeaway 93ec149d72",
+                        "subject": "Sanitized subject d8c205a796 containing office backdrop 01",
+                        "visible_state": "Sanitized visible state 0499f9f6d7",
+                        "setting": "A grounded room Sanitized setting e3dc261fa1",
+                        "composition": "Sanitized composition 102832257e",
+                        "entity_ids": [
+                            "office_backdrop_01"
+                        ],
+                        "continuity": "edit",
+                        "reference_id": "p0_asset_0"
+                    },
+                    {
+                        "beat_id": "beat_2_curiosity",
+                        "first_unit_id": "u763_853",
+                        "last_unit_id": "u853_944",
+                        "visual_mode": "comparison",
+                        "beat_kind": "contrast",
+                        "framing": "wide",
+                        "graphic_template": "comparison",
+                        "semantic_link": "contrast",
+                        "viewer_takeaway": "Sanitized viewer takeaway 5f55e3ec00",
+                        "subject": "Sanitized subject 071a9f77a3 containing graphic canvas 01",
+                        "visible_state": "Sanitized visible state 7a9fa41e0b",
+                        "setting": "A grounded room Sanitized setting f45c251344",
+                        "composition": "Sanitized composition 3a37d01a4e",
+                        "entity_ids": [
+                            "graphic_canvas_01"
+                        ],
+                        "continuity": "edit",
+                        "reference_id": "p0_asset_1"
+                    },
+                    {
+                        "beat_id": "beat_3_promise",
+                        "first_unit_id": "u944_1029",
+                        "last_unit_id": "u1029_1156",
+                        "visual_mode": "kinetic_type",
+                        "beat_kind": "claim",
+                        "framing": "wide",
+                        "graphic_template": "kinetic_type",
+                        "semantic_link": "mechanism",
+                        "viewer_takeaway": "Sanitized viewer takeaway 22fc7af763",
+                        "subject": "Plain tactile visual canvas",
+                        "visible_state": "Quiet background reserved for deterministic local graphics",
+                        "setting": "Clean uncluttered studio backdrop",
+                        "composition": "Sanitized composition 4958e11019",
+                        "entity_ids": [
+                            "dark_canvas_01"
+                        ],
+                        "continuity": "reuse",
+                        "reference_id": "p0_asset_2"
+                    }
+                ]
+            }
+        ]
+    },
+    "failed_units": [
+        {
+            "unit_id": "u1156_1219",
+            "start_frame": 1156,
+            "end_frame": 1219,
+            "text": "بكثير مستعد تصدم نفسك؟"
+        },
+        {
+            "unit_id": "u1219_1306",
+            "start_frame": 1219,
+            "end_frame": 1306,
+            "text": "نفسك؟ اول تمرين عندنا هو جدول شولتي المتقدم تمرين"
+        },
+        {
+            "unit_id": "u1306_1408",
+            "start_frame": 1306,
+            "end_frame": 1408,
+            "text": "تمرين مصمم عشان يستفز عقلك الطبيب النفسي"
+        },
+        {
+            "unit_id": "u1408_1503",
+            "start_frame": 1408,
+            "end_frame": 1503,
+            "text": "النفسي ولتر شولتي ابتكر هذا الجدول بالاساس"
+        },
+        {
+            "unit_id": "u1503_1595",
+            "start_frame": 1503,
+            "end_frame": 1595,
+            "text": "عشان يقيس ويسرع قدرات الادراك والانتباه بالعقل"
+        },
+        {
+            "unit_id": "u1595_1689",
+            "start_frame": 1595,
+            "end_frame": 1689,
+            "text": "بالعقل البشري واليوم بنستخدمه عشان"
+        },
+        {
+            "unit_id": "u1689_1734",
+            "start_frame": 1689,
+            "end_frame": 1734,
+            "text": "نختبرك بتشوف"
+        }
+    ],
+    "replay_kind": "semantic_candidate",
+    "failed_candidate": {
+        "shots": [
+            {
+                "beat_id": "beat_1_problem",
+                "first_unit_id": "u1156_1219",
+                "last_unit_id": "u1156_1219",
+                "visual_mode": "human_context",
+                "beat_kind": "question",
+                "framing": "medium",
+                "graphic_template": null,
+                "semantic_link": "direct",
+                "viewer_takeaway": "Sanitized viewer takeaway 93ec149d72",
+                "subject": "Sanitized subject 7bf0303298 containing office fatigue canvas 01",
+                "visible_state": "Sanitized visible state 704fbea9ec",
+                "setting": "A grounded room Sanitized setting 4dc63c0f79",
+                "composition": "Sanitized composition 1a90c78ea2",
+                "entity_ids": [
+                    "office_fatigue_canvas_01"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            },
+            {
+                "beat_id": "beat_2_curiosity",
+                "first_unit_id": "u1219_1306",
+                "last_unit_id": "u1219_1306",
+                "visual_mode": "challenge_ui",
+                "beat_kind": "reveal",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "direct",
+                "viewer_takeaway": "Sanitized viewer takeaway 883fbead70",
+                "subject": "Sanitized subject 8c7f168a2e containing schulte canvas 01",
+                "visible_state": "Sanitized visible state 9523919e31",
+                "setting": "A grounded room Sanitized setting f45c251344",
+                "composition": "Sanitized composition 8003149743",
+                "entity_ids": [
+                    "schulte_canvas_01"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            },
+            {
+                "beat_id": "beat_3_promise",
+                "first_unit_id": "u1306_1408",
+                "last_unit_id": "u1306_1408",
+                "visual_mode": "challenge_ui",
+                "beat_kind": "claim",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "direct",
+                "viewer_takeaway": "Sanitized viewer takeaway 53c8a75420",
+                "subject": "Sanitized subject 8c7f168a2e containing schulte canvas 01",
+                "visible_state": "Sanitized visible state 8fd433f2db",
+                "setting": "A grounded room Sanitized setting f45c251344",
+                "composition": "Sanitized composition 8003149743",
+                "entity_ids": [
+                    "schulte_canvas_01"
+                ],
+                "continuity": "edit",
+                "reference_id": "beat_2_curiosity"
+            },
+            {
+                "beat_id": "beat_4_origin",
+                "first_unit_id": "u1408_1503",
+                "last_unit_id": "u1408_1503",
+                "visual_mode": "human_context",
+                "beat_kind": "mechanism",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "mechanism",
+                "viewer_takeaway": "Sanitized viewer takeaway 666e6e844e",
+                "subject": "Sanitized subject d515dfb221 containing schulte canvas 01",
+                "visible_state": "Sanitized visible state 0ed7aa940d",
+                "setting": "A grounded room Sanitized setting f45c251344",
+                "composition": "Sanitized composition 8003149743",
+                "entity_ids": [
+                    "schulte_canvas_01"
+                ],
+                "continuity": "edit",
+                "reference_id": "beat_3_promise"
+            },
+            {
+                "beat_id": "beat_5_purpose",
+                "first_unit_id": "u1503_1595",
+                "last_unit_id": "u1503_1595",
+                "visual_mode": "challenge_ui",
+                "beat_kind": "claim",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "mechanism",
+                "viewer_takeaway": "Sanitized viewer takeaway d0f4c34c41",
+                "subject": "Sanitized subject 514eb0c5e0 containing schulte canvas 01",
+                "visible_state": "Sanitized visible state a36cdad882",
+                "setting": "A grounded room Sanitized setting f45c251344",
+                "composition": "Sanitized composition 8003149743",
+                "entity_ids": [
+                    "schulte_canvas_01"
+                ],
+                "continuity": "edit",
+                "reference_id": "beat_4_origin"
+            },
+            {
+                "beat_id": "beat_6_transition",
+                "first_unit_id": "u1595_1689",
+                "last_unit_id": "u1689_1734",
+                "visual_mode": "challenge_ui",
+                "beat_kind": "instruction",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "instruction",
+                "viewer_takeaway": "Sanitized viewer takeaway dce396adfb",
+                "subject": "Sanitized subject e1aec20f7b containing schulte canvas 01",
+                "visible_state": "Sanitized visible state 93c1db69a3",
+                "setting": "A grounded room Sanitized setting f45c251344",
+                "composition": "Sanitized composition 8003149743",
+                "entity_ids": [
+                    "schulte_canvas_01"
+                ],
+                "continuity": "edit",
+                "reference_id": "beat_5_purpose"
+            }
+        ]
+    },
+    "corrected_candidate": {
+        "shots": [
+            {
+                "beat_id": "beat_1_problem",
+                "first_unit_id": "u1156_1219",
+                "last_unit_id": "u1156_1219",
+                "visual_mode": "human_context",
+                "beat_kind": "question",
+                "framing": "overhead",
+                "graphic_template": null,
+                "semantic_link": "direct",
+                "viewer_takeaway": "Sanitized viewer takeaway 93ec149d72",
+                "subject": "Sanitized subject 7bf0303298 containing office fatigue canvas 01",
+                "visible_state": "Sanitized visible state 704fbea9ec",
+                "setting": "A grounded room Sanitized setting 4dc63c0f79",
+                "composition": "Sanitized composition 1a90c78ea2",
+                "entity_ids": [
+                    "office_fatigue_canvas_01"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            },
+            {
+                "beat_id": "beat_2_curiosity",
+                "first_unit_id": "u1219_1306",
+                "last_unit_id": "u1219_1306",
+                "visual_mode": "challenge_ui",
+                "beat_kind": "reveal",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "direct",
+                "viewer_takeaway": "Sanitized viewer takeaway 883fbead70",
+                "subject": "Sanitized subject 8c7f168a2e containing schulte canvas 01",
+                "visible_state": "Sanitized visible state 9523919e31",
+                "setting": "A grounded room Sanitized setting f45c251344",
+                "composition": "Sanitized composition 8003149743",
+                "entity_ids": [
+                    "schulte_canvas_01"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            },
+            {
+                "beat_id": "beat_3_promise",
+                "first_unit_id": "u1306_1408",
+                "last_unit_id": "u1306_1408",
+                "visual_mode": "challenge_ui",
+                "beat_kind": "claim",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "direct",
+                "viewer_takeaway": "Sanitized viewer takeaway 53c8a75420",
+                "subject": "Sanitized subject 8c7f168a2e containing schulte canvas 01",
+                "visible_state": "Sanitized visible state 8fd433f2db",
+                "setting": "A grounded room Sanitized setting f45c251344",
+                "composition": "Sanitized composition 8003149743",
+                "entity_ids": [
+                    "schulte_canvas_01"
+                ],
+                "continuity": "edit",
+                "reference_id": "beat_2_curiosity"
+            },
+            {
+                "beat_id": "beat_4_origin",
+                "first_unit_id": "u1408_1503",
+                "last_unit_id": "u1408_1503",
+                "visual_mode": "human_context",
+                "beat_kind": "mechanism",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "mechanism",
+                "viewer_takeaway": "Sanitized viewer takeaway 666e6e844e",
+                "subject": "Sanitized subject d515dfb221 containing schulte canvas 01",
+                "visible_state": "Sanitized visible state 0ed7aa940d",
+                "setting": "A grounded room Sanitized setting f45c251344",
+                "composition": "Sanitized composition 8003149743",
+                "entity_ids": [
+                    "schulte_canvas_01"
+                ],
+                "continuity": "edit",
+                "reference_id": "beat_3_promise"
+            },
+            {
+                "beat_id": "beat_5_purpose",
+                "first_unit_id": "u1503_1595",
+                "last_unit_id": "u1503_1595",
+                "visual_mode": "challenge_ui",
+                "beat_kind": "claim",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "mechanism",
+                "viewer_takeaway": "Sanitized viewer takeaway d0f4c34c41",
+                "subject": "Sanitized subject 514eb0c5e0 containing schulte canvas 01",
+                "visible_state": "Sanitized visible state a36cdad882",
+                "setting": "A grounded room Sanitized setting f45c251344",
+                "composition": "Sanitized composition 8003149743",
+                "entity_ids": [
+                    "schulte_canvas_01"
+                ],
+                "continuity": "edit",
+                "reference_id": "beat_4_origin"
+            },
+            {
+                "beat_id": "beat_6_transition",
+                "first_unit_id": "u1595_1689",
+                "last_unit_id": "u1689_1734",
+                "visual_mode": "challenge_ui",
+                "beat_kind": "instruction",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "instruction",
+                "viewer_takeaway": "Sanitized viewer takeaway dce396adfb",
+                "subject": "Sanitized subject e1aec20f7b containing schulte canvas 01",
+                "visible_state": "Sanitized visible state 93c1db69a3",
+                "setting": "A grounded room Sanitized setting f45c251344",
+                "composition": "Sanitized composition 8003149743",
+                "entity_ids": [
+                    "schulte_canvas_01"
+                ],
+                "continuity": "edit",
+                "reference_id": "beat_5_purpose"
+            }
+        ]
+    },
+    "repair_contract": null,
+    "expected_boundary": "semantic_compiler",
+    "expected_issue": {
+        "beat_ids": [
+            "beat_1_problem"
+        ],
+        "code": "SEMANTIC_FRAMING_DIVERSITY",
+        "requirement": "Add missing framing before the fixed diagram tail"
+    },
+    "expected_corrected_behavior": "An editable non-grid beat adds a fourth framing before all remaining records become fixed diagrams."
+}

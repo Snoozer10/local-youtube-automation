@@ -233,7 +233,7 @@ class SocraticCurationEngine:
             lighting = "Dual-temperature illumination: Crimson accent backlight (#E63946) on the fallacy, warm amber keylight (#E09F3E) on the empirical proof"
 
         # Composition with explicit camera optics and 16:9 foveal safe zone coordinates
-        composition = "orthographic flat 2D projection plane, zero barrel distortion, zero keystoning, telephoto equivalent perspective, clean 16:9 widescreen composition strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980, leaving 10% peripheral bleed padding for automated pan and zoom"
+        composition = "orthographic flat 2D projection plane, zero barrel distortion, zero keystoning, telephoto equivalent perspective, clean 16:9 widescreen composition with essential subjects clear of frame edges, leaving modest peripheral room for restrained camera movement"
 
         # Prohibitions: Negative latent suppression acting as explicit filter (~94% compliance)
         negative_prompt = (

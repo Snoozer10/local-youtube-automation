@@ -1,0 +1,5 @@
+LINGUISTIC DIRECTIVE Turn {index} of {total}. Transcreate the following technical educational text segment into the colloquial dialect defined in the guide ({config:ratios}). Output ONLY the text inside <transcreated_paragraph> tags. Do NOT add English commentary, preambles, or questions:
+
+<source_paragraph>
+{paragraph}
+</source_paragraph>

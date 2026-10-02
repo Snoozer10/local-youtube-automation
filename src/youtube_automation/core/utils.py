@@ -15,7 +15,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-# Locate and load the .env file from the project root directory with override enabled
+# Locate project defaults without replacing explicit process-level configuration.
 def _find_project_root() -> str:
     current = Path(__file__).resolve().parent
     for parent in [current, *current.parents]:
@@ -25,7 +25,7 @@ def _find_project_root() -> str:
 
 PROJECT_ROOT = _find_project_root()
 ENV_PATH = os.path.join(PROJECT_ROOT, ".env")
-load_dotenv(ENV_PATH, override=True)
+load_dotenv(ENV_PATH, override=False)
 
 # Configure logging
 LOG_DIR = Path(PROJECT_ROOT) / "logs"
@@ -73,7 +73,7 @@ class PipelineConfig:
 # (fix: module-level call previously raised NameError at import time).
 
 
-def get_config_value(target_key, default_val=""):
+def get_config_value(target_key: str, default_val: str = "") -> str:
     """Reads a KEY=VALUE pair from environment variables (.env), stripping accidental quotes."""
     val = os.getenv(target_key)
     if val is not None:
@@ -162,61 +162,88 @@ def is_port_in_use(port: int | str) -> bool:
         return s.connect_ex(("127.0.0.1", port_num)) == 0
 
 
+OWNED_BROWSER_REGISTRY = Path(PROJECT_ROOT) / ".runtime" / "owned_browsers.json"
+
+
+def _read_owned_browsers() -> dict[str, dict]:
+    try:
+        value = json.loads(OWNED_BROWSER_REGISTRY.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {}
+
+
+def _write_owned_browsers(value: dict[str, dict]) -> None:
+    OWNED_BROWSER_REGISTRY.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(str(OWNED_BROWSER_REGISTRY), value)
+
+
+def _listener_pids(port: int) -> set[int]:
+    if os.name != "nt":
+        return set()
+    result = subprocess.run(
+        ["netstat", "-ano", "-p", "tcp"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    found: set[int] = set()
+    for line in result.stdout.splitlines():
+        parts = line.strip().split()
+        if (
+            len(parts) >= 5
+            and parts[0].upper() == "TCP"
+            and parts[1].rsplit(":", 1)[-1] == str(port)
+            and parts[3].upper() == "LISTENING"
+            and parts[4].isdigit()
+        ):
+            found.add(int(parts[4]))
+    return found
+
+
 def kill_cdp_chrome(port: int | str = 9222):
-    """Surgically terminates Chrome/Opera listening on the CDP port without shell=True execution."""
+    """Terminate only the exact browser PID launched and registered by this workspace."""
     port = int(port)
-    killed_any = False
-    if os.name == "nt":
-        try:
-            # Query TCP table directly without shell pipelines
-            proc = subprocess.run(
-                ["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True, check=False
+    registry = _read_owned_browsers()
+    record = registry.get(str(port))
+    if not isinstance(record, dict) or type(record.get("pid")) is not int:
+        if is_port_in_use(port):
+            logger.warning(
+                f"[OWNERSHIP] Refusing to terminate unregistered browser on CDP port {port}."
             )
-            killed_pids = set()
-            for line in proc.stdout.strip().splitlines():
-                parts = line.strip().split()
-                if (
-                    len(parts) >= 5
-                    and parts[0].upper() == "TCP"
-                    and parts[1].rsplit(":", 1)[-1] == str(port)
-                    and parts[3].upper() == "LISTENING"
-                ):
-                    pid = parts[4]
-                    # Strict PID validation: must be digits only and > 100 (avoid system criticals)
-                    if pid.isdigit():
-                        pid_int = int(pid)
-                        if pid_int > 100 and pid not in killed_pids:
-                            subprocess.run(
-                                ["taskkill", "/F", "/T", "/PID", str(pid_int)],
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL,
-                                check=False,
-                            )
-                            killed_pids.add(pid)
-                            killed_any = True
-                            logger.info(
-                                f"[SYSTEM] Terminated CDP process (PID: {pid_int}) on port {port}."
-                            )
-        except Exception as e:
-            logger.warning(f"[WARN] Non-shell process termination encountered an issue: {e}")
-    else:
-        try:
+        return False
+    pid = int(record["pid"])
+    try:
+        if os.name == "nt":
+            if pid not in _listener_pids(port):
+                if not is_port_in_use(port):
+                    registry.pop(str(port), None)
+                    _write_owned_browsers(registry)
+                else:
+                    logger.warning(
+                        f"[OWNERSHIP] CDP port {port} belongs to an unregistered replacement process."
+                    )
+                return False
             subprocess.run(
-                ["fuser", "-k", f"{port}/tcp"],
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
+                timeout=15,
             )
-            killed_any = True
-        except Exception:
-            pass
-
-    # Socket-polling verification loop (up to 4s) to ensure OS socket release
-    if killed_any or is_port_in_use(port):
+        else:
+            os.kill(pid, 15)
         for _ in range(8):
             if not is_port_in_use(port):
-                break
+                registry.pop(str(port), None)
+                _write_owned_browsers(registry)
+                logger.info(f"[SYSTEM] Terminated owned CDP process PID {pid} on port {port}.")
+                return True
             time.sleep(0.5)
+    except Exception as exc:
+        logger.warning(f"[WARN] Owned browser termination failed: {exc}")
+    return False
 
 
 def map_profile_index(num_str):
@@ -290,8 +317,12 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
         f"[SYSTEM] Booting {browser_name} connected to Account Index {profile_index} ('{profile_dir}')"
     )
 
-    # Clear the port prior to launching
-    kill_cdp_chrome(port)
+    # Clear only a browser previously launched by this workspace. Never seize a user process.
+    if is_port_in_use(port) and not kill_cdp_chrome(port):
+        logger.error(
+            f"[OWNERSHIP] CDP port {port} is occupied by an unowned browser; refusing replacement."
+        )
+        return False
 
     # Deep recursive lock cleaning across root and target profile directory
     target_dirs = [user_data_dir, os.path.join(user_data_dir, profile_dir)]
@@ -325,12 +356,11 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
         "--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling",
         "--disable-background-media-suspend",
         "--disable-quic",
-        "--host-resolver-rules=MAP aistudio.google.com 142.251.154.2",
         "--no-first-run",
         "--no-default-browser-check",
         "--hide-crash-restore-bubble",
     ]
-    subprocess.Popen(cmd)
+    process = subprocess.Popen(cmd)
 
     # Blocking loop to ensure debugger socket is open (explicit IPv4 to prevent IPv6 ::1 lookup failure)
     url = f"http://127.0.0.1:{port}/json/version"
@@ -339,6 +369,25 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
         try:
             with urllib.request.urlopen(url, timeout=1) as response:
                 if response.status == 200:
+                    listener_pids = _listener_pids(int(port))
+                    listener_pid = process.pid if process.pid in listener_pids else None
+                    if listener_pid is None and len(listener_pids) == 1:
+                        listener_pid = next(iter(listener_pids))
+                    if listener_pid is None:
+                        process.terminate()
+                        logger.error(
+                            f"[OWNERSHIP] Could not prove ownership of the listener on CDP port {port}."
+                        )
+                        return False
+                    registry = _read_owned_browsers()
+                    registry[str(int(port))] = {
+                        "pid": listener_pid,
+                        "executable": exe_path,
+                        "user_data_dir": user_data_dir,
+                        "profile": profile_dir,
+                        "started_at": time.time(),
+                    }
+                    _write_owned_browsers(registry)
                     logger.info(
                         f"[SYSTEM] {browser_name} debugging session successfully established!"
                     )
@@ -347,6 +396,8 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
             continue
 
     logger.error(f"[ERROR] {browser_name} failed to start or bind to port {port}.")
+    if process.poll() is None:
+        process.terminate()
     return False
 
 
@@ -405,6 +456,89 @@ def rotate_profile_index() -> int:
         f"⚠️ [Alert] Account {current_idx} failed/blocked. Rotated to Account {new_idx} successfully."
     )
     return new_idx
+
+
+def active_profile_index() -> int:
+    """Return the normalized numeric index for the active browser profile."""
+    raw = get_runtime_state("ACTIVE_PROFILE_INDEX", "1")
+    match = re.search(r"\d+", str(raw))
+    return max(1, int(match.group(0))) if match else 1
+
+
+def next_profile_index(current: str | int | None = None) -> int:
+    """Return the next configured account index using the established failover ring."""
+    if current is None:
+        current_idx = active_profile_index()
+    else:
+        match = re.search(r"\d+", str(current))
+        current_idx = max(1, int(match.group(0))) if match else 1
+    target = current_idx + 1
+    return 2 if target > 5 else target
+
+
+def failover_owned_browser_profile() -> int:
+    """Switch from an exhausted account to the next verified owned CDP profile."""
+    current_idx = active_profile_index()
+    target_idx = next_profile_index(current_idx)
+    if not switch_owned_browser_profile(target_idx):
+        raise RuntimeError(
+            f"Could not switch the owned CDP browser from account {current_idx} "
+            f"to account {target_idx} after Gemini quota exhaustion"
+        )
+    logger.warning(
+        f"[FAILOVER SYSTEM] Gemini quota exhausted on account {current_idx}; "
+        f"verified account {target_idx} and committed it as active."
+    )
+    send_telegram_notification(
+        f"⚠️ [Alert] Gemini quota exhausted on Account {current_idx}. "
+        f"Switched to verified Account {target_idx}."
+    )
+    return target_idx
+
+
+def switch_owned_browser_profile(
+    target_profile_index: str | int,
+    *,
+    browser_type: str | None = None,
+    port: int | None = None,
+) -> bool:
+    """Switch the pipeline-owned CDP browser and commit state only after verification.
+
+    This is an operator-directed capacity switch, so it deliberately emits no failover
+    notification and never labels the previous account as failed.
+    """
+    cdp_port = int(port or get_config_value("CDP_PORT", "9222"))
+    browser = browser_type or get_config_value("BROWSER_TYPE", "chrome")
+    previous = get_runtime_state("ACTIVE_PROFILE_INDEX", "1")
+    target = str(target_profile_index).strip()
+    expected_profile = map_profile_index(target)
+    registry = _read_owned_browsers()
+    prior_record = registry.get(str(cdp_port))
+    had_owned_listener = bool(prior_record and is_port_in_use(cdp_port))
+
+    if is_port_in_use(cdp_port) and not kill_cdp_chrome(cdp_port):
+        logger.error(
+            f"[OWNERSHIP] Refusing profile switch because CDP port {cdp_port} is not owned."
+        )
+        return False
+
+    if launch_browser_with_profile(browser, target, cdp_port):
+        active = _read_owned_browsers().get(str(cdp_port), {})
+        if active.get("profile") == expected_profile and is_port_in_use(cdp_port):
+            set_runtime_state("ACTIVE_PROFILE_INDEX", target)
+            logger.info(
+                f"[SYSTEM] Switched owned browser from account {previous} to {target} "
+                f"({expected_profile})."
+            )
+            return True
+        kill_cdp_chrome(cdp_port)
+
+    logger.error(
+        f"[ERROR] Could not verify account {target} ({expected_profile}); runtime state remains {previous}."
+    )
+    if had_owned_listener:
+        launch_browser_with_profile(browser, previous, cdp_port)
+    return False
 
 
 def _dispatch_telegram(bot_token, chat_id, message):

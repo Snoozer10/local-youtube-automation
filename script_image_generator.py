@@ -675,7 +675,7 @@ Visual Prompt: [Timestamp] 2D vector webcomic style, [Camera Angle]. Subject: [2
     print(f"\nStoryboard planning phase complete! Storyboard saved to: {prompts_file}")
 
 
-def main():
+def _main():
     batch_queue = scan_batch_folders()
     if not batch_queue:
         print(
@@ -1108,6 +1108,13 @@ def main():
             continue  # Restart the 'while True' outer loop
         else:
             break  # Exit loop
+
+
+def main():
+    from youtube_automation.production.ledger import leased_resource, resource_database
+
+    with leased_resource(resource_database(), "browser"):
+        return _main()
 
 
 if __name__ == "__main__":

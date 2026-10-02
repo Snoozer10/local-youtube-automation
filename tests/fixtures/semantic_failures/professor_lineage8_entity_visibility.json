@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "case_id": "professor_lineage8_entity_visibility",
+  "title": "Declared entity was absent from compiled visible wording",
+  "failure_code": "SEMANTIC_RECORD_INVALID",
+  "root_cause_class": "deterministic_entity",
+  "responsible_layer": "python_compiler",
+  "stage": "plan",
+  "window_index": 0,
+  "raw_evidence_sha256s": [
+    "6b4f42de8be6ab788d7bcb445101f98bca40c94ce9645d932b68fdeff87ea324",
+    "44095bb2bc30d65f4bee10f2252364eb0869738cb69816ebc709f4facc39c553",
+    "78cc6a5a75d219616e9e1543ca9ef60f7efe11dc5aced7bb92df6d81ffa182d6",
+    "55038a1962dff2e28f0a5da4c02db9d71a60698d9fc11bd30d6f547e8be6737d",
+    "38c456a8eef1e1037cb65413732eb6addd04735b0b3860999c35a30735f93de5"
+  ],
+  "input_sha256": "c1687c1303a9f962756909f35d0deeee150304a150296b5cb7d6cf26be91ce35",
+  "candidate_sha256": "0318779c01c817f0a073753ea66039ae4db87149c29b894660f57bc3fa61be38",
+  "brief": {
+    "version": 3,
+    "source_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "profile_sha256": "2042b2c301cf9f6130273d5fb18cec2b185cd6b17e99db7f9d5874e2567c4fdf",
+    "channel": {
+      "version": 3,
+      "channel_id": "professor_failure_fixture",
+      "name": "Sanitized Professor Fixture",
+      "audience": "Arabic-speaking adults",
+      "language": "Arabic",
+      "dialect": "MSA",
+      "voice": "achird",
+      "tone": "clear evidence-conscious",
+      "style": "restrained editorial illustration",
+      "visual_directives": ["Use narration-specific scenes"],
+      "forbidden_motifs": ["Avoid generic focus portraits"],
+      "allowed_treatments": ["subject_scene", "detail", "comparison"],
+      "humor": "none"
+    },
+    "analysis": {
+      "topics": ["attention exercise"],
+      "claim_basis": "factual",
+      "form": "tutorial",
+      "proposition": "Visible entities must be described",
+      "narrative_strategy": "Use three concise opening beats",
+      "treatments": ["subject_scene", "detail", "comparison"],
+      "rationale": "Entity identity must survive compilation"
+    },
+    "visual_strategy": {
+      "version": 1,
+      "source_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "topic": "Attention exercise",
+      "viewer_question": "What must be visible?",
+      "central_promise": "Every entity is grounded in visible wording",
+      "evidence_mode": "demonstrative",
+      "emotional_arc": ["concern", "curiosity", "clarity"],
+      "hook_archetype": "mystery_gap",
+      "hook_microbeats": [
+        {"beat_id": "beat_1_problem", "function": "problem", "duration_seconds": 3, "viewer_takeaway": "The problem is concrete", "visual_mode": "human_context"},
+        {"beat_id": "beat_2_curiosity", "function": "curiosity", "duration_seconds": 3, "viewer_takeaway": "The gap is visible", "visual_mode": "comparison"},
+        {"beat_id": "beat_3_promise", "function": "promise", "duration_seconds": 3, "viewer_takeaway": "The promise is specific", "visual_mode": "kinetic_type"}
+      ],
+      "visual_modes": ["human_context", "comparison", "kinetic_type"],
+      "local_ui_kit": ["cards", "focus_sweep", "timer"],
+      "pacing": "Three equal opening beats",
+      "motion_grammar": ["Hold unless meaning changes"]
+    }
+  },
+  "timeline": {
+    "fps": 30,
+    "total_frames": 270,
+    "spans": [
+      {"index": 0, "start_frame": 0, "end_frame": 90, "text": "Sanitized problem narration"},
+      {"index": 1, "start_frame": 90, "end_frame": 180, "text": "Sanitized curiosity narration"},
+      {"index": 2, "start_frame": 180, "end_frame": 270, "text": "Sanitized promise narration"}
+    ]
+  },
+  "checkpoint": {
+    "planner_version": 8,
+    "compiler_version": 2,
+    "windows": [[0, 270]],
+    "next_window": 0,
+    "units_by_window": [],
+    "batches": []
+  },
+  "failed_units": [
+    {"unit_id": "u0_90", "start_frame": 0, "end_frame": 90, "text": "Sanitized problem narration"},
+    {"unit_id": "u90_180", "start_frame": 90, "end_frame": 180, "text": "Sanitized curiosity narration"},
+    {"unit_id": "u180_270", "start_frame": 180, "end_frame": 270, "text": "Sanitized promise narration"}
+  ],
+  "failed_candidate": {
+    "shots": [
+      {"beat_id": "beat_1_problem", "first_unit_id": "u0_90", "visual_mode": "human_context", "beat_kind": "claim", "framing": "wide", "entity_ids": ["office_backdrop"], "subject": "A tired professional", "visible_state": "Sorting loose papers", "setting": "An interior workspace", "composition": "Subject centered beside loose pages"},
+      {"beat_id": "beat_2_curiosity", "first_unit_id": "u90_180", "visual_mode": "comparison", "beat_kind": "question", "framing": "close_up", "entity_ids": ["contrast_cards"], "subject": "Visible contrast cards", "visible_state": "Two cards show different states", "setting": "A clean studio", "composition": "Cards divided evenly"},
+      {"beat_id": "beat_3_promise", "first_unit_id": "u180_270", "visual_mode": "kinetic_type", "beat_kind": "reveal", "framing": "medium", "entity_ids": ["promise_marker"], "subject": "A visible promise marker", "visible_state": "The marker resolves the question", "setting": "A clean studio", "composition": "Marker centered with open space"}
+    ]
+  },
+  "corrected_candidate": {
+    "shots": [
+      {"beat_id": "beat_1_problem", "first_unit_id": "u0_90", "visual_mode": "human_context", "beat_kind": "claim", "framing": "wide", "entity_ids": ["office_backdrop"], "subject": "A tired professional before a visible office backdrop", "visible_state": "Sorting loose papers", "setting": "An interior workspace", "composition": "Subject centered beside loose pages"},
+      {"beat_id": "beat_2_curiosity", "first_unit_id": "u90_180", "visual_mode": "comparison", "beat_kind": "question", "framing": "close_up", "entity_ids": ["contrast_cards"], "subject": "Visible contrast cards", "visible_state": "Two cards show different states", "setting": "A clean studio", "composition": "Cards divided evenly"},
+      {"beat_id": "beat_3_promise", "first_unit_id": "u180_270", "visual_mode": "kinetic_type", "beat_kind": "reveal", "framing": "medium", "entity_ids": ["promise_marker"], "subject": "A visible promise marker", "visible_state": "The marker resolves the question", "setting": "A clean studio", "composition": "Marker centered with open space"}
+    ]
+  },
+  "expected_boundary": "semantic_compiler",
+  "expected_issue": {"beat_ids": ["beat_1_problem"], "code": "SEMANTIC_RECORD_INVALID", "requirement": "Declared entity must appear in the compiled visible description"},
+  "expected_corrected_behavior": "Repair only beat_1_problem so office_backdrop is visibly described before checkpoint publication."
+}

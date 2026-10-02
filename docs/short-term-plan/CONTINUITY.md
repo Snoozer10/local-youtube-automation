@@ -1,47 +1,41 @@
-- Goal (incl. success criteria): Execute Post-Run Adversarial Audit, Gap Analysis, and Broadcast-Grade PR Preparation for target URL 'https://youtube.com/watch?v=vIqTRyX-cq0' ('What Do Animals Think Of Humans') following 10-phase production pass (197/200, 98.5%). Success criteria: (1) Complete adversarial evaluation of Redis/Memcached premise; (2) Verify all architectural invariants against master; (3) Run static analysis, AST validation, and regression baselines (520/520 unit tests, 35/35 pedagogy drills); (4) Atomically stage 32 modified + 12 untracked files into 5 conventional commits; (5) Package broadcast-grade PR targeting master via gh CLI.
+- Goal (incl. success criteria): Hardening the adaptive multi-channel visual production engine with Professor Yashrah as primary channel:
+  (1) Reject generic AI imagery, repetitive stock scenes, arbitrary desk activity, literal brain metaphors, and unsupported transformation claims.
+  (2) Audit and refine semantic visual families (`generic_desk_task`, `generated_exercise_surface`, `efficacy_transformation`).
+  (3) Ground early beats in recognizable daily attention lapses (searching past visible objects, doorway amnesia, attentional capture) while strictly rejecting staged "performing focus" scenes (purposeless drafting, compass, arbitrary pen paths, card sorting, note walls).
+  (4) Enforce Schulte grid prompt & validation timing gate (starts within 1s of introduction at frame 1219, dominant through countdown, MM:SS timer).
+  (5) Preserve all pre-flight invariants: narration hash, timeline hash, writing/source receipts, zero unexpected partial plans, owned browser PID.
 - Constraints/Assumptions:
-  - Windows 11 PowerShell environment; unbuffered execution (python -u).
-  - Chrome DevTools Protocol bound strictly to 127.0.0.1:9222.
-  - Zero cloud SDKs (local Playwright CDP loopback only); atomic disk writes for checkpoints and manifests.
-  - Canonical timeline.json is read-only SSOT with cryptographic SHA-256 sidecars.
-  - youtube_urls.txt has skip-worktree bit enabled (S); youtube_runs/ and /docs/incidents/ gitignored.
+  - Branch: `codex/adaptive-multi-channel-visual-engine`; preserve generated run history and avoid destructive resets or branch switches.
+  - Zero cloud SDKs; CDP loopback port 9222 with exact PID ownership registry.
+  - Planner model is configurable; the Professor pilot used Gemini Pro with `IMAGE_PLANNER_TIMEOUT_SECONDS=600` and the hash-bound UTF-8 file transport.
+  - Pilot dir: `youtube_runs/adaptive-pilot-professor-yashrah-local-narration/`.
+  - Canonical source-narration WAV SHA-256: `7a89334ef0c8023d0a0f464810c6df18887688be37631fd2f4f45e0af9a92fa0`.
+  - Canonical timeline SHA-256: `0be48b4e361572fe4fc121cd854f6768b3293f711b8506d2c215ca871df04edf` (2,296 frames @ 30 fps).
 - Key decisions:
-  - Adversarial Caching Verdict: Reject Redis and Memcached as unnecessary operational bloat for local Windows sequential video pipeline; confirm existing filesystem atomic writes, rolling SHA-256 ledgers, and in-memory LRU caching are optimal and crash-resilient.
-  - Pull Request Packaging: Target base branch master from feat/creative-prompt-script-refinement via gh CLI (Snoozer10).
+  - Profile Schema v3: Semantic visual families (`mechanical_cognition`, `efficacy_transformation`, `generated_exercise_surface`, `wellness_strawman`, `generic_desk_task`, `generic_focus_portrait`).
+  - Refined `generic_desk_task` classifier: detects staged drafting, compass, line/path drawing, card sorting, and note walls while accepting legitimate, story-relevant daily attention lapses.
+  - Refined `generated_exercise_surface`: prevents false positives on furniture dining/coffee tables while banning generated number grids/cards.
+  - Ground early beats in genuine attention lapses in both prompt instructions and channel profile directives.
+  - Archived stale partial plan `shot_plan.partial.json` into `.adaptive_history/rejected_partial_plans/`.
+  - Rebound brief to updated v3 channel profile via `rebind_visual_policy`.
 - State:
   - Done:
-    1. Antigravity 2.0 autonomous 10-phase pipeline run completed on vIqTRyX-cq0 (197/200, 98.5% pass).
-    2. Verification scorecard (verification_scorecard_vIqTRyX-cq0.md) and session handoff (HANDOFF.md) published.
-    3. Specialized skills activated: github-cli, requesting-code-review, finishing-a-development-branch.
-    4. AST syntax validation passed across all 60 Python files; zero hardcoded secrets detected.
-    5. Regression baseline verified: 520 / 520 unit tests passed, 35 / 35 pedagogy drills valid.
-    6. Phase A (Adversarial Caching Audit): External Redis/Memcached evaluated and rejected; pure filesystem atomic writes + in-memory hashes validated.
-    7. Phase B (Invariants & Gap Analysis): QSV_LOOKAHEAD=0, format=nv12, CDP 9222 loopback, timeline SSOT, S youtube_urls.txt verified.
-    8. Phase C & D (Modernization & Decoupling): Refactored all hardcoded single-persona references to universal adaptive multi-niche studio (niche_engine.py); modernized README.md, Project-workflow.md, CHANGELOG.md (tagged v4.4.0), and injected user directives into GEMINI.md.
-    9. Phase E (5 Atomic Commits): Staged and committed all 32 modified + 12 untracked files across 5 conventional commits (59a9ddd, 4238d97, 58492b3, 874fa00, 0419aef).
-    10. Phase F (Remote Push & PR): Pushed branch feat/creative-prompt-script-refinement to origin and opened Pull Request #20 targeting master.
-    11. Phase G (CI Failure Diagnosis & Comprehensive Remediation):
-        - Diagnosed CI blocking signal: ruff check tests/unit reported 43 errors (causing unit tests to be skipped).
-        - Executed repo-wide static analysis check; discovered and fixed F821 undefined name Any in src/youtube_automation/video/ken_burns.py:134.
-        - Resolved all 43 ruff lint errors across 8 test files in tests/unit (import sorting, unused imports, ambiguous variable l -> line, zip strict parameters).
-        - Cleaned non-test linting issues across repository; ruff check . passes 100% cleanly (0 errors).
-        - Synchronized version 4.4.0 across pyproject.toml, GEMINI.md, and CHANGELOG.md.
-        - Committed remediation as 7976da1, verified passing CI (run 35297116696).
-    12. Phase H (PR Failure Learning Documentation & CHANGELOG Decoupling):
-        - Documented root causes for initial commit status check badges (0419aef and 18373d2).
-        - Added [LEARNING-038] through [LEARNING-043] to GEMINI.md covering CI workflow mirroring, repo-wide static analysis, delayed type evaluation pitfalls (F821), multi-file version synchronization, CI status monitoring, and CHANGELOG version boundary verification.
-        - Updated docs/error-solving/understood-errors.md with 3 error patterns and 2 failure modes.
-        - Disentangled CHANGELOG.md version bleed by restoring missing ## [4.3.0] - 2026-09-12 header and documenting recent typing/linting fixes under [4.4.0].
-        - Verified clean release note extraction with tools/extract_release_notes.py for both v4.4.0 and v4.3.0.
-        - Committed as 990b093, pushed to remote, and verified CI run 35299489840 passed with SUCCESS in 9m44s.
-    13. Phase I (PR #20 Merge & v4.4.0 GitHub Release):
-        - Merged PR #20 into master via gh pr merge 20 --merge --delete-branch (merge commit 9377f74).
-        - Reconciled local master via git checkout master && git pull origin master; verified clean working tree and preserved S skip-worktree bit on youtube_urls.txt.
-        - Created and pushed annotated release tag v4.4.0.
-        - Monitored GitHub Actions Release workflow (run 35300672123); verified successful build and publication of release v4.4.0 with Windows zip bundle, wheel, tarball, and SHA-256 sums.
-  - Now: Mission complete. PR #20 merged into master, v4.4.0 published on GitHub Releases, all documentation and learning artifacts synchronized.
-  - Next: Standby for next pipeline mission or new episode production cycle.
-  - Historical Archive:
+    - Pre-flight invariants verified (WAV SHA, Timeline SHA, visual-policy-only update, receipts verified, partial plan cleared, owned browser PID 25480 confirmed).
+    - Hardened `_shot_visual_families` in `shots.py` (`generic_desk_task`, `generic_focus_portrait`, `wellness_strawman`) and updated `ensure_shot_plan` instructions.
+    - Updated `channels/professor-yashrah.json` visual directives and forbidden motifs; rebound episode brief.
+    - Fixed `editorial_description` definition and entity description verification in `shots.py`.
+    - Added comprehensive unit tests for `generic_focus_portrait` and `wellness_strawman` (53/53 tests passing, mypy 0 errors, ruff clean).
+    - Resolved framing limit deadlock for interactive exercise grids: exempted continuous active `data_grid` shots from `max_consecutive_framing` and clarified prompt instructions.
+    - Live adaptive planning complete: `adaptive_production.py plan` finalized `shot_plan.json` (15 shots, 2,296 frames, nine Flow assets, one local canvas and two exact reference edits).
+    - Verified Schulte grid 6x6 continuous dominance from introduction (frame 1219) through the displayed 00:40 target to the spoken start cue (`1 2 3 ابدا`).
+    - Flow visual generation completed for all nine generated images with 100% bilingual (`eng+ara`) OCR text-gate pass. Exact prompt-chip v2 blocked one mismatched reference, restored the receipt-bound asset and reverified identity immediately before submission.
+    - Review report compiled (`adaptive_production.py report`) into `adaptive_review/index.html` (54 KB) and contact sheet `sheet_001.jpg` (268 KB).
+    - Preview video rendered (`adaptive_production.py preview`): 1080p `preview-ddd32b927f399875baa267fad7402cc71ae082739c8df1913dde2e68cc859330.mp4` (exact 2,296 frames @ 30 fps, 76.53s). Full-resolution inspection verified Arabic shaping, all 36 values, center highlight and the displayed timer. Resolved Win32 `MAX_PATH` cwd limit and concat scratch handling in `render.py`.
+    - Decision Record and "What I Think & My Recommendation" deliberation summary embedded directly into `DECISION_RECORD_FLOW_GENERATION.md` and `adaptive_review/index.html` for Codex review.
+    - Final gates pass: 725/725 unit tests, production mypy for 15 files, repository Ruff, exercise pedagogy linter (35 files/35 links) and `git diff --check`.
+  - Now: Professor planning, Flow generation, review reporting and preview rendering are technically complete. The preview remains pending user editorial approval; Soldier media and pilot remain open.
+  - Next: Complete final repository gates and push the branch, then obtain Professor editorial approval before creating its master. Locate Soldier's matching owner media and complete the third pilot before full-episode validation.
+- Historical Archive:
     1. Phase 1 & 2: Script Translation & 110-paragraph Al-Daheeh transcreation complete.
     2. Root Cause Analysis & Prevention: Documented in docs/error-solving/understood-errors.md.
     3. Chapter Harvesting: 100% complete (57 chapters, 110 paragraphs, 3,679 words).

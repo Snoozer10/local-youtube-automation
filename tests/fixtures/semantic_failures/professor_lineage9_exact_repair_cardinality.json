@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "case_id": "professor_lineage9_exact_repair_cardinality",
+  "title": "One compiler-owned repair slot accepted the wrong record count",
+  "failure_code": "REQUEST_CONTRACT_INVALID",
+  "root_cause_class": "schema",
+  "responsible_layer": "request_contract",
+  "stage": "plan",
+  "window_index": 0,
+  "raw_evidence_sha256s": ["1ece7d042e9961e599fe461fd92c814d640b3959ff48ff9581bd9828e7cac8b5"],
+  "input_sha256": "ee06651728d9b8a5f6b56773bed05a02ed47f7d2b80fc0c447cce1948a144a8b",
+  "candidate_sha256": "7013e5a737acc1db03e1ef9f1a0c99c6b0198cc116a15f1aa0b244b02eb9483a",
+  "brief": {
+    "version": 3,
+    "source_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "profile_sha256": "2042b2c301cf9f6130273d5fb18cec2b185cd6b17e99db7f9d5874e2567c4fdf",
+    "channel": {"version": 3, "channel_id": "professor_failure_fixture", "name": "Sanitized Professor Fixture", "audience": "Arabic-speaking adults", "language": "Arabic", "dialect": "MSA", "voice": "achird", "tone": "clear evidence-conscious", "style": "restrained editorial illustration", "visual_directives": ["Use narration-specific scenes"], "forbidden_motifs": ["Avoid generic focus portraits"], "allowed_treatments": ["subject_scene", "detail", "comparison"], "humor": "none"},
+    "analysis": {"topics": ["attention exercise"], "claim_basis": "factual", "form": "tutorial", "proposition": "Repair cardinality is compiler-owned", "narrative_strategy": "Repair one rejected slot", "treatments": ["subject_scene", "detail", "comparison"], "rationale": "The response contract must reject missing records"},
+    "visual_strategy": {"version": 1, "source_sha256": "1111111111111111111111111111111111111111111111111111111111111111", "topic": "Attention exercise", "viewer_question": "How many repair records are required?", "central_promise": "The schema matches compiler-owned slots", "evidence_mode": "demonstrative", "emotional_arc": ["concern", "clarity", "confidence"], "hook_archetype": "mystery_gap", "hook_microbeats": [{"beat_id": "beat_1_problem", "function": "problem", "duration_seconds": 3, "viewer_takeaway": "The problem is concrete", "visual_mode": "human_context"}, {"beat_id": "beat_2_curiosity", "function": "curiosity", "duration_seconds": 3, "viewer_takeaway": "The gap is visible", "visual_mode": "comparison"}, {"beat_id": "beat_3_promise", "function": "promise", "duration_seconds": 3, "viewer_takeaway": "The promise is specific", "visual_mode": "kinetic_type"}], "visual_modes": ["human_context", "comparison", "kinetic_type"], "local_ui_kit": ["cards", "focus_sweep", "timer"], "pacing": "Three equal opening beats", "motion_grammar": ["Hold unless meaning changes"]}
+  },
+  "timeline": {"fps": 30, "total_frames": 270, "spans": [{"index": 0, "start_frame": 0, "end_frame": 90, "text": "Sanitized problem narration"}, {"index": 1, "start_frame": 90, "end_frame": 180, "text": "Sanitized curiosity narration"}, {"index": 2, "start_frame": 180, "end_frame": 270, "text": "Sanitized promise narration"}]},
+  "checkpoint": {"planner_version": 9, "compiler_version": 2, "windows": [[0, 270]], "next_window": 0, "units_by_window": [], "batches": []},
+  "failed_units": [{"unit_id": "u0_90", "start_frame": 0, "end_frame": 90, "text": "Sanitized problem narration"}],
+  "replay_kind": "repair_contract",
+  "repair_contract": {
+    "required_count": 1,
+    "candidate_contents": [],
+    "corrected_contents": [
+      {"beat_id": "repair_content", "first_unit_id": "u0_90", "visual_mode": "comparison", "beat_kind": "question", "framing": "close_up", "entity_ids": ["distinct_repair_card"], "subject": "A visible repair card", "visible_state": "The card shows one corrected state", "setting": "A clean studio", "composition": "Card centered with open margins"}
+    ]
+  },
+  "expected_boundary": "request_contract",
+  "expected_issue": {"beat_ids": ["beat_2_curiosity"], "code": "REQUEST_CONTRACT_INVALID", "requirement": "One compiler-owned slot requires exactly one semantic content record"},
+  "expected_corrected_behavior": "Reject the empty response at the request schema and accept exactly one corrected content record."
+}

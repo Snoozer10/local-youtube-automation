@@ -1,0 +1,29 @@
+{
+    "version": 1,
+    "case_id": "professor_lineage16_countdown_escape",
+    "failure_code": "NARRATION_EVENT_COUNTDOWN_COVERAGE",
+    "responsible_layer": "python_compiler",
+    "observed_boundary": "final_validator",
+    "status": "pending_minimal_replay",
+    "blocks_live_advancement": true,
+    "stage_recipe_sha256": "fe29dda5673dc1e336cf7bfc71b2cc0cdd8f22ea50d85f809d59cf861738629c",
+    "raw_evidence_sha256s": [
+        "3b960f6d419bd3a08ffbc91796f99d2a72c04a6a430ee7b76274ea994e40ce4d",
+        "708de84d7954b391be014834f86e440d26c288a5e6dd9a50403f35c8a19f04a7",
+        "7a116712f20d00bde6395b6a165c4fb807d4e61aed08232f54f05c2000bcb0f7",
+        "983bbc537ac110cd4c15e4b656feb2d9cebf90e283e078defeabd8376a3265aa",
+        "f0892230e2e40ec1201d21cf59c8e33bff89b7c74dae5a834756f61f4ab00cc4"
+    ],
+    "last_completed_receipt_sha256": "3b960f6d419bd3a08ffbc91796f99d2a72c04a6a430ee7b76274ea994e40ce4d",
+    "window_index": 2,
+    "candidate_window": [
+        1156,
+        1734
+    ],
+    "canonical_total_frames": 2296,
+    "schulte_introduction_frame": 1219,
+    "checkpoint_windows": 2,
+    "checkpoint_shots": 7,
+    "terminal_error": "Schulte grid must remain the dominant canvas through the spoken countdown",
+    "next": "Reconstruct the compiled candidate and prefix from preserved payloads. Distinguish prefix-scoped countdown obligations from full-plan coverage, make violations beat-addressable, and replay before live work."
+}

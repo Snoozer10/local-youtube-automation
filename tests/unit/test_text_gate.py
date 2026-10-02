@@ -20,6 +20,17 @@ def sample_image(tmp_path: Path) -> str:
 
 
 class TestOCRThresholds:
+    def test_adaptive_ocr_language_is_forwarded_to_engine(self, monkeypatch, sample_image):
+        seen = []
+
+        def fake_ocr(image, output_type=None, *, language=None):
+            seen.append(language)
+            return {key: [] for key in ("text", "conf", "left", "top", "width", "height")}
+
+        monkeypatch.setattr(text_gate, "_run_pytesseract_dict", fake_ocr)
+        assert text_gate._detect_via_pytesseract(sample_image, {"OCR_LANG": "eng+ara"}) == []
+        assert seen == ["eng+ara"]
+
     def test_confidence_boundary_59_passes_60_rejected(self, monkeypatch, sample_image):
         # 1000x1000 image = 1,000,000 px. Bbox 100x100 = 10,000 px (1% area).
         def mock_image_to_data(image, output_type=None):

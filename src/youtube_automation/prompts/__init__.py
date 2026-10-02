@@ -1,5 +1,17 @@
 """Prompts domain package: Pydantic schemas, Socratic curation, and validation."""
 
+from youtube_automation.prompts.loader import (
+    Prompt,
+    PromptError,
+    ack_tokens,
+    config_value,
+    fragment,
+    fragment_lines,
+    load,
+    render,
+    slang_terms,
+    turn,
+)
 from youtube_automation.prompts.niche_engine import (
     NICHE_PRESETS,
     SPATIAL_LAYOUT_PRESETS,
@@ -47,6 +59,16 @@ from youtube_automation.prompts.validator import (
 )
 
 __all__ = [
+    "ack_tokens",
+    "config_value",
+    "fragment",
+    "fragment_lines",
+    "load",
+    "render",
+    "slang_terms",
+    "turn",
+    "Prompt",
+    "PromptError",
     "ChannelProfile",
     "CuratedVisualPromptPayload",
     "DEFAULT_RESEARCH_QUERIES",

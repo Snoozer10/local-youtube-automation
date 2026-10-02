@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "channel_id": "snoozer-anime",
+  "name": "سنوزر انمي",
+  "audience": "Egyptian Arabic-speaking anime fans who enjoy romantic and comic story recaps with clear character continuity",
+  "language": "Arabic",
+  "dialect": "Conversational Egyptian Arabic with natural comic timing",
+  "asr_language": "ar",
+  "voice": null,
+  "tone": "Warm, lively, playful and character-led; jokes should clarify emotion or reversal rather than bury the plot",
+  "style": "Original anime-inspired editorial panels with consistent character sheets, readable silhouettes and expressions, warm cinematic color, deliberate reaction close-ups, and a strong distinction between setup, reversal and payoff. Compose stills for purposeful cuts and occasional local layer reveals; add speech and labels only in the local compositor. Avoid screenshot imitation, drifting faces or outfits, generic speed lines, and a camera move on every image.",
+  "host_mode": "NONE",
+  "host_description": "",
+  "allowed_treatments": ["subject_scene", "detail", "metaphor"],
+  "humor": "central",
+  "max_zoom": 1.08
+}

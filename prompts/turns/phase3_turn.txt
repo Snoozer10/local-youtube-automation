@@ -1,0 +1,6 @@
+DIRECTIVE: Transcreate Paragraph {index} of {total} into the target persona.
+CRITICAL: Output ONLY the transcreated text inside <transcreated_paragraph> tags. Do NOT include any English preamble, greetings, commentary, review feedback, or questions:
+
+<source_paragraph>
+{paragraph}
+</source_paragraph>

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "channel_id": "soldiers-ledger",
+  "name": "The Soldier's Sledger",
+  "audience": "Viewers of military history who value machines, tactics, human stakes, and clear distinctions between documented fact and dramatization",
+  "language": "English",
+  "dialect": "Measured international English documentary narration for this English-language pilot; the channel also publishes Arabic episodes",
+  "asr_language": "en",
+  "voice": null,
+  "tone": "Tense and cinematic without sensationalizing casualties or asserting disputed details as settled fact",
+  "style": "Historically disciplined illustrated documentary: archival-paper grain, restrained olive, slate, bone and signal-red palette, plausible period uniforms and equipment, geographic orientation, maps and mechanical cutaways only when the script needs them. Separate source-backed facts from illustrative reconstruction; use local labels and map annotations. Avoid fake archive photographs, invented insignia, decorative HUDs, and generic battlefield explosions.",
+  "host_mode": "NONE",
+  "host_description": "",
+  "allowed_treatments": ["subject_scene", "detail", "mechanism", "comparison", "timeline_map"],
+  "humor": "none",
+  "max_zoom": 1.05
+}

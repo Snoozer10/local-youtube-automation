@@ -135,7 +135,7 @@ def build_chunk_filter_graph(
 
         frame_count = block["frame_count"]
 
-        camera_action = block.get("camera_action") or "static"
+        camera_action = (block.get("camera_action") or "static") if anim_enabled else "static_hold"
         if anim_enabled and camera_action == "static":
             ai_action = ai_cameras.get(block["name"], "")
             if ai_action:

@@ -15,6 +15,7 @@ import re
 import sys
 import time
 import wave
+from contextlib import ExitStack
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
@@ -26,6 +27,7 @@ from youtube_automation.core.utils import (
     launch_browser_with_profile,
     rotate_profile_index,
 )
+from youtube_automation.prompts import loader
 
 # Selector constants for the standard Gemini Web App
 RESPONSE_SELECTOR = "model-response div.markdown"
@@ -61,6 +63,14 @@ user32.GetClipboardData.restype = ctypes.c_void_p
 
 def set_clipboard_text(text):
     """Sets Unicode text directly to the Windows system clipboard using native ctypes with retries."""
+    from youtube_automation.production.ledger import leased_resource, resource_database
+
+    with leased_resource(resource_database(), "clipboard"):
+        return _set_clipboard_text(text)
+
+
+def _set_clipboard_text(text):
+    """Own the already-leased Windows clipboard for one bounded write."""
     opened = False
     for _i in range(10):
         if user32.OpenClipboard(None):
@@ -164,7 +174,7 @@ def save_manifest(latest_run, manifest_data):
                 os.remove(tmp_path)
             except OSError:
                 pass
-        print(f"[MANIFEST WARNING] Failed to write manifest checkpoint: {e}")
+        raise OSError(f"Failed to write manifest checkpoint: {manifest_path}") from e
 
 
 def probe_audio_file(file_path):
@@ -331,7 +341,7 @@ def sync_audio_manifest(latest_run, manifest, silence_padding_sec=DEFAULT_SILENC
             os.fsync(f.fileno())
         os.replace(tmp_path, audio_manifest_path)
     except Exception as e:
-        print(f"[WARNING] Could not atomically write {AUDIO_MANIFEST_FILE_NAME}: {e}")
+        raise OSError(f"Could not atomically write {AUDIO_MANIFEST_FILE_NAME}") from e
 
     return manifest_payload
 
@@ -896,18 +906,21 @@ def prepare_gemini_chat_session(page, manifest):
     return False
 
 
-def ensure_speech_playground_tab(context, target_tts_model="gemini-2.5-pro-preview-tts"):
+def ensure_speech_playground_tab(
+    context, target_tts_model="gemini-2.5-pro-preview-tts", *, owned_page=None
+):
     """Finds or opens the Google AI Studio Speech Playground tab and guarantees Playwright is on the correct UI."""
-    tab1_speech = None
+    tab1_speech = owned_page
 
     # 1. Search existing tabs for generate-speech
-    for page in context.pages:
-        if "generate-speech" in page.url:
-            tab1_speech = page
-            break
+    if tab1_speech is None:
+        for page in context.pages:
+            if "generate-speech" in page.url:
+                tab1_speech = page
+                break
 
     # 2. If not found, pick a non-Gemini page or open a new tab
-    if not tab1_speech:
+    if tab1_speech is None:
         for page in context.pages:
             if "gemini.google.com" not in page.url:
                 tab1_speech = page
@@ -1375,6 +1388,40 @@ def check_ai_studio_errors(page):
 
 
 def main():
+    """Lease the shared browser before any TTS run can touch CDP."""
+    latest_run = sys.argv[1] if len(sys.argv) > 1 else get_latest_run_folder()
+    if latest_run and os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
+        if len(sys.argv) <= 1:
+            raise ValueError("Adaptive voice generation requires an explicit run directory")
+    from youtube_automation.production.ledger import leased_resource, resource_database
+
+    with leased_resource(resource_database(), "browser"):
+        return _run_voice_generation()
+
+
+class AdaptiveBrowserOwnershipError(RuntimeError):
+    """Adaptive TTS cannot take over or terminate an unowned browser process."""
+
+
+def connect_tts_browser(playwright, *, adaptive, browser_type, profile_index, port):
+    """Attach to CDP; only the legacy path may launch a replacement process."""
+    endpoint = f"http://127.0.0.1:{port}"
+    try:
+        browser = playwright.chromium.connect_over_cdp(endpoint)
+        print(f"Successfully connected to existing {browser_type.capitalize()} session.")
+        return browser
+    except Exception as exc:
+        if adaptive:
+            raise AdaptiveBrowserOwnershipError(
+                "Adaptive TTS requires an existing CDP browser session"
+            ) from exc
+    print("Debugging browser is closed or unreachable. Launching framework...")
+    if not launch_browser_with_profile(browser_type, profile_index):
+        sys.exit(1)
+    return playwright.chromium.connect_over_cdp(endpoint)
+
+
+def _run_voice_generation():
     print("=============================================")
     print("Starting Voice Generation Automation (Manifest Upgraded)")
     print("=============================================")
@@ -1385,10 +1432,26 @@ def main():
     # Fetch target LLM model for Tab 2
     target_llm_model = get_config_value("VOICE_GENERATOR_MODEL", "Flash-Lite")
 
-    latest_run = get_latest_run_folder()
+    latest_run = sys.argv[1] if len(sys.argv) > 1 else get_latest_run_folder()
     if not latest_run:
         print("Error: No active run folders found in 'youtube_runs/'.")
         sys.exit(1)
+
+    adaptive_brief = None
+    if os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
+        if len(sys.argv) <= 1:
+            raise ValueError("Adaptive voice generation requires an explicit run directory")
+        from youtube_automation.production.contracts import load_brief
+        from youtube_automation.production.narration import require_unpolished_run
+        from youtube_automation.production.writing import verify_written_episode
+        verify_written_episode(latest_run)
+        adaptive_brief = load_brief(latest_run)
+        if adaptive_brief.channel.voice is None or os.path.isfile(
+            os.path.join(latest_run, "source_audio_receipt.json")
+        ):
+            raise ValueError("This adaptive run has no synthesis voice or preserves source narration")
+        require_unpolished_run(latest_run)
+        voice_options["voice"] = adaptive_brief.channel.voice
 
     # File selection logic for transcript input
     refined_primary = os.path.join(latest_run, "refined_script.txt")
@@ -1417,26 +1480,38 @@ def main():
     os.makedirs(voice_folder, exist_ok=True)
     print(f"[OUTPUT] Voice chapters will be saved inside: '{voice_folder}'")
 
-    # Load or initialize the persistent manifest JSON
+    # Invalid adaptive checkpoints must never be reset to an empty manifest.
+    if adaptive_brief and os.path.isfile(get_manifest_path(latest_run)):
+        with open(get_manifest_path(latest_run), encoding="utf-8") as handle:
+            json.load(handle)
     manifest = load_or_create_manifest(latest_run, voice_options)
-    sync_audio_manifest(latest_run, manifest)
+    if not adaptive_brief:
+        sync_audio_manifest(latest_run, manifest)
     voice_config = manifest.get("voice_config", voice_options)
     target_tts_model = voice_config.get("model", "gemini-2.5-pro-preview-tts")
 
-    prompt_path = os.path.join("prompts", "TTS_PROMPT.txt")
-    if not os.path.exists(prompt_path):
-        print(f"Error: '{prompt_path}' not found in prompts folder.")
-        sys.exit(1)
-
-    with open(prompt_path, encoding="utf-8") as f:
-        tts_prompt = f.read().strip()
+    if adaptive_brief:
+        if voice_config.get("voice") != adaptive_brief.channel.voice:
+            raise ValueError("Cached voice manifest conflicts with selected channel voice")
+        # The validated refined script itself is the voice source. A second Gemini
+        # rewriting pass would change facts and impose the legacy channel persona.
+        tts_prompt = ""
+    else:
+        tts_prompt = loader.render("tts")
 
     with open(transcript_path, encoding="utf-8") as f:
         transcript_text = f.read().strip()
 
-    # Smart auto-detection of Gemini completeness and coverage validation
+    if adaptive_brief:
+        from youtube_automation.production.narration import prepare_manifest
+
+        manifest = prepare_manifest(latest_run, manifest, adaptive_brief, transcript_text)
+        save_manifest(latest_run, manifest)
+        sync_audio_manifest(latest_run, manifest)
+
+    # Legacy Gemini harvesting still uses its own coverage and fallback policy.
     payload_path = os.path.join(latest_run, "tts_payload.json")
-    coverage = calculate_script_coverage(manifest, transcript_text)
+    coverage = 1.0 if adaptive_brief else calculate_script_coverage(manifest, transcript_text)
 
     # If manifest chapters are truncated (< 85% script coverage) or empty, fall back to deterministic partitioning
     if manifest.get("chapters") and coverage < 0.85:
@@ -1477,7 +1552,7 @@ def main():
         failover_triggered = False
 
         try:
-            with sync_playwright() as p:
+            with sync_playwright() as p, ExitStack() as owned_tabs:
                 switch_enabled_str = (
                     get_runtime_state(
                         "SWITCH_ACCOUNTS_ENABLED",
@@ -1487,6 +1562,11 @@ def main():
                     .lower()
                 )
                 accounts_enabled = switch_enabled_str in ("true", "1", "yes")
+                if adaptive_brief:
+                    # Legacy failover terminates the process on the CDP port.
+                    # Until browser ownership is tracked, adaptive runs must
+                    # leave that process and the global account index alone.
+                    accounts_enabled = False
                 current_profile_idx = get_runtime_state(
                     "ACTIVE_PROFILE_INDEX",
                     get_config_value("ACTIVE_PROFILE_INDEX", "1"),
@@ -1494,22 +1574,24 @@ def main():
                 browser_type = get_config_value("BROWSER_TYPE", "chrome")
                 cdp_port = int(get_config_value("CDP_PORT", "9222"))
 
-                try:
-                    browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
-                    print(
-                        f"Successfully connected to existing {browser_type.capitalize()} session."
-                    )
-                except Exception:
-                    print("Debugging browser is closed or unreachable. Launching framework...")
-                    if not launch_browser_with_profile(browser_type, current_profile_idx):
-                        sys.exit(1)
-                    browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")
+                browser = connect_tts_browser(
+                    p, adaptive=bool(adaptive_brief), browser_type=browser_type,
+                    profile_index=current_profile_idx, port=cdp_port,
+                )
 
                 context = browser.contexts[0]
-                context.grant_permissions(["clipboard-read", "clipboard-write"])
-                context.add_init_script(
-                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-                )
+                owned_speech_page = None
+                if adaptive_brief:
+                    owned_speech_page = context.new_page()
+                    owned_tabs.callback(owned_speech_page.close)
+                    owned_speech_page.add_init_script(
+                        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+                    )
+                else:
+                    context.grant_permissions(["clipboard-read", "clipboard-write"])
+                    context.add_init_script(
+                        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+                    )
 
                 # =========================================================
                 # PHASE 1: GEMINI APP SCRIPT ORCHESTRATION (ALL TEXT FIRST)
@@ -1773,7 +1855,9 @@ def main():
                 print("=========================================================")
 
                 # Guarantee Playwright is focused on the genuine Speech Playground tab with target model URL
-                tab1_speech = ensure_speech_playground_tab(context, target_tts_model)
+                tab1_speech = ensure_speech_playground_tab(
+                    context, target_tts_model, owned_page=owned_speech_page
+                )
                 reapply_speech_settings(tab1_speech, voice_config)
 
                 latest_alkali_state = {"status": None, "url": None, "is_403": False}
@@ -2158,6 +2242,8 @@ def main():
                         print("=============================================")
                         break
 
+        except AdaptiveBrowserOwnershipError:
+            raise
         except Exception as e:
             print(f"[RECOVERY] Playwright context closed or browser crashed: {e}")
             time.sleep(3)
