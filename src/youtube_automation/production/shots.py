@@ -324,14 +324,15 @@ class ShotBatch(Contract):
     shots: list[Shot] = Field(min_length=1, max_length=300)
 
 
-SEMANTIC_PLANNER_VERSION = 15
-SHOT_COMPILER_VERSION = 6
+SEMANTIC_PLANNER_VERSION = 16
+SHOT_COMPILER_VERSION = 7
 SEMANTIC_CHECKPOINT_MIGRATIONS = {
-    (10, 2): (15, 6),
-    (11, 3): (15, 6),
-    (12, 4): (15, 6),
-    (13, 5): (15, 6),
-    (14, 6): (15, 6),
+    (10, 2): (16, 7),
+    (11, 3): (16, 7),
+    (12, 4): (16, 7),
+    (13, 5): (16, 7),
+    (14, 6): (16, 7),
+    (15, 6): (16, 7),
 }
 # One initial compile plus five targeted corrections. A valid correction can
 # expose a later deterministic constraint, so schema success is not terminal.
@@ -1019,7 +1020,7 @@ def _shot_visual_families(shot: Shot) -> set[str]:
     ):
         families.add("generic_focus_portrait")
     if cognition and _contains_any(
-        description,
+        visible_description,
         (
             "mechanical",
             "mechanism",

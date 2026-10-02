@@ -39,6 +39,8 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 - A Schulte shot is a human-free near-full-frame diagram with a local grid overlay. Version-3 `schulte_challenge` compositions require a branded challenge frame, rule reveal, fixation cue, target indicator and start transition. Do not place the exercise on a presenter-held board or an in-scene device.
 - Use FFmpeg's supported `-/filter_complex` file input in both adaptive and legacy renderers; CI installs a release where the deprecated script option is absent.
 
+- Mechanical-cognition checks require visible mechanical staging. Editorial purpose labels and cognitive takeaways may establish context but cannot supply the visible gears, tracks, tiles or mechanisms; plain local graphics remain valid.
+
 ## Work Guidance
 - New adaptive execution is opt-in until reviewed pilots pass.
 - Do not equate technical verification with editorial approval.

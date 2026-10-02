@@ -21,7 +21,7 @@ FIXTURE = (
     / "professor_lineage10_schulte_intro.json"
 )
 CORPUS = FIXTURE.parent
-LIVE_EVIDENCE = CORPUS / "evidence" / "professor_lineages_8_14.json"
+LIVE_EVIDENCE = CORPUS / "evidence" / "professor_lineages_8_15.json"
 
 
 def test_lineage10_schulte_failure_replays_at_the_addressable_compiler_boundary():
@@ -65,6 +65,7 @@ def test_professor_failure_corpus_replays_every_distinct_boundary_offline():
     assert report.case_ids == [
         "professor_lineage10_schulte_intro",
         "professor_lineage14_episode_visual_mode",
+        "professor_lineage15_visible_mechanical_family",
         "professor_lineage8_entity_visibility",
         "professor_lineage9_exact_repair_cardinality",
         "professor_lineage9_recurring_entity",
@@ -72,6 +73,7 @@ def test_professor_failure_corpus_replays_every_distinct_boundary_offline():
     assert report.observed_boundaries == {
         "professor_lineage10_schulte_intro": "semantic_compiler",
         "professor_lineage14_episode_visual_mode": "request_contract",
+        "professor_lineage15_visible_mechanical_family": "semantic_compiler",
         "professor_lineage8_entity_visibility": "semantic_compiler",
         "professor_lineage9_exact_repair_cardinality": "request_contract",
         "professor_lineage9_recurring_entity": "semantic_compiler",
@@ -89,6 +91,17 @@ def test_lineage14_global_only_visual_mode_replays_at_the_request_contract():
     assert result.observed_boundary == "request_contract"
     assert result.issues[0].code == "SCHEMA_EPISODE_VISUAL_MODE"
     assert result.issues[0].beat_ids == ["beat_schulte_purpose"]
+    assert result.corrected_boundary == "accepted"
+    assert result.late_validator_escape is None
+
+
+def test_lineage15_local_canvas_accepts_editorial_mechanism_label():
+    result = replay_semantic_failure_case(
+        CORPUS / "professor_lineage15_visible_mechanical_family.json"
+    )
+    assert result.observed_boundary == "semantic_compiler"
+    assert result.issues[0].code == "SEMANTIC_RECORD_INVALID"
+    assert "mechanical_cognition" in result.issues[0].requirement
     assert result.corrected_boundary == "accepted"
     assert result.late_validator_escape is None
 
@@ -434,18 +447,18 @@ def test_validator_audit_assigns_every_final_rule_to_an_earlier_owner():
 def test_failure_intelligence_report_is_green_before_one_bounded_live_request():
     report = build_failure_intelligence_report(CORPUS, LIVE_EVIDENCE)
 
-    assert report.live_runs == 6
-    assert report.live_attempts == 6
+    assert report.live_runs == 7
+    assert report.live_attempts == 7
     assert report.accepted_windows == 2
-    assert report.live_attempts_per_accepted_window == 3
-    assert report.repair_count == 32
+    assert report.live_attempts_per_accepted_window == 3.5
+    assert report.repair_count == 38
     assert report.provider_refusals == 3
     assert report.quota_switches == 0
     assert report.checkpoint_progress == "2/4 windows, 7 shots"
-    assert report.repeated_failure_codes == {"SEMANTIC_RECORD_INVALID": 2}
+    assert report.repeated_failure_codes == {"SEMANTIC_RECORD_INVALID": 3}
     assert report.late_validator_escapes == []
     assert report.validator_audit_ready
     assert report.replay_corpus_ready
-    assert report.next_planner_version == 15
-    assert report.next_compiler_version == 6
+    assert report.next_planner_version == 16
+    assert report.next_compiler_version == 7
     assert report.ready_for_one_bounded_live_request

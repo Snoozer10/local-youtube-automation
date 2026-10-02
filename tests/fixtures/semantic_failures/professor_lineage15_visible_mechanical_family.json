@@ -1,0 +1,323 @@
+{
+    "version": 1,
+    "case_id": "professor_lineage15_visible_mechanical_family",
+    "title": "Visible mechanical props must be distinguished from an editorial mechanism label",
+    "failure_code": "SEMANTIC_RECORD_INVALID",
+    "root_cause_class": "editorial",
+    "responsible_layer": "python_compiler",
+    "stage": "plan",
+    "window_index": 0,
+    "raw_evidence_sha256s": [
+        "7a5508a96a254677a17c3ccfa5e8e2d7c9a8a4af57805cc4e1f367bd7d03f4b0"
+    ],
+    "input_sha256": "d714ddddcfde4add0d5483e4bfc8c0f553b0d2082c4c8579a87e7ad0131dda11",
+    "candidate_sha256": "d4074c7ada21a7a9f988f14b5126b342b582a303daf280b305184777656de22e",
+    "brief": {
+        "version": 3,
+        "source_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "profile_sha256": "14a5101553d3950dc9b85c9fe8da51cd8438fb534b514e7c0f00b7cae0fb7c45",
+        "channel": {
+            "version": 3,
+            "channel_id": "professor_failure_fixture",
+            "name": "Sanitized Professor Fixture",
+            "audience": "Arabic-speaking adults",
+            "language": "Arabic",
+            "dialect": "MSA",
+            "asr_language": null,
+            "voice": "achird",
+            "tone": "clear evidence-conscious",
+            "style": "restrained editorial illustration",
+            "visual_directives": [
+                "Use narration-specific scenes"
+            ],
+            "forbidden_motifs": [
+                "Avoid generic focus portraits"
+            ],
+            "forbidden_visual_families": [
+                "mechanical_cognition"
+            ],
+            "repetition_limited_visual_families": [],
+            "max_visual_family_repetitions": 3,
+            "max_non_diagram_scene_appearances": null,
+            "host_mode": "NONE",
+            "host_description": "",
+            "allowed_treatments": [
+                "subject_scene",
+                "detail",
+                "comparison"
+            ],
+            "humor": "none",
+            "max_zoom": 1.06
+        },
+        "analysis": {
+            "topics": [
+                "attention exercise"
+            ],
+            "claim_basis": "factual",
+            "form": "tutorial",
+            "proposition": "Entity continuity must remain stable",
+            "narrative_strategy": "Use three concise opening beats",
+            "evidence_needs": [],
+            "continuity_anchors": [],
+            "figurative_phrases": [],
+            "treatments": [
+                "subject_scene",
+                "detail",
+                "comparison"
+            ],
+            "rationale": "Repeated identities require reuse or edit"
+        },
+        "visual_strategy": {
+            "version": 1,
+            "source_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "topic": "Attention exercise",
+            "viewer_question": "How does one entity continue?",
+            "central_promise": "Continuity is explicit and repairable",
+            "evidence_mode": "demonstrative",
+            "emotional_arc": [
+                "concern",
+                "curiosity",
+                "clarity"
+            ],
+            "hook_archetype": "mystery_gap",
+            "hook_microbeats": [
+                {
+                    "beat_id": "beat_1_problem",
+                    "function": "problem",
+                    "duration_seconds": 3.0,
+                    "viewer_takeaway": "The problem is concrete",
+                    "visual_mode": "human_context",
+                    "local_ui": []
+                },
+                {
+                    "beat_id": "beat_2_curiosity",
+                    "function": "curiosity",
+                    "duration_seconds": 3.0,
+                    "viewer_takeaway": "The gap is visible",
+                    "visual_mode": "comparison",
+                    "local_ui": []
+                },
+                {
+                    "beat_id": "beat_3_promise",
+                    "function": "promise",
+                    "duration_seconds": 3.0,
+                    "viewer_takeaway": "The promise is specific",
+                    "visual_mode": "kinetic_type",
+                    "local_ui": []
+                }
+            ],
+            "visual_modes": [
+                "human_context",
+                "comparison",
+                "kinetic_type"
+            ],
+            "local_ui_kit": [
+                "cards",
+                "focus_sweep",
+                "timer"
+            ],
+            "pacing": "Three equal opening beats",
+            "motion_grammar": [
+                "Hold unless meaning changes"
+            ],
+            "max_consecutive_visual_mode": 2,
+            "max_repeated_composition": 2
+        }
+    },
+    "timeline": {
+        "fps": 30,
+        "total_frames": 270,
+        "spans": [
+            {
+                "index": 0,
+                "start_frame": 0,
+                "end_frame": 90,
+                "text": "Sanitized problem narration"
+            },
+            {
+                "index": 1,
+                "start_frame": 90,
+                "end_frame": 180,
+                "text": "Sanitized curiosity narration"
+            },
+            {
+                "index": 2,
+                "start_frame": 180,
+                "end_frame": 270,
+                "text": "Sanitized promise narration"
+            }
+        ]
+    },
+    "checkpoint": {
+        "planner_version": 15,
+        "compiler_version": 6,
+        "windows": [
+            [
+                0,
+                270
+            ]
+        ],
+        "next_window": 0,
+        "units_by_window": [],
+        "batches": []
+    },
+    "failed_units": [
+        {
+            "unit_id": "u0_90",
+            "start_frame": 0,
+            "end_frame": 90,
+            "text": "Sanitized problem narration"
+        },
+        {
+            "unit_id": "u90_180",
+            "start_frame": 90,
+            "end_frame": 180,
+            "text": "Sanitized curiosity narration"
+        },
+        {
+            "unit_id": "u180_270",
+            "start_frame": 180,
+            "end_frame": 270,
+            "text": "Sanitized promise narration"
+        }
+    ],
+    "replay_kind": "semantic_candidate",
+    "failed_candidate": {
+        "shots": [
+            {
+                "beat_id": "beat_1_problem",
+                "first_unit_id": "u0_90",
+                "last_unit_id": null,
+                "visual_mode": "human_context",
+                "beat_kind": "claim",
+                "framing": "wide",
+                "graphic_template": null,
+                "semantic_link": "direct",
+                "viewer_takeaway": null,
+                "subject": "A visible office worker on a studio canvas",
+                "visible_state": "The worker notices a difficult task",
+                "setting": "A grounded workspace",
+                "composition": "Worker on the left",
+                "entity_ids": [
+                    "office_worker_canvas_01"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            },
+            {
+                "beat_id": "beat_2_curiosity",
+                "first_unit_id": "u90_180",
+                "last_unit_id": null,
+                "visual_mode": "comparison",
+                "beat_kind": "question",
+                "framing": "close_up",
+                "graphic_template": "comparison",
+                "semantic_link": "direct",
+                "viewer_takeaway": "Explain the mechanism for evaluating focus",
+                "subject": "A visible comparison canvas",
+                "visible_state": "Two options are compared",
+                "setting": "A grounded workspace",
+                "composition": "Comparison canvas with gears and tracks aligned to represent focus",
+                "entity_ids": [
+                    "comparison_canvas_02"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            },
+            {
+                "beat_id": "beat_3_promise",
+                "first_unit_id": "u180_270",
+                "last_unit_id": null,
+                "visual_mode": "kinetic_type",
+                "beat_kind": "reveal",
+                "framing": "medium",
+                "graphic_template": null,
+                "semantic_link": "direct",
+                "viewer_takeaway": null,
+                "subject": "A visible promise marker",
+                "visible_state": "The marker resolves the question",
+                "setting": "A clean studio",
+                "composition": "Marker centered",
+                "entity_ids": [
+                    "promise_marker"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            }
+        ]
+    },
+    "corrected_candidate": {
+        "shots": [
+            {
+                "beat_id": "beat_1_problem",
+                "first_unit_id": "u0_90",
+                "last_unit_id": null,
+                "visual_mode": "human_context",
+                "beat_kind": "claim",
+                "framing": "wide",
+                "graphic_template": null,
+                "semantic_link": "direct",
+                "viewer_takeaway": null,
+                "subject": "A visible office worker on a studio canvas",
+                "visible_state": "The worker notices a difficult task",
+                "setting": "A grounded workspace",
+                "composition": "Worker on the left",
+                "entity_ids": [
+                    "office_worker_canvas_01"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            },
+            {
+                "beat_id": "beat_2_curiosity",
+                "first_unit_id": "u90_180",
+                "last_unit_id": null,
+                "visual_mode": "comparison",
+                "beat_kind": "question",
+                "framing": "close_up",
+                "graphic_template": "comparison",
+                "semantic_link": "direct",
+                "viewer_takeaway": "Explain the mechanism for evaluating focus",
+                "subject": "A visible comparison canvas",
+                "visible_state": "Two options are compared",
+                "setting": "A grounded workspace",
+                "composition": "Comparison canvas with a local graphic on the right",
+                "entity_ids": [
+                    "comparison_canvas_02"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            },
+            {
+                "beat_id": "beat_3_promise",
+                "first_unit_id": "u180_270",
+                "last_unit_id": null,
+                "visual_mode": "kinetic_type",
+                "beat_kind": "reveal",
+                "framing": "medium",
+                "graphic_template": null,
+                "semantic_link": "direct",
+                "viewer_takeaway": null,
+                "subject": "A visible promise marker",
+                "visible_state": "The marker resolves the question",
+                "setting": "A clean studio",
+                "composition": "Marker centered",
+                "entity_ids": [
+                    "promise_marker"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            }
+        ]
+    },
+    "repair_contract": null,
+    "expected_boundary": "semantic_compiler",
+    "expected_issue": {
+        "beat_ids": [
+            "beat_2_curiosity"
+        ],
+        "code": "SEMANTIC_RECORD_INVALID",
+        "requirement": "Visible mechanical cognition props must be rejected without treating the editorial purpose as visible staging"
+    },
+    "expected_corrected_behavior": "A local graphic canvas passes even when its takeaway explains the focus mechanism; visible gears remain forbidden."
+}

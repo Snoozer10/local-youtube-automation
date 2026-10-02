@@ -896,6 +896,28 @@ def test_version_two_channel_rejects_semantic_visual_family_paraphrase():
         _validate_editorial_quality(plan, brief, complete=False)
 
 
+@pytest.mark.parametrize("purpose", ["mechanism: Evaluate focus", "Explain the cognitive mechanism"])
+def test_editorial_mechanism_label_does_not_make_plain_local_canvas_mechanical(purpose):
+    from youtube_automation.production.shots import _shot_visual_families
+
+    plain = shot(
+        purpose=purpose,
+        narrative_role="diagram",
+        treatment="mechanism",
+        framing="diagram",
+        entity_ids=["graphic_canvas"],
+        subject="Plain tactile graphic canvas",
+        visible_state="Quiet background reserved for a local focus evaluation grid",
+        setting="Clean uncluttered studio backdrop",
+        composition="Full frame local graphic overlay",
+    )
+    assert "mechanical_cognition" not in _shot_visual_families(plain)
+    mechanical = plain.model_copy(
+        update={"visible_state": "Wooden gears and tiles snap into alignment"}
+    )
+    assert "mechanical_cognition" in _shot_visual_families(mechanical)
+
+
 def test_close_up_thoughtful_focus_portrait_is_classified_semantically():
     brief = version_two_brief()
     channel = brief.channel.model_copy(

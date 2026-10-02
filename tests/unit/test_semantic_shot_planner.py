@@ -2042,7 +2042,7 @@ def test_semantic_checkpoint_rejects_brief_timeline_window_and_compiler_drift(tm
         _load_semantic_partial_plan(path, brief, timeline, windows)
 
 
-@pytest.mark.parametrize("old_lineage", [(10, 2), (11, 3), (12, 4), (13, 5), (14, 6)])
+@pytest.mark.parametrize("old_lineage", [(10, 2), (11, 3), (12, 4), (13, 5), (14, 6), (15, 6)])
 def test_supported_checkpoint_rebuilds_before_the_first_narration_event(
     tmp_path, old_lineage
 ):
