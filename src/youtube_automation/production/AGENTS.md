@@ -43,6 +43,9 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 
 - A recorded unfixed final-validator escape blocks another live planning request even when the older replay corpus is green. Preserve the pending evidence and complete its compiler regression first.
 
+- Continuous narration-bound Schulte coverage extends from grid introduction through the spoken start cue across windows. Compiler issues address cutaways to their beat; affected repair slots require schulte_challenge while semantic copy/modes may vary. A final deterministic prefix failure stays inside bounded semantic repair. Entity scene migration and generated typography in graphic compositions reject before checkpointing.
+- A critic-rejected complete checkpoint reopens the earliest rejected window and continuity-dependent suffix; preserve earlier accepted windows and archive the rejected checkpoint. An interrupted full restart leaves no invalid empty checkpoint. Repair incomplete critic coverage before publishing a review.
+
 ## Work Guidance
 - New adaptive execution is opt-in until reviewed pilots pass.
 - Do not equate technical verification with editorial approval.

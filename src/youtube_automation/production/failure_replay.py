@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Literal
 
@@ -324,7 +325,7 @@ def semantic_validator_audit() -> ValidatorBoundaryAudit:
         ValidatorBoundaryAuditEntry(
             rule_group="semantic_record_rules",
             responsibility="semantic_compiler",
-            stable_codes=["SEMANTIC_RECORD_INVALID"],
+        stable_codes=["SEMANTIC_RECORD_INVALID", "SEMANTIC_ENTITY_SCENE_MIGRATION", "SEMANTIC_FINAL_GUARD"],
             deterministic=True,
             addressable=True,
         ),
@@ -343,7 +344,7 @@ def semantic_validator_audit() -> ValidatorBoundaryAudit:
         ValidatorBoundaryAuditEntry(
             rule_group="narration_bound_events",
             responsibility="semantic_compiler",
-            stable_codes=["NARRATION_EVENT_TOPOLOGY", "NARRATION_EVENT_REQUIRED"],
+        stable_codes=["NARRATION_EVENT_TOPOLOGY", "NARRATION_EVENT_REQUIRED", "NARRATION_EVENT_COUNTDOWN_COVERAGE"],
             deterministic=True,
             addressable=True,
         ),
@@ -690,7 +691,17 @@ def build_failure_intelligence_report(
         for code, count in corpus.repeated_failure_codes.items()
         if count > 1
     }
-    ready = corpus.ready and audit.ready
+    pending_escapes = []
+    for path in sorted((corpus_directory / "evidence").glob("*_escape.json")):
+        pending = json.loads(path.read_text(encoding="utf-8"))
+        if pending.get("blocks_live_advancement") and not any(
+            case.failure_code == pending.get("failure_code")
+            and pending.get("last_completed_receipt_sha256") in case.raw_evidence_sha256s
+            and case.corrected_candidate is not None
+            for case in cases
+        ):
+            pending_escapes.append(str(pending.get("case_id", path.stem)))
+    ready = corpus.ready and audit.ready and not pending_escapes
     return FailureIntelligenceReport(
         live_runs=len(ledger.runs),
         live_attempts=live_attempts,
@@ -706,7 +717,7 @@ def build_failure_intelligence_report(
             f"{latest.checkpoint_shots} shots"
         ),
         repeated_failure_codes=repeated,
-        late_validator_escapes=corpus.late_validator_escapes,
+        late_validator_escapes=corpus.late_validator_escapes + pending_escapes,
         validator_audit_ready=audit.ready,
         replay_corpus_ready=corpus.ready,
         next_planner_version=SEMANTIC_PLANNER_VERSION,

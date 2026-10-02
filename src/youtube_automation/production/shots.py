@@ -324,15 +324,16 @@ class ShotBatch(Contract):
     shots: list[Shot] = Field(min_length=1, max_length=300)
 
 
-SEMANTIC_PLANNER_VERSION = 16
-SHOT_COMPILER_VERSION = 7
+SEMANTIC_PLANNER_VERSION = 17
+SHOT_COMPILER_VERSION = 8
 SEMANTIC_CHECKPOINT_MIGRATIONS = {
-    (10, 2): (16, 7),
-    (11, 3): (16, 7),
-    (12, 4): (16, 7),
-    (13, 5): (16, 7),
-    (14, 6): (16, 7),
-    (15, 6): (16, 7),
+    (10, 2): (17, 8),
+    (11, 3): (17, 8),
+    (12, 4): (17, 8),
+    (13, 5): (17, 8),
+    (14, 6): (17, 8),
+    (15, 6): (17, 8),
+    (16, 7): (17, 8),
 }
 # One initial compile plus five targeted corrections. A valid correction can
 # expose a later deterministic constraint, so schema success is not terminal.
@@ -1172,6 +1173,19 @@ def _has_purposeful_local_progression(previous: Shot, current: Shot) -> bool:
     )
 
 
+def _schulte_start_cue_spans(timeline: dict[str, Any]) -> list[dict[str, Any]]:
+    events = narration_bound_visual_events(timeline)
+    introductions = [event.introduction_frame for event in events if event.preset == "schulte_6x6"]
+    if not introductions:
+        return []
+    first = min(introductions)
+    return [
+        span for span in timeline.get("spans", [])
+        if int(span["end_frame"]) > first
+        and _contains_any(str(span.get("text", "")).casefold(), ("ابدا", "ابدأ", "begin", "start"))
+    ]
+
+
 def _validate_interactive_graphics(
     plan: ShotPlan, timeline: dict[str, Any], *, complete: bool
 ) -> None:
@@ -1226,14 +1240,7 @@ def _validate_interactive_graphics(
         raise ValueError(
             "Schulte center-fixation instruction requires a local highlight or fixation cue"
         )
-    start_cue_spans = [
-        span
-        for span in spans
-        if _contains_any(
-            str(span.get("text", "")).casefold(),
-            ("ابدا", "ابدأ", "begin", "start"),
-        )
-    ]
+    start_cue_spans = _schulte_start_cue_spans(timeline)
     if start_cue_spans:
         countdown_end = max(int(span["end_frame"]) for span in start_cue_spans)
         for shot in plan.shots:
@@ -2238,6 +2245,39 @@ def _compile_semantic_batch(
                     ),
                 )
             )
+    all_compiled = list(prior_shots) + compiled
+    grid_shots = [
+        shot for shot in all_compiled
+        if any(overlay.kind == "data_grid" and overlay.preset == "schulte_6x6" for overlay in shot.overlays)
+    ]
+    cues = _schulte_start_cue_spans(timeline)
+    first_grid = min((shot.start_frame for shot in grid_shots), default=None)
+    countdown_end = max((int(span["end_frame"]) for span in cues), default=0)
+    entity_scenes = {entity: shot.scene_id for shot in prior_shots for entity in shot.entity_ids}
+    for intent, shot in zip(batch.shots, compiled, strict=True):
+        if (first_grid is not None and countdown_end
+                and shot.end_frame > first_grid and shot.start_frame < countdown_end
+                and shot not in grid_shots):
+            compiled_issues.append(SemanticIssue(
+                beat_ids=[intent.beat_id], code="NARRATION_EVENT_COUNTDOWN_COVERAGE",
+                requirement=(f"Keep the Schulte grid dominant through frame {countdown_end}: "
+                             "this record requires graphic.template=schulte_challenge; "
+                             "vary the local rule/start/timer copy to express its narration without a cutaway"),
+            ))
+        if any(entity in entity_scenes and entity_scenes[entity] != shot.scene_id for entity in shot.entity_ids):
+            compiled_issues.append(SemanticIssue(
+                beat_ids=[intent.beat_id], code="SEMANTIC_ENTITY_SCENE_MIGRATION",
+                requirement="An edit may retain entities from its reference scene or add new entities; it cannot import an entity established in another scene",
+            ))
+        entity_scenes.update(dict.fromkeys(shot.entity_ids, shot.scene_id))
+        if shot.operation != "local_canvas" and _contains_any(
+            f"{shot.subject} {shot.visible_state} {shot.setting} {shot.composition}",
+            GENERATED_TYPOGRAPHY_MARKERS,
+        ):
+            compiled_issues.append(SemanticIssue(
+                beat_ids=[intent.beat_id], code="SEMANTIC_RECORD_INVALID",
+                requirement="Generated typography is forbidden in the compiled composition; use deterministic local graphics on a plain substrate",
+            ))
     prefix_shots = list(prior_shots)
     scene_counts: dict[str, int] = {}
     limited_families = set(brief.channel.repetition_limited_visual_families)
@@ -2504,6 +2544,8 @@ def _repair_slot_constraints(
     required_shape: list[dict[str, Any]],
     brief: Brief,
     prior_shots: list[Shot],
+    timeline: dict[str, Any] | None = None,
+    units: list[NarrationUnit] | None = None,
 ) -> list[dict[str, Any]]:
     """Expose safe mechanical choices without transferring topology ownership."""
     replacement_slots = {
@@ -2548,6 +2590,14 @@ def _repair_slot_constraints(
             prior_framing = shot.framing
 
     constraints: list[dict[str, Any]] = []
+    required_slots = {
+        str(slot["beat_id"]): slot for replacement in required_shape for slot in replacement["shots"]
+    }
+    positions = {unit.unit_id: unit for unit in (units or [])}
+    events = narration_bound_visual_events(timeline) if timeline else []
+    cues = _schulte_start_cue_spans(timeline) if timeline else []
+    required_start = min((event.introduction_frame for event in events if event.preset == "schulte_6x6"), default=0)
+    required_end = max((int(span["end_frame"]) for span in cues), default=0)
     for slot_id, intent in effective:
         compiled_framing = _compiled_framing(intent)
         if slot_id is not None:
@@ -2595,6 +2645,12 @@ def _repair_slot_constraints(
                     },
                 }
             )
+            slot = required_slots[slot_id]
+            first = positions.get(str(slot["first_unit_id"]))
+            last = positions.get(str(slot["last_unit_id"]))
+            if first and last and last.end_frame > required_start and first.start_frame < required_end:
+                constraints[-1]["required_graphic_template"] = "schulte_challenge"
+                constraints[-1]["required_graphic_until_frame"] = required_end
         if intent.graphic and intent.graphic.template == "schulte_challenge":
             prior_framing = ""
             framing_run = 0
@@ -2666,6 +2722,11 @@ def _bind_repair_content(
                 slot,
                 constraints_by_id.get(str(slot["beat_id"])),
             ).model_dump(mode="python")
+            constraint = constraints_by_id.get(str(slot["beat_id"]), {})
+            required_graphic = constraint.get("required_graphic_template")
+            graphic = content.get("graphic")
+            if required_graphic and (not graphic or graphic["template"] != required_graphic):
+                raise ValueError(f"Repair slot {slot['beat_id']} requires graphic.template={required_graphic}")
             shots.append(SemanticShotIntent.model_validate({**content, **slot}))
             content_index += 1
         replacements.append(
@@ -2876,7 +2937,7 @@ def ensure_editorial_review(
     path = root / "editorial_review.json"
     if path.exists():
         existing = EditorialReview.model_validate_json(path.read_text(encoding="utf-8"))
-        if existing.plan_sha256 == fingerprint(plan):
+        if existing.plan_sha256 == fingerprint(plan) and [s.shot_id for s in existing.shots] == [s.shot_id for s in plan.shots]:
             existing.assert_approved(plan)
             return existing
         rejection_dir = root / "editorial_rejections"
@@ -2906,7 +2967,23 @@ def ensure_editorial_review(
         + "\nSHOT PLAN:\n"
         + plan.model_dump_json()
     )
-    review = request_json(review_prompt, ask, EditorialReview)
+    review_response = ""
+    review_error = ""
+    for coverage_attempt in range(3):
+        review = request_json(
+            review_prompt, ask, EditorialReview,
+            repair_response=review_response, repair_error=review_error,
+            repair_context="Return every shot decision in the exact PLAN order; do not omit, duplicate or rename shot IDs.",
+        )
+        if [s.shot_id for s in review.shots] == [s.shot_id for s in plan.shots]:
+            break
+        review_response = review.model_dump_json()
+        review_error = "Editorial review must cover every shot in plan order"
+        reject_response = getattr(ask, "reject_response", None)
+        if callable(reject_response):
+            reject_response(review_error)
+        if coverage_attempt == 2:
+            raise ValueError(review_error)
     # Plan lineage is system-owned; the critic judges content and cannot select its target.
     review = review.model_copy(update={"plan_sha256": fingerprint(plan)})
     with publication_guard():
@@ -3077,6 +3154,30 @@ def _plan_semantic_windows(
     next_window, accepted_batches, all_shots = _load_semantic_partial_plan(
         checkpoint_path, brief, timeline, windows
     )
+    if prior_critic_feedback and next_window == len(windows) and accepted_batches:
+        review_path = root / "editorial_review.json"
+        if review_path.exists():
+            review = EditorialReview.model_validate_json(review_path.read_text(encoding="utf-8"))
+            current = ShotPlan(version=3, shots=all_shots, brief_sha256=fingerprint(brief),
+                               timeline_sha256=fingerprint(timeline), fps=timeline["fps"],
+                               total_frames=timeline["total_frames"], editorial_policy=resolve_editorial_policy(brief))
+            if review.plan_sha256 == fingerprint(current) and [s.shot_id for s in review.shots] == [s.shot_id for s in all_shots]:
+                rejected = {s.shot_id for s in review.shots if s.verdict == "reject" or min(s.semantic_match, s.takeaway_match, s.visual_specificity) < 4}
+                reopen = next((i for i, batch in enumerate(accepted_batches)
+                               if any(f"p{i}_{intent.beat_id}" in rejected for intent in batch.shots)), 0)
+                archived = root / "editorial_rejections"
+                archived.mkdir(exist_ok=True)
+                with publication_guard():
+                    atomic_write_json(str(archived / f"semantic-{fingerprint(review)}.json"),
+                                      json.loads(checkpoint_path.read_text(encoding="utf-8")))
+                accepted_batches = accepted_batches[:reopen]
+                all_shots = [s for s in all_shots if s.end_frame <= windows[reopen][0]]
+                next_window = reopen
+                if accepted_batches:
+                    _save_semantic_partial_plan(checkpoint_path, brief, timeline, windows, accepted_batches)
+                else:
+                    with publication_guard():
+                        checkpoint_path.unlink(missing_ok=True)
     for offset in range(next_window, len(windows)):
         start, end = windows[offset]
         begin_window = getattr(ask, "begin_window", None)
@@ -3104,6 +3205,15 @@ def _plan_semantic_windows(
         prompt = _semantic_planning_prompt(
             brief, units, established, events, offset, prior_critic_feedback
         )
+        cues = _schulte_start_cue_spans(timeline)
+        if cues:
+            required_start = min(event.introduction_frame for event in narration_bound_visual_events(timeline) if event.preset == "schulte_6x6")
+            required_end = max(int(span["end_frame"]) for span in cues)
+            prompt += "\nCOMPILER-OWNED CONTINUOUS GRAPHIC RANGE: " + json.dumps({
+                "start_frame": required_start, "end_frame": required_end,
+                "required_graphic_template": "schulte_challenge",
+                "rule": "Every overlapping record keeps the local grid dominant. Express its exact narration with distinct rule/start/timer copy; visual_mode and beat_kind may vary within the episode palette without cutting away from the grid.",
+            })
         batch = request_json(prompt, ask, batch_model)
         hook_repair_partition: list[dict[str, str]] = []
         for attempt in range(SEMANTIC_COMPILER_ATTEMPTS):
@@ -3121,12 +3231,13 @@ def _plan_semantic_windows(
                     editorial_policy=resolve_editorial_policy(brief),
                 )
                 shadow = partial.model_copy(update={"total_frames": timeline["total_frames"]})
-                validate_plan(
-                    shadow,
-                    timeline,
-                    brief,
-                    editorial_complete=offset == len(windows) - 1,
-                )
+                try:
+                    validate_plan(shadow, timeline, brief, editorial_complete=offset == len(windows) - 1)
+                except ValueError as guard_error:
+                    raise SemanticPlanError([SemanticIssue(
+                        beat_ids=[intent.beat_id for intent in batch.shots],
+                        code="SEMANTIC_FINAL_GUARD", requirement=str(guard_error),
+                    )]) from guard_error
                 all_shots = partial.shots
                 accepted_batches.append(batch)
                 _save_semantic_partial_plan(
@@ -3165,7 +3276,7 @@ def _plan_semantic_windows(
                         len(replacement["shots"]) for replacement in required_patch_shape
                     )
                     slot_constraints = _repair_slot_constraints(
-                        batch, required_patch_shape, brief, all_shots
+                        batch, required_patch_shape, brief, all_shots, timeline, units
                     )
                     hook_note = (
                         " The continuation is not hook-tagged by Python."
@@ -3268,7 +3379,10 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
         prior_review = EditorialReview.model_validate_json(
             review_path.read_text(encoding="utf-8")
         )
-        if not prior_review.approved:
+        if not prior_review.approved or any(
+            s.verdict == "reject" or min(s.semantic_match, s.takeaway_match, s.visual_specificity) < 4
+            for s in prior_review.shots
+        ):
             prior_critic_feedback = (
                 "\nPRIOR EDITORIAL CRITIC REJECTION TO REPAIR:\n"
                 + prior_review.model_dump_json()

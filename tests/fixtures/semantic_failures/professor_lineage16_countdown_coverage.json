@@ -1,0 +1,324 @@
+{
+    "version": 1,
+    "case_id": "professor_lineage16_countdown_coverage",
+    "title": "A local graphic cutaway interrupts the grid before the spoken start cue",
+    "failure_code": "NARRATION_EVENT_COUNTDOWN_COVERAGE",
+    "root_cause_class": "deterministic_topology",
+    "responsible_layer": "python_compiler",
+    "stage": "plan",
+    "window_index": 0,
+    "raw_evidence_sha256s": [
+        "3b960f6d419bd3a08ffbc91796f99d2a72c04a6a430ee7b76274ea994e40ce4d"
+    ],
+    "input_sha256": "3788d3130c760a3520ead9082e0d681e988aa74d1457f292576810d09748e7fd",
+    "candidate_sha256": "af149fa7ca1070e7803c12b9c32d2efb535843b8ea20462abe94ffd6db7acd3b",
+    "brief": {
+        "version": 3,
+        "source_sha256": "e20cd3343fdc8405b4bb87530122275f2556af8d7fa75022f3fc411f76a55b2f",
+        "profile_sha256": "2042b2c301cf9f6130273d5fb18cec2b185cd6b17e99db7f9d5874e2567c4fdf",
+        "channel": {
+            "version": 3,
+            "channel_id": "professor_failure_fixture",
+            "name": "Sanitized Professor Fixture",
+            "audience": "Arabic-speaking adults",
+            "language": "Arabic",
+            "dialect": "MSA",
+            "asr_language": null,
+            "voice": "achird",
+            "tone": "clear evidence-conscious",
+            "style": "restrained editorial illustration",
+            "visual_directives": [
+                "Use narration-specific scenes"
+            ],
+            "forbidden_motifs": [
+                "Avoid generic focus portraits"
+            ],
+            "forbidden_visual_families": [],
+            "repetition_limited_visual_families": [],
+            "max_visual_family_repetitions": 3,
+            "max_non_diagram_scene_appearances": null,
+            "host_mode": "NONE",
+            "host_description": "",
+            "allowed_treatments": [
+                "subject_scene",
+                "detail",
+                "comparison"
+            ],
+            "humor": "none",
+            "max_zoom": 1.06
+        },
+        "analysis": {
+            "topics": [
+                "attention exercise"
+            ],
+            "claim_basis": "factual",
+            "form": "tutorial",
+            "proposition": "A narrated exercise requires a synchronized local visual",
+            "narrative_strategy": "Introduce the exercise before showing its deterministic interface",
+            "evidence_needs": [],
+            "continuity_anchors": [],
+            "figurative_phrases": [],
+            "treatments": [
+                "subject_scene",
+                "detail",
+                "comparison"
+            ],
+            "rationale": "The visual event must follow the source narration"
+        },
+        "visual_strategy": {
+            "version": 1,
+            "source_sha256": "e20cd3343fdc8405b4bb87530122275f2556af8d7fa75022f3fc411f76a55b2f",
+            "topic": "Attention exercise",
+            "viewer_question": "When does the interactive exercise begin?",
+            "central_promise": "The local visual follows the spoken introduction",
+            "evidence_mode": "demonstrative",
+            "emotional_arc": [
+                "curiosity",
+                "readiness",
+                "participation"
+            ],
+            "hook_archetype": "cold_open_challenge",
+            "hook_microbeats": [
+                {
+                    "beat_id": "beat_1_problem",
+                    "function": "problem",
+                    "duration_seconds": 5.0,
+                    "viewer_takeaway": "A concrete attention problem matters",
+                    "visual_mode": "human_context",
+                    "local_ui": []
+                },
+                {
+                    "beat_id": "beat_2_curiosity",
+                    "function": "curiosity",
+                    "duration_seconds": 5.0,
+                    "viewer_takeaway": "A hidden gap can be exposed",
+                    "visual_mode": "comparison",
+                    "local_ui": [
+                        "cards"
+                    ]
+                },
+                {
+                    "beat_id": "beat_3_promise",
+                    "function": "promise",
+                    "duration_seconds": 4.0,
+                    "viewer_takeaway": "A designed challenge will reveal it",
+                    "visual_mode": "kinetic_type",
+                    "local_ui": []
+                }
+            ],
+            "visual_modes": [
+                "human_context",
+                "comparison",
+                "kinetic_type",
+                "challenge_ui"
+            ],
+            "local_ui_kit": [
+                "cards",
+                "focus_sweep",
+                "timer"
+            ],
+            "pacing": "Use concise semantic beats around the exercise introduction",
+            "motion_grammar": [
+                "Animate only meaningful state changes"
+            ],
+            "max_consecutive_visual_mode": 2,
+            "max_repeated_composition": 2
+        }
+    },
+    "timeline": {
+        "fps": 30,
+        "total_frames": 450,
+        "spans": [
+            {
+                "index": 0,
+                "start_frame": 0,
+                "end_frame": 150,
+                "text": "جدول شولتي ثبت نظرك على المركز"
+            },
+            {
+                "index": 1,
+                "start_frame": 150,
+                "end_frame": 300,
+                "text": "اتبع التعليمات"
+            },
+            {
+                "index": 2,
+                "start_frame": 300,
+                "end_frame": 450,
+                "text": "جاهز واحد اثنان ثلاثة ابدأ"
+            }
+        ]
+    },
+    "checkpoint": {
+        "planner_version": 16,
+        "compiler_version": 7,
+        "windows": [
+            [
+                0,
+                450
+            ]
+        ],
+        "next_window": 0,
+        "units_by_window": [],
+        "batches": []
+    },
+    "failed_units": [
+        {
+            "unit_id": "u0_150",
+            "start_frame": 0,
+            "end_frame": 150,
+            "text": "جدول شولتي ثبت نظرك على المركز"
+        },
+        {
+            "unit_id": "u150_300",
+            "start_frame": 150,
+            "end_frame": 300,
+            "text": "اتبع التعليمات"
+        },
+        {
+            "unit_id": "u300_450",
+            "start_frame": 300,
+            "end_frame": 450,
+            "text": "جاهز واحد اثنان ثلاثة ابدأ"
+        }
+    ],
+    "replay_kind": "semantic_candidate",
+    "failed_candidate": {
+        "shots": [
+            {
+                "beat_id": "beat_1_problem",
+                "first_unit_id": "u0_150",
+                "last_unit_id": null,
+                "visual_mode": "challenge_ui",
+                "beat_kind": "claim",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "direct",
+                "viewer_takeaway": null,
+                "subject": null,
+                "visible_state": null,
+                "setting": null,
+                "composition": "Plain local graphic canvas for instruction 0",
+                "entity_ids": [
+                    "canvas_01"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            },
+            {
+                "beat_id": "beat_2_curiosity",
+                "first_unit_id": "u150_300",
+                "last_unit_id": null,
+                "visual_mode": "kinetic_type",
+                "beat_kind": "question",
+                "framing": "diagram",
+                "graphic_template": "kinetic_type",
+                "semantic_link": "direct",
+                "viewer_takeaway": null,
+                "subject": null,
+                "visible_state": null,
+                "setting": null,
+                "composition": "Plain local graphic canvas for instruction 1",
+                "entity_ids": [
+                    "canvas_02"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            },
+            {
+                "beat_id": "beat_3_promise",
+                "first_unit_id": "u300_450",
+                "last_unit_id": null,
+                "visual_mode": "challenge_ui",
+                "beat_kind": "reveal",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "direct",
+                "viewer_takeaway": null,
+                "subject": null,
+                "visible_state": null,
+                "setting": null,
+                "composition": "Plain local graphic canvas for instruction 2",
+                "entity_ids": [
+                    "canvas_03"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            }
+        ]
+    },
+    "corrected_candidate": {
+        "shots": [
+            {
+                "beat_id": "beat_1_problem",
+                "first_unit_id": "u0_150",
+                "last_unit_id": null,
+                "visual_mode": "challenge_ui",
+                "beat_kind": "claim",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "direct",
+                "viewer_takeaway": null,
+                "subject": null,
+                "visible_state": null,
+                "setting": null,
+                "composition": "Plain local graphic canvas for instruction 0",
+                "entity_ids": [
+                    "canvas_01"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            },
+            {
+                "beat_id": "beat_2_curiosity",
+                "first_unit_id": "u150_300",
+                "last_unit_id": null,
+                "visual_mode": "kinetic_type",
+                "beat_kind": "question",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "direct",
+                "viewer_takeaway": null,
+                "subject": null,
+                "visible_state": null,
+                "setting": null,
+                "composition": "Plain local graphic canvas for instruction 1",
+                "entity_ids": [
+                    "canvas_02"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            },
+            {
+                "beat_id": "beat_3_promise",
+                "first_unit_id": "u300_450",
+                "last_unit_id": null,
+                "visual_mode": "challenge_ui",
+                "beat_kind": "reveal",
+                "framing": "diagram",
+                "graphic_template": "schulte_challenge",
+                "semantic_link": "direct",
+                "viewer_takeaway": null,
+                "subject": null,
+                "visible_state": null,
+                "setting": null,
+                "composition": "Plain local graphic canvas for instruction 2",
+                "entity_ids": [
+                    "canvas_03"
+                ],
+                "continuity": "new",
+                "reference_id": null
+            }
+        ]
+    },
+    "repair_contract": null,
+    "expected_boundary": "semantic_compiler",
+    "expected_issue": {
+        "beat_ids": [
+            "beat_2_curiosity"
+        ],
+        "code": "NARRATION_EVENT_COUNTDOWN_COVERAGE",
+        "requirement": "Keep the Schulte grid dominant through the spoken countdown"
+    },
+    "expected_corrected_behavior": "All records through the spoken start retain the local Schulte grid with narration-specific UI copy."
+}
