@@ -324,16 +324,17 @@ class ShotBatch(Contract):
     shots: list[Shot] = Field(min_length=1, max_length=300)
 
 
-SEMANTIC_PLANNER_VERSION = 17
-SHOT_COMPILER_VERSION = 8
+SEMANTIC_PLANNER_VERSION = 18
+SHOT_COMPILER_VERSION = 9
 SEMANTIC_CHECKPOINT_MIGRATIONS = {
-    (10, 2): (17, 8),
-    (11, 3): (17, 8),
-    (12, 4): (17, 8),
-    (13, 5): (17, 8),
-    (14, 6): (17, 8),
-    (15, 6): (17, 8),
-    (16, 7): (17, 8),
+    (10, 2): (18, 9),
+    (11, 3): (18, 9),
+    (12, 4): (18, 9),
+    (13, 5): (18, 9),
+    (14, 6): (18, 9),
+    (15, 6): (18, 9),
+    (16, 7): (18, 9),
+    (17, 8): (18, 9),
 }
 # One initial compile plus five targeted corrections. A valid correction can
 # expose a later deterministic constraint, so schema success is not terminal.
@@ -2343,17 +2344,28 @@ def _compile_semantic_batch(
                     )
                 )
         prefix_shots.append(shot)
-    if compiled and compiled[-1].end_frame == timeline["total_frames"]:
+    # A continuous exercise tail fixes every later framing to diagram. Check
+    # diversity while this batch still owns an editable non-grid record.
+    if compiled and (
+        compiled[-1].end_frame == timeline["total_frames"]
+        or (first_grid is not None and countdown_end >= timeline["total_frames"])
+    ):
         duration_seconds = timeline["total_frames"] / timeline["fps"]
         required_framings = 4 if duration_seconds >= 60 else 3
         if duration_seconds >= 30 and len({shot.framing for shot in prefix_shots}) < required_framings:
             compiled_issues.append(
                 SemanticIssue(
-                    beat_ids=[intent.beat_id for intent in batch.shots],
+                    beat_ids=[
+                        intent.beat_id for intent in batch.shots
+                        if not (intent.graphic and intent.graphic.template == "schulte_challenge")
+                    ] or [intent.beat_id for intent in batch.shots],
                     code="SEMANTIC_FRAMING_DIVERSITY",
                     requirement=(
                         f"The complete plan requires at least {required_framings} distinct "
-                        "framings; revise one of these addressable records"
+                        "framings before the fixed diagram tail. Revise an editable non-grid "
+                        "record using an unused framing from "
+                        f"{sorted(set(SEMANTIC_FRAMINGS) - {shot.framing for shot in prefix_shots})}; "
+                        "changing grid intent.framing cannot change its compiled diagram framing"
                     ),
                 )
             )
@@ -2843,7 +2855,7 @@ def _load_semantic_partial_plan(
         or not 0 < next_window <= len(windows)
     ):
         raise ValueError("Semantic partial shot plan does not match current planning inputs")
-    if migrating:
+    if migrating and checkpoint_lineage != (17, 8):
         accepted_end = windows[next_window - 1][1]
         if any(
             event.introduction_frame < accepted_end
@@ -2860,9 +2872,24 @@ def _load_semantic_partial_plan(
     for window_index, batch in enumerate(batches):
         start, end = windows[window_index]
         units = _narration_units(timeline, start, end)
-        compiled.extend(
-            _compile_semantic_batch(batch, units, brief, timeline, compiled, window_index)
-        )
+        try:
+            candidate = _compile_semantic_batch(batch, units, brief, timeline, compiled, window_index)
+        except SemanticPlanError as error:
+            if (
+                migrating and checkpoint_lineage == (17, 8) and window_index > 0
+                and {issue.code for issue in error.issues} == {"SEMANTIC_FRAMING_DIVERSITY"}
+            ):
+                # v17 used the same event compiler but checked diversity too late.
+                # Archive its accepted evidence and reopen only the affected suffix.
+                archived = path.parent / "planner_rejections"
+                archived.mkdir(exist_ok=True)
+                with publication_guard():
+                    atomic_write_json(str(archived / f"framing-{fingerprint(checkpoint)}.json"), checkpoint)
+                batches = batches[:window_index]
+                _save_semantic_partial_plan(path, brief, timeline, windows, batches)
+                return window_index, batches, compiled
+            raise
+        compiled.extend(candidate)
         partial = ShotPlan(
             version=3,
             shots=compiled,

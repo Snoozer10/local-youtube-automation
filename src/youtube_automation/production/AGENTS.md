@@ -46,6 +46,8 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 - Continuous narration-bound Schulte coverage extends from grid introduction through the spoken start cue across windows. Compiler issues address cutaways to their beat; affected repair slots require schulte_challenge while semantic copy/modes may vary. A final deterministic prefix failure stays inside bounded semantic repair. Entity scene migration and generated typography in graphic compositions reject before checkpointing.
 - A critic-rejected complete checkpoint reopens the earliest rejected window and continuity-dependent suffix; preserve earlier accepted windows and archive the rejected checkpoint. An interrupted full restart leaves no invalid empty checkpoint. Repair incomplete critic coverage before publishing a review.
 
+- Fixed diagram tails must meet framing diversity in the last editable window. Migration from 17/8 recompiles across the event boundary, archives an insufficient prefix, and reopens only its affected suffix; older migrations retain the pre-event restriction.
+
 ## Work Guidance
 - New adaptive execution is opt-in until reviewed pilots pass.
 - Do not equate technical verification with editorial approval.

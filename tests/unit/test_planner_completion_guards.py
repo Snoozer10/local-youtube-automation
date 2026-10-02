@@ -1,3 +1,4 @@
+import json
 import shutil
 from pathlib import Path
 
@@ -16,6 +17,33 @@ CORPUS = Path(__file__).parents[1] / "fixtures" / "semantic_failures"
 
 def countdown_case():
     return load_semantic_failure_case(CORPUS / "professor_lineage16_countdown_coverage.json")
+
+
+def test_fixed_tail_reserves_diversity_in_editable_window():
+    case = load_semantic_failure_case(CORPUS / "professor_lineage17_fixed_tail_framing.json")
+    result = replay_semantic_failure_case(case)
+    assert result.observed_boundary == "semantic_compiler"
+    assert result.issues[0].beat_ids == ["beat_1_problem"]
+    assert result.corrected_boundary == "accepted"
+
+
+def test_fixed_tail_migration_archives_and_reopens_only_affected_suffix(tmp_path):
+    case = load_semantic_failure_case(CORPUS / "professor_lineage17_fixed_tail_framing.json")
+    path = tmp_path / "shot_plan.semantic.partial.json"
+    batches = [b.to_semantic_batch() for b in case.checkpoint.batches]
+    batches.append(case.failed_candidate.to_semantic_batch())
+    windows = [tuple(window) for window in case.checkpoint.windows]
+    shots._save_semantic_partial_plan(path, case.brief, case.timeline, windows, batches)
+    old = json.loads(path.read_text(encoding="utf-8"))
+    old.update(planner_version=17, compiler_version=8)
+    path.write_text(json.dumps(old), encoding="utf-8")
+    index, accepted, compiled = shots._load_semantic_partial_plan(path, case.brief, case.timeline, windows)
+    assert index == len(accepted) == 2
+    assert len(compiled) == 7
+    archived = list((tmp_path / "planner_rejections").glob("*.json"))
+    assert len(archived) == 1
+    assert json.loads(archived[0].read_text(encoding="utf-8")) == old
+    assert json.loads(path.read_text(encoding="utf-8"))["next_window"] == 2
 
 
 def compile_corrected(case):
@@ -244,7 +272,7 @@ def test_unreplayed_recorded_escape_blocks_live_readiness(tmp_path):
     shutil.copytree(CORPUS, corpus)
     (corpus / "professor_lineage16_countdown_coverage.json").unlink()
     report = build_failure_intelligence_report(
-        corpus, corpus / "evidence/professor_lineages_8_16.json"
+        corpus, corpus / "evidence/professor_lineages_8_17.json"
     )
     assert report.replay_corpus_ready
     assert report.late_validator_escapes == ["professor_lineage16_countdown_escape"]

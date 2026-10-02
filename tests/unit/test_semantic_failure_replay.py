@@ -21,7 +21,7 @@ FIXTURE = (
     / "professor_lineage10_schulte_intro.json"
 )
 CORPUS = FIXTURE.parent
-LIVE_EVIDENCE = CORPUS / "evidence" / "professor_lineages_8_16.json"
+LIVE_EVIDENCE = CORPUS / "evidence" / "professor_lineages_8_17.json"
 
 
 def test_lineage10_schulte_failure_replays_at_the_addressable_compiler_boundary():
@@ -67,6 +67,7 @@ def test_professor_failure_corpus_replays_every_distinct_boundary_offline():
         "professor_lineage14_episode_visual_mode",
         "professor_lineage15_visible_mechanical_family",
         "professor_lineage16_countdown_coverage",
+        "professor_lineage17_fixed_tail_framing",
         "professor_lineage8_entity_visibility",
         "professor_lineage9_exact_repair_cardinality",
         "professor_lineage9_recurring_entity",
@@ -76,11 +77,12 @@ def test_professor_failure_corpus_replays_every_distinct_boundary_offline():
         "professor_lineage14_episode_visual_mode": "request_contract",
         "professor_lineage15_visible_mechanical_family": "semantic_compiler",
         "professor_lineage16_countdown_coverage": "semantic_compiler",
+        "professor_lineage17_fixed_tail_framing": "semantic_compiler",
         "professor_lineage8_entity_visibility": "semantic_compiler",
         "professor_lineage9_exact_repair_cardinality": "request_contract",
         "professor_lineage9_recurring_entity": "semantic_compiler",
     }
-    assert report.accepted_checkpoint_batches == 2
+    assert report.accepted_checkpoint_batches == 4
     assert report.late_validator_escapes == []
     assert report.ready
 
@@ -449,18 +451,18 @@ def test_validator_audit_assigns_every_final_rule_to_an_earlier_owner():
 def test_failure_intelligence_report_is_green_before_one_bounded_live_request():
     report = build_failure_intelligence_report(CORPUS, LIVE_EVIDENCE)
 
-    assert report.live_runs == 8
-    assert report.live_attempts == 8
-    assert report.accepted_windows == 2
-    assert report.live_attempts_per_accepted_window == 4
-    assert report.repair_count == 42
+    assert report.live_runs == 9
+    assert report.live_attempts == 9
+    assert report.accepted_windows == 3
+    assert report.live_attempts_per_accepted_window == 3
+    assert report.repair_count == 54
     assert report.provider_refusals == 3
     assert report.quota_switches == 0
-    assert report.checkpoint_progress == "2/4 windows, 7 shots"
+    assert report.checkpoint_progress == "3/4 windows, 13 shots"
     assert report.repeated_failure_codes == {"SEMANTIC_RECORD_INVALID": 3}
     assert report.late_validator_escapes == []
     assert report.validator_audit_ready
     assert report.replay_corpus_ready
-    assert report.next_planner_version == 17
-    assert report.next_compiler_version == 8
+    assert report.next_planner_version == 18
+    assert report.next_compiler_version == 9
     assert report.ready_for_one_bounded_live_request
