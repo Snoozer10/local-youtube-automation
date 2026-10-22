@@ -1,3 +1,5 @@
+> Current publication cursor: reviewed changes are committed and authorized for PR #21 publication, formal review and exact-head CI. See [publication record](../sessions/PUBLICATION_20261022.md). Earlier snapshot below records the preceding local engineering pass. No merge/live action authorized.
+
 # Current cursor - 22 October 2026
 
 Authorized engineering pass complete. [Typing closeout](../sessions/STRICT_TYPING_REVIEW_20261022.md), [F1 dispositions](../sessions/F1_REVIEW_DISPOSITIONS_20261022.md), [master](../../tasks/BRANCH_COMPLETION_MASTER.md) and [HANDOFF](../sessions/HANDOFF.md) own current state. Strict typing: 699→0 / 73 source files with checking configuration unchanged; final1,968passed / 9 live skipped; all local gates/package byte checks pass. F1 current source/test/fixture/matrix dispositions are complete and the local formal-review package is prepared. Exact published-head PR review/CI/merge remain separate.

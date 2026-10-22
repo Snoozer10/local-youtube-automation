@@ -1,3 +1,5 @@
+> Current publication cursor: reviewed changes are committed and authorized for PR #21 publication, formal review and exact-head CI. See [publication record](../docs/sessions/PUBLICATION_20261022.md). Earlier snapshot below records the preceding local engineering pass. No merge/live action authorized.
+
 # Adaptive visual engine - implementation checklist
 
 Current engineering status (22 October 2026): [typing/F1 closeout](../docs/sessions/STRICT_TYPING_REVIEW_20261022.md) and [master](BRANCH_COMPLETION_MASTER.md). Strict typing: 699→0/73files; final1,968passed / 9 live skipped, all local gates green; F1 source/test/fixture dispositions complete. Formal-review package prepared locally; exact-PR-head review/CI/merge remain open. User excluded spending, human provenance, render-recipe and restart reconciliation from this pass; production checkboxes/acceptance are unchanged.

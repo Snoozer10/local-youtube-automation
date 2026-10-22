@@ -1,9 +1,9 @@
 # Branch Completion Master
 
-Current closeout: 22 October 2026 strict typing, scoped F1 and exact-tree gates COMPLETE. Local review package prepared; branch not merged. See [typing closeout](../docs/sessions/STRICT_TYPING_REVIEW_20261022.md), [F1 dispositions](../docs/sessions/F1_REVIEW_DISPOSITIONS_20261022.md) and [HANDOFF](../docs/sessions/HANDOFF.md).
+Current closeout: 22 October 2026 reviewed commits prepared for authorized publication to PR #21. See [publication record](../docs/sessions/PUBLICATION_20261022.md); exact remote head/review/CI results are recorded in its runtime receipt. Engineering gates complete; not merged.
 
-> Status: ENGINEERING READY FOR FORMAL REVIEW / NOT MERGED. Branch `codex/adaptive-multi-channel-visual-engine`; HEAD `41d02eb`; reviewed dirty working tree, not a new remote PR head.
-> Current authority: user authorized strict-typing repair, remaining F1 dispositions, final gates and preparation for formal PR review. Pilot spending, human approval provenance, current render recipes and restart-evidence reconciliation are explicitly excluded from this pass; they are not verified by that exclusion. No provider/live action or Git mutation is inferred.
+> Status: REVIEWED COMMITS PREPARED FOR PUBLICATION / NOT MERGED. PR #21 is the review destination; latest published head and remote checks are recorded separately.
+> Current authority: user explicitly authorized commit/push, updating PR #21, formal review and exact-head CI. Earlier production-reconciliation exclusions remain; no merge or live-provider action authorized.
 > This register owns current status. Dated prior receipts remain exact-scope historical evidence.
 
 ## Current dashboard
@@ -26,19 +26,19 @@ Current closeout: 22 October 2026 strict typing, scoped F1 and exact-tree gates 
 | Pilots | C1-C7 | C1/C5/C6 retain prior exact scope; C2/C3/C4 partial; C7 OPEN. |
 | Complete Professor | D1-D7 | D1 approved script; narration/timing/executable planning/full production remain OPEN. |
 | Engineering | E1-E5 | Prior dispositions retained; new source findings tracked in F1. |
-| Release | F1-F9 | F1/F2 engineering scope complete; F3 package scope verified; F4 current records/lexical sync complete. F6 local review package prepared; F7-F9 OPEN. |
+| Release | F1-F9 | F1-F4 engineering/package/lexical scope complete. F6 commits prepared for publication; F7 formal review and F8 exact-head CI tracked in publication receipt; F9 OPEN. |
 
 ### Immediate resume steps
 
-1. Use `.runtime/codex_typing_20261021/formal_review/` for formal exact-head review preparation. All authorized typing/F1/gate work is verified; exclude the two pinned local-only inputs from staging.
-2. Obtain formal PR review and exact-head CI under applicable release instructions; current local passes do not substitute for remote CI.
+1. Follow [PR #21](https://github.com/Snoozer10/local-youtube-automation/pull/21) and the [publication record](../docs/sessions/PUBLICATION_20261022.md); verify every review/check against its current exact head.
+2. Resolve returned formal-review and exact-head CI findings; local frozen-tree passes remain distinct from remote CI.
 3. Preserve the selected full Professor episode; continue D2-D7 only under applicable bounded production authority.
 4. After any further implementation changes, run affected focused checks and the required final-tree gates; preserve failures and verify shared-resource isolation.
-5. Update PR #21 and obtain exact-head formal review/CI only under release authority; merge remains separately gated.
+5. Publication and review requests are authorized. Merge remains separately gated; retain excluded operational inputs locally.
 
 ### Decision / authorization queue
 
-- Current engineering authority covers completed typing/F1/gates and formal-review preparation. No commit/push/merge, new provider cap or live app action was inferred.
+- Current user authority includes publishing reviewed commits and requesting formal PR review/exact-head CI. No merge, new provider cap or live app action is inferred.
 - User excluded pilot spending, human approval provenance, current render recipes and restart-evidence reconciliation from this pass. Historical records remain unchanged and unverified at those scopes; they are not current engineering blockers.
 - QMD lexical refresh/readback is in `.runtime/codex_typing_20261021/QMD_CLOSEOUT.json`. Embeddings remain incomplete; no semantic retrieval, retry, download or collection broadening ran.
 
@@ -58,7 +58,7 @@ This matrix is a receipt-backed progress view; the current dashboard and task-sp
 | Snoozer Anime pilot | ✅ 71.47 s canonical audio | ✅ 2,144 frames @ 30 fps CFR | ✅ Plan b1d07fdb... | ✅ 8/8 assets verified | ✅ Scorecard & editorial approval v2 sealed | ⬜ Deferred | 🟡 Offline qualification verified (C5, C6) |
 | Professor full episode G6 | D1 script approved; fresh narration OPEN | Revised-script timing OPEN | D3 hand roadmap not executable | D4 OPEN | D5/D6 OPEN | D7 OPEN | D7 OPEN |
 | Adaptive engine | ✅ E4 offline schema & fail-closed bypass verified (11 unit tests pass); live model generation codified as approved post-merge production roadmap. |
-| Release | HEAD 41d02eb; reviewed dirty tree. F1/F2 software complete; F3 package verified; F4 lexical/docs complete. Formal-review package local; F7-F9 OPEN, no merge approval. |
+| Release | Reviewed commits prepared for PR #21; exact published head/review/CI recorded in publication receipt. No merge approval. |
 
 The current source audio hash was rechecked read-only in [the master execution record](../.runtime/branch_master_document_20261012T022009805Z/EXECUTION.md); that check proves file identity only, not listening, timing, DSP, headers or editorial acceptance. The full-episode source must not be confused with the short pilot cut.
 
@@ -360,10 +360,10 @@ State: DISPOSITION COMPLETE - Coordinator-accepted reasoned limitation is nonblo
 
 - [ ] **F6 — Prepare atomic commits and PR**  
 - **Task skill pack:** [F6](BRANCH_TASK_SKILLS.md#f6) — invoke the linked skills explicitly when tackling this task.
-State: LOCAL FORMAL-REVIEW PACKAGE PREPARED; current changes remain uncommitted/unpushed. Historical draft PR21 observation is not refreshed. Atomic commits/remote PR actions remain unexecuted.
+State: REVIEWED COMMITS PREPARED; user authorized push/update of PR #21. Publication receipt records observed remote head and request outcomes; no merge authority.
 - **Work:** After explicit release authorization, group changes by coherent behavior and evidence, make atomic commits with multiline messages, push/open or update PR only as requested. Keep generated runtime data out unless required and reviewed.
 - **Acceptance:** each commit has a clear scope; branch/HEAD/working tree and PR diff are recorded; no accidental provider output, secret, temporary file or unrelated user work is included.
-- **Evidence now:** `.runtime/codex_typing_20261021/formal_review/` contains proposed file manifest/snapshot, tracked patch, title/body and checks. Two local-only inputs explicitly excluded; no Git index/ref mutation. Formal PR/CodeRabbit/CI target a later exact published head.
+- **Evidence now:** Original formal_review/ snapshot is preserved; publication_20261022/ contains verified commits, explicit staged-path and byte checks, and subsequent exact-head publication/review/CI receipts. Two local inputs excluded.
 
 
 
