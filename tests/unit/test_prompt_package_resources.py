@@ -1,5 +1,6 @@
 """Regression coverage for prompt resources in installed package layouts."""
 
+import json
 import shutil
 import subprocess
 import sys
@@ -59,4 +60,101 @@ assert loader.turn('phase3', 'turn')
         text=True,
     )
 
+    assert result.returncode == 0, result.stderr
+
+
+def test_installed_prompt_config_supplies_default_and_respects_overrides(
+    tmp_path: Path,
+) -> None:
+    installed_root = tmp_path / "site-packages"
+    shutil.copytree(ROOT / "src" / "youtube_automation", installed_root / "youtube_automation")
+    prefix_config = tmp_path / "daheeh_config.json"
+    prefix_config.write_text(
+        json.dumps(
+            {
+                "al_daheeh_master_pipeline_config": {
+                    "dialect_profile": {"tashkeel_lexicon": {"decoy": "دِيكُوي"}}
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_config = json.loads((ROOT / "daheeh_config.json").read_text(encoding="utf-8"))
+    packaged_config = json.loads(
+        (PACKAGE / "default_prompt_config.json").read_text(encoding="utf-8")
+    )
+    source_profile = source_config["al_daheeh_master_pipeline_config"]["dialect_profile"]
+    packaged_profile = packaged_config["al_daheeh_master_pipeline_config"]["dialect_profile"]
+    assert set(packaged_profile) == {
+        "fusha_academic_ratio",
+        "cairo_amiya_ratio",
+        "tashkeel_lexicon",
+    }
+    assert packaged_profile["fusha_academic_ratio"] == source_profile["fusha_academic_ratio"]
+    assert packaged_profile["cairo_amiya_ratio"] == source_profile["cairo_amiya_ratio"]
+    assert list(packaged_profile["tashkeel_lexicon"].items()) == list(
+        source_profile["tashkeel_lexicon"].items()
+    )
+    expected = "، ".join(source_profile["tashkeel_lexicon"].values())
+    script = r"""
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+from youtube_automation.prompts import loader
+
+expected = sys.argv[2]
+prefix_config = Path(sys.argv[3])
+assert loader.CONFIG_PATH == loader.PROMPTS_DIR / "default_prompt_config.json"
+assert loader.config_value("tashkeel") == expected
+assert expected in loader.render("tts")
+loader.CONFIG_PATH = Path(sys.argv[3])
+assert loader.config_value("tashkeel") == "دِيكُوي"
+prefix_config.unlink()
+loader.CONFIG_PATH = loader.PROMPTS_DIR / "default_prompt_config.json"
+assert loader.config_value("tashkeel") == expected
+
+override = Path(sys.argv[4])
+override.write_text(json.dumps({"al_daheeh_master_pipeline_config": {
+    "dialect_profile": {"tashkeel_lexicon": {"override": "مُخْتَار"}}
+}}), encoding="utf-8")
+loader.CONFIG_PATH = override
+assert loader.config_value("tashkeel") == "مُخْتَار"
+
+missing = Path(sys.argv[5])
+loader.CONFIG_PATH = missing
+assert loader.config_value("tashkeel") == ""
+malformed = Path(sys.argv[6])
+malformed.write_text("{bad json", encoding="utf-8")
+loader.CONFIG_PATH = malformed
+assert loader.config_value("tashkeel") == ""
+
+channel = {"dialect_profile": {"tashkeel_lexicon": {"channel": "قَنَاة"}}}
+assert loader.config_value("tashkeel", channel) == "قَنَاة"
+
+class ChannelModel:
+    def model_dump(self):
+        return {"dialect_profile": {"tashkeel_lexicon": {"model": "مَدْرَسَة"}}}
+
+assert loader.config_value("tashkeel", ChannelModel()) == "مَدْرَسَة"
+"""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            script,
+            str(installed_root),
+            expected,
+            str(prefix_config),
+            str(tmp_path / "override.json"),
+            str(tmp_path / "missing.json"),
+            str(tmp_path / "malformed.json"),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert result.returncode == 0, result.stderr

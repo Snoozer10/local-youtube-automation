@@ -90,7 +90,7 @@ exclude = ["venv*", "tests*", "docs*", "legacy_and_utilities*", "temp_clips*", "
 [tool.setuptools.package-data]
 "youtube_automation.production" = ["voice_tags.json"]
 "youtube_automation.core" = ["known_issues.json"]
-"youtube_automation.prompts" = ["*.txt", "fragments/*.txt", "turns/*.txt"]
+"youtube_automation.prompts" = ["*.txt", "default_prompt_config.json", "fragments/*.txt", "turns/*.txt"]
 
 [tool.black]
 line-length = 100

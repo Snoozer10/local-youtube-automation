@@ -1,3 +1,18 @@
+> Current cursor: the installed no-channel default-configuration follow-up is locally verified. PR #21 and `.runtime/codex_review_fixes_20261023/CURRENT_DISPOSITION.json` own latest exact-head external outcomes. CodeRabbit remains USER-SKIPPED by owner instruction. The initial four-finding pass below is preserved as historical evidence.
+
+# Installed prompt-default follow-up - 23 October 2026
+
+- Fresh Codex review 5621918602 at 738ee77 raised [P2 configuration finding](https://github.com/Snoozer10/local-youtube-automation/pull/21#discussion_r4354394897). Supported no-channel refinement/TTS lost the checked-in pronunciation lexicon outside a checkout.
+- `default_prompt_config.json` includes only canonical dialect ratios and the ordered tashkeel lexicon. Installed CONFIG_PATH directly names that resource; checkout CONFIG_PATH remains canonical root configuration. Explicit path/channel/model inputs remain authoritative, including missing/malformed path behavior.
+- Focused tests passed; independent final diff/raw-byte review accepted initialization-only loader changes. Frozen follow-up: 1976 tests passed, 9 live skipped in 195.30s; all nine gates pass. Actual wheel/sdist checks verify resource bytes, all 15 text assets, production psutil metadata and supported installed rendering. The preserved 738ee77 wheel reproduces empty default tashkeel; repaired installation verifies exact ordered TTS/refinement/adaptive-turn substitution and override precedence.
+- Receipts: `.runtime/codex_prompt_config_fix_20261023/` and `.runtime/codex_prompt_config_final_20261023/`. Follow-up publication belongs to its PUBLICATION_RESULT.json; combined external disposition remains at the current index above. Historical CI 39868018871 passed only for 738ee77.
+- Original smoke tests checked nonempty templates and missed semantic placeholder loss. The first init-order failure and rejected path-indirection approach are preserved; unchanged resolver bytes were restored from exact preimages. New regression probes assert ordered semantic content, not only successful loading.
+- An artifact verifier had an incorrect delimiter and a stale private constant. Its corrected probe used the same frozen wheel; failed and final probe receipts are preserved separately.
+- Root canonical configuration and both excluded operational inputs remain unchanged. Production reconciliation exclusions, no-live scope and separate merge authority remain binding. Root/tests contracts are updated; child indexes and other stable domain contracts remain unchanged. Existing plan/todo/publication links already route to this current record and need no rewrite.
+- Research: [Setuptools package data](https://setuptools.pypa.io/en/stable/userguide/datafiles.html), UTC/version/source decisions in COORDINATOR_RESEARCH.json. Existing installed-directory Path API is preserved; zip/egg import hooks remain outside that contract.
+
+---
+
 # PR #21 review fixes - 23 October 2026
 
 ## Scope and authority

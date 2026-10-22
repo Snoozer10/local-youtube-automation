@@ -1,8 +1,8 @@
 # Branch Completion Master
 
-Current closeout: 23 October 2026 four formal-review findings repaired and verified offline. See [review-fix record](../docs/sessions/REVIEW_FIXES_20261023.md). Current exact-head CI/Codex outcomes are owned by the PR and its bound disposition receipts. CodeRabbit USER-SKIPPED by explicit owner instruction because of the file limit; not merged.
+Current closeout: original four findings plus installed prompt-default follow-up repaired and verified offline. See [review-fix record](../docs/sessions/REVIEW_FIXES_20261023.md). PR #21 and bound disposition receipts own current exact-head review/CI outcomes. CodeRabbit USER-SKIPPED by explicit owner direction; not merged.
 
-> Status: REVIEW FIXES VERIFIED OFFLINE / CURRENT EXTERNAL GATES OWNED BY PR / NOT MERGED.
+> Status: INSTALLED DEFAULT FOLLOW-UP VERIFIED / CURRENT EXTERNAL GATES OWNED BY PR / NOT MERGED.
 > Current authority: user authorized repairs, commit/push, PR #21 updates, fresh Codex review and exact-head CI; explicitly skipped CodeRabbit for its file limit. Production-reconciliation exclusions remain; no merge or live-provider action authorized.
 > This register owns current status. Dated prior receipts remain exact-scope historical evidence.
 
@@ -26,7 +26,7 @@ Current closeout: 23 October 2026 four formal-review findings repaired and verif
 | Pilots | C1-C7 | C1/C5/C6 retain prior exact scope; C2/C3/C4 partial; C7 OPEN. |
 | Complete Professor | D1-D7 | D1 approved script; narration/timing/executable planning/full production remain OPEN. |
 | Engineering | E1-E5 | Prior dispositions retained; new source findings tracked in F1. |
-| Release | F1-F9 | F1-F4 prior scope retained; four subsequent source findings locally repaired. F6 published; F7 current-head Codex review/dispositions required, CodeRabbit USER-SKIPPED; F8 exact-head workflow results belong to PR/receipt; F9 not authorized. |
+| Release | F1-F9 | F1-F4 prior scope retained; four initial review fixes plus installed default configuration repaired. F6 published; F7 current-head Codex dispositions and F8 exact-head CI outcomes belong to PR/receipts; CodeRabbit USER-SKIPPED; F9 not authorized. |
 
 ### Immediate resume steps
 
@@ -40,7 +40,7 @@ Current closeout: 23 October 2026 four formal-review findings repaired and verif
 
 - Current user authority includes publishing reviewed commits and requesting formal PR review/exact-head CI. No merge, new provider cap or live app action is inferred.
 - User excluded pilot spending, human approval provenance, current render recipes and restart-evidence reconciliation from this pass. Historical records remain unchanged and unverified at those scopes; they are not current engineering blockers.
-- Current QMD lexical refresh/readback is in `.runtime/codex_review_fixes_20261023/QMD_SYNC_FINAL.json`; earlier refresh receipts remain historical. Embeddings remain incomplete (252 pending at this pass); no semantic retrieval was used.
+- Current QMD lexical refresh/readback is in `.runtime/codex_prompt_config_fix_20261023/QMD_SYNC.json`; earlier refresh receipts remain historical. Embeddings remain incomplete; no semantic retrieval was used.
 
 ### Current known gates
 
@@ -369,14 +369,14 @@ State: PUBLISHED: reviewed commits pushed to PR #21 and marked ready. Follow-up 
 
 - **F7 — Formal PR review and finding dispositions**
 - **Task skill pack:** [F7](BRANCH_TASK_SKILLS.md#f7).
-State: Four prior formal findings repaired and independently reviewed offline; current exact-head Codex outcome is recorded on PR #21 and in the review-fix disposition receipts. CodeRabbit is USER-SKIPPED by the owner's 23 October instruction because the PR exceeds its file limit; this is neither approval nor a remaining required review.
+State: Four original findings and the later installed default-configuration finding are repaired and independently reviewed offline. Exact-head Codex outcomes belong to PR #21 and its bound current-disposition receipts. CodeRabbit remains USER-SKIPPED at owner direction because of the file limit, neither approval nor a remaining required review.
 - **Work:** Publish the reviewed fixes, request current-head Codex review, triage returned findings and preserve exact receipts.
 - **Acceptance:** Every valid blocking finding must be fixed or explicitly accepted; required review must cover the exact current PR head. CodeRabbit is excluded from this PR's review gate by explicit user direction only.
 - **Evidence:** [Review-fix record](../docs/sessions/REVIEW_FIXES_20261023.md); original review receipts remain immutable.
 
 - **F8 — Verify CI on exact proposed merge commit**
 - **Task skill pack:** [F8](BRANCH_TASK_SKILLS.md#f8) — invoke the linked skills explicitly when tackling this task.
-State: Exact-head CI remains an external release gate. Historical run 39854362302 passed for 708adb2; subsequent outcomes must be read from the current PR head and its bound review-fix receipts. Never count an earlier head as the current result.
+State: Exact-head CI remains an external release gate. Historical run 39868018871 passed for 738ee77; later outcomes must be read from the current PR head and its bound disposition receipt. Earlier CI never substitutes for the follow-up head.
 - **Work:** Check required workflow results for the exact final PR HEAD; ensure no stale earlier run is mistaken for the current commit.
 - **Acceptance:** every required check is green for the exact final PR head proposed for merge. A skipped, unstable or failed required gate stays OPEN/BLOCKED until resolved; this document supplies no waiver. Record any separately authorized release-policy change explicitly.
 

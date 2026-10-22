@@ -1,0 +1,21 @@
+{
+  "al_daheeh_master_pipeline_config": {
+    "dialect_profile": {
+      "fusha_academic_ratio": 0.3,
+      "cairo_amiya_ratio": 0.7,
+      "tashkeel_lexicon": {
+        "keda": "كِدَه",
+        "biyool": "بِيُقول",
+        "hoba": "هُوبَّا",
+        "di": "دِي",
+        "dah": "دَه",
+        "qest": "قِسط",
+        "meallem": "مِعَلّم",
+        "baseeha": "بِيصِيهَا",
+        "dashmel": "بِيِدَشْمِل",
+        "khazooq": "خَازُوق",
+        "sahla": "سَحْلَة"
+      }
+    }
+  }
+}

@@ -1,4 +1,4 @@
-> Current publication cursor: four formal-review findings repaired and verified offline. [Review-fix record](../docs/sessions/REVIEW_FIXES_20261023.md) owns this pass; PR #21 and bound receipts own current exact-head CI/Codex outcomes. CodeRabbit is USER-SKIPPED at owner direction because of the file limit. Earlier snapshots below are historical; no merge/live action authorized.
+> Current publication cursor: four original findings plus the installed prompt-default follow-up are repaired and verified offline. [Review-fix record](../docs/sessions/REVIEW_FIXES_20261023.md) owns this pass; PR #21 and bound receipts own current exact-head review/CI outcomes. CodeRabbit is USER-SKIPPED at owner direction for the file limit. Earlier snapshots below are historical; no merge/live action authorized.
 
 # Adaptive visual engine - implementation checklist
 
