@@ -1,8 +1,8 @@
 # Branch Completion Master
 
-Current closeout: 22 October 2026 reviewed commits prepared for authorized publication to PR #21. See [publication record](../docs/sessions/PUBLICATION_20261022.md); exact remote head/review/CI results are recorded in its runtime receipt. Engineering gates complete; not merged.
+Current closeout: PR #21 published and ready for formal review. Initial head ba0deca failed CI collection on undeclared psutil; the dependency fix has passed local verification and requires fresh exact-head CI. Codex review requested; CodeRabbit skipped 363 files over its 100-file limit. Not merged.
 
-> Status: REVIEWED COMMITS PREPARED FOR PUBLICATION / NOT MERGED. PR #21 is the review destination; latest published head and remote checks are recorded separately.
+> Status: PUBLISHED FOR FORMAL REVIEW / CI DEPENDENCY FIX FOLLOW-UP / NOT MERGED. Publication and follow-up receipts own exact observed heads.
 > Current authority: user explicitly authorized commit/push, updating PR #21, formal review and exact-head CI. Earlier production-reconciliation exclusions remain; no merge or live-provider action authorized.
 > This register owns current status. Dated prior receipts remain exact-scope historical evidence.
 
@@ -26,7 +26,7 @@ Current closeout: 22 October 2026 reviewed commits prepared for authorized publi
 | Pilots | C1-C7 | C1/C5/C6 retain prior exact scope; C2/C3/C4 partial; C7 OPEN. |
 | Complete Professor | D1-D7 | D1 approved script; narration/timing/executable planning/full production remain OPEN. |
 | Engineering | E1-E5 | Prior dispositions retained; new source findings tracked in F1. |
-| Release | F1-F9 | F1-F4 engineering/package/lexical scope complete. F6 commits prepared for publication; F7 formal review and F8 exact-head CI tracked in publication receipt; F9 OPEN. |
+| Release | F1-F9 | F1-F4 engineering/package/lexical scope complete. F6 published; F7 review open with CodeRabbit file-limit skip; F8 initial CI failure repaired locally, follow-up exact-head CI pending; F9 OPEN. |
 
 ### Immediate resume steps
 
@@ -358,9 +358,9 @@ State: DISPOSITION COMPLETE - Coordinator-accepted reasoned limitation is nonblo
 - **Acceptance:** each limitation has a direct evidence path and final disposition; release report never calls the independent review passed or treats missing PINS as verified. Optional HTML audit validation is not promoted to a production blocker without an explicit scope decision.
 - **Evidence now:** The coordinator accepted a reasoned nonblocking limitation. Historical QMD excerpts `qmd://claude-session-a5552bb9/INDEPENDENT_REVIEW.md` lines 3-5 and 15 and `qmd://claude-session-a5552bb9/15_OPEN_QUESTIONS_AND_GAPS.md` lines 6 and 16 identify missing SB and immutable evidence pins. No direct external-hash verification, substitute historical pins, or historical audit PASS exists. No current production defect or mandatory HTML release gate was demonstrated. See the F5 disposition receipt.
 
-- [ ] **F6 — Prepare atomic commits and PR**  
+- [x] **F6 — Prepare atomic commits and PR**
 - **Task skill pack:** [F6](BRANCH_TASK_SKILLS.md#f6) — invoke the linked skills explicitly when tackling this task.
-State: REVIEWED COMMITS PREPARED; user authorized push/update of PR #21. Publication receipt records observed remote head and request outcomes; no merge authority.
+State: PUBLISHED: reviewed commits pushed to PR #21 and marked ready. Follow-up dependency repair publication/CI results are recorded separately; no merge performed.
 - **Work:** After explicit release authorization, group changes by coherent behavior and evidence, make atomic commits with multiline messages, push/open or update PR only as requested. Keep generated runtime data out unless required and reviewed.
 - **Acceptance:** each commit has a clear scope; branch/HEAD/working tree and PR diff are recorded; no accidental provider output, secret, temporary file or unrelated user work is included.
 - **Evidence now:** Original formal_review/ snapshot is preserved; publication_20261022/ contains verified commits, explicit staged-path and byte checks, and subsequent exact-head publication/review/CI receipts. Two local inputs excluded.
@@ -369,13 +369,13 @@ State: REVIEWED COMMITS PREPARED; user authorized push/update of PR #21. Publica
 
 - [ ] **F7 — Run formal PR and CodeRabbit reviews**  
 - **Task skill pack:** [F7](BRANCH_TASK_SKILLS.md#f7) — invoke the linked skills explicitly when tackling this task.
-State: ⏳ OPEN — PR #21 exists, but no formal review covers the current proposed tree · Dependency: F6 current-head update · Owner: Codex
+State: OPEN - Codex review requested at ba0deca; CodeRabbit full review skipped because 363 files exceed 100. Current-head reviews and dispositions remain required; skip is not approval.
 - **Work:** Request the formal PR review and CodeRabbit pass; triage findings; fix valid blockers; preserve dissent with evidence.
 - **Acceptance:** every blocking finding resolved or explicitly accepted by owner; review targets exact PR head; attach/reconcile updated review after pushes.
 
 - [ ] **F8 — Verify CI on exact proposed merge commit**  
 - **Task skill pack:** [F8](BRANCH_TASK_SKILLS.md#f8) — invoke the linked skills explicitly when tackling this task.
-State: ⬜ OPEN — no CI result covers proposed tree · Dependency: PR updated to exact proposed head · Owner: QA/Codex  
+State: OPEN - ba0deca CI lint passed, unit collection failed for missing psutil. Explicit development dependency repair is locally verified; follow-up exact-head CI must pass.
 - **Work:** Check required workflow results for the exact final PR HEAD; ensure no stale earlier run is mistaken for the current commit.
 - **Acceptance:** every required check is green for the exact final PR head proposed for merge. A skipped, unstable or failed required gate stays OPEN/BLOCKED until resolved; this document supplies no waiver. Record any separately authorized release-policy change explicitly.
 

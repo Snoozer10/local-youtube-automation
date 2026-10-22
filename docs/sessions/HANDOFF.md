@@ -1,10 +1,10 @@
 # Handoff
 
 ## Current Phase
-Reviewed changes committed; user authorized push, PR update, formal review and exact-head CI. Publication/review/CI results are recorded separately in the publication receipt; merge remains unauthorized.
+PR #21 published at ba0deca and ready for review. Codex review requested; CodeRabbit skipped the 363-file PR because its limit is 100. Initial exact-head CI passed lint but failed collection because psutil was undeclared. A development-dependency fix is verified locally; follow-up exact-head CI is required. No merge authorized.
 
 ## Current Goal
-Publish the reviewed branch to [PR #21](https://github.com/Snoozer10/local-youtube-automation/pull/21) and verify formal review/CI against its exact head. [Publication record](PUBLICATION_20261022.md) and [master](../../tasks/BRANCH_COMPLETION_MASTER.md) own the current cursor.
+Check the follow-up exact head on [PR #21](https://github.com/Snoozer10/local-youtube-automation/pull/21). [Publication record](PUBLICATION_20261022.md) owns CI/review outcomes.
 
 ## Done
 - Strict typing: 699 errors to zero across 73 files; original checking scope preserved.
@@ -12,7 +12,7 @@ Publish the reviewed branch to [PR #21](https://github.com/Snoozer10/local-youtu
 - Reviewed changes committed in implementation, guidance and evidence groups. The two local operational inputs are untouched and excluded.
 
 ## Next
-Read the publication receipt and current PR head/checks. Resolve returned formal-review or CI findings with focused checks. Merge requires separate authorization.
+Read the follow-up publication/CI receipts, confirm PR head, and resolve returned findings. CodeRabbit file-limit skip is an open formal-review limitation; do not count its success status as a completed review. Merge remains separate.
 
 ## Failures & Fixes
 The staging path check initially saw rename destinations instead of separate archive deletions/additions. Comparison with rename detection disabled verified the explicit paths; staged content was preserved. Earlier typing/fixture failures remain in the prior closeout receipts.

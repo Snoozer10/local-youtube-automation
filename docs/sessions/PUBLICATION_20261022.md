@@ -1,3 +1,7 @@
+> Current CI follow-up: PR #21 is published and ready. Initial exact-head CI at ba0deca passed lint but failed collecting the empirical process test because psutil was absent from requirements-dev.txt. The explicit dependency repair is locally verified; follow-up publication and exact-head CI outcomes are recorded in `.runtime/codex_typing_20261021/publication_20261022/PSUTIL_FOLLOWUP.json`. Codex review was requested; CodeRabbit skipped 363 files over its 100-file limit. No merge.
+
+
+
 # Publication for formal review - 22 October 2026
 
 The user authorized publishing the reviewed changes, updating [PR #21](https://github.com/Snoozer10/local-youtube-automation/pull/21), requesting formal review and checking exact-head CI. Merge and live production remain outside this authorization.

@@ -1,4 +1,4 @@
-> Current publication cursor: reviewed changes are committed and authorized for PR #21 publication, formal review and exact-head CI. See [publication record](../docs/sessions/PUBLICATION_20261022.md). Earlier snapshot below records the preceding local engineering pass. No merge/live action authorized.
+> Current publication cursor: PR #21 is published and ready for review. Initial exact-head CI exposed undeclared psutil; the explicit dependency correction passed all nine frozen local gates and requires follow-up exact-head CI. CodeRabbit skipped 363 files over its 100-file limit. See [publication record](../docs/sessions/PUBLICATION_20261022.md). The earlier snapshot below is historical; no merge/live action authorized.
 
 # Adaptive visual engine - implementation checklist
 
