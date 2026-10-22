@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -24,11 +25,21 @@ from .briefs import (
     ensure_brief,
     is_visual_policy_update,
     rebind_visual_policy,
+    requires_visual_strategy_migration,
+    visual_policy_migration_pending,
 )
 from .contracts import Brief, fingerprint, load_brief, load_channel
 from .invalidation import invalidate_stage, reconcile_invalidation
 from .ledger import Ledger, durable_stage, leased_resource, resource_database
-from .render import RENDERER_VERSION, probe_video, render_plan
+from .render import (
+    RENDERER_VERSION,
+    current_render_inputs,
+    probe_video,
+    render_code_fingerprint,
+    render_plan,
+    render_tool_version,
+    require_current_preview,
+)
 from .review import approve_review, write_review
 from .shots import (
     SEMANTIC_PLANNER_VERSION,
@@ -54,13 +65,71 @@ def _planner_attachment_mode(*, persistent_chat: bool) -> Literal["inline", "fil
     return "file" if configured == "file" else "inline"
 
 
+
+def _direction_generation_model() -> str:
+    model = str(get_config_value("IMAGE_PLANNER_MODEL", "Pro")).strip()
+    if not model or len(model) > 100 or any(ord(char) < 32 for char in model):
+        raise ValueError("IMAGE_PLANNER_MODEL must be a bounded nonempty model label")
+    return model
+
+
+
+def _direction_transport_receipt(
+    root: Path, *, model: str, prompt: str
+) -> tuple[Path, str]:
+    prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    receipt_dir = root / "direction_generation_receipts" / prompt_sha256
+    receipt_path = receipt_dir / f"{prompt_sha256}.json"
+    from .direction_stage import _contained_transport_receipt_path
+
+    _contained_transport_receipt_path(root, receipt_path)
+    if not receipt_path.exists():
+        return receipt_dir, prompt_sha256
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("Existing direction transport receipt is unreadable; inspect it before retrying") from exc
+    attempts = receipt.get("attempts") if isinstance(receipt, dict) else None
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("version") != 1
+        or receipt.get("prompt_sha256") != prompt_sha256
+        or receipt.get("model") != model
+        or receipt.get("transport") != "inline"
+        or receipt.get("window") is not None
+        or not isinstance(attempts, list)
+    ):
+        raise ValueError("Existing direction transport receipt does not match this request")
+    if not attempts:
+        return receipt_dir, prompt_sha256
+    last = attempts[-1]
+    response = last.get("response") if isinstance(last, dict) else None
+    if not isinstance(last, dict) or last.get("state") != "completed" or not isinstance(response, str):
+        raise ValueError(
+            "Prior direction request is unresolved; preserve its receipt and do not send again"
+        )
+    from youtube_automation.browser.gemini_utils import is_gemini_usage_limit_text
+
+    from .briefs import _is_provider_soft_refusal
+
+    if _is_provider_soft_refusal(response) or is_gemini_usage_limit_text(response):
+        raise ValueError(
+            "Prior direction response is a refusal or quota result; preserve it and do not retry"
+        )
+    return receipt_dir, prompt_sha256
+
+
 @contextmanager
 def gemini_transport(
     *,
     persistent_chat: bool = False,
     receipt_dir: Path | None = None,
     timeout_seconds: int = 180,
+    model_name: str | None = None,
 ) -> Iterator[Callable[[str], str]]:
+    model = model_name or get_config_value("IMAGE_PLANNER_MODEL", "Pro").strip()
+    if not model or len(model) > 100 or any(ord(char) < 32 for char in model):
+        raise ValueError("Gemini transport model must be a bounded nonempty label")
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as playwright:
@@ -74,7 +143,7 @@ def gemini_transport(
             page.goto("https://gemini.google.com/app", wait_until="domcontentloaded")
             yield browser_ask(
                 page,
-                get_config_value("IMAGE_PLANNER_MODEL", "Pro"),
+                model,
                 persistent_chat=persistent_chat,
                 receipt_dir=receipt_dir,
                 timeout_seconds=timeout_seconds,
@@ -97,7 +166,33 @@ def _asset_inputs(root: Path) -> list[tuple[str, str]]:
 
 def _stage_recipe(root: Path, args: argparse.Namespace) -> str:
     stage = str(args.stage)
+    if stage == "adopt-polished-audio":
+        from .audio_adoption import adoption_recipe
+
+        return adoption_recipe(root, audio_file=args.polished_audio_file, audio_sha256=args.polished_audio_sha256,
+            acceptance_file=args.audio_acceptance_file, acceptance_sha256=args.audio_acceptance_sha256)
     inputs: dict[str, Any] = {"version": 1, "stage": stage}
+    if stage == "generate-direction":
+        from .direction_stage import assert_direction_generation_allowed, direction_prompt
+
+        generation_model = _direction_generation_model()
+        inputs["direction_inputs"] = assert_direction_generation_allowed(root)
+        inputs["generation_model"] = generation_model
+        inputs["prompt_sha256"] = hashlib.sha256(
+            direction_prompt(root, generation_model=generation_model).encode("utf-8")
+        ).hexdigest()
+        return fingerprint(inputs)
+    if stage in {"direct", "accept-direction"}:
+        from .direction_stage import CANDIDATE_FILE, direction_inputs
+
+        inputs["direction_inputs"] = direction_inputs(root)
+        if stage == "direct":
+            inputs["response"] = _file_input(Path(args.direction_response_file).resolve())
+        else:
+            inputs["candidate"] = _file_input(root / CANDIDATE_FILE)
+            inputs["candidate_sha256"] = args.direction_sha256
+            inputs["reviewer"] = args.reviewer.strip()
+        return fingerprint(inputs)
     paths: dict[str, Path | None] = {
         "raw": root / "raw_transcript.txt",
         "brief": root / "episode_brief.json",
@@ -151,6 +246,8 @@ def _stage_recipe(root: Path, args: argparse.Namespace) -> str:
         inputs["planner_transport"] = get_config_value("IMAGE_PLANNER_TRANSPORT", "file")
         inputs["semantic_planner_version"] = SEMANTIC_PLANNER_VERSION
         inputs["shot_compiler_version"] = SHOT_COMPILER_VERSION
+        inputs["critic_renderer_version"] = RENDERER_VERSION
+        inputs["critic_render_code_sha256"] = render_code_fingerprint()
     if stage == "source-audio":
         media = Path(args.media_file).resolve() if args.media_file else None
         inputs.update(
@@ -165,10 +262,12 @@ def _stage_recipe(root: Path, args: argparse.Namespace) -> str:
             "model": get_config_value("FLOW_IMAGE_MODEL", "Nano Banana 2"),
             "count": get_config_value("FLOW_IMAGE_COUNT", "1x"),
         }
-    if stage in {"preview", "render"}:
+    if stage in {"preview", "approve", "render"}:
         from youtube_automation.video.compiler import load_video_config
 
         inputs["renderer_version"] = RENDERER_VERSION
+        inputs["render_code_sha256"] = render_code_fingerprint()
+        inputs["render_tool"] = render_tool_version()
         inputs["render_config"] = load_video_config("video_config.txt")
         try:
             timeline = json.loads((root / "timeline.json").read_text(encoding="utf-8"))
@@ -189,9 +288,14 @@ def _stage_key(root: Path, stage: str) -> str:
 
 
 def _validated_plan(root: Path) -> tuple[Brief, ShotPlan, dict[str, Any]]:
-    brief = load_brief(root)
-    timeline = json.loads((root / "timeline.json").read_text(encoding="utf-8"))
-    plan = ShotPlan.model_validate_json((root / "shot_plan.json").read_text(encoding="utf-8"))
+    from .audio_adoption import capture_audio_state
+    from .ledger import publication_guard
+
+    with publication_guard():
+        capture_audio_state(root)
+        brief = load_brief(root)
+        timeline = json.loads((root / "timeline.json").read_text(encoding="utf-8"))
+        plan = ShotPlan.model_validate_json((root / "shot_plan.json").read_text(encoding="utf-8"))
     validate_plan(plan, timeline, brief)
     if brief.version >= 3:
         from .shots import require_editorial_review
@@ -201,9 +305,11 @@ def _validated_plan(root: Path) -> tuple[Brief, ShotPlan, dict[str, Any]]:
 
 
 def _render_output_complete(root: Path, *, preview: bool) -> bool:
+    root = root.resolve()
     from youtube_automation.video.compiler import load_video_config
 
     from .flow import verify_generated_assets
+    from .render import require_encoder_execution
 
     brief, plan, timeline = _validated_plan(root)
     verify_generated_assets(root, plan, brief)
@@ -216,6 +322,7 @@ def _render_output_complete(root: Path, *, preview: bool) -> bool:
     artifact = (root / pointer["path"]).resolve()
     inputs = pointer["inputs"]
     expected_config = dict(load_video_config("video_config.txt"), OUTPUT_FPS=plan.fps)
+    expected_inputs = current_render_inputs(plan, assets, audio, expected_config)
     expected_status = "pending" if preview else "approved"
     if (
         not artifact.is_relative_to(root)
@@ -224,19 +331,23 @@ def _render_output_complete(root: Path, *, preview: bool) -> bool:
         or pointer.get("frames") != plan.total_frames
         or pointer.get("editorial_status") != expected_status
         or pointer.get("generation") != fingerprint(inputs)
-        or inputs.get("plan") != fingerprint(plan)
-        or inputs.get("assets") != assets
-        or inputs.get("audio") != file_digest(audio)
-        or inputs.get("config") != expected_config
-        or inputs.get("renderer_version") != RENDERER_VERSION
+        or inputs != expected_inputs
     ):
+        return False
+    try:
+        require_encoder_execution(pointer, expected_inputs)
+    except (KeyError, TypeError, ValueError):
         return False
     probe_video(artifact, plan.total_frames, plan.fps, require_audio=True)
     if not preview:
         approval = json.loads((root / "editorial_approval.json").read_text(encoding="utf-8"))
-        approved_preview = json.loads(
-            (root / "adaptive_preview.json").read_text(encoding="utf-8")
-        )
+        try:
+            approved_preview = require_current_preview(root, expected_inputs, plan.total_frames)
+        except (OSError, KeyError, TypeError, ValueError):
+            return False
+        from .review import require_no_human_rejection
+
+        require_no_human_rejection(root, fingerprint(plan), approved_preview["sha256"])
         if (
             approval.get("plan") != fingerprint(plan)
             or approval.get("assets") != assets
@@ -249,7 +360,33 @@ def _render_output_complete(root: Path, *, preview: bool) -> bool:
 
 def _stage_complete(root: Path, args: argparse.Namespace) -> bool:
     try:
+        if args.stage == "adopt-polished-audio":
+            from .audio_adoption import PENDING, adoption_recipe, verify_audio_adoption
+
+            if (root / PENDING).exists():
+                return False
+            receipt = verify_audio_adoption(root)
+            return bool(receipt["recipe"] == adoption_recipe(root, audio_file=args.polished_audio_file, audio_sha256=args.polished_audio_sha256,
+            acceptance_file=args.audio_acceptance_file, acceptance_sha256=args.audio_acceptance_sha256))
+        if args.stage == "generate-direction":
+            from .direction_stage import verify_direction_candidate
+
+            candidate = verify_direction_candidate(root)
+            model = candidate["provenance"].get("generation_model")
+            return isinstance(model, str) and model == _direction_generation_model()
+        if args.stage == "direct":
+            from .direction_stage import candidate_matches_response
+
+            return candidate_matches_response(root, args.direction_response_file)
+        if args.stage == "accept-direction":
+            from .direction_stage import direction_acceptance_complete
+
+            return direction_acceptance_complete(
+                root, reviewer=args.reviewer, candidate_sha256=args.direction_sha256
+            )
         if args.stage == "analyze":
+            if visual_policy_migration_pending(root):
+                return False
             brief = load_brief(root)
             raw = (root / "raw_transcript.txt").read_text(encoding="utf-8-sig")
             channel = load_channel(args.channel_profile)
@@ -293,6 +430,9 @@ def _stage_complete(root: Path, args: argparse.Namespace) -> bool:
                 asset_storage_id(shot): read_shot_receipt(root, shot)["sha256"] for shot in plan.shots
             }
             preview = json.loads((root / "adaptive_preview.json").read_text(encoding="utf-8"))
+            from .review import require_no_human_rejection
+
+            require_no_human_rejection(root, fingerprint(plan), preview["sha256"])
             approval = json.loads((root / "editorial_approval.json").read_text(encoding="utf-8"))
             expected = {
                 "version": 1,
@@ -319,19 +459,89 @@ def _stage_complete(root: Path, args: argparse.Namespace) -> bool:
 
 
 def _execute_stage(args: argparse.Namespace, root: Path, database: Path) -> None:
-    if args.stage == "analyze":
+    if args.stage == "adopt-polished-audio":
+        from .audio_adoption import adopt_polished_audio
+
+        print(adopt_polished_audio(root, audio_file=args.polished_audio_file, audio_sha256=args.polished_audio_sha256,
+            acceptance_file=args.audio_acceptance_file, acceptance_sha256=args.audio_acceptance_sha256))
+        return
+    if args.stage == "generate-direction":
+        from .direction_stage import (
+            CANDIDATE_FILE,
+            assert_direction_generation_allowed,
+            direction_prompt,
+            ensure_direction_candidate,
+            recover_direction_candidate,
+            verify_direction_candidate,
+        )
+
+        assert_direction_generation_allowed(root)
+        generation_model = _direction_generation_model()
+        candidate_path = root / CANDIDATE_FILE
+        candidate = recover_direction_candidate(root, generation_model=generation_model)
+        if candidate is None and candidate_path.is_file():
+            candidate = verify_direction_candidate(root)
+            if candidate["provenance"].get("generation_model") != generation_model:
+                raise ValueError(
+                    "A current candidate exists without matching automated generation provenance; preserve it"
+                )
+        elif candidate is None:
+            prompt = direction_prompt(root, generation_model=generation_model)
+            receipt_dir, prompt_sha256 = _direction_transport_receipt(
+                root, model=generation_model, prompt=prompt
+            )
+            transport_receipt_path = receipt_dir / f"{prompt_sha256}.json"
+            with leased_resource(database, "browser"), gemini_transport(
+                model_name=generation_model, receipt_dir=receipt_dir
+            ) as ask:
+                candidate = ensure_direction_candidate(
+                    root,
+                    ask,
+                    generation_model=generation_model,
+                    transport_receipt_path=transport_receipt_path,
+                )
+        print(
+            f"Unapproved generated direction candidate: {candidate_path} "
+            f"({file_digest(candidate_path)})"
+        )
+    elif args.stage == "direct":
+        from .direction_stage import (
+            CANDIDATE_FILE,
+            candidate_matches_response,
+            ensure_direction_candidate,
+        )
+
+        response = Path(args.direction_response_file).read_text(encoding="utf-8-sig")
+        ensure_direction_candidate(root, lambda _: response)
+        if not candidate_matches_response(root, args.direction_response_file):
+            raise ValueError("Existing direction candidate belongs to another response")
+        print(f"Unapproved direction candidate: {root / CANDIDATE_FILE} ({file_digest(root / CANDIDATE_FILE)})")
+    elif args.stage == "accept-direction":
+        from .direction_stage import accept_direction
+
+        print(accept_direction(root, reviewer=args.reviewer, candidate_sha256=args.direction_sha256))
+    elif args.stage == "analyze":
         if not args.channel_profile:
             raise ValueError("analyze requires --channel-profile")
         channel = load_channel(args.channel_profile)
-        if is_visual_policy_update(root, channel):
-            rebind_visual_policy(root, channel)
         feedback = ""
         if args.strategy_feedback_file:
             feedback = Path(args.strategy_feedback_file).read_text(encoding="utf-8-sig")
             if not feedback.strip():
                 raise ValueError("Strategy feedback file is empty")
         with leased_resource(database, "browser"), gemini_transport() as ask:
-            ensure_brief(root, channel, ask, strategy_feedback=feedback)
+            if requires_visual_strategy_migration(root, channel):
+                rebind_visual_policy(root, channel, ask=ask, strategy_feedback=feedback,
+                                     profile_path=args.channel_profile, feedback_path=args.strategy_feedback_file)
+            else:
+                if is_visual_policy_update(root, channel):
+                    rebind_visual_policy(root, channel)
+                ensure_brief(root, channel, ask, strategy_feedback=feedback)
+    elif args.stage == "write" and (root / "script_acceptance.json").is_file():
+        from .writing import publish_accepted_original
+
+        # A human-accepted original script is published verbatim: no browser, no model.
+        publish_accepted_original(root, load_brief(root))
     elif args.stage in {"write", "plan"}:
         planning = args.stage == "plan"
         with leased_resource(database, "browser"), gemini_transport(
@@ -393,20 +603,26 @@ def _execute_stage(args: argparse.Namespace, root: Path, database: Path) -> None
 
 def _run_stage_attempt(args: argparse.Namespace, root: Path, database: Path) -> None:
     """Run one content-bound stage attempt for the currently active profile."""
+    from .audio_adoption import assert_no_pending_audio_adoption
+
+    if args.stage != "adopt-polished-audio":
+        assert_no_pending_audio_adoption(root)
     reconcile_invalidation(root)
     recipe = _stage_recipe(root, args)
     key = _stage_key(root, args.stage)
     existing = Ledger(database).get(key)
     complete = _stage_complete(root, args)
     visual_policy_transition: tuple[str, str] | None = None
-    if args.stage == "analyze" and args.channel_profile:
+    strategy_migration = bool(args.stage == "analyze" and args.channel_profile
+                              and requires_visual_strategy_migration(root, load_channel(args.channel_profile)))
+    if args.stage == "analyze" and args.channel_profile and not strategy_migration:
         requested_channel = load_channel(args.channel_profile)
         if is_visual_policy_update(root, requested_channel):
             visual_policy_transition = (
                 load_brief(root).profile_sha256,
                 fingerprint(requested_channel),
             )
-        elif args.strategy_feedback_file:
+        elif args.strategy_feedback_file and not strategy_migration:
             feedback_path = Path(args.strategy_feedback_file).resolve()
             visual_policy_transition = (
                 fingerprint(load_brief(root)),
@@ -450,7 +666,8 @@ def _run_stage_attempt(args: argparse.Namespace, root: Path, database: Path) -> 
                     f"before retrying stage: {args.stage}"
                 )
             complete = _stage_complete(root, args)
-        elif existing and existing["recipe"] != recipe:
+        elif (existing and existing["recipe"] != recipe and args.stage != "adopt-polished-audio"
+              and not strategy_migration):
             preserve_paths: set[str] | None = None
             if args.stage == "plan":
                 archive_editorial_rejection_for_retry(root)
@@ -489,18 +706,37 @@ def main(argv: list[str] | None = None) -> None:
         choices=[
             "analyze",
             "write",
+            "direct",
+            "generate-direction",
+            "accept-direction",
             "source-audio",
+            "adopt-polished-audio",
             "plan",
             "generate",
             "report",
             "preview",
             "approve",
             "render",
+            "proofs",
             "status",
+            "diagnose",
         ],
     )
-    parser.add_argument("--run-dir", required=True)
+    parser.add_argument("--run-dir", help="existing explicit run directory for production stages")
+    parser.add_argument("--polished-audio-file", help="exact previously owner-accepted local WAV")
+    parser.add_argument("--polished-audio-sha256", help="owner-accepted WAV SHA-256; no transcoding")
+    parser.add_argument("--audio-acceptance-file", help="existing exact human audio acceptance JSON")
+    parser.add_argument("--audio-acceptance-sha256", help="exact acceptance authority SHA-256")
+    parser.add_argument("--last", action="store_true", help="diagnose only: show the latest bounded failure record")
+    parser.add_argument("--path", dest="diagnostic_path", help="diagnose only: optional local failure JSONL path")
     parser.add_argument("--channel-profile")
+    parser.add_argument(
+        "--direction-response-file",
+        help="local UTF-8 JSON response for an unapproved voice-direction candidate; no provider request",
+    )
+    parser.add_argument(
+        "--direction-sha256", help="exact candidate file SHA-256 for explicit voice-direction acceptance"
+    )
     parser.add_argument(
         "--strategy-feedback-file",
         help="UTF-8 editorial rejection used to revise a v3 episode visual strategy",
@@ -519,11 +755,36 @@ def main(argv: list[str] | None = None) -> None:
         help="retry a corrected stage after its bounded failure circuit opens",
     )
     args = parser.parse_args(argv)
+    if args.stage == "diagnose":
+        if not args.last:
+            parser.error("diagnose requires --last")
+        from youtube_automation.core.failure_record import digest, load_last_record
+
+        record = load_last_record(args.diagnostic_path)
+        print("No failure records." if record is None else digest(record))
+        return
+    if args.last or args.diagnostic_path:
+        parser.error("--last and --path apply only to diagnose")
+    if not args.run_dir:
+        parser.error("--run-dir is required for production stages")
     root = Path(args.run_dir).resolve()
     if not root.is_dir():
         parser.error("Run directory must already exist")
+    if args.stage == "proofs":
+        from .render_proofs import render_current_proofs
+
+        print(render_current_proofs(root))
+        return
     # Shared across runs in this installation; never scope exclusive devices per run.
     database = resource_database()
+    if args.stage == "direct" and not args.direction_response_file:
+        parser.error("direct requires --direction-response-file; provider requests need separate authorization")
+    if args.direction_response_file and args.stage != "direct":
+        parser.error("--direction-response-file applies only to direct")
+    if args.stage == "accept-direction" and (not args.reviewer or not args.direction_sha256):
+        parser.error("accept-direction requires --reviewer and --direction-sha256 after human review")
+    if args.direction_sha256 and args.stage != "accept-direction":
+        parser.error("--direction-sha256 applies only to accept-direction")
     if args.stage == "analyze" and not args.channel_profile:
         parser.error("analyze requires --channel-profile")
     if args.strategy_feedback_file and args.stage != "analyze":
@@ -536,6 +797,15 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("source-audio requires --media-file, --start-seconds and --end-seconds")
     if args.stage == "approve" and not args.reviewer:
         parser.error("approve requires --reviewer after an actual editorial review")
+    adoption_flags = (args.polished_audio_file, args.polished_audio_sha256,
+                      args.audio_acceptance_file, args.audio_acceptance_sha256)
+    if args.stage == "adopt-polished-audio" and not all(adoption_flags):
+        parser.error("adopt-polished-audio requires all four explicit audio/acceptance path and hash flags")
+    if any(adoption_flags) and args.stage != "adopt-polished-audio":
+        parser.error("Polished audio acceptance flags apply only to adopt-polished-audio")
+    if args.stage == "adopt-polished-audio":
+        _run_stage_attempt(args, root, database)
+        return
     if args.stage == "status":
         database.parent.mkdir(exist_ok=True)
         for row in Ledger(database).status():
@@ -547,6 +817,11 @@ def main(argv: list[str] | None = None) -> None:
             brief, plan, _ = _validated_plan(root)
             require_visual_audit(root, plan, brief)
         failover_stages = {"analyze", "write", "plan"}
+        accepted_write = args.stage == "write" and (root / "script_acceptance.json").is_file()
+        if args.stage in failover_stages and not accepted_write and not _stage_complete(root, args):
+            from youtube_automation.browser import network_health
+
+            network_health.require_healthy(network_health.GEMINI_URL)
         attempted_profiles = {active_profile_index()}
         failover_limit = max(0, int(get_config_value("FAILOVER_RETRY_LIMIT", "4")))
         failovers = 0

@@ -596,3 +596,44 @@ def test_semantic_stop_selectors_and_audio_exclusion():
     for kw in ("audio", "playback", "listen", "صوت"):
         assert kw in gemini_utils.EXCLUDED_AUDIO_PLAYBACK_KEYWORDS
         assert kw in gemini_utils.STOP_CONTROL_CHECK_JS
+
+
+def test_response_never_completes_when_stop_probe_state_is_unknown():
+    def raise_stop_probe():
+        raise RuntimeError("CDP target detached")
+
+    page = FakeGeminiResponsePage(
+        responses=["Old turn", "Stable response text that must remain untrusted."],
+        stop_control_fn=raise_stop_probe,
+        sleep_on_wait=False,
+    )
+    result = gemini_utils.wait_for_gemini_response(
+        page,
+        initial_count=1,
+        min_length=5,
+        timeout_seconds=0.02,
+        stability_polls=3,
+        poll_interval=0.001,
+    )
+
+    assert result == ""
+    assert page.evaluate_calls.count(gemini_utils.STOP_CONTROL_CHECK_JS) >= 3
+
+
+def test_response_completes_after_three_confirmed_absent_stop_observations():
+    page = FakeGeminiResponsePage(
+        responses=["Old turn", "Stable response text is complete."],
+        stop_control_fn=lambda: False,
+        sleep_on_wait=False,
+    )
+    result = gemini_utils.wait_for_gemini_response(
+        page,
+        initial_count=1,
+        min_length=5,
+        timeout_seconds=0.1,
+        stability_polls=3,
+        poll_interval=0.001,
+    )
+
+    assert result == "Stable response text is complete."
+    assert page.evaluate_calls.count(gemini_utils.STOP_CONTROL_CHECK_JS) in range(4, 100)

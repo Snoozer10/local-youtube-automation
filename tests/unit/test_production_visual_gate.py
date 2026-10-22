@@ -56,42 +56,180 @@ def test_changed_generation_archives_review_but_preserves_budget_and_spending(tm
     assert json.loads((tmp_path / "visual_budget.json").read_text())["max_images"] == 20
 
 
-def test_complete_review_binds_every_shot_asset_and_proof(tmp_path, monkeypatch):
+def test_complete_review_binds_every_shot_asset_proof_and_render_recipe(tmp_path, monkeypatch):
+    from youtube_automation.production import render
+
     candidate = plan(images=2)
     candidate.shots[1].operation = "reuse"
     candidate.shots[1].asset_id = candidate.shots[0].asset_id
     (tmp_path / "visual_budget.json").write_text('{"max_images":20,"require_review":true}')
-    monkeypatch.setattr(gate, "fingerprint", lambda _: "a" * 64)
+    original_fingerprint = gate.fingerprint
+    monkeypatch.setattr(
+        gate,
+        "fingerprint",
+        lambda value: "a" * 64 if value is candidate else original_fingerprint(value),
+    )
+
     def accept(_root, shot, _brief):
         assert shot.operation != "reuse", "Validate the originating asset recipe"
         return tmp_path / "image.png"
+
     monkeypatch.setattr(gate, "accepted_asset", accept)
     monkeypatch.setattr(gate, "read_shot_receipt", lambda *_: {"sha256": "b" * 64})
+    render_inputs = {
+        "render_code_sha256": "c" * 64,
+        "tool": "FFmpeg build 1",
+        "config": {"OUTPUT_WIDTH": 1920, "OUTPUT_HEIGHT": 1080, "CPU_CRF": 23},
+        "overlay_recipes": {"shot_0": "d" * 64},
+    }
+    monkeypatch.setattr(render, "current_render_inputs", lambda *_: dict(render_inputs))
+    (tmp_path / "timeline.json").write_text(json.dumps({"audio_file": "audio.wav"}))
+    candidate.timeline_sha256 = original_fingerprint({"audio_file": "audio.wav"})
+    (tmp_path / "audio.wav").write_bytes(b"canonical narration bytes")
+    config = {"OUTPUT_WIDTH": 1920, "OUTPUT_HEIGHT": 1080}
     proof = tmp_path / "proof.png"
     proof.write_bytes(b"inspected rendered pixels")
     late = tmp_path / "late.png"
     late.write_bytes(b"inspected late pixels")
-    decisions = [{"shot_id": s.shot_id, "proof_path": "proof.png", "proof_sha256": gate.file_digest(proof),
-        "semantic_match":4,"continuity":4,"readability":4,"attractiveness":4,
-        "notes":"Inspected narration, framing, graphic copy and progression",
-        "additional_proofs":{"late.png":gate.file_digest(late)}} for s in candidate.shots]
-    audit = {"plan_sha256":"a"*64, "assets":{s.asset_id:"b"*64 for s in candidate.shots},
-        "reviewer":"Visual inspector", "decisions":decisions}
+    decisions = [
+        {
+            "shot_id": shot.shot_id,
+            "proof_path": "proof.png",
+            "proof_sha256": gate.file_digest(proof),
+            "semantic_match": 4,
+            "continuity": 4,
+            "readability": 4,
+            "attractiveness": 4,
+            "notes": "Inspected narration, framing, graphic copy and progression",
+            "additional_proofs": {"late.png": gate.file_digest(late)},
+        }
+        for shot in candidate.shots
+    ]
+    audit = {
+        "version": 2,
+        "plan_sha256": "a" * 64,
+        "assets": {shot.asset_id: "b" * 64 for shot in candidate.shots},
+        "render_inputs_sha256": original_fingerprint(render_inputs),
+        "reviewer": "Visual inspector",
+        "decisions": decisions,
+    }
     path = tmp_path / "visual_audit.json"
+
+    def require_current_audit():
+        gate.require_visual_audit(tmp_path, candidate, None, render_config=config)
+
     with pytest.raises(ValueError, match="Every current shot"):
-        gate.require_visual_audit(tmp_path, candidate, None)
+        require_current_audit()
     path.write_text(json.dumps(audit))
-    gate.require_visual_audit(tmp_path, candidate, None)
+    require_current_audit()
+
+    for key, changed in (
+        ("render_code_sha256", "f" * 64),
+        ("tool", "FFmpeg build 2"),
+        ("config", {"OUTPUT_WIDTH": 1920, "OUTPUT_HEIGHT": 1080, "CPU_CRF": 28}),
+        ("overlay_recipes", {"shot_0": "e" * 64}),
+    ):
+        original = render_inputs[key]
+        render_inputs[key] = changed
+        with pytest.raises(ValueError, match="render recipe is stale"):
+            require_current_audit()
+        audit["render_inputs_sha256"] = original_fingerprint(render_inputs)
+        path.write_text(json.dumps(audit))
+        require_current_audit()
+        render_inputs[key] = original
+        audit["render_inputs_sha256"] = original_fingerprint(render_inputs)
+        path.write_text(json.dumps(audit))
+        require_current_audit()
+
     audit["decisions"] = decisions[:1]
     path.write_text(json.dumps(audit))
     with pytest.raises(ValueError, match="exact current plan"):
-        gate.require_visual_audit(tmp_path, candidate, None)
+        require_current_audit()
     audit["decisions"] = decisions
     path.write_text(json.dumps(audit))
     late.write_bytes(b"late frame changed after review")
     with pytest.raises(ValueError, match="proof changed"):
-        gate.require_visual_audit(tmp_path, candidate, None)
+        require_current_audit()
     late.write_bytes(b"inspected late pixels")
     proof.write_bytes(b"changed after review")
     with pytest.raises(ValueError, match="proof changed"):
+        require_current_audit()
+
+
+@pytest.mark.parametrize("asset_identity", ["storage", "shot"])
+def test_visual_audit_explicit_encoder_recipe_must_match_inspected_inputs(tmp_path, monkeypatch, asset_identity):
+    from youtube_automation.production import render
+
+    candidate = plan(images=1)
+    monkeypatch.setattr(gate, "enforce_visual_budget", lambda *_: SimpleNamespace(require_review=True))
+    original_fingerprint = gate.fingerprint
+    monkeypatch.setattr(gate, "fingerprint", lambda value: "a" * 64 if value is candidate else original_fingerprint(value))
+    monkeypatch.setattr(gate, "accepted_asset", lambda *_: tmp_path / "asset.png")
+    monkeypatch.setattr(gate, "read_shot_receipt", lambda *_: {"sha256": "b" * 64})
+    (tmp_path / "timeline.json").write_text(json.dumps({"audio_file": "audio.wav"}))
+    candidate.timeline_sha256 = original_fingerprint({"audio_file": "audio.wav"})
+    (tmp_path / "audio.wav").write_bytes(b"canonical narration")
+    proof = tmp_path / "proof.png"
+    proof.write_bytes(b"inspected rendered pixels")
+    config = {"OUTPUT_WIDTH": 1920, "OUTPUT_HEIGHT": 1080, "OUTPUT_FPS": 30}
+    encoder = {"video_codec": "libx264", "encoder_args": ["-crf", "17"]}
+
+    def recipe(_plan, _assets, _audio, supplied_config, *, encoder_config=None):
+        return {"config": dict(supplied_config), "encoder_recipe": encoder_config, "assets": dict(_assets)}
+
+    monkeypatch.setattr(render, "current_render_inputs", recipe)
+    audit = gate.VisualAudit(
+        version=2, plan_sha256="a" * 64, assets={"asset_0": "b" * 64},
+        render_inputs_sha256=original_fingerprint(recipe(
+            None, {"shot_0" if asset_identity == "shot" else "asset_0": "b" * 64},
+            None, config, encoder_config=encoder,
+        )),
+        reviewer="Inspector",
+        decisions=[gate.VisualDecision(
+            shot_id="shot_0", proof_path="proof.png", proof_sha256=gate.file_digest(proof),
+            semantic_match=4, continuity=4, readability=4, attractiveness=4,
+            notes="Inspected current proof using its explicit execution recipe",
+        )],
+    )
+    (tmp_path / "visual_audit.json").write_text(audit.model_dump_json())
+    gate.require_visual_audit(
+        tmp_path, candidate, None, render_config=config, encoder_config=encoder, asset_identity=asset_identity,
+    )
+    for changed_config, changed_encoder in (
+        (dict(config, OUTPUT_WIDTH=1280), encoder),
+        (config, dict(encoder, encoder_args=["-crf", "18"])),
+        (config, None),
+    ):
+        with pytest.raises(ValueError, match="render recipe is stale"):
+            gate.require_visual_audit(
+                tmp_path, candidate, None, render_config=changed_config, encoder_config=changed_encoder,
+                asset_identity=asset_identity,
+            )
+
+
+def test_visual_audit_rejects_unknown_asset_namespace_without_skipping(tmp_path):
+    with pytest.raises(ValueError, match="Unknown render asset identity"):
+        gate.require_visual_audit(tmp_path, plan(), None, asset_identity="unknown")
+
+
+def test_legacy_audit_cannot_satisfy_required_review_but_no_review_skips_it(tmp_path):
+    candidate = plan(images=1)
+    path = tmp_path / "visual_audit.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "plan_sha256": "a" * 64,
+                "assets": {},
+                "reviewer": "Historical reviewer",
+                "decisions": [],
+            }
+        )
+    )
+    budget = tmp_path / "visual_budget.json"
+    budget.write_text('{"max_images":20,"require_review":true}')
+    with pytest.raises(ValueError, match="Legacy visual audit"):
         gate.require_visual_audit(tmp_path, candidate, None)
+
+    budget.write_text('{"max_images":20,"require_review":false}')
+    gate.require_visual_audit(tmp_path, candidate, None)

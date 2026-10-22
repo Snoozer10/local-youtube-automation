@@ -130,15 +130,15 @@ def composite_vector_overlays(
                     end = tuple(ov.get("end", (300, 300)))
                     color = tuple(ov.get("color", (224, 159, 62, 230)))
                     width = int(ov.get("width", 6))
-                    draw_directional_arrow(draw, start, end, color=color, width=width)  # type: ignore
+                    draw_directional_arrow(draw, start, end, color=color, width=width)
                 elif ov_type == "FOCUS_BRACKET":
                     bbox = tuple(ov.get("bbox", (200, 200, 600, 600)))
                     color = tuple(ov.get("color", (224, 159, 62, 230)))
-                    draw_focus_brackets(draw, bbox, color=color)  # type: ignore
+                    draw_focus_brackets(draw, bbox, color=color)
                 elif ov_type == "CALLOUT_BADGE":
                     text = str(ov.get("text", ""))
                     pos = tuple(ov.get("position", (100, 100)))
-                    draw_callout_badge(draw, text, pos)  # type: ignore
+                    draw_callout_badge(draw, text, pos)
 
         # Composite and convert back to RGB
         composited = Image.alpha_composite(base_img, overlay_canvas).convert("RGB")

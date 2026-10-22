@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
 from playwright.sync_api import Page
 
@@ -28,8 +28,24 @@ from .visual_gate import enforce_visual_budget
 
 
 def _provider_image_id(url: str) -> str:
-    path = urlsplit(url).path
-    return path.split("/image/", 1)[1].split("/", 1)[0] if "/image/" in path else ""
+    from youtube_automation.visuals.asset_studio import flow_image_identity
+
+    identity = flow_image_identity(url)
+    if not isinstance(identity, str):
+        raise TypeError("Flow image identity must be a string")
+    return identity
+
+
+def _is_trusted_flow_alias_native_pair(first_id: str, second_id: str) -> bool:
+    if first_id.startswith("asb:"):
+        alias_id, native_id = first_id[4:], second_id
+    elif second_id.startswith("asb:"):
+        alias_id, native_id = second_id[4:], first_id
+    else:
+        return False
+    return bool(re.fullmatch(r"[A-Za-z0-9_-]+", alias_id)) and bool(
+        re.fullmatch(r"[A-Za-z0-9_-]+", native_id)
+    )
 
 
 def _attached_reference_matches(page: Page, receipt: dict[str, Any]) -> bool:
@@ -44,7 +60,12 @@ def _attached_reference_matches(page: Page, receipt: dict[str, Any]) -> bool:
     expected_provider_id = _provider_image_id(receipt.get("source_url", ""))
     attached_provider_id = _provider_image_id(attached_url)
     if expected_provider_id and attached_provider_id:
-        return expected_provider_id == attached_provider_id
+        if expected_provider_id == attached_provider_id:
+            return True
+        if not _is_trusted_flow_alias_native_pair(expected_provider_id, attached_provider_id):
+            return False
+    elif expected_provider_id or attached_provider_id:
+        return False
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
         path = temp.name
     try:
@@ -63,13 +84,105 @@ def verify_exact_reference(page: Page, root: Path, asset_id: str) -> None:
         raise RuntimeError(f"Reference {asset_id} exact reference chip is not attached")
 
 
-def verify_adaptive_prompt_references(page: Page, root: Path, shot: Shot) -> None:
+def verify_adaptive_prompt_references(page: Page, root: Path, shot: Shot, profile_index: str | None = None) -> None:
     from youtube_automation.visuals.flow_generator import count_attached_prompt_chips
 
+    if list(shot.character_ids):
+        from youtube_automation.visuals.asset_studio import visible_episode_ingredients
+
+        from .characters import read_character_receipt
+
+        brief = load_brief(root)
+        chips = visible_episode_ingredients(page)
+        if len(chips) != len(shot.character_ids) + bool(shot.reference_asset_id):
+            raise RuntimeError("Adaptive ingredient set has missing, duplicate or extra chips")
+        used: set[int] = set()
+        for character_id in shot.character_ids:
+            receipt = read_character_receipt(root, brief, character_id, profile_index=profile_index, project_url=page.url)
+            matches = [index for index, chip in enumerate(chips) if _character_chip_matches(page, chip, receipt)]
+            if len(matches) != 1 or matches[0] in used:
+                raise RuntimeError(f"Exact character chip is not attached: {character_id}")
+            used.add(matches[0])
+        if shot.reference_asset_id:
+            remaining = [chip for index, chip in enumerate(chips) if index not in used]
+            if len(remaining) != 1 or not _scene_reference_chip_matches(page, remaining[0], read_receipt(root, shot.reference_asset_id)):
+                raise RuntimeError("Exact scene reference is not attached alongside characters")
+        return
     if shot.reference_asset_id:
         verify_exact_reference(page, root, shot.reference_asset_id)
     elif count_attached_prompt_chips(page) != 0:
         raise RuntimeError(f"Shot {shot.shot_id} has an unexpected reference chip")
+
+
+def _scene_reference_chip_matches(page: Page, chip: Any, receipt: dict[str, Any]) -> bool:
+    from youtube_automation.visuals.image_extractor import extract_high_res_image
+
+    images = [image for image in chip.locator("img").all() if image.is_visible()]
+    if len(images) != 1:
+        return False
+    url = images[0].get_attribute("src") or ""
+    expected_id, actual_id = _provider_image_id(receipt.get("source_url", "")), _provider_image_id(url)
+    if expected_id and actual_id:
+        if expected_id == actual_id:
+            return True
+        if not _is_trusted_flow_alias_native_pair(expected_id, actual_id):
+            return False
+    elif expected_id or actual_id:
+        return False
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+        path = handle.name
+    try:
+        return bool(extract_high_res_image(page, images[0], path, min_size_kb=1)) and pixel_digest(path) == receipt["pixel_sha256"]
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def _character_chip_matches(page: Page, chip: Any, receipt: Any) -> bool:
+    from youtube_automation.visuals.image_extractor import extract_high_res_image
+
+    name = chip.evaluate("el => { const clone = el.cloneNode(true); clone.querySelectorAll('button').forEach(b => b.remove()); return clone.textContent.trim(); }")
+    # Current Flow renders a typed character chip without its name/ID. Its exact
+    # named picker selection plus receipt-bound image establishes the appearance.
+    typed_character = chip.locator("flow-character-ingredient-chip").count() == 1
+    if name != receipt.provider_name and not (not name and typed_character):
+        return False
+    exposed_id = chip.get_attribute("data-character-id")
+    if exposed_id and exposed_id != receipt.provider_id:
+        return False
+    images = [image for image in chip.locator("img").all() if image.is_visible()]
+    if len(images) != 1:
+        return False
+    url = images[0].get_attribute("src") or ""
+    expected = tuple(image for image in (receipt.portrait, receipt.body) if image is not None)
+    provider_id = _provider_image_id(url)
+    if provider_id and any(
+        provider_id == _provider_image_id(source)
+        for image in expected
+        for source in [image.source_url, *image.source_aliases]
+    ):
+        return True
+    if provider_id and not any(image.preview is not None for image in expected):
+        return False
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+        path = handle.name
+    try:
+        accepted_pixels = {image.pixel_sha256 for image in expected}
+        accepted_pixels.update(image.preview.pixel_sha256 for image in expected if image.preview is not None)
+        return bool(extract_high_res_image(page, images[0], path, min_size_kb=1)) and pixel_digest(path) in accepted_pixels
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def attach_episode_characters(page: Page, root: Path, shot: Shot, profile_index: str) -> None:
+    from youtube_automation.visuals.asset_studio import attach_episode_character
+
+    from .characters import read_character_receipt
+
+    brief = load_brief(root)
+    for character_id in shot.character_ids:
+        receipt = read_character_receipt(root, brief, character_id, profile_index=profile_index, project_url=page.url)
+        attach_episode_character(page, receipt.provider_name)
+    verify_adaptive_prompt_references(page, root, shot, profile_index)
 
 
 def _attach_uploaded_reference(
@@ -132,8 +245,20 @@ def _attach_uploaded_reference(
 
 
 def prepare_flow(root: Path, ask: Callable[[str], str]) -> tuple[ShotPlan, Brief]:
+    from .audio_adoption import (
+        assert_audio_lineage,
+        assert_current_audio_state,
+        capture_audio_state,
+        require_adopted_audio_review,
+    )
     brief = load_brief(root)
+    require_adopted_audio_review(root, brief)
     plan = ensure_shot_plan(root, ask)
+
+    with publication_guard():
+        audio_state = capture_audio_state(root)
+        assert_audio_lineage(root, brief, plan=plan)
+        require_adopted_audio_review(root, brief)
     enforce_visual_budget(root, plan)
     if brief.version >= 3:
         require_editorial_review(root, plan, brief)
@@ -166,6 +291,7 @@ def prepare_flow(root: Path, ask: Callable[[str], str]) -> tuple[ShotPlan, Brief
             }
         )
     with publication_guard():
+        assert_current_audio_state(root, audio_state)
         atomic_write_json(str(root / "flow_prompts.json"), payloads)
     return plan, brief
 
@@ -228,11 +354,16 @@ def attach_exact_reference(page: Page, root: Path, asset_id: str) -> None:
     raise RuntimeError(f"Reference content differs from the accepted asset: {asset_id}")
 
 
-def verify_generated_assets(root: Path, plan: ShotPlan, brief: Brief) -> None:
+def verify_generated_assets(root: Path, plan: ShotPlan, brief: Brief, *, shot_ids: set[str] | None = None) -> None:
+    from .audio_adoption import require_adopted_audio_review
+
+    require_adopted_audio_review(root, brief, plan)
+    if shot_ids is not None and (not shot_ids or not shot_ids <= {shot.shot_id for shot in plan.shots}):
+        raise ValueError("Unknown or empty adaptive generation verification scope")
     missing = [
         s.asset_id
         for s in plan.shots
-        if (s.operation != "reuse" or uses_local_canvas(s)) and accepted_asset(root, s, brief) is None
+        if (shot_ids is None or s.shot_id in shot_ids) and (s.operation != "reuse" or uses_local_canvas(s)) and accepted_asset(root, s, brief) is None
     ]
     if missing:
         raise RuntimeError("Incomplete adaptive generation: " + ", ".join(missing))

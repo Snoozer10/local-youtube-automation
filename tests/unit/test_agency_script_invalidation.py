@@ -243,8 +243,15 @@ class TestAgencyScriptInvalidation:
 
 
 class TestAgencyCDPLoopback:
-    def test_clean_browser_tabs_connects_to_127_0_0_1_and_not_localhost(self):
+    def test_clean_browser_tabs_connects_to_127_0_0_1_and_not_localhost(
+        self, tmp_path, monkeypatch
+    ):
         """Test 4: Verify clean_browser_tabs connects to 127.0.0.1 and not localhost."""
+        from youtube_automation.production import ledger
+
+        monkeypatch.setattr(
+            ledger, "resource_database", lambda: tmp_path / "adaptive.sqlite3"
+        )
         mock_p = MagicMock()
         mock_browser = MagicMock()
         mock_context = MagicMock()

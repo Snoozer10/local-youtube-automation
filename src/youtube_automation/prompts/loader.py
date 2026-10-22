@@ -56,12 +56,14 @@ def _resolve_channel_dict(channel: Any | None = None) -> dict[str, Any]:
         if CONFIG_PATH.exists():
             try:
                 raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-                return raw.get("al_daheeh_master_pipeline_config", {})
+                config: dict[str, Any] = raw.get("al_daheeh_master_pipeline_config", {})
+                return config
             except Exception:
                 return {}
         return {}
     if hasattr(channel, "model_dump"):
-        return channel.model_dump()
+        dumped: dict[str, Any] = channel.model_dump()
+        return dumped
     if isinstance(channel, dict):
         return channel
     return {}
@@ -111,7 +113,7 @@ def _apply(text: str, vars_: dict[str, Any], channel: Any | None = None) -> str:
     # 3. Safe single-pass substitution for vars_ to avoid cascading injection
     if vars_:
         pattern = re.compile(r"\{([a-zA-Z0-9_]+)\}")
-        def repl(match: re.Match) -> str:
+        def repl(match: re.Match[str]) -> str:
             k = match.group(1)
             return str(vars_[k]) if k in vars_ else match.group(0)
         text = pattern.sub(repl, text)

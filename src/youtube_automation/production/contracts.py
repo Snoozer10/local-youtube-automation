@@ -145,6 +145,24 @@ class HookMicrobeat(Contract):
     local_ui: list[LocalUIPrimitive] = Field(default_factory=list, max_length=3)
 
 
+class EpisodeCharacter(Contract):
+    """An explicit episode identity, independent of any particular setting."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, frozen=True)
+    character_id: Identifier
+    name: Text
+    origin: Literal["source_narration", "illustrative"]
+    description: Text
+    rationale: Text
+    source_excerpt: str = Field(default="", max_length=6000)
+
+    @model_validator(mode="after")
+    def require_source(self) -> EpisodeCharacter:
+        if self.origin == "source_narration" and not self.source_excerpt.strip():
+            raise ValueError("Narrated characters require an exact source excerpt")
+        return self
+
+
 class EpisodeVisualStrategy(Contract):
     """Topic-specific visual direction compiled for one immutable source."""
 
@@ -170,6 +188,7 @@ class EpisodeVisualStrategy(Contract):
     motion_grammar: list[Text] = Field(min_length=1, max_length=8)
     max_consecutive_visual_mode: int = Field(default=2, ge=1, le=4)
     max_repeated_composition: int = Field(default=2, ge=1, le=4)
+    characters: list[EpisodeCharacter] = Field(default_factory=list, max_length=8)
 
     @model_validator(mode="after")
     def validate_hook(self) -> EpisodeVisualStrategy:
@@ -189,6 +208,9 @@ class EpisodeVisualStrategy(Contract):
             raise ValueError("Episode visual modes must be unique")
         if len(self.local_ui_kit) != len(set(self.local_ui_kit)):
             raise ValueError("Episode local UI primitives must be unique")
+        character_ids = [character.character_id for character in self.characters]
+        if len(character_ids) != len(set(character_ids)):
+            raise ValueError("Episode character IDs must be unique")
         return self
 
 
@@ -214,6 +236,10 @@ class Brief(Contract):
         elif self.visual_strategy is not None:
             raise ValueError("Version 2 briefs cannot carry a visual strategy")
         return self
+
+
+def episode_cast(brief: Brief) -> dict[str, EpisodeCharacter]:
+    return {character.character_id: character for character in brief.visual_strategy.characters} if brief.visual_strategy else {}
 
 
 def fingerprint(value: BaseModel | dict[str, Any] | str) -> str:
@@ -252,6 +278,14 @@ def _canonical_fingerprint_value(value: Any) -> Any:
     """Keep older channel fingerprints stable as visual-policy schemas evolve."""
     if isinstance(value, dict):
         normalized = {key: _canonical_fingerprint_value(item) for key, item in value.items()}
+        # Optional cast fields preserve fingerprints of already accepted, cast-free artifacts.
+        for key in ("characters", "character_ids"):
+            if normalized.get(key) == []:
+                normalized.pop(key, None)
+        if normalized.get("human_feedback_sha256") is None:
+            normalized.pop("human_feedback_sha256", None)
+        if normalized.get("decision") == "rejected" and normalized.get("source_sha256") is None:
+            normalized.pop("source_sha256", None)
         if normalized.get("visual_strategy") is None:
             normalized.pop("visual_strategy", None)
         if "channel_id" in normalized and normalized.get("max_non_diagram_scene_appearances") is None:
@@ -279,9 +313,19 @@ def load_channel(path: str | Path) -> Channel:
 
 
 def load_brief(run_dir: str | Path) -> Brief:
-    root = Path(run_dir)
-    brief = Brief.model_validate_json((root / "episode_brief.json").read_text(encoding="utf-8"))
+    path = Path(run_dir)
+    if path.is_file():
+        root = path.parent
+        brief_file = path
+    else:
+        root = path
+        brief_file = root / "episode_brief.json"
+    brief = Brief.model_validate_json(brief_file.read_text(encoding="utf-8"))
     raw = (root / "raw_transcript.txt").read_text(encoding="utf-8-sig")
     if fingerprint(raw) != brief.source_sha256:
         raise ValueError("Raw script changed; rebuild the episode brief before downstream work")
+    if brief.visual_strategy:
+        for character in brief.visual_strategy.characters:
+            if character.origin == "source_narration" and character.source_excerpt not in raw:
+                raise ValueError("Narrated character source excerpt is not in the raw script")
     return brief

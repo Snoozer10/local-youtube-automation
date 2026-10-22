@@ -11,6 +11,7 @@ import time
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, TypedDict
 
 from dotenv import load_dotenv
 
@@ -91,7 +92,7 @@ def get_config_value(target_key: str, default_val: str = "") -> str:
 CONFIG = PipelineConfig.from_env()
 
 
-def update_config_value(target_key, new_val):
+def update_config_value(target_key: str, new_val: str | int | float | bool) -> None:
     """Atomically updates or adds a specific KEY=VALUE pair in .env and syncs active memory."""
     os.environ[target_key] = str(new_val)
     lines = []
@@ -132,8 +133,11 @@ def update_config_value(target_key, new_val):
     logger.info(f"[SYSTEM] Successfully updated config variable: {target_key} -> {new_val}")
 
 
-def atomic_write_json(path: str, payload, *, ensure_ascii: bool = False, indent: int = 4) -> None:
-    """Crash-safe JSON write: temp file in the target dir -> fsync -> os.replace."""
+def atomic_write_json(path: str, payload: Any, *, ensure_ascii: bool = False, indent: int = 4) -> None:
+    """Crash-safe JSON write: temp file in the target dir -> fsync -> os.replace.
+
+    Payload is the stdlib JSON serialization boundary; unsupported values raise.
+    """
     directory = os.path.dirname(path) or "."
     tmp_path = None
     try:
@@ -162,10 +166,27 @@ def is_port_in_use(port: int | str) -> bool:
         return s.connect_ex(("127.0.0.1", port_num)) == 0
 
 
+class _BrowserFacts(TypedDict):
+    pid: int
+    creation_time: float
+    executable: str
+    cmdline: list[str]
+
+
+class _OwnedBrowserRecord(TypedDict):
+    pid: int
+    creation_time: float
+    executable: str
+    user_data_dir: str
+    profile: str
+    started_at: float
+
+
 OWNED_BROWSER_REGISTRY = Path(PROJECT_ROOT) / ".runtime" / "owned_browsers.json"
 
 
-def _read_owned_browsers() -> dict[str, dict]:
+def _read_owned_browsers() -> dict[str, Any]:
+    # Registry bytes are untrusted JSON; identity guards validate each record before use.
     try:
         value = json.loads(OWNED_BROWSER_REGISTRY.read_text(encoding="utf-8"))
         return value if isinstance(value, dict) else {}
@@ -173,7 +194,7 @@ def _read_owned_browsers() -> dict[str, dict]:
         return {}
 
 
-def _write_owned_browsers(value: dict[str, dict]) -> None:
+def _write_owned_browsers(value: dict[str, _OwnedBrowserRecord]) -> None:
     OWNED_BROWSER_REGISTRY.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(str(OWNED_BROWSER_REGISTRY), value)
 
@@ -202,38 +223,121 @@ def _listener_pids(port: int) -> set[int]:
     return found
 
 
-def kill_cdp_chrome(port: int | str = 9222):
-    """Terminate only the exact browser PID launched and registered by this workspace."""
+def _browser_process_facts(pid: int) -> _BrowserFacts:
+    """Return process identity fields needed to prove pipeline ownership."""
+    import psutil
+
+    process = psutil.Process(pid)
+    with process.oneshot():
+        return {
+            "pid": process.pid,
+            "creation_time": process.create_time(),
+            "executable": process.exe(),
+            "cmdline": process.cmdline(),
+        }
+
+
+def _normalized_browser_path(value: str) -> str:
+    return os.path.normcase(os.path.realpath(os.path.abspath(value)))
+
+
+def _browser_facts_match(facts: _BrowserFacts, executable: str, user_data_dir: str, profile: str) -> bool:
+    if type(facts.get("pid")) is not int or facts["pid"] <= 0:
+        return False
+    creation_time = facts.get("creation_time")
+    if isinstance(creation_time, bool) or not isinstance(creation_time, (int, float)):
+        return False
+    if not isinstance(facts.get("executable"), str):
+        return False
+    if _normalized_browser_path(facts["executable"]) != _normalized_browser_path(executable):
+        return False
+    command_line = facts.get("cmdline")
+    if not isinstance(command_line, (list, tuple)):
+        return False
+    user_data_values = [
+        arg.split("=", 1)[1]
+        for arg in command_line
+        if isinstance(arg, str) and arg.startswith("--user-data-dir=")
+    ]
+    profile_values = [
+        arg.split("=", 1)[1]
+        for arg in command_line
+        if isinstance(arg, str) and arg.startswith("--profile-directory=")
+    ]
+    return (
+        len(user_data_values) == 1
+        and _normalized_browser_path(user_data_values[0])
+        == _normalized_browser_path(user_data_dir)
+        and len(profile_values) == 1
+        and os.path.normcase(profile_values[0]) == os.path.normcase(profile)
+    )
+
+
+def _owned_browser_is_current(record: dict[str, Any], port: int) -> bool:
+    # The caller supplies a JSON registry row; this guard establishes its identity contract.
+    pid = record.get("pid")
+    creation_time = record.get("creation_time")
+    if type(pid) is not int or pid <= 0:
+        return False
+    if isinstance(creation_time, bool) or not isinstance(creation_time, (int, float)):
+        return False
+    if not all(isinstance(record.get(key), str) and record[key] for key in ("executable", "user_data_dir", "profile")):
+        return False
+    if _listener_pids(port) != {pid}:
+        return False
+    facts = _browser_process_facts(pid)
+    return (
+        facts.get("pid") == pid
+        and facts.get("creation_time") == creation_time
+        and _browser_facts_match(
+            facts, record["executable"], record["user_data_dir"], record["profile"]
+        )
+    )
+
+
+def kill_cdp_chrome(port: int | str = 9222) -> bool:
+    """Terminate only a currently verified PID and profile recorded by this workspace."""
     port = int(port)
     registry = _read_owned_browsers()
     record = registry.get(str(port))
-    if not isinstance(record, dict) or type(record.get("pid")) is not int:
+    if not isinstance(record, dict):
         if is_port_in_use(port):
             logger.warning(
                 f"[OWNERSHIP] Refusing to terminate unregistered browser on CDP port {port}."
             )
         return False
-    pid = int(record["pid"])
+
+    pid = record.get("pid")
     try:
+        # Legacy records without creation time or launch arguments fail closed.
+        if not _owned_browser_is_current(record, port):
+            logger.warning(
+                f"[OWNERSHIP] Refusing to terminate browser with unverified identity on CDP port {port}."
+            )
+            return False
+        # Re-read identity and listener immediately before acting to reduce PID-reuse races.
+        if not _owned_browser_is_current(record, port):
+            logger.warning(
+                f"[OWNERSHIP] Browser identity changed before termination on CDP port {port}."
+            )
+            return False
         if os.name == "nt":
-            if pid not in _listener_pids(port):
-                if not is_port_in_use(port):
-                    registry.pop(str(port), None)
-                    _write_owned_browsers(registry)
-                else:
-                    logger.warning(
-                        f"[OWNERSHIP] CDP port {port} belongs to an unregistered replacement process."
-                    )
-                return False
-            subprocess.run(
+            result = subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(pid)],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
                 timeout=15,
             )
+            if result.returncode != 0:
+                return False
         else:
-            os.kill(pid, 15)
+            import psutil
+
+            process = psutil.Process(pid)
+            if process.create_time() != record["creation_time"]:
+                return False
+            process.terminate()
         for _ in range(8):
             if not is_port_in_use(port):
                 registry.pop(str(port), None)
@@ -246,7 +350,7 @@ def kill_cdp_chrome(port: int | str = 9222):
     return False
 
 
-def map_profile_index(num_str):
+def map_profile_index(num_str: str | int) -> str:
     """Maps a human numeric index or explicit directory name to Chrome's native Profile directory names."""
     raw = str(num_str).strip()
     if raw.startswith("Profile ") or raw == "Default":
@@ -261,7 +365,7 @@ def map_profile_index(num_str):
         return "Default"
 
 
-def get_chrome_path():
+def get_chrome_path() -> str | None:
     """Dynamically locates Google Chrome executable on Windows across system and user paths."""
     local_app_data = os.environ.get("LOCALAPPDATA", "")
     program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
@@ -275,7 +379,7 @@ def get_chrome_path():
     return next((p for p in paths if p and os.path.exists(p)), None)
 
 
-def get_opera_path():
+def get_opera_path() -> str | None:
     """Dynamically locates Opera or Opera GX executable on Windows."""
     local_app_data = os.environ.get("LOCALAPPDATA", "")
     paths = [
@@ -289,7 +393,9 @@ def get_opera_path():
     return next((p for p in paths if os.path.exists(p)), None)
 
 
-def launch_browser_with_profile(browser_type, profile_index, port=None):
+def launch_browser_with_profile(
+    browser_type: str, profile_index: str | int, port: int | None = None,
+) -> bool:
     if port is None:
         port = int(get_config_value("CDP_PORT", "9222"))
 
@@ -302,7 +408,6 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
     # Dynamic assignments based on browser selection and .env overrides
     browser_name = "Opera" if is_opera else "Chrome"
     exe_path = get_opera_path() if is_opera else get_chrome_path()
-
     default_dir = r"C:\OperaDebugProfile" if is_opera else r"C:\ChromeDebugProfile"
     env_dir_key = "OPERA_USER_DATA_DIR" if is_opera else "CHROME_USER_DATA_DIR"
     user_data_dir = get_config_value(env_dir_key, default_dir)
@@ -317,30 +422,12 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
         f"[SYSTEM] Booting {browser_name} connected to Account Index {profile_index} ('{profile_dir}')"
     )
 
-    # Clear only a browser previously launched by this workspace. Never seize a user process.
+    # Replace only a previously verified owned browser; never seize an unrelated listener.
     if is_port_in_use(port) and not kill_cdp_chrome(port):
         logger.error(
             f"[OWNERSHIP] CDP port {port} is occupied by an unowned browser; refusing replacement."
         )
         return False
-
-    # Deep recursive lock cleaning across root and target profile directory
-    target_dirs = [user_data_dir, os.path.join(user_data_dir, profile_dir)]
-    for d in target_dirs:
-        if os.path.exists(d):
-            for lock_file in [
-                "SingletonLock",
-                "SingletonSocket",
-                "SingletonCookie",
-                "lockfile",
-                "Preferences.bad",
-            ]:
-                lock_path = os.path.join(d, lock_file)
-                if os.path.exists(lock_path):
-                    try:
-                        os.remove(lock_path)
-                    except Exception:
-                        pass
 
     cmd = [
         exe_path,
@@ -362,39 +449,93 @@ def launch_browser_with_profile(browser_type, profile_index, port=None):
     ]
     process = subprocess.Popen(cmd)
 
-    # Blocking loop to ensure debugger socket is open (explicit IPv4 to prevent IPv6 ::1 lookup failure)
+    def reject_launch(reason: str) -> bool:
+        if process.poll() is None:
+            process.terminate()
+        logger.error(f"[OWNERSHIP] Refusing browser launch on CDP port {port}: {reason}.")
+        return False
+
     url = f"http://127.0.0.1:{port}/json/version"
+    last_transport_error: urllib.error.URLError | ConnectionRefusedError | TimeoutError | None = None
     for _ in range(15):
         time.sleep(1)
         try:
-            with urllib.request.urlopen(url, timeout=1) as response:
-                if response.status == 200:
-                    listener_pids = _listener_pids(int(port))
-                    listener_pid = process.pid if process.pid in listener_pids else None
-                    if listener_pid is None and len(listener_pids) == 1:
-                        listener_pid = next(iter(listener_pids))
-                    if listener_pid is None:
-                        process.terminate()
-                        logger.error(
-                            f"[OWNERSHIP] Could not prove ownership of the listener on CDP port {port}."
-                        )
-                        return False
-                    registry = _read_owned_browsers()
-                    registry[str(int(port))] = {
-                        "pid": listener_pid,
-                        "executable": exe_path,
-                        "user_data_dir": user_data_dir,
-                        "profile": profile_dir,
-                        "started_at": time.time(),
-                    }
-                    _write_owned_browsers(registry)
-                    logger.info(
-                        f"[SYSTEM] {browser_name} debugging session successfully established!"
-                    )
-                    return True
-        except Exception:
+            response_context = urllib.request.urlopen(url, timeout=1)
+        except urllib.error.URLError as exc:
+            if isinstance(exc, urllib.error.HTTPError) or not isinstance(
+                exc.reason, (ConnectionRefusedError, TimeoutError)
+            ):
+                return reject_launch(f"ownership verification failed ({type(exc).__name__})")
+            last_transport_error = exc
             continue
+        except (ConnectionRefusedError, TimeoutError) as exc:
+            last_transport_error = exc
+            continue
+        except Exception as exc:
+            return reject_launch(f"ownership verification failed ({type(exc).__name__})")
 
+        try:
+            with response_context as response:
+                if response.status != 200:
+                    return reject_launch(f"unexpected CDP status {response.status}")
+                try:
+                    payload = json.loads(response.read())
+                except Exception as exc:
+                    return reject_launch(f"invalid CDP version response ({type(exc).__name__})")
+                websocket_url = payload.get("webSocketDebuggerUrl") if isinstance(payload, dict) else None
+                browser_version = payload.get("Browser") if isinstance(payload, dict) else None
+                websocket_prefix = f"ws://127.0.0.1:{port}/devtools/browser/"
+                if (
+                    not isinstance(browser_version, str)
+                    or not browser_version
+                    or not isinstance(websocket_url, str)
+                    or not websocket_url.startswith(websocket_prefix)
+                    or not websocket_url[len(websocket_prefix):]
+                ):
+                    return reject_launch("CDP version response schema is invalid")
+                expected_pid = process.pid
+                if _listener_pids(int(port)) != {expected_pid}:
+                    return reject_launch("listener PID does not exactly match launched PID")
+                facts = _browser_process_facts(expected_pid)
+                if not _browser_facts_match(facts, exe_path, user_data_dir, profile_dir):
+                    return reject_launch("process image or browser profile does not match launch")
+                if facts.get("pid") != expected_pid:
+                    return reject_launch("process identity changed after launch")
+                # Recheck both sides immediately before registering ownership.
+                if _listener_pids(int(port)) != {expected_pid}:
+                    return reject_launch("listener changed during ownership verification")
+                final_facts = _browser_process_facts(expected_pid)
+                if (
+                    final_facts.get("pid") != expected_pid
+                    or final_facts.get("creation_time") != facts.get("creation_time")
+                    or not _browser_facts_match(final_facts, exe_path, user_data_dir, profile_dir)
+                ):
+                    return reject_launch("process identity changed during ownership verification")
+                if isinstance(final_facts.get("creation_time"), bool) or not isinstance(
+                    final_facts.get("creation_time"), (int, float)
+                ):
+                    return reject_launch("process creation time is unavailable")
+                registry = _read_owned_browsers()
+                registry[str(int(port))] = {
+                    "pid": expected_pid,
+                    "creation_time": final_facts["creation_time"],
+                    "executable": _normalized_browser_path(final_facts["executable"]),
+                    "user_data_dir": _normalized_browser_path(user_data_dir),
+                    "profile": profile_dir,
+                    "started_at": time.time(),
+                }
+                _write_owned_browsers(registry)
+                logger.info(
+                    f"[SYSTEM] {browser_name} debugging session successfully established!"
+                )
+                return True
+        except Exception as exc:
+            return reject_launch(f"ownership verification failed ({type(exc).__name__})")
+
+    if last_transport_error is not None:
+        return reject_launch(
+            f"CDP endpoint did not become ready after 15 observations ({type(last_transport_error).__name__})"
+        )
     logger.error(f"[ERROR] {browser_name} failed to start or bind to port {port}.")
     if process.poll() is None:
         process.terminate()
@@ -541,7 +682,7 @@ def switch_owned_browser_profile(
     return False
 
 
-def _dispatch_telegram(bot_token, chat_id, message):
+def _dispatch_telegram(bot_token: str, chat_id: str, message: str) -> None:
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     data = json.dumps({"chat_id": chat_id, "text": message}, ensure_ascii=False).encode("utf-8")
     try:
@@ -552,7 +693,7 @@ def _dispatch_telegram(bot_token, chat_id, message):
         logger.warning(f"[WARNING] Async Telegram notification failed: {e}")
 
 
-def send_telegram_notification(message):
+def send_telegram_notification(message: str) -> None:
     """Sends a non-blocking push notification to Telegram in a background worker thread."""
     bot_token = get_config_value("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = get_config_value("TELEGRAM_CHAT_ID", "").strip()

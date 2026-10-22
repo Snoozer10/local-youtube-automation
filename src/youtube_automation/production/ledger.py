@@ -8,16 +8,31 @@ import threading
 import time
 import uuid
 from collections.abc import Iterator
-from contextlib import closing, contextmanager
+from contextlib import ExitStack, closing, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from youtube_automation.core import failure_record
+
 _Lease = tuple["Ledger", str, str, int]
 _active_leases: ContextVar[tuple[_Lease, ...]] = ContextVar(
     "production_leases", default=()
 )
+
+
+_publication_scope: ContextVar[tuple[str, tuple[_Lease, ...]] | None] = ContextVar(
+    "publication_scope", default=None
+)
+
+
+def lease_database() -> Path:
+    """Use the current claim domain when nesting a new resource lease."""
+    active = _active_leases.get()
+    if active:
+        return Path(active[0][0].path)
+    return resource_database()
 
 
 @dataclass(frozen=True)
@@ -32,38 +47,48 @@ def resource_database() -> Path:
 
 @contextmanager
 def publication_guard() -> Iterator[None]:
-    """Fence short filesystem publication while a replacement claim is excluded.
-
-    Direct offline callers have no lease; CLI/device entrypoints must hold one.
-    Never hold this transaction across browser operations or encoding.
-    """
+    """Serialize short publications across direct callers and every claim ledger."""
     active = _active_leases.get()
-    if not active:
+    publication_path = resource_database().resolve()
+    nested = _publication_scope.get()
+    if nested is not None:
+        if nested != (str(publication_path), active):
+            raise RuntimeError("Nested publication cannot change its lease or database domain")
         yield
         return
-    databases = {str(Path(ledger.path).resolve()) for ledger, _, _, _ in active}
-    if len(databases) != 1:
+    databases = {str(Path(item[0].path).resolve()) for item in active}
+    if len(databases) > 1:
         raise RuntimeError("Nested production leases must share one ledger")
-    ledger = active[0][0]
-    with ledger.connection() as conn:
-        conn.execute("BEGIN IMMEDIATE")
+    publication_path.parent.mkdir(parents=True, exist_ok=True)
+    # Always lock the fixed installation database first, even for a custom claim DB.
+    mutex = Ledger(publication_path)
+    claim_ledger = active[0][0] if active else mutex
+    with ExitStack() as stack:
+        publication = stack.enter_context(mutex.connection())
+        publication.execute("BEGIN IMMEDIATE")
+        claims = publication
+        if Path(claim_ledger.path).resolve() != publication_path:
+            claims = stack.enter_context(claim_ledger.connection())
+            claims.execute("BEGIN IMMEDIATE")
+        token = _publication_scope.set((str(publication_path), active))
         try:
             now = time.time()
             for _, resource, owner, fence in active:
-                row = conn.execute("SELECT * FROM jobs WHERE key=?", (resource,)).fetchone()
-                if (
-                    row is None
-                    or row["owner"] != owner
-                    or row["fence"] != fence
-                    or row["state"] != "RUNNING"
-                    or row["expires"] <= now
-                ):
+                row = claims.execute("SELECT * FROM jobs WHERE key=?", (resource,)).fetchone()
+                if (row is None or row["owner"] != owner or row["fence"] != fence
+                        or row["state"] != "RUNNING" or row["expires"] <= now):
                     raise RuntimeError("Lost production lease; publication blocked")
             yield
-            conn.commit()
+            if claims is not publication:
+                claims.commit()
+            publication.commit()
         except BaseException:
-            conn.rollback()
+            if claims is not publication:
+                claims.rollback()
+            publication.rollback()
             raise
+        finally:
+            _publication_scope.reset(token)
 
 
 class Ledger:
@@ -286,6 +311,8 @@ def _maintained_claim(
 @contextmanager
 def leased_resource(path: str | Path, resource: str) -> Iterator[None]:
     """Exclusive shared-host resource; distinct claims may nest and fence publication."""
+    if _publication_scope.get() is not None:
+        raise RuntimeError("Cannot acquire a production lease during publication")
     database = Path(path)
     database.parent.mkdir(parents=True, exist_ok=True)
     ledger = Ledger(database)
@@ -307,7 +334,9 @@ def durable_stage(
     force: bool = False,
     detail: dict[str, Any] | None = None,
 ) -> Iterator[bool]:
-    """Claim one content-bound stage, skip success, and open a bounded failure circuit."""
+    """Claim one content-bound stage and record its one selected body failure."""
+    if _publication_scope.get() is not None:
+        raise RuntimeError("Cannot acquire a production lease during publication")
     database = Path(path)
     database.parent.mkdir(parents=True, exist_ok=True)
     ledger = Ledger(database)
@@ -329,6 +358,9 @@ def durable_stage(
             f"Stage circuit is open after {max_attempts} failed attempts: {key}; use --force-retry after correcting the cause"
         )
     assert decision.fence is not None
+    stage_detail = detail or {}
+    stage_name = str(stage_detail.get("stage") or key)
+    run_dir = stage_detail.get("run")
     with _maintained_claim(
         ledger,
         key,
@@ -337,4 +369,5 @@ def durable_stage(
         seconds=60,
         detail=detail,
     ):
-        yield True
+        with failure_record.capture(stage_name, run_dir=run_dir):
+            yield True

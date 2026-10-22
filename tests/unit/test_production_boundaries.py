@@ -608,3 +608,36 @@ def test_visual_only_profile_change_without_analyze_ledger_still_invalidates_pla
 
     assert executed == ["analyze"]
     assert invalidated == [("plan", fingerprint(old), fingerprint(upgraded))]
+
+
+def test_cli_missing_strategy_migration_owns_invalidation_and_compiles_once(tmp_path, monkeypatch):
+    from tests.unit.test_production_briefs import migration_fixture
+    from youtube_automation.production import cli
+    from youtube_automation.production.contracts import Channel
+
+    old_channel = Channel(channel_id="cli", name="CLI", audience="adults", language="English",
+                          dialect="standard", voice="Charon", tone="calm", style="illustration",
+                          allowed_treatments=["subject_scene"])
+    root = tmp_path / "run"
+    _, target, strategy = migration_fixture(root, old_channel)
+    profile = tmp_path / "profile.json"
+    profile.write_text(old_channel.model_dump_json())
+    database = tmp_path / "jobs.sqlite3"
+    monkeypatch.setattr(cli, "resource_database", lambda: database)
+    monkeypatch.setattr(cli, "ensure_brief", lambda *_a, **_k: pytest.fail("duplicate ensure_brief"))
+    arguments = ["analyze", "--run-dir", str(root), "--channel-profile", str(profile)]
+    cli.main(arguments)
+    profile.write_text(target.model_dump_json())
+    asks = []
+
+    @contextmanager
+    def transport(**_kwargs):
+        yield lambda prompt: asks.append(prompt) or strategy.model_dump_json()
+
+    monkeypatch.setattr(cli, "gemini_transport", transport)
+    monkeypatch.setattr(cli, "invalidate_stage", lambda *_a, **_k: pytest.fail("premature generic invalidation"))
+    cli.main(arguments)
+    cli.main(arguments)
+    assert len(asks) == 1
+    assert not (root / "shot_plan.json").exists()
+    assert len(list((root / ".adaptive_history").rglob("shot_plan.json"))) == 1

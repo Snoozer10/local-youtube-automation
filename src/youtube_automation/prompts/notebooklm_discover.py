@@ -503,7 +503,7 @@ class NotebookLMDiscoverEngine:
             logger.error(f"[Discover] Failed to capture diagnostic snapshot: {exc}")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="NotebookLM Web Discover & Ingestion Engine")
     parser.add_argument(
         "--notebook-url",

@@ -1,6 +1,15 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Mapping
+from typing import Any, TypedDict
+
+
+class EncoderConfig(TypedDict):
+    video_codec: str
+    encoder_name: str
+    hwaccel: str
+    encoder_args: list[str]
 
 
 def _probe_encoder(encoder_name: str) -> bool:
@@ -27,8 +36,8 @@ def _probe_encoder(encoder_name: str) -> bool:
         return False
 
 
-def _build_encoder_config(encoder: str, config: dict) -> dict:
-    base = {
+def _build_encoder_config(encoder: str, config: Mapping[str, Any]) -> EncoderConfig:
+    base: EncoderConfig = {
         "video_codec": encoder,
         "encoder_name": encoder,
         "hwaccel": "qsv" if "qsv" in encoder else ("cuda" if "nvenc" in encoder else "none"),
@@ -136,7 +145,7 @@ def _build_encoder_config(encoder: str, config: dict) -> dict:
     return base
 
 
-def detect_hardware_encoder(config: dict) -> dict:
+def detect_hardware_encoder(config: Mapping[str, Any]) -> EncoderConfig:
     if config.get("ENCODER_FORCE"):
         return _build_encoder_config(config["ENCODER_FORCE"], config)
 

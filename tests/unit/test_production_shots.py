@@ -1593,6 +1593,111 @@ def test_schulte_partial_plan_does_not_require_future_countdown_label():
     _validate_interactive_graphics(partial, timeline, complete=False)
 
 
+def test_word_timed_schulte_cues_are_optional_per_shot_and_canonical():
+    from youtube_automation.production.graphic_cues import bind_schulte_overlays
+    from youtube_automation.production.shots import SCHULTE_6X6
+
+    tokens = [
+        (0, "Schulte"), (4, "focus"), (4.5, "center"),
+        (6, "40"), (6.4, "seconds"),
+        (8, "ready"), (9, "1"), (10, "2"), (11, "3"), (12, "start"),
+    ]
+    timeline = {
+        "fps": 30,
+        "total_frames": 450,
+        "words": [
+            {"text": text, "start": start, "end": start + 0.2}
+            for start, text in tokens
+        ],
+        "spans": [
+            {
+                "index": 0,
+                "start_frame": 0,
+                "end_frame": 240,
+                "text": "Schulte table: focus on the center; 40 seconds",
+            },
+            {
+                "index": 1,
+                "start_frame": 240,
+                "end_frame": 450,
+                "text": "Ready 1 2 3 Start!",
+            },
+        ],
+    }
+    segments = []
+    for index, (start, end) in enumerate(((0, 120), (120, 240), (240, 360), (360, 450))):
+        duration = end - start
+        base = shot(
+            shot_id=f"grid_{index}",
+            scene_id="schulte_grid",
+            asset_id="schulte_grid_asset",
+            entity_ids=["schulte_grid"],
+            start_frame=start,
+            end_frame=end,
+            span_ids=[0, 1],
+            narrative_role="diagram",
+            treatment="mechanism",
+            subject="Schulte grid",
+            visible_state="A fixed numbered grid fills the frame",
+            setting="Clean graphic field",
+            framing="diagram",
+            composition="Branded high-contrast local challenge",
+            operation="local_canvas",
+            local_composition="schulte_challenge",
+            overlays=[
+                {
+                    "kind": "data_grid",
+                    "preset": "schulte_6x6",
+                    "start_frame": 0,
+                    "end_frame": duration,
+                },
+                {
+                    "kind": "challenge_frame",
+                    "start_frame": 0,
+                    "end_frame": duration,
+                    "text": "Focus",
+                },
+            ],
+        )
+        segments.append(
+            base.model_copy(
+                update={"overlays": bind_schulte_overlays(base, timeline)}
+            )
+        )
+
+    plan = ShotPlan(
+        version=3,
+        shots=segments,
+        brief_sha256="a" * 64,
+        timeline_sha256=fingerprint(timeline),
+        fps=30,
+        total_frames=450,
+        editorial_policy=resolve_editorial_policy(version_two_brief()),
+    )
+
+    cue_kinds = [
+        {overlay.kind for overlay in segment.overlays}
+        & {"fixation_cue", "timer", "start_transition"}
+        for segment in segments
+    ]
+    assert cue_kinds[0] == set()
+    assert cue_kinds[1] == {"fixation_cue", "timer"}
+    assert cue_kinds[2] == {"fixation_cue", "timer", "start_transition"}
+    assert cue_kinds[3] == {"fixation_cue", "timer", "start_transition"}
+    assert all(
+        next(o for o in segment.overlays if o.kind == "data_grid").cells
+        == SCHULTE_6X6
+        for segment in segments
+    )
+    assert [
+        (o.text, o.start_frame, o.end_frame)
+        for o in segments[3].overlays
+        if o.kind == "start_transition"
+    ] == [("Start!", 0, 30)]
+
+    _validate_interactive_graphics(plan, timeline, complete=True)
+
+
 def test_schulte_grid_continuity_is_enforced_in_partial_plans():
     brief = version_two_brief()
     timeline = {
@@ -2230,7 +2335,7 @@ def test_local_canvas_is_reserved_for_local_full_frame_data_diagrams():
         shot(operation="local_canvas", overlays=[overlay])
 
 
-def test_branded_schulte_composition_requires_all_playability_layers():
+def test_branded_schulte_composition_requires_grid_and_frame():
     base = {
         "narrative_role": "diagram",
         "treatment": "mechanism",
@@ -2246,7 +2351,7 @@ def test_branded_schulte_composition_requires_all_playability_layers():
             "end_frame": 60,
         }
     ]
-    with pytest.raises(ValueError, match="branded challenge layers"):
+    with pytest.raises(ValueError, match="immutable grid and frame"):
         shot(**base, overlays=incomplete)
 
     complete = incomplete + [

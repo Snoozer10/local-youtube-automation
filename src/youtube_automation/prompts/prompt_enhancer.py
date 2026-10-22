@@ -22,6 +22,7 @@ from typing import Any
 from youtube_automation.prompts.validator import (
     STRICT_NEGATIVE_PROMPT,
     FrameItem,
+    SequenceMetadata,
     VisualPrompt,
     flatten_visual_prompt_to_diffusion_text,
     purge_subtitle_phrases,
@@ -578,7 +579,7 @@ def enhance_frame_item(item: FrameItem | dict[str, Any]) -> FrameItem:
         timestamp=str(raw.get("timestamp", "")),
         sequence_type=str(raw.get("sequence_type", "STANDALONE")),
         layout_classification=str(raw.get("layout_classification", "")),
-        sequence_metadata=seq_meta,
+        sequence_metadata=SequenceMetadata.model_validate(seq_meta),
         visual_density=str(raw.get("visual_density", "MINIMALIST_MACRO")),
         visual_prompt=enhanced_vp,
     )

@@ -27,6 +27,7 @@ from youtube_automation.production.shots import (
     SemanticShotPatch,
     Shot,
     ShotBatch,
+    ShotPlan,
     _bind_repair_content,
     _compile_semantic_batch,
     _content_repair_patch_shape,
@@ -42,6 +43,8 @@ from youtube_automation.production.shots import (
     _validate_hook_repair_partition,
     ensure_shot_plan,
     migrate_semantic_checkpoint,
+    resolve_editorial_policy,
+    validate_plan,
 )
 
 HOOK_IDS = ("problem", "gap", "promise")
@@ -1956,7 +1959,7 @@ def test_progressive_schulte_states_do_not_escape_as_late_composition_repetition
     assert len([shot for shot in plan.shots if shot.local_composition == "schulte_challenge"]) == 3
 
 
-def test_schulte_compiler_emits_immutable_grid_and_full_branded_layer_set():
+def test_schulte_compiler_preserves_grid_without_inventing_unspoken_cues():
     brief = _brief()
     timeline = _timeline(["one", "two", "three"])
     units = _narration_units(timeline, 0, timeline["total_frames"])
@@ -1983,12 +1986,8 @@ def test_schulte_compiler_emits_immutable_grid_and_full_branded_layer_set():
     assert shot.treatment == "detail"
     assert set(overlays) == {
         "data_grid",
-        "timer",
         "challenge_frame",
         "rule_reveal",
-        "fixation_cue",
-        "target_indicator",
-        "start_transition",
     }
     assert overlays["data_grid"].cells == SCHULTE_6X6
     assert overlays["data_grid"].rows == overlays["data_grid"].columns == 6
@@ -2247,3 +2246,111 @@ def test_version_two_path_still_accepts_full_shot_batch_and_loads_completed_plan
         tmp_path, lambda _: pytest.fail("Completed version-2 plan must load without regeneration")
     )
     assert loaded == plan
+
+
+def test_hook_duration_repair_preserves_following_non_hook_coverage():
+    timeline = _timeline([f"word{index}" for index in range(20)], seconds_per_word=1)
+    brief = _brief()
+    units = _narration_units(timeline, 0, timeline["total_frames"], target_seconds=1)
+    batch = SemanticShotBatch(shots=[
+        _intent("problem", units[0].unit_id, units[5].unit_id),
+        _intent("gap", units[6].unit_id, units[11].unit_id,
+                visual_mode="kinetic_type", framing="close_up", beat_kind="question"),
+        _intent("promise", units[12].unit_id, units[17].unit_id,
+                visual_mode="challenge_ui", framing="insert", beat_kind="reveal"),
+        _intent("evidence", units[18].unit_id, units[19].unit_id,
+                visual_mode="human_context", framing="wide", beat_kind="claim"),
+    ])
+    with pytest.raises(SemanticPlanError) as caught:
+        _compile_semantic_batch(batch, units, brief, timeline, [], 0)
+    rejected_ids = set(next(issue for issue in caught.value.issues
+                           if issue.code == "HOOK_DURATION").beat_ids)
+    partition = _hook_repair_partition(batch, rejected_ids, units, brief, timeline["fps"])
+    repair = SemanticRepairBatch.model_validate({"shots": [
+        _intent("promise", units[12].unit_id, visual_mode="challenge_ui",
+                framing="insert", beat_kind="reveal").model_dump(
+                    exclude={"beat_id", "first_unit_id", "last_unit_id"}),
+        _intent("promise_tail", units[15].unit_id, visual_mode="comparison",
+                framing="medium", beat_kind="transition").model_dump(
+                    exclude={"beat_id", "first_unit_id", "last_unit_id"}),
+    ]})
+    patch = _bind_repair_content(repair, _hook_repair_patch_shape(partition, rejected_ids))
+    merged = _merge_semantic_patch(batch, patch, rejected_ids)
+    shots = _compile_semantic_batch(merged, units, brief, timeline, [], 0)
+    plan = ShotPlan(version=3, shots=shots, brief_sha256=fingerprint(brief),
+                    timeline_sha256=fingerprint(timeline), fps=timeline["fps"],
+                    total_frames=timeline["total_frames"],
+                    editorial_policy=resolve_editorial_policy(brief))
+    validate_plan(plan, timeline, brief)
+    assert [(shot.start_frame, shot.end_frame) for shot in plan.shots] == [
+        (0, 60), (60, 120), (120, 150), (150, 180), (180, 200),
+    ]
+    assert merged.shots[-1] == batch.shots[-1]
+
+
+@pytest.mark.parametrize("beat_kind", ["reveal", "instruction"])
+def test_compiled_schulte_preview_is_explanatory_and_instructions_require_full_board(beat_kind):
+    timeline = _timeline(["problem", "gap", "promise", "Schulte introduction"])
+    brief = _brief()
+    units = _narration_units(timeline, 0, timeline["total_frames"])
+    batch = _batch_for_units(units[:3])
+    batch.shots.append(_intent(
+        "schulte_intro", units[3].unit_id, visual_mode="challenge_ui", framing="diagram",
+        beat_kind=beat_kind, entity_ids=["schulte_canvas"],
+        graphic={"template": "schulte_challenge", "primary_text": "The number search task",
+                 "grid_layout": "preview", "timer_text": "00:40"},
+    ))
+    shots = _compile_semantic_batch(batch, units, brief, timeline, [], 0)
+    plan = ShotPlan(version=3, shots=shots, brief_sha256=fingerprint(brief),
+                    timeline_sha256=fingerprint(timeline), fps=timeline["fps"],
+                    total_frames=timeline["total_frames"],
+                    editorial_policy=resolve_editorial_policy(brief))
+    if beat_kind == "instruction":
+        with pytest.raises(ValueError, match="Schulte instructions require the full playable board"):
+            validate_plan(plan, timeline, brief)
+    else:
+        validate_plan(plan, timeline, brief)
+        grid = next(overlay for overlay in plan.shots[-1].overlays if overlay.kind == "data_grid")
+        assert grid.grid_layout == "preview"
+        assert (grid.x, grid.y, grid.width, grid.height) == (0.59, 0.24, 0.34, 0.60)
+
+
+@pytest.mark.parametrize("phase", ["fixed", "start", "running"])
+def test_compiled_schulte_preview_readout_is_allowed_but_actual_attempt_requires_full_board(phase):
+    words = ["problem", "gap", "promise", "Schulte"]
+    if phase == "running":
+        words.append("Continue the search")
+    timeline = _timeline(words)
+    spoken = ["Schulte", "40", "seconds"]
+    if phase != "fixed":
+        spoken += ["ready", "1", "2", "3", "start"]
+    timeline["words"] = timeline["words"][:3] + [
+        {"id": index + 3, "text": text, "start": 9 + index / 10,
+         "end": 9 + (index + 1) / 10}
+        for index, text in enumerate(spoken)
+    ] + timeline["words"][4:]
+    timeline["spans"][3]["text"] = " ".join(spoken)
+    brief = _brief()
+    units = _narration_units(timeline, 0, timeline["total_frames"])
+    batch = _batch_for_units(units[:3])
+    for index, unit in enumerate(units[3:]):
+        batch.shots.append(_intent(
+            f"schulte_{index}", unit.unit_id, visual_mode="challenge_ui", framing="diagram",
+            beat_kind="reveal", entity_ids=[f"schulte_canvas_{index}"],
+            graphic={"template": "schulte_challenge", "primary_text": "Search in order",
+                     "timer_text": "00:40",
+                     "grid_layout": "preview" if unit == units[-1] else "full"},
+        ))
+    shots = _compile_semantic_batch(batch, units, brief, timeline, [], 0)
+    plan = ShotPlan(version=3, shots=shots, brief_sha256=fingerprint(brief),
+                    timeline_sha256=fingerprint(timeline), fps=timeline["fps"],
+                    total_frames=timeline["total_frames"],
+                    editorial_policy=resolve_editorial_policy(brief))
+    timer = next(overlay for overlay in plan.shots[-1].overlays if overlay.kind == "timer")
+    if phase == "fixed":
+        assert timer.clock_start_frame is None
+        validate_plan(plan, timeline, brief)
+    else:
+        assert timer.clock_start_frame is not None
+        with pytest.raises(ValueError, match="Schulte attempts require the full playable board"):
+            validate_plan(plan, timeline, brief)

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "failure_code": "FLOW_REFERENCE_TOKEN_ROTATION",
+  "responsible_layer": "flow_reference_adapter",
+  "first_preview": "https://lh3.googleusercontent.com/asb/first-preview-token",
+  "reattached_preview": "https://lh3.googleusercontent.com/asb/rotated-preview-token",
+  "preview_dimensions": [512, 286],
+  "observed_same_pixel_sha256": "30039ba753f9d0b33b139e39ac3b845c19e834d49f25611d2741f19ed422f6a2",
+  "expected": "Match frozen canonical-bound preview pixels exactly across rotated URLs; reject changed pixels or exposed character identity."
+}

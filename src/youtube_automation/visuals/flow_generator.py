@@ -19,10 +19,16 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from functools import partial
+from typing import TYPE_CHECKING, Any
 
+from playwright.sync_api import BrowserContext, Locator, Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from playwright.sync_api import sync_playwright
+
+from youtube_automation.visuals.text_gate import TextGateConfig
+
+if TYPE_CHECKING:
+    from youtube_automation.production.contracts import Brief
 
 # Core & Planning DAG imports
 try:
@@ -57,7 +63,7 @@ try:
         dump_text_collision_debug,
     )
 except ImportError:
-    from youtube_automation.visuals.text_gate import (  # type: ignore[no-redef]
+    from youtube_automation.visuals.text_gate import (
         STRENGTHENED_NEGATIVE_PROMPT,
         check_text_collision,
         dump_text_collision_debug,
@@ -71,7 +77,7 @@ try:
         rotate_profile_index,
     )
 except ImportError:
-    from youtube_automation.core.utils import (  # type: ignore[no-redef]
+    from youtube_automation.core.utils import (
         get_config_value,
         kill_cdp_chrome,
         launch_browser_with_profile,
@@ -86,7 +92,7 @@ try:
         verify_pipeline_integrity,
     )
 except ImportError:
-    from youtube_automation.prompts.validator import (  # type: ignore[no-redef]
+    from youtube_automation.prompts.validator import (
         enforce_arabic_in_prompt,
         flatten_visual_prompt_to_diffusion_text,
         purge_subtitle_phrases,
@@ -379,7 +385,7 @@ _PROMPT_ROOT_SELECTORS = (
 
 
 def _prompt_scoped_locator(page: Any, target_selector: str) -> Any:
-    selectors = [f"{root} {target_selector}" for root in _PROMPT_ROOT_SELECTORS]
+    selectors = [f"{root} :is({target_selector})" for root in _PROMPT_ROOT_SELECTORS]
     return page.locator(", ".join(selectors))
 
 
@@ -462,7 +468,7 @@ def clear_attached_prompt_chips(page: Any) -> None:
         pass
 
 
-def summon_character_chip(page: Any, character_name: str) -> bool:
+def summon_character_chip(page: Page, character_name: str) -> bool:
     """DOM Helper: Summons a registered Character preset into Google Flow's prompt bar.
 
     Supports both Arabic ('الشخصيات') and English ('Characters') interfaces:
@@ -728,7 +734,7 @@ class RollingSha256Ledger:
         return collision, file_hash
 
 
-def check_flow_quota_or_errors(page: Any, target_locator: Any = None) -> str | None:
+def check_flow_quota_or_errors(page: Page, target_locator: Locator | None = None) -> str | None:
     """Continuous interceptor for quota exhaustion, API rejection, and blocking errors.
 
     If target_locator is provided, checks for both fatal quota errors and card-specific errors
@@ -1369,7 +1375,7 @@ def is_flow_page_healthy(page: Any) -> bool:
 
 
 def setup_flow_ui(
-    page: Any,
+    page: Page,
     target_flow_model: str = "Nano Banana Pro",
     target_flow_count: str = "1x",
     project_url: str | None = None,
@@ -1417,10 +1423,12 @@ def setup_flow_ui(
     if not resumed:
         print("\n[FLOW] Workspace resume unavailable. Initializing via Google Flow Homepage...", flush=True)
         try:
-            page.goto(FlowSelectors.URL, wait_until="domcontentloaded", timeout=30000)
+            if not page.url.startswith("https://flow.google.com"):
+                page.goto(FlowSelectors.URL, wait_until="domcontentloaded", timeout=30000)
         except Exception as nav_e:
             print(f"  ⚠️ Primary homepage navigation warning: {nav_e}. Retrying...", flush=True)
-            page.goto("https://flow.google.com/", wait_until="domcontentloaded", timeout=30000)
+            if not page.url.startswith("https://flow.google.com"):
+                page.goto("https://flow.google.com/", wait_until="domcontentloaded", timeout=30000)
 
         wake_up_page()
         page.wait_for_timeout(2000)
@@ -1467,7 +1475,9 @@ def setup_flow_ui(
     # Configure Model & Output Count Settings
     print(f"  Configuring Flow Model: {target_flow_model} | Count: {target_flow_count}...")
     try:
-        st = page.locator("[aria-label='Settings trigger'], .settings-trigger-button").first
+        st = page.locator(
+            "[aria-label='Settings trigger'], .settings-trigger-button, button:has-text('x1'), button:has-text('x2'), button:has-text('Nano Banana')"
+        ).first
         if st.is_visible():
             st_text = st.inner_text().strip()
             # Check if model or aspect ratio or count needs updating
@@ -1562,15 +1572,68 @@ def _retry_gemini_call(
 # ==========================================
 # MAIN ORCHESTRATOR
 # ==========================================
-def main(run_folder: str | None = None) -> None:
+def _select_canary_storyboard(frames: list[StoryboardFrame], shot_ids: list[str]) -> list[StoryboardFrame]:
+    """Keep canonical order and require a closed, explicitly bounded reference set."""
+    wanted = set(shot_ids)
+    if not 1 <= len(wanted) <= 3 or len(wanted) != len(shot_ids):
+        raise ValueError("A canary requires one to three distinct shot IDs")
+    selected = [frame for frame in frames if frame.raw_payload.get("adaptive_shot", {}).get("shot_id") in wanted]
+    if {frame.raw_payload["adaptive_shot"]["shot_id"] for frame in selected} != wanted:
+        raise ValueError("Canary target is not a current adaptive generation frame")
+    assets = {frame.raw_payload["adaptive_shot"]["asset_id"] for frame in selected}
+    if any(frame.raw_payload["adaptive_shot"].get("reference_asset_id") not in assets | {None} for frame in selected):
+        raise ValueError("Canary target is missing its scene-reference dependency")
+    return selected
+
+
+def _storyboard_character_ids(frames: list[StoryboardFrame]) -> set[str]:
+    return {
+        character_id
+        for frame in frames
+        for character_id in frame.raw_payload.get("adaptive_shot", {}).get("character_ids", [])
+    }
+
+
+def main(run_folder: str | None = None, *, canary_shot_ids: list[str] | None = None) -> None:
     from youtube_automation.production.ledger import leased_resource, resource_database
 
     selected = run_folder or (sys.argv[1] if len(sys.argv) > 1 else None)
+    if canary_shot_ids is not None and (selected is None or not 1 <= len(set(canary_shot_ids)) <= 3 or len(set(canary_shot_ids)) != len(canary_shot_ids)):
+        raise ValueError("A canary requires an explicit run and one to three distinct shot IDs")
     with leased_resource(resource_database(), "browser"):
-        return _main(selected)
+        return _main(selected) if canary_shot_ids is None else _main(selected, canary_shot_ids=canary_shot_ids)
 
 
-def _main(run_folder: str | None = None) -> None:
+def _select_flow_page(context: BrowserContext) -> Page:
+    """Reuse a non-edit Flow page or create one without disturbing borrowed tabs."""
+    for page in context.pages:
+        if (
+            ("labs.google" in page.url or "fx/tools/flow" in page.url or "flow.google.com" in page.url)
+            and "/edit/" not in page.url
+        ):
+            return page
+    return context.new_page()
+
+
+def _guard_flow_retry(canary_shot_ids: list[str] | None) -> None:
+    """Fail closed before any retry action during a one-shot canary."""
+    if canary_shot_ids is not None:
+        raise RuntimeError("Canary cannot retry a failed Flow attempt")
+
+
+def _retry_flow_action(
+    canary_shot_ids: list[str] | None,
+    reserve: Callable[[], object] | None,
+    dispatch: Callable[[], object],
+) -> None:
+    """Keep retry accounting and dispatch behind the canary stop boundary."""
+    _guard_flow_retry(canary_shot_ids)
+    if reserve is not None:
+        reserve()
+    dispatch()
+
+
+def _main(run_folder: str | None = None, *, canary_shot_ids: list[str] | None = None) -> None:
     """Main CLI execution loop for Google Flow visual generation."""
     from pathlib import Path
 
@@ -1621,7 +1684,9 @@ def _main(run_folder: str | None = None) -> None:
 
         try:
             with sync_playwright() as p:
-                current_profile_idx = get_config_value("ACTIVE_PROFILE_INDEX", "1")
+                from youtube_automation.core.utils import active_profile_index
+
+                current_profile_idx = str(active_profile_index())
                 browser_type = get_config_value("BROWSER_TYPE", "chrome")
                 cdp_port = int(get_config_value("CDP_PORT", "9222"))
 
@@ -1637,14 +1702,12 @@ def _main(run_folder: str | None = None) -> None:
                 clean_context_tabs(context)
 
                 gemini_page = None
-                flow_page = None
                 for page in context.pages:
                     if "gemini.google.com" in page.url:
                         gemini_page = page
-                    elif "labs.google" in page.url or "fx/tools/flow" in page.url or "flow.google.com" in page.url:
-                        flow_page = page
+                flow_page = _select_flow_page(context)
 
-                if not gemini_page:
+                if not gemini_page and canary_shot_ids is None:
                     gemini_page = context.new_page()
                     log("Navigating to Gemini Web App...")
                     try:
@@ -1656,10 +1719,8 @@ def _main(run_folder: str | None = None) -> None:
                     except Exception as e:
                         log(f"Warning: Gemini initial load: {e}")
 
-                if not flow_page:
-                    flow_page = context.new_page()
-
-                gemini_page.bring_to_front()
+                if gemini_page and canary_shot_ids is None:
+                    gemini_page.bring_to_front()
 
                 for _folder_idx, subfolder in enumerate(batch_queue, 1):
                     print("\n==================================================")
@@ -1705,18 +1766,31 @@ def _main(run_folder: str | None = None) -> None:
                                     sentences.append(text)
 
                     storyboard_prompts = []
+                    canary_character_ids: set[str] | None = None
 
-                    adaptive_plan = adaptive_brief = None
+                    adaptive_plan = None
+                    adaptive_brief: Brief
                     if os.path.exists(os.path.join(subfolder, "episode_brief.json")):
                         from pathlib import Path
 
                         from youtube_automation.production.briefs import browser_ask
                         from youtube_automation.production.contracts import fingerprint
                         from youtube_automation.production.flow import prepare_flow
-                        adaptive_plan, adaptive_brief = prepare_flow(Path(subfolder), browser_ask(gemini_page, target_planner_model))
+                        if canary_shot_ids is not None:
+                            def request(prompt: str) -> str:
+                                raise RuntimeError("Canary requires a current validated plan and complete critic review; model requests are disabled")
+                        else:
+                            if gemini_page is None:
+                                raise RuntimeError("Adaptive planning requires the owned Gemini page")
+                            request = browser_ask(gemini_page, target_planner_model)
+                        adaptive_plan, adaptive_brief = prepare_flow(Path(subfolder), request)
                         manifest = PipelineManifest.load_or_create(subfolder, fingerprint(adaptive_plan))
                         storyboard_prompts = parse_json_prompts(prompts_file)
+                    elif canary_shot_ids is not None:
+                        raise ValueError("Canary selection requires an adaptive brief")
                     elif sentences:
+                        if gemini_page is None:
+                            raise RuntimeError("Legacy planning requires the owned Gemini page")
                         transcript_text = "\n".join(
                             f"[{ts}] {s}" for ts, s in zip(timestamps, sentences, strict=False)
                         )
@@ -1800,6 +1874,12 @@ def _main(run_folder: str | None = None) -> None:
                             [frame.raw_payload for frame in storyboard_prompts], expected_total
                         )
 
+                    if canary_shot_ids is not None:
+                        if adaptive_plan is None:
+                            raise ValueError("Canary selection requires an adaptive plan")
+                        storyboard_prompts = _select_canary_storyboard(storyboard_prompts, canary_shot_ids)
+                        canary_character_ids = _storyboard_character_ids(storyboard_prompts)
+
                     # ---------------------------------------------------------
                     # PHASE 2: IMAGE RENDERING (GOOGLE FLOW WITH FREEZE PROTECTION)
                     # ---------------------------------------------------------
@@ -1820,6 +1900,20 @@ def _main(run_folder: str | None = None) -> None:
                         with open(url_checkpoint_file, encoding="utf-8") as f:
                             saved_project_url = f.read().strip()
 
+                    if adaptive_plan:
+                        from youtube_automation.production.characters import (
+                            resolve_character_project,
+                        )
+
+                        saved_project_url = resolve_character_project(
+                            Path(subfolder),
+                            adaptive_plan,
+                            adaptive_brief,
+                            profile_index=str(current_profile_idx),
+                            saved_project_url=saved_project_url,
+                            character_ids=canary_character_ids,
+                        )
+
                     active_project_url = setup_flow_ui(
                         flow_page, target_flow_model, target_flow_count, saved_project_url
                     )
@@ -1833,6 +1927,20 @@ def _main(run_folder: str | None = None) -> None:
                         except Exception:
                             pass
 
+                    if adaptive_plan:
+                        from youtube_automation.production.characters import (
+                            ensure_episode_characters,
+                        )
+
+                        ensure_episode_characters(
+                            flow_page,
+                            Path(subfolder),
+                            adaptive_plan,
+                            adaptive_brief,
+                            profile_index=str(current_profile_idx),
+                            project_url=active_project_url,
+                            character_ids=canary_character_ids,
+                        )
                     if not adaptive_plan:
                         # Pre-flight character and scene builder
                         try:
@@ -1897,6 +2005,7 @@ def _main(run_folder: str | None = None) -> None:
                         if adaptive_plan:
                             from youtube_automation.production.shots import Shot
                             adaptive_shot = Shot.model_validate(prompt_item.raw_payload["adaptive_shot"])
+                            shot_plan = adaptive_plan
                             image_name = f"{adaptive_shot.asset_id}.png"
                         save_path = os.path.join(image_dir, image_name)
                         if adaptive_shot:
@@ -1924,7 +2033,8 @@ def _main(run_folder: str | None = None) -> None:
                             )
 
                         if "project" in flow_page.url and "404" not in flow_page.url:
-                            active_project_url = flow_page.url
+                            _proj_match = re.search(r"https://flow\.google\.com/project/[a-zA-Z0-9_-]+", flow_page.url)
+                            active_project_url = _proj_match.group(0) if _proj_match else flow_page.url
                             try:
                                 with open(url_checkpoint_file, "w", encoding="utf-8") as f:
                                     f.write(active_project_url)
@@ -1981,6 +2091,7 @@ def _main(run_folder: str | None = None) -> None:
 
                                     if adaptive_shot:
                                         from youtube_automation.production.flow import (
+                                            attach_episode_characters,
                                             attach_exact_reference,
                                         )
                                         from youtube_automation.production.shots import (
@@ -1989,6 +2100,8 @@ def _main(run_folder: str | None = None) -> None:
                                         clear_attached_prompt_chips(flow_page)
                                         if adaptive_shot.reference_asset_id:
                                             attach_exact_reference(flow_page, Path(subfolder), adaptive_shot.reference_asset_id)
+                                        if adaptive_shot.character_ids:
+                                            attach_episode_characters(flow_page, Path(subfolder), adaptive_shot, str(current_profile_idx))
                                         payload_text = generation_prompt(adaptive_shot, adaptive_brief)
                                         mode = "B" if adaptive_shot.reference_asset_id else "A"
                                     elif attach_count > 0:
@@ -2116,7 +2229,7 @@ def _main(run_folder: str | None = None) -> None:
                                         )
 
                                         verify_adaptive_prompt_references(
-                                            flow_page, Path(subfolder), adaptive_shot
+                                            flow_page, Path(subfolder), adaptive_shot, str(current_profile_idx)
                                         )
 
                                     pre_card_count = 0
@@ -2132,7 +2245,7 @@ def _main(run_folder: str | None = None) -> None:
                                         pass
 
                                     if adaptive_shot:
-                                        reserve_flow_submission(Path(subfolder), adaptive_plan)
+                                        reserve_flow_submission(Path(subfolder), shot_plan)
                                     submit_btn = flow_page.locator("button[aria-label*='Start generation' i], button:has-text('arrow_forward')").first
                                     if submit_btn.is_visible() and submit_btn.is_enabled():
                                         submit_btn.click(force=True)
@@ -2157,17 +2270,21 @@ def _main(run_folder: str | None = None) -> None:
                                             pass
 
                                         if box_text and "what do you want" not in box_text.lower():
+                                            _guard_flow_retry(canary_shot_ids)
                                             print(
                                                 "  🔄 Submission not detected. Re-triggering Enter..."
                                             )
-                                            if adaptive_shot:
-                                                reserve_flow_submission(Path(subfolder), adaptive_plan)
-                                            flow_page.keyboard.press("Enter")
+                                            _retry_flow_action(
+                                                canary_shot_ids,
+                                                partial(reserve_flow_submission, Path(subfolder), shot_plan) if adaptive_shot else None,
+                                                partial(flow_page.keyboard.press, "Enter"),
+                                            )
                                             card_spawned = card_spawn_handshake(
                                                 flow_page, pre_card_count, timeout_seconds=15.0, pre_image_srcs=pre_image_srcs
                                             )
 
                                     if not card_spawned:
+                                        _guard_flow_retry(canary_shot_ids)
                                         print("  ⚠️ Card spawn timed out after 45s. Forcing reload...")
                                         flow_page.reload()
                                         wait_for_flow_input_box(flow_page, timeout_seconds=15.0)
@@ -2207,6 +2324,7 @@ def _main(run_folder: str | None = None) -> None:
                                             "Something went wrong loading your media"
                                         )
                                         if failed_media_locator.is_visible():
+                                            _guard_flow_retry(canary_shot_ids)
                                             print(
                                                 "  ⚠️ Detected: 'Something went wrong loading your media' container."
                                             )
@@ -2224,9 +2342,11 @@ def _main(run_folder: str | None = None) -> None:
                                                         print(
                                                             f"  🔄 Clicking Google Flow's card retry button (Attempt {retry_attempt}/3)..."
                                                         )
-                                                        if adaptive_shot:
-                                                            reserve_flow_submission(Path(subfolder), adaptive_plan)
-                                                        retry_btn.click(force=True)
+                                                        _retry_flow_action(
+                                                            canary_shot_ids,
+                                                            partial(reserve_flow_submission, Path(subfolder), shot_plan) if adaptive_shot else None,
+                                                            partial(retry_btn.click, force=True),
+                                                        )
                                                         flow_page.wait_for_timeout(5000)
                                                         if not failed_media_locator.is_visible():
                                                             print(
@@ -2370,7 +2490,7 @@ def _main(run_folder: str | None = None) -> None:
                                             min_size_kb=20,
                                         )
                                         if saved:
-                                            gate_cfg = {
+                                            gate_cfg: TextGateConfig = {
                                                 "ENABLE_MSER_FALLBACK": get_config_value(
                                                     "FLOW_ENABLE_MSER_FALLBACK", "false"
                                                 ).strip().lower() in ("true", "1", "yes")
@@ -2421,6 +2541,7 @@ def _main(run_folder: str | None = None) -> None:
                                                         print(
                                                             f"  ⚠️ [QUADRUPLE-LOCK] Stale scrape collision detected! SHA-256 {file_hash[:12]} matches recent frame in ledger. Forcing Hard Reload Recovery..."
                                                         )
+                                                        _guard_flow_retry(canary_shot_ids)
                                                         _cleanup_collision_file(current_save_path)
                                                         flow_page.reload()
                                                         wait_for_flow_input_box(flow_page, timeout_seconds=15.0)
@@ -2455,13 +2576,15 @@ def _main(run_folder: str | None = None) -> None:
 
                                 except VisualBudgetExceeded:
                                     raise
-                                except PlaywrightTimeoutError:
-                                    last_attempt_error = "Playwright Timeout Error"
-                                    print("  ⚠️ Playwright Timeout Error.")
+                                except PlaywrightTimeoutError as error:
+                                    last_attempt_error = f"Playwright Timeout Error: {error}"
+                                    print(f"  ⚠️ {last_attempt_error}")
                                 except Exception as e:
                                     last_attempt_error = str(e)
                                     print(f"  ⚠️ Error: {e}")
 
+                                if canary_shot_ids is not None and not success:
+                                    raise RuntimeError("Canary stopped after one failed attempt: " + last_attempt_error)
                                 if not success and attempt < 3:
                                     print("  🔄 Clearing UI error state before retry...")
                                     flow_page.wait_for_timeout(2000)
@@ -2528,6 +2651,8 @@ def _main(run_folder: str | None = None) -> None:
                         except VisualBudgetExceeded:
                             raise
                         except Exception as e:
+                            if canary_shot_ids is not None:
+                                raise
                             print(f"[RECOVERY] Framework error: {e}")
                             consecutive_failures += 1
                             if (
@@ -2547,7 +2672,7 @@ def _main(run_folder: str | None = None) -> None:
                             time.sleep(3)
                             break
 
-                        if frame_limit > 0 and executed_generations_count >= frame_limit:
+                        if canary_shot_ids is None and frame_limit > 0 and executed_generations_count >= frame_limit:
                             print(
                                 f"\n[LIMIT] Reached FLOW_FRAME_LIMIT={frame_limit}. Halting test batch."
                             )
@@ -2555,10 +2680,13 @@ def _main(run_folder: str | None = None) -> None:
 
                     if adaptive_plan and not failover_triggered:
                         from youtube_automation.production.flow import verify_generated_assets
-                        verify_generated_assets(Path(subfolder), adaptive_plan, adaptive_brief)
+                        if canary_shot_ids is None:
+                            verify_generated_assets(Path(subfolder), adaptive_plan, adaptive_brief)
+                        else:
+                            verify_generated_assets(Path(subfolder), adaptive_plan, adaptive_brief, shot_ids=set(canary_shot_ids))
 
                 if not failover_triggered:
-                    print("\n✅ All topics processed successfully. Exiting.")
+                    print("\n[CANARY] Selected shots processed; full generation remains separate." if canary_shot_ids is not None else "\n✅ All topics processed successfully. Exiting.")
                     break
 
         except VisualBudgetExceeded:
@@ -2567,6 +2695,13 @@ def _main(run_folder: str | None = None) -> None:
             print("\n[MAIN] Interrupted by user. Shutting down gracefully...")
             sys.exit(130)
         except Exception as e:
+            if canary_shot_ids is not None:
+                raise
+            from youtube_automation.production.characters import CharacterSetupBlocked
+
+            if isinstance(e, CharacterSetupBlocked):
+                print(f"[MAIN] Non-retryable character setup state: {e}. Stopping without retry.")
+                raise SystemExit(1) from e
             print(f"[MAIN] Fatal orchestration error: {e}")
             consecutive_failures += 1
             if not accounts_enabled and consecutive_failures >= max_retries_no_switch:

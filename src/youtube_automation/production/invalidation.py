@@ -14,7 +14,10 @@ from .ledger import publication_guard
 
 _STAGE_PATTERNS: dict[str, tuple[str, ...]] = {
     "analyze": (
+        "audio_adoption_receipt.json",
         "episode_brief.json",
+        "voice_direction.candidate.json",
+        ".voice_direction_publication.json",
         "adaptive_writing_receipt.json",
         "breaked_paragraphs.txt",
         "final_output.txt",
@@ -40,6 +43,9 @@ _STAGE_PATTERNS: dict[str, tuple[str, ...]] = {
         "adaptive_thumbnail_receipt.json",
     ),
     "write": (
+        "audio_adoption_receipt.json",
+        "voice_direction.candidate.json",
+        ".voice_direction_publication.json",
         "adaptive_writing_receipt.json",
         "breaked_paragraphs.txt",
         "final_output.txt",
@@ -67,6 +73,9 @@ _STAGE_PATTERNS: dict[str, tuple[str, ...]] = {
         "adaptive_thumbnail_receipt.json",
     ),
     "source-audio": (
+        "audio_adoption_receipt.json",
+        "voice_direction.candidate.json",
+        ".voice_direction_publication.json",
         "adaptive_writing_receipt.json",
         "breaked_paragraphs.txt",
         "final_output.txt",
@@ -87,6 +96,15 @@ _STAGE_PATTERNS: dict[str, tuple[str, ...]] = {
         "preview_scorecard.json",
         "active_master.json",
         "adaptive_thumbnail_receipt.json",
+    ),
+    "adopt-polished-audio": (
+        "image_timestamps.txt.sha256", "timestamped_transcript.txt.sha256",
+        "timestamped_transcript.srt.sha256", "subtitle_chunks.srt.sha256",
+        "timeline.json", "shot_plan.json", "shot_plan.partial.json",
+        "shot_plan.semantic.partial.json", "editorial_review.json", "flow_prompts.json",
+        "adaptive_review/*", "visual_audit.json", "visual_inspection/*",
+        "adaptive_preview.json", "editorial_approval.json", "preview_scorecard.json",
+        "active_master.json", "adaptive_thumbnail_receipt.json",
     ),
     "plan": (
         "shot_plan.json",
@@ -122,6 +140,8 @@ _STAGE_PATTERNS: dict[str, tuple[str, ...]] = {
     ),
     "approve": ("preview_scorecard.json", "editorial_approval.json", "active_master.json"),
     "render": ("active_master.json",),
+    "direct": ("voice_direction.candidate.json", ".voice_direction_publication.json"),
+    "accept-direction": (),
 }
 
 

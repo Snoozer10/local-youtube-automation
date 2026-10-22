@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -43,6 +43,7 @@ def visual_budget(root: Path, plan: ShotPlan) -> VisualBudget:
 def enforce_visual_budget(root: Path, plan: ShotPlan) -> VisualBudget:
     budget = visual_budget(root, plan)
     images = len({asset_storage_id(shot) for shot in plan.shots})
+    images += 2 * len({character_id for shot in plan.shots for character_id in getattr(shot, "character_ids", [])})
     if images > budget.max_images:
         raise VisualBudgetExceeded(
             f"Plan needs {images} distinct images; limit is {budget.max_images}. "
@@ -85,21 +86,104 @@ class VisualDecision(Contract):
 
 
 class VisualAudit(Contract):
-    version: Literal[1] = 1
+    version: Literal[1, 2] = 1
     plan_sha256: Digest
     assets: dict[str, Digest]
+    render_inputs_sha256: Digest | None = None
     reviewer: Text
     decisions: list[VisualDecision]
 
 
-def require_visual_audit(root: Path, plan: ShotPlan, brief: Brief) -> None:
+def _render_input_assets(
+    plan: ShotPlan,
+    assets: dict[str, Digest],
+    asset_identity: Literal["storage", "shot"],
+) -> dict[str, Digest]:
+    """Derive render aliases only from the current plan and verified storage hashes."""
+    if asset_identity not in {"storage", "shot"}:
+        raise ValueError("Unknown render asset identity")
+    if asset_identity == "storage":
+        return dict(assets)
+    if set(assets) != {asset_storage_id(shot) for shot in plan.shots}:
+        raise ValueError("Render asset aliases require the exact verified storage identities")
+    derived = {}
+    for shot in plan.shots:
+        if shot.shot_id in derived:
+            raise ValueError("Render asset aliases require unique shot identities")
+        derived[shot.shot_id] = assets[asset_storage_id(shot)]
+    return derived
+
+
+def _current_render_inputs_for_audit(
+    root: Path,
+    plan: ShotPlan,
+    assets: dict[str, Digest],
+    render_config: dict[str, Any] | None,
+    encoder_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    run_root = root.resolve()
+    timeline_path = (run_root / "timeline.json").resolve()
+    if not timeline_path.is_relative_to(run_root) or not timeline_path.is_file():
+        raise ValueError("Current render timeline is missing or outside this run")
+    timeline = json.loads(timeline_path.read_text(encoding="utf-8-sig"))
+    if plan.timeline_sha256 != fingerprint(timeline):
+        raise ValueError("Visual audit audio/plan lineage mismatch")
+    audio_file = timeline.get("audio_file")
+    if not isinstance(audio_file, str) or not audio_file.strip():
+        raise ValueError("Current render timeline has no audio file")
+    configured_audio = Path(audio_file)
+    audio_path = (
+        configured_audio if configured_audio.is_absolute() else run_root / configured_audio
+    ).resolve()
+    if not audio_path.is_relative_to(run_root) or not audio_path.is_file():
+        raise ValueError("Current render audio is missing or outside this run")
+    if render_config is None:
+        from youtube_automation.video.compiler import load_video_config
+
+        render_config = load_video_config("video_config.txt")
+    from .render import current_render_inputs
+
+    if encoder_config is None:
+        return current_render_inputs(plan, assets, audio_path, render_config)
+    return current_render_inputs(
+        plan, assets, audio_path, render_config, encoder_config=encoder_config
+    )
+
+
+def require_visual_audit(
+    root: Path,
+    plan: ShotPlan,
+    brief: Brief,
+    *,
+    render_config: dict[str, Any] | None = None,
+    encoder_config: dict[str, Any] | None = None,
+    asset_identity: Literal["storage", "shot"] = "storage",
+) -> None:
+    from .audio_adoption import (
+        assert_audio_lineage,
+        assert_current_audio_state,
+        capture_audio_state,
+        require_adopted_audio_review,
+    )
+    from .ledger import publication_guard
+    with publication_guard():
+        audio_state = capture_audio_state(root)
+        assert_audio_lineage(root, brief, plan=plan)
+
+    require_adopted_audio_review(root, brief, plan)
+    if asset_identity not in {"storage", "shot"}:
+        raise ValueError("Unknown render asset identity")
     budget = enforce_visual_budget(root, plan)
     if not budget.require_review:
+        with publication_guard():
+            assert_current_audio_state(root, audio_state)
         return
     path = root / "visual_audit.json"
     if not path.is_file():
         raise ValueError("Every current shot must pass visual inspection before advancing")
     audit = VisualAudit.model_validate_json(path.read_text(encoding="utf-8-sig"))
+    if audit.version != 2 or audit.render_inputs_sha256 is None:
+        raise ValueError("Legacy visual audit lacks a current render recipe binding")
     if audit.plan_sha256 != fingerprint(plan) or [d.shot_id for d in audit.decisions] != [
         shot.shot_id for shot in plan.shots
     ]:
@@ -114,9 +198,17 @@ def require_visual_audit(root: Path, plan: ShotPlan, brief: Brief) -> None:
         expected[key] = read_shot_receipt(root, shot)["sha256"]
     if audit.assets != expected:
         raise ValueError("Visual audit image bytes changed")
+    render_assets = _render_input_assets(plan, expected, asset_identity)
+    current_inputs = _current_render_inputs_for_audit(
+        root, plan, render_assets, render_config, encoder_config
+    )
+    if fingerprint(current_inputs) != audit.render_inputs_sha256:
+        raise ValueError("Visual audit render recipe is stale; review current rendered proofs")
     for decision in audit.decisions:
         proofs = {**decision.additional_proofs, decision.proof_path: decision.proof_sha256}
         for name, digest in proofs.items():
             proof = (root / name).resolve()
             if not proof.is_relative_to(root.resolve()) or not proof.is_file() or file_digest(proof) != digest:
                 raise ValueError(f"Visual audit proof changed: {decision.shot_id}")
+    with publication_guard():
+        assert_current_audio_state(root, audio_state)

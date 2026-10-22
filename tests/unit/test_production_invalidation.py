@@ -148,7 +148,9 @@ def test_real_process_death_is_reconciled_on_restart(tmp_path):
 import os
 import sys
 sys.path.insert(0, {str(source_root)!r})
-from youtube_automation.production import invalidation
+from pathlib import Path
+from youtube_automation.production import ledger, invalidation
+ledger.resource_database = lambda: Path(sys.argv[1]) / "child-publication.sqlite3"
 real_replace = invalidation.os.replace
 def replace_then_exit(source, target):
     real_replace(source, target)

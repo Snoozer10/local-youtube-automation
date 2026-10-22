@@ -1318,3 +1318,190 @@ def test_visual_policy_rebind_rejects_identity_or_voice_change(tmp_path, channel
     assert not is_visual_policy_update(tmp_path, changed)
     with pytest.raises(ValueError, match="not limited"):
         rebind_visual_policy(tmp_path, changed)
+
+
+def migration_fixture(root, legacy_channel):
+    raw = "A source story about animal perception and an observation challenge."
+    root.mkdir(exist_ok=True)
+    (root / "raw_transcript.txt").write_text(raw)
+    (root / "refined_script.txt").write_text(raw)
+    (root / "timeline.json").write_text(json.dumps({"words": [{"word": "source", "start": 0, "end": 9}],
+        "spans": [{"start": 0, "end": 9, "text": "source"}], "duration": 9}))
+    old = Brief(source_sha256=fingerprint(raw), profile_sha256=fingerprint(legacy_channel),
+                channel=legacy_channel, analysis=Analysis.model_validate_json(response()))
+    (root / "episode_brief.json").write_text(old.model_dump_json())
+    (root / "shot_plan.json").write_text('{"historical":"plan"}')
+    (root / "editorial_review.json").write_text('{"historical":"critic"}')
+    (root / "editorial_approval.json").write_text('{"historical":"approval"}')
+    (root / "active_master.json").write_text('{"historical":"master"}')
+    target = Channel.model_validate(legacy_channel.model_dump() | {"version": 3,
+        "visual_directives": ["Use source-specific narrative scenes"], "forbidden_motifs": ["Decorative dashboards"]})
+    strategy = EpisodeVisualStrategy(source_sha256=fingerprint(raw), topic="Animal perception",
+        viewer_question="What can we observe?", central_promise="Try an observation challenge",
+        evidence_mode="demonstrative", emotional_arc=["curiosity", "understanding"],
+        hook_archetype="mystery_gap", hook_microbeats=[
+            {"beat_id": value, "function": value, "duration_seconds": 3, "viewer_takeaway": value,
+             "visual_mode": "human_context" if index != 1 else "kinetic_type"}
+            for index, value in enumerate(("problem", "curiosity", "promise"))],
+        visual_modes=["human_context", "kinetic_type"], pacing="Three meaningful hook beats",
+        motion_grammar=["Move only on meaningful state changes"])
+    return old, target, strategy
+
+
+def test_explicit_missing_strategy_migration_preserves_narration_and_invalidates_visuals(tmp_path, channel):
+    old, target, strategy = migration_fixture(tmp_path / "run", channel)
+    root = tmp_path / "run"
+    protected = {name: (root / name).read_bytes() for name in ("raw_transcript.txt", "refined_script.txt", "timeline.json")}
+    calls = []
+
+    def ask(prompt):
+        calls.append(prompt)
+        return strategy.model_dump_json()
+
+    updated = rebind_visual_policy(root, target, ask=ask)
+    assert updated.version == 3 and updated.visual_strategy == strategy
+    assert updated.analysis == old.analysis and updated.channel.voice == old.channel.voice
+    assert narration_fingerprint(updated) == narration_fingerprint(old)
+    assert len(calls) == 1
+    assert all((root / name).read_bytes() == data for name, data in protected.items())
+    assert all(not (root / name).exists() for name in ("shot_plan.json", "editorial_review.json", "editorial_approval.json", "active_master.json"))
+    assert len(list((root / ".adaptive_history").rglob("shot_plan.json"))) == 1
+    assert rebind_visual_policy(root, target, ask=ask) == updated
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("phase", ["PREPARED", "INVALIDATED", "COMPLETE"])
+def test_strategy_migration_recovers_exact_checkpoint_without_second_ask(tmp_path, channel, monkeypatch, phase):
+    from youtube_automation.production import briefs
+
+    root = tmp_path / "run"
+    _, target, strategy = migration_fixture(root, channel)
+    checkpoint = briefs._visual_migration_checkpoint
+    calls = []
+
+    def interrupted(root, marker, current):
+        checkpoint(root, marker, current)
+        if current == phase:
+            raise RuntimeError("simulated power loss")
+
+    monkeypatch.setattr(briefs, "_visual_migration_checkpoint", interrupted)
+    with pytest.raises(RuntimeError, match="power loss"):
+        rebind_visual_policy(root, target, ask=lambda prompt: calls.append(prompt) or strategy.model_dump_json())
+    monkeypatch.setattr(briefs, "_visual_migration_checkpoint", checkpoint)
+    result = rebind_visual_policy(root, target)
+    assert result.version == 3 and len(calls) == 1
+    assert not (root / "shot_plan.json").exists()
+    assert len(list((root / ".adaptive_history").rglob("shot_plan.json"))) == 1
+
+
+@pytest.mark.parametrize("artifact", ["flow_prompts.json", "visual_inspection/shot.png"])
+def test_strategy_migration_rejects_unsupported_active_artifacts_before_ask(tmp_path, channel, artifact):
+    root = tmp_path / "run"
+    _, target, _ = migration_fixture(root, channel)
+    path = root / artifact
+    path.parent.mkdir(exist_ok=True)
+    path.write_bytes(b"preserved")
+    before = (root / "episode_brief.json").read_bytes()
+    with pytest.raises(ValueError, match="does not support"):
+        rebind_visual_policy(root, target, ask=lambda _: pytest.fail("unexpected ask"))
+    assert (root / "episode_brief.json").read_bytes() == before
+    assert (root / "shot_plan.json").exists()
+    assert not (root / ".visual_policy_migration.json").exists()
+
+
+@pytest.mark.parametrize("changed", ["raw_transcript.txt", "timeline.json", "profile", "feedback", "unknown"])
+def test_strategy_migration_rejects_input_drift_before_activation(tmp_path, channel, changed):
+    root = tmp_path / "run"
+    _, target, strategy = migration_fixture(root, channel)
+    profile, feedback = tmp_path / "profile.json", tmp_path / "feedback.txt"
+    profile.write_text(target.model_dump_json())
+    feedback.write_text("Use concrete scenes")
+    before = (root / "episode_brief.json").read_bytes()
+
+    def ask(_):
+        path = {"profile": profile, "feedback": feedback, "unknown": root / "visual_audit.json"}.get(changed, root / changed)
+        path.write_text("changed")
+        return strategy.model_dump_json()
+
+    with pytest.raises(ValueError, match="changed"):
+        rebind_visual_policy(root, target, ask=ask, profile_path=profile, feedback_path=feedback,
+                             strategy_feedback="Use concrete scenes")
+    assert (root / "episode_brief.json").read_bytes() == before
+    assert (root / "shot_plan.json").exists()
+    assert not (root / ".visual_policy_migration.json").exists()
+
+
+def test_strategy_migration_invalid_response_gets_one_attempt_and_preserves_visuals(tmp_path, channel):
+    root = tmp_path / "run"
+    _, target, _ = migration_fixture(root, channel)
+    calls = []
+    with pytest.raises(ValueError):
+        rebind_visual_policy(root, target, ask=lambda prompt: calls.append(prompt) or "{}")
+    assert len(calls) == 1 and (root / "shot_plan.json").exists()
+    assert not (root / ".visual_policy_migration.json").exists()
+
+
+def test_strategy_migration_pending_rejects_unknown_output_without_archiving_it(tmp_path, channel, monkeypatch):
+    from youtube_automation.production import briefs
+
+    root = tmp_path / "run"
+    _, target, strategy = migration_fixture(root, channel)
+    checkpoint = briefs._visual_migration_checkpoint
+
+    def interrupted(root, marker, phase):
+        checkpoint(root, marker, phase)
+        raise RuntimeError("interrupted")
+
+    monkeypatch.setattr(briefs, "_visual_migration_checkpoint", interrupted)
+    with pytest.raises(RuntimeError):
+        rebind_visual_policy(root, target, ask=lambda _: strategy.model_dump_json())
+    monkeypatch.setattr(briefs, "_visual_migration_checkpoint", checkpoint)
+    (root / "visual_audit.json").write_text("new output")
+    with pytest.raises(ValueError, match="Unknown active output"):
+        rebind_visual_policy(root, target)
+    assert (root / "visual_audit.json").read_text() == "new output"
+    assert (root / "shot_plan.json").exists()
+
+
+def test_strategy_migration_recovers_after_persisted_invalidation_journal(tmp_path, channel, monkeypatch):
+    from pathlib import Path
+
+    from youtube_automation.production import invalidation, ledger
+
+    root = tmp_path / "run"
+    _, target, strategy = migration_fixture(root, channel)
+    monkeypatch.setattr(ledger, "resource_database", lambda: tmp_path / "jobs.sqlite3")
+    real_write = invalidation.atomic_write_json
+    journal_paths = []
+    interrupted = False
+
+    def write_then_interrupt(*args, **kwargs):
+        nonlocal interrupted
+        result = real_write(*args, **kwargs)
+        journal_paths.append(Path(args[0]))
+        if not interrupted:
+            interrupted = True
+            raise RuntimeError("interrupted after persisted invalidation journal")
+        return result
+
+    monkeypatch.setattr(invalidation, "atomic_write_json", write_then_interrupt)
+    asks = []
+
+    def ask(prompt):
+        asks.append(prompt)
+        return strategy.model_dump_json()
+
+    with pytest.raises(RuntimeError, match="persisted invalidation journal"):
+        rebind_visual_policy(root, target, ask=ask)
+
+    assert len(journal_paths) == 1
+    assert journal_paths[0].is_file()
+    journal = json.loads(journal_paths[0].read_text(encoding="utf-8"))
+    assert [record["source"] for record in journal["files"]] == [
+        "shot_plan.json", "editorial_review.json", "editorial_approval.json", "active_master.json"
+    ]
+
+    monkeypatch.setattr(invalidation, "atomic_write_json", real_write)
+    completed = rebind_visual_policy(root, target, ask=ask)
+    assert completed.visual_strategy == strategy
+    assert len(asks) == 1

@@ -1,11 +1,13 @@
+import io
 import json
 import os
 import re
 
 # Windows console hardening: guarantee UTF-8 for Arabic output even when piped.
 import sys
+from typing import Any
 
-if sys.platform.startswith("win"):
+if sys.platform.startswith("win") and isinstance(sys.stdout, io.TextIOWrapper) and isinstance(sys.stderr, io.TextIOWrapper):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -13,7 +15,7 @@ if sys.platform.startswith("win"):
         pass
 
 
-def main():
+def main() -> None:
     print("==================================================")
     print("Running JSON Timestamp Injector & Cleaner")
     print("==================================================")
@@ -72,7 +74,7 @@ def main():
             content = f.read()
 
         decoder = json.JSONDecoder()
-        parsed_arrays = []
+        parsed_arrays: list[dict[str, Any]] = []
         scan_pos = 0
         while True:
             arr_start = content.find("[", scan_pos)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -24,6 +25,73 @@ class Paragraphs(Contract):
 
 class WrittenParagraph(Contract):
     text: Text
+
+
+_FINAL_SCRIPT_TOKEN = re.compile(r"<\s*/?\s*final_script\b", re.IGNORECASE)
+_FINAL_SCRIPT_TAG = re.compile(r"<\s*/?\s*final_script\b[^>]*>", re.IGNORECASE)
+_FINAL_SCRIPT_OPEN = re.compile(r"<final_script\s*>", re.IGNORECASE)
+_FINAL_SCRIPT_CLOSE = re.compile(r"</final_script\s*>", re.IGNORECASE)
+ACCEPTED_ORIGINAL_MODE = "accepted_original"
+SCRIPT_ACCEPTANCE_FILE = "script_acceptance.json"
+
+
+def _final_script_text(text: str) -> str:
+    """Extract one complete final_script wrapper while preserving cached replies."""
+    tokens = list(_FINAL_SCRIPT_TOKEN.finditer(text))
+    if not tokens:
+        result = text.strip()
+        if not result:
+            raise ValueError("Refined paragraph is empty")
+        return result
+
+    tags = list(_FINAL_SCRIPT_TAG.finditer(text))
+    opening = [tag for tag in tags if _FINAL_SCRIPT_OPEN.fullmatch(tag.group())]
+    closing = [tag for tag in tags if _FINAL_SCRIPT_CLOSE.fullmatch(tag.group())]
+    if (
+        len(tokens) != 2
+        or len(tags) != 2
+        or len(opening) != 1
+        or len(closing) != 1
+        or tokens[0].start() != tags[0].start()
+        or tokens[1].start() != tags[1].start()
+    ):
+        raise ValueError("Refined paragraph has multiple, nested, or malformed <final_script> tags")
+
+    start, end = opening[0], closing[0]
+    if (
+        start.start() > end.start()
+        or text[: start.start()].strip()
+        or text[end.end() :].strip()
+    ):
+        raise ValueError("Refined paragraph has malformed <final_script> markup")
+    result = text[start.end() : end.start()].strip()
+    if not result:
+        raise ValueError("Refined paragraph has an empty <final_script> block")
+    return result
+
+
+def _accepted_original_text(root: Path, brief: Brief) -> tuple[str, dict[str, Any]]:
+    raw = (root / "raw_transcript.txt").read_text(encoding="utf-8-sig")
+    acceptance = json.loads((root / SCRIPT_ACCEPTANCE_FILE).read_text(encoding="utf-8-sig"))
+    if not (
+        isinstance(acceptance, dict)
+        and acceptance.get("version") == 1
+        and acceptance.get("kind") == "accepted_original_script"
+        and acceptance.get("channel_id") == brief.channel.channel_id
+        and acceptance.get("script_sha256") == fingerprint(raw)
+        and brief.source_sha256 == fingerprint(raw)
+        and all(
+            isinstance(acceptance.get(key), str) and acceptance[key].strip()
+            for key in ("accepted_by", "statement")
+        )
+    ):
+        raise ValueError("Script acceptance does not bind this run's source and channel")
+    text = raw.strip()
+    if not text:
+        raise ValueError("Accepted original script is empty")
+    if _FINAL_SCRIPT_TOKEN.search(text):
+        raise ValueError("Accepted original script contains <final_script> markup")
+    return text + "\n", acceptance
 
 
 def _journal_path(root: Path) -> Path:
@@ -70,6 +138,8 @@ def _recover_pending_writing(root: Path, brief: Brief) -> dict[str, Any] | None:
             or receipt.get("outputs")
             != {name: fingerprint(value) for name, value in outputs.items()}
         ):
+            return None
+        if _FINAL_SCRIPT_TOKEN.search(outputs["refined_script.txt"]):
             return None
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None
@@ -155,7 +225,8 @@ def write_episode(run_dir: str | Path, brief: Brief, ask: Callable[[str], str]) 
     outputs = {
         "breaked_paragraphs.txt": "\n\n".join(paragraphs),
         "final_output.txt": "\n\n".join(translated),
-        "refined_script.txt": "\n\n".join(refined),
+        # Keep raw refinements in cache and transition prompts; normalize only publication.
+        "refined_script.txt": "\n\n".join(_final_script_text(text) for text in refined),
     }
     if load_brief(root) != brief:
         raise ValueError("Brief changed during writing")
@@ -163,6 +234,56 @@ def write_episode(run_dir: str | Path, brief: Brief, ask: Callable[[str], str]) 
         "version": 1,
         "brief_sha256": narration_fingerprint(brief),
         "outputs": {name: fingerprint(text) for name, text in outputs.items()},
+    }
+    journal = _journal_path(root)
+    journal.parent.mkdir(parents=True, exist_ok=True)
+    with publication_guard():
+        atomic_write_json(
+            str(journal),
+            {"version": 1, "kind": "writing", "outputs": outputs, "receipt": receipt},
+        )
+    recovered = _recover_pending_writing(root, brief)
+    if recovered is None:
+        raise RuntimeError("Complete writing publication could not be recovered")
+    return recovered
+
+
+def publish_accepted_original(run_dir: str | Path, brief: Brief) -> dict[str, Any]:
+    """Publish a human-accepted original script verbatim; never calls a model."""
+    root = Path(run_dir)
+    if load_brief(root) != brief:
+        raise ValueError("Writing brief is not the validated run brief")
+    if (root / "source_audio_receipt.json").exists():
+        raise ValueError("Source-narrated run cannot rewrite words already bound to published audio")
+    pending = _journal_path(root)
+    if pending.exists():
+        try:
+            pending_mode = json.loads(pending.read_text(encoding="utf-8"))["receipt"].get("mode")
+        except (OSError, KeyError, TypeError, AttributeError, ValueError):
+            pending_mode = None
+        if pending_mode != ACCEPTED_ORIGINAL_MODE:
+            raise ValueError(
+                "A pending non-accepted writing publication exists; finish it with the write stage"
+            )
+    recovered = _recover_pending_writing(root, brief)
+    if recovered is not None:
+        return recovered
+    if (root / "adaptive_writing_receipt.json").exists():
+        verify_written_episode(root)
+        existing: dict[str, Any] = json.loads(
+            (root / "adaptive_writing_receipt.json").read_text(encoding="utf-8")
+        )
+        if existing.get("mode") != ACCEPTED_ORIGINAL_MODE:
+            raise ValueError("Run already has a different writing publication")
+        return existing
+    text, acceptance = _accepted_original_text(root, brief)
+    outputs = dict.fromkeys(("breaked_paragraphs.txt", "final_output.txt", "refined_script.txt"), text)
+    receipt = {
+        "version": 1,
+        "mode": ACCEPTED_ORIGINAL_MODE,
+        "brief_sha256": narration_fingerprint(brief),
+        "acceptance_sha256": fingerprint(acceptance),
+        "outputs": {name: fingerprint(value) for name, value in outputs.items()},
     }
     journal = _journal_path(root)
     journal.parent.mkdir(parents=True, exist_ok=True)
@@ -190,6 +311,10 @@ def verify_written_episode(run_dir: str | Path) -> bool:
         if fingerprint((root / name).read_text(encoding="utf-8")) != digest:
             raise ValueError(f"Writing output changed: {name}")
     source_receipt_exists = (root / "source_audio_receipt.json").exists()
+    if not source_receipt_exists and receipt.get("mode") != "source_preserved":
+        refined = (root / "refined_script.txt").read_text(encoding="utf-8")
+        if _FINAL_SCRIPT_TOKEN.search(refined):
+            raise ValueError("Refined script still contains <final_script> markup")
     if source_receipt_exists or receipt.get("mode") == "source_preserved":
         if not source_receipt_exists or receipt.get("mode") != "source_preserved":
             raise ValueError("Source narration and writing modes disagree")
@@ -199,4 +324,10 @@ def verify_written_episode(run_dir: str | Path) -> bool:
         from .source_narration import verify_source_narration
 
         verify_source_narration(root)
+    if receipt.get("mode") == ACCEPTED_ORIGINAL_MODE:
+        text, acceptance = _accepted_original_text(root, brief)
+        if receipt.get("acceptance_sha256") != fingerprint(acceptance):
+            raise ValueError("Script acceptance changed since publication")
+        if any((root / name).read_text(encoding="utf-8") != text for name in expected):
+            raise ValueError("Accepted original writing differs from the accepted script")
     return True

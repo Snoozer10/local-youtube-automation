@@ -18,7 +18,7 @@ import re
 import sys
 import tempfile
 import warnings
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -133,7 +133,7 @@ def resolve_vad_snap_threshold(config: dict[str, Any] | None = None) -> float:
 
 
 def build_words_from_whisper(
-    whisper_words: Sequence[dict[str, Any]],
+    whisper_words: Sequence[Mapping[str, Any]],
     audio_duration: float | None = None,
 ) -> list[dict[str, Any]]:
     """Builds clean, append-only monotonic words list with calculated pause_after."""

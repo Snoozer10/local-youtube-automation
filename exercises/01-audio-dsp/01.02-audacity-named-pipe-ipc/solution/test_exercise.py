@@ -1,6 +1,8 @@
 """Unit & Diagnostic Drill Tests for 01.02 Audacity Named Pipe IPC."""
 
 
+import os
+
 import pytest
 
 from .exercise import (
@@ -60,7 +62,8 @@ def test_send_audacity_command_protocol_termination() -> None:
     resp = send_audacity_command(pipe, pipe, "SelectAll:")
 
     assert len(pipe.written) == 1
-    assert pipe.written[0] == "SelectAll:\n"
+    terminator = "\r\n\x00" if os.name == "nt" else "\n"
+    assert pipe.written[0] == "SelectAll:" + terminator
     assert "BatchCommand finished: OK" in resp
 
 
@@ -88,11 +91,12 @@ def test_execute_batch_effects_interleaves_select_all() -> None:
     responses = execute_batch_effects(pipe, pipe, effects)
 
     assert len(responses) == 2
+    terminator = "\r\n\x00" if os.name == "nt" else "\n"
     assert pipe.written == [
-        "SelectAll:\n",
-        "NoiseGate:threshold=-30\n",
-        "SelectAll:\n",
-        "Compressor:ratio=3.0\n",
+        "SelectAll:" + terminator,
+        "NoiseGate:threshold=-30" + terminator,
+        "SelectAll:" + terminator,
+        "Compressor:ratio=3.0" + terminator,
     ]
 
 

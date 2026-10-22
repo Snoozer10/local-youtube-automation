@@ -11,7 +11,7 @@ from pathlib import Path
 from types import GenericAlias
 from typing import Any, Literal
 
-from pydantic import Field, create_model, field_validator, model_validator
+from pydantic import Field, create_model, field_validator, model_serializer, model_validator
 
 from youtube_automation.core.utils import atomic_write_json
 
@@ -25,10 +25,12 @@ from .contracts import (
     Text,
     Treatment,
     VisualMode,
+    episode_cast,
     fingerprint,
     load_brief,
 )
 from .ledger import publication_guard
+from .pictograms import PictogramName
 
 SCHULTE_6X6 = [
     "17", "3", "29", "12", "35", "8",
@@ -91,6 +93,7 @@ class Overlay(Contract):
         "fixation_cue",
         "target_indicator",
         "start_transition",
+        "pictogram",
     ]
     start_frame: int = Field(ge=0)
     end_frame: int = Field(gt=0)
@@ -112,6 +115,26 @@ class Overlay(Contract):
     value_from: int | None = Field(default=None, ge=-9999, le=9999)
     value_to: int | None = Field(default=None, ge=-9999, le=9999)
     target_cell: int | None = Field(default=None, ge=0, le=35)
+    icon: PictogramName | None = None
+    grid_layout: Literal["full", "preview"] = "full"
+    clock_start_frame: int | None = Field(default=None, ge=0)
+    motion_to: tuple[float, float] | None = None
+    motion_end_frame: int | None = Field(default=None, ge=0)
+
+    @model_serializer(mode="wrap")
+    def serialize_legacy_defaults(self, handler: Any) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        if self.grid_layout == "full":
+            data.pop("grid_layout", None)
+        if self.icon is None:
+            data.pop("icon", None)
+        if self.clock_start_frame is None:
+            data.pop("clock_start_frame", None)
+        if self.motion_to is None:
+            data.pop("motion_to", None)
+        if self.motion_end_frame is None:
+            data.pop("motion_end_frame", None)
+        return data
 
     @model_validator(mode="before")
     @classmethod
@@ -122,21 +145,26 @@ class Overlay(Contract):
         if normalized.get("kind") == "data_grid" and normalized.get("preset") == "schulte_6x6":
             # The renderer owns the exercise definition. Model-supplied grid geometry or
             # values are untrusted hints and must never alter the canonical 1-36 layout.
-            normalized["x"] = 0.15
-            normalized["y"] = 0.15
-            normalized["width"] = 0.7
-            normalized["height"] = 0.7
+            geometry = ((0.59, 0.24, 0.34, 0.60) if normalized.get("grid_layout") == "preview"
+                        else (0.15, 0.15, 0.7, 0.7))
+            normalized.update(zip(("x", "y", "width", "height"), geometry, strict=True))
             normalized["rows"] = 6
             normalized["columns"] = 6
             normalized["cells"] = SCHULTE_6X6
         schulte_geometry = {
             "challenge_frame": (0.08, 0.1, 0.84, 0.78),
-            "rule_reveal": (0.25, 0.89, 0.5, 0.075),
-            "fixation_cue": (0.45, 0.45, 0.1, 0.1),
+            "rule_reveal": (0.09, 0.89, 0.82, 0.075),
+            "fixation_cue": (
+                (0.71, 0.49, 0.1, 0.1)
+                if normalized.get("grid_layout") == "preview"
+                else (0.45, 0.45, 0.1, 0.1)
+            ),
             "start_transition": (0.0, 0.0, 1.0, 1.0),
         }
         if normalized.get("kind") in schulte_geometry:
             x, y, width, height = schulte_geometry[normalized["kind"]]
+            if normalized["kind"] == "challenge_frame" and normalized.get("grid_layout") == "preview":
+                x, y, width, height = (0.55, 0.17, 0.42, 0.72)
             normalized.update(x=x, y=y, width=width, height=height)
         return normalized
 
@@ -146,6 +174,23 @@ class Overlay(Contract):
             raise ValueError("Overlay extends beyond frame")
         if self.end_frame <= self.start_frame:
             raise ValueError("Overlay duration must be positive")
+        if (self.motion_to is None) != (self.motion_end_frame is None):
+            raise ValueError("Pictogram motion destination and arrival frame must be provided together")
+        if self.motion_to is not None:
+            arrival_frame = self.motion_end_frame
+            if arrival_frame is None:
+                raise ValueError("Pictogram motion destination and arrival frame must be provided together")
+            if self.kind != "pictogram":
+                raise ValueError("Only pictograms may move")
+            destination_x, destination_y = self.motion_to
+            if not math.isfinite(destination_x) or not math.isfinite(destination_y):
+                raise ValueError("Pictogram motion destination must be finite")
+            if not 0 <= destination_x <= 1 or not 0 <= destination_y <= 1:
+                raise ValueError("Pictogram motion destination must be normalized")
+            if destination_x + self.width > 1 or destination_y + self.height > 1:
+                raise ValueError("Pictogram motion box extends beyond frame")
+            if not self.start_frame < arrival_frame <= self.end_frame:
+                raise ValueError("Pictogram motion must arrive after start and by overlay end")
         if self.kind in {
             "label",
             "timer",
@@ -189,6 +234,17 @@ class Overlay(Contract):
             raise ValueError("Counter requires an ascending deterministic value range")
         if self.kind == "target_indicator" and self.target_cell is None:
             raise ValueError("Target indicator requires a target cell")
+        if (self.kind == "pictogram") != (self.icon is not None):
+            raise ValueError("Only pictograms require an allowlisted object icon")
+        if self.grid_layout == "preview" and not (
+            self.kind in {"challenge_frame", "fixation_cue"}
+            or self.kind == "data_grid" and self.preset == "schulte_6x6"
+        ):
+            raise ValueError("Preview layout is only available for canonical Schulte graphics")
+        if self.clock_start_frame is not None and (
+            self.kind != "timer" or self.value_from is None or not 1 <= self.value_from <= 3600
+        ):
+            raise ValueError("Running timer requires its canonical start and positive time limit")
         return self
 
 
@@ -198,6 +254,7 @@ class Shot(Contract):
     asset_id: Identifier
     reference_asset_id: Identifier | None = None
     entity_ids: list[Identifier] = Field(min_length=1)
+    character_ids: list[Identifier] = Field(default_factory=list, max_length=8)
     span_ids: list[int] = Field(min_length=1)
     start_frame: int = Field(ge=0)
     end_frame: int = Field(gt=0)
@@ -280,6 +337,8 @@ class Shot(Contract):
     def valid_edit(self) -> Shot:
         if len(self.entity_ids) != len(set(self.entity_ids)):
             raise ValueError("Duplicate entity identities")
+        if len(self.character_ids) != len(set(self.character_ids)) or set(self.character_ids) & set(self.entity_ids):
+            raise ValueError("Character identities must be unique and separate from scene entities")
         if self.operation == "reuse" and self.reference_asset_id not in {None, self.asset_id}:
             raise ValueError("Reuse cannot name an unrelated reference")
         if self.operation == "local_canvas":
@@ -293,10 +352,6 @@ class Shot(Contract):
             required = {
                 "data_grid",
                 "challenge_frame",
-                "rule_reveal",
-                "fixation_cue",
-                "target_indicator",
-                "start_transition",
             }
             kinds = {overlay.kind for overlay in self.overlays}
             if not required <= kinds or not any(
@@ -305,7 +360,7 @@ class Shot(Contract):
             ):
                 missing = sorted(required - kinds)
                 raise ValueError(
-                    "Schulte local composition requires all branded challenge layers: "
+                    "Schulte local composition requires its immutable grid and frame: "
                     + ", ".join(missing or ["schulte_6x6"])
                 )
         duration = self.end_frame - self.start_frame
@@ -324,22 +379,25 @@ class ShotBatch(Contract):
     shots: list[Shot] = Field(min_length=1, max_length=300)
 
 
-SEMANTIC_PLANNER_VERSION = 23
-SHOT_COMPILER_VERSION = 12
+SEMANTIC_PLANNER_VERSION = 24
+SHOT_COMPILER_VERSION = 15
 SEMANTIC_CHECKPOINT_MIGRATIONS = {
-    (10, 2): (23, 12),
-    (11, 3): (23, 12),
-    (12, 4): (23, 12),
-    (13, 5): (23, 12),
-    (14, 6): (23, 12),
-    (15, 6): (23, 12),
-    (16, 7): (23, 12),
-    (17, 8): (23, 12),
-    (18, 9): (23, 12),
-    (19, 9): (23, 12),
-    (20, 10): (23, 12),
-    (21, 10): (23, 12),
-    (22, 11): (23, 12),
+    (10, 2): (24, 15),
+    (11, 3): (24, 15),
+    (12, 4): (24, 15),
+    (13, 5): (24, 15),
+    (14, 6): (24, 15),
+    (15, 6): (24, 15),
+    (16, 7): (24, 15),
+    (17, 8): (24, 15),
+    (18, 9): (24, 15),
+    (19, 9): (24, 15),
+    (20, 10): (24, 15),
+    (21, 10): (24, 15),
+    (22, 11): (24, 15),
+    (23, 12): (24, 15),
+    (23, 13): (24, 15),
+    (24, 14): (24, 15),
 }
 # One initial compile plus five targeted corrections. A valid correction can
 # expose a later deterministic constraint, so schema success is not terminal.
@@ -413,6 +471,8 @@ class SemanticGraphic(Contract):
     primary_text: str = Field(default="", max_length=180)
     secondary_text: str = Field(default="", max_length=180)
     timer_text: str = Field(default="", max_length=12)
+    icons: list[PictogramName] = Field(default_factory=list, max_length=2)
+    grid_layout: Literal["full", "preview"] = "full"
 
     @model_validator(mode="after")
     def required_copy(self) -> SemanticGraphic:
@@ -421,6 +481,10 @@ class SemanticGraphic(Contract):
                 raise ValueError(f"{self.template} requires concise visible copy")
         if self.template == "comparison" and not self.secondary_text.strip():
             raise ValueError("comparison requires two visible states")
+        if len(self.icons) != len(set(self.icons)):
+            raise ValueError("Graphic object icons must be distinct")
+        if self.grid_layout == "preview" and self.template != "schulte_challenge":
+            raise ValueError("Only Schulte explanation graphics have a preview layout")
         if self.template == "schulte_challenge" and not self.timer_text.strip():
             raise ValueError("schulte_challenge requires the visible timer value")
         return self
@@ -446,6 +510,7 @@ class SemanticShotIntent(Contract):
     framing: Literal["establishing", "wide", "medium", "close_up", "insert", "overhead", "diagram"]
     composition: Text
     entity_ids: list[Identifier] = Field(min_length=1, max_length=8)
+    character_ids: list[Identifier] = Field(default_factory=list, max_length=8)
     continuity: Literal["new", "reuse", "edit"] = "new"
     reference_id: Identifier | None = None
     graphic: SemanticGraphic | None = None
@@ -458,6 +523,8 @@ class SemanticShotIntent(Contract):
             raise ValueError("Reuse and edit intents require an established asset ID")
         if len(self.entity_ids) != len(set(self.entity_ids)):
             raise ValueError("Semantic entity IDs must be unique")
+        if len(self.character_ids) != len(set(self.character_ids)) or set(self.character_ids) & set(self.entity_ids):
+            raise ValueError("Character identities must be unique and separate from scene entities")
         return self
 
 
@@ -495,6 +562,7 @@ class SemanticRepairContent(Contract):
     framing: Literal["establishing", "wide", "medium", "close_up", "insert", "overhead", "diagram"]
     composition: Text
     entity_ids: list[Identifier] = Field(min_length=1, max_length=8)
+    character_ids: list[Identifier] = Field(default_factory=list, max_length=8)
     continuity: Literal["new", "reuse", "edit"] = "new"
     reference_id: Identifier | None = None
     graphic: SemanticGraphic | None = None
@@ -503,6 +571,40 @@ class SemanticRepairContent(Contract):
 class SemanticRepairBatch(Contract):
     planner_version: Literal[1] = 1
     shots: list[SemanticRepairContent] = Field(min_length=1, max_length=40)
+
+
+def _character_identity_error(shot: Shot | SemanticShotIntent, brief: Brief) -> str | None:
+    cast = episode_cast(brief)
+    if set(shot.entity_ids) & set(cast):
+        return "Episode characters belong in character_ids, never scene-local entity_ids"
+    visible = " ".join((shot.subject, shot.visible_state, shot.composition)).casefold()
+    for character_id in shot.character_ids:
+        character = cast.get(character_id)
+        if character is None:
+            return f"Unknown episode character: {character_id}"
+        if character_id.casefold() not in visible and character.name.casefold() not in visible:
+            return f"Declared character is not visibly described: {character_id}"
+    graphic = bool(shot.graphic) if isinstance(shot, SemanticShotIntent) else uses_local_canvas(shot)
+    if shot.character_ids and graphic:
+        return "Local graphics cannot contain registered characters"
+    return None
+
+
+def _human_quality_feedback(root: Path, brief: Brief) -> str:
+    from .review import HumanPreviewRejection
+
+    path = root / "human_review_rejection.json"
+    if not path.is_file():
+        return ""
+    rejection = HumanPreviewRejection.model_validate_json(path.read_text(encoding="utf-8"))
+    if rejection.source_sha256 is None:
+        rejected_plan = ShotPlan.model_validate_json((root / "shot_plan.json").read_text(encoding="utf-8"))
+        if fingerprint(rejected_plan) != rejection.plan_sha256 or rejected_plan.brief_sha256 != fingerprint(brief):
+            raise ValueError("Legacy human feedback needs verified source binding before replan")
+    elif rejection.source_sha256 != brief.source_sha256:
+        return ""
+    feedback = rejection.model_dump(include={"overall_rating", "rating_scale", "reasons", "required_next"}, mode="json")
+    return "\nHUMAN QUALITY REJECTION SUPERSEDES MODEL APPROVAL; require a fresh complete critic review:\n" + json.dumps(feedback, ensure_ascii=False)
 
 
 @lru_cache(maxsize=128)
@@ -635,6 +737,8 @@ class ShotPlan(ShotBatch):
                 if shot.asset_id not in assets:
                     raise ValueError("Reuse references an asset that has not been established")
                 origin = assets[shot.asset_id]
+                if shot.character_ids != origin.character_ids:
+                    raise ValueError("Reuse cannot change character identity")
                 if origin.scene_id != shot.scene_id or not set(shot.entity_ids) <= set(
                     origin.entity_ids
                 ):
@@ -684,6 +788,8 @@ class EditorialReview(Contract):
     version: Literal[1] = 1
     plan_sha256: Digest
     approved: bool
+    human_feedback_sha256: Digest | None = None
+    render_evidence_sha256: Digest | None = None
     shots: list[EditorialShotDecision] = Field(min_length=1, max_length=300)
 
     def assert_approved(self, plan: ShotPlan) -> None:
@@ -1227,9 +1333,32 @@ def _validate_interactive_graphics(
     if first_grid > latest_start:
         raise ValueError("Schulte grid must begin when the exercise is introduced")
     for shot in grid_shots:
+        grid = next(o for o in shot.overlays if o.kind == "data_grid" and o.preset == "schulte_6x6")
+        if shot.beat_kind == "instruction" and grid.grid_layout != "full":
+            raise ValueError("Schulte instructions require the full playable board")
+        if grid.grid_layout != "full" and any(
+            (overlay.kind == "start_transition" and overlay.text in {"Start!", "ابدأ"})
+            or (
+                overlay.kind == "timer"
+                and overlay.clock_start_frame is not None
+                and max(shot.start_frame + overlay.start_frame, overlay.clock_start_frame)
+                < shot.start_frame + overlay.end_frame
+            )
+            for overlay in shot.overlays
+        ):
+            raise ValueError("Schulte attempts require the full playable board")
+        if any(o.kind == "challenge_frame" and o.grid_layout != grid.grid_layout for o in shot.overlays):
+            raise ValueError("Schulte board and frame must use the same layout")
         for overlay in shot.overlays:
             if overlay.kind == "timer" and not re.fullmatch(r"\d{2}:\d{2}", overlay.text):
                 raise ValueError("Schulte timer must use a readable MM:SS value")
+    word_cues = None
+    if plan.version >= 3 and timeline.get("words"):
+        from .graphic_cues import bind_schulte_overlays, schulte_word_cues
+
+        if any(bind_schulte_overlays(shot, timeline) != shot.overlays for shot in grid_shots):
+            raise ValueError("Schulte cues must match canonical word timestamps; rebind and require fresh review")
+        word_cues = schulte_word_cues(timeline)
     reached_spans = (
         spans
         if complete
@@ -1238,7 +1367,12 @@ def _validate_interactive_graphics(
     timeline_text = " ".join(
         str(span.get("text", "")) for span in reached_spans
     ).casefold()
-    if _contains_any(timeline_text, ("المركز", "center", "centre")) and not any(
+    needs_fixation = (
+        any(kind == "fixation_cue" and frame < covered_through for kind, frame, _ in word_cues)
+        if word_cues is not None
+        else _contains_any(timeline_text, ("المركز", "center", "centre"))
+    )
+    if needs_fixation and not any(
         overlay.kind in {"highlight", "fixation_cue"}
         for shot in grid_shots
         for overlay in shot.overlays
@@ -1258,7 +1392,12 @@ def _validate_interactive_graphics(
                 raise ValueError(
                     "Schulte grid must remain the dominant canvas through the spoken countdown"
                 )
-        if any(span in reached_spans for span in start_cue_spans):
+        needs_countdown = (
+            any(kind == "start_transition" and frame < covered_through for kind, frame, _ in word_cues)
+            if word_cues is not None
+            else any(span in reached_spans for span in start_cue_spans)
+        )
+        if needs_countdown:
             has_countdown_label = any(
                 overlay.kind == "start_transition"
                 or (
@@ -1278,6 +1417,9 @@ def _validate_interactive_graphics(
 
 
 def _validate_editorial_quality(plan: ShotPlan, brief: Brief, *, complete: bool) -> None:
+    for shot in plan.shots:
+        if error := _character_identity_error(shot, brief):
+            raise ValueError(error)
     expected_policy = resolve_editorial_policy(brief)
     if plan.editorial_policy != expected_policy:
         raise ValueError("Shot plan editorial policy differs from resolved channel/script policy")
@@ -1416,6 +1558,7 @@ def _validate_editorial_quality(plan: ShotPlan, brief: Brief, *, complete: bool)
                     or grid.width < 0.7
                     or grid.height < 0.65
                     for grid in schulte_grids
+                    if grid.grid_layout != "preview" or shot.beat_kind == "instruction"
                 )
             ):
                 raise ValueError(
@@ -1851,6 +1994,8 @@ def _semantic_issues(
         if intent.beat_id in established_assets:
             local.append("Beat IDs must not collide with established asset IDs")
         seen.add(intent.beat_id)
+        if error := _character_identity_error(intent, brief):
+            local.append(error)
         first = positions.get(intent.first_unit_id)
         last = positions.get(intent.last_unit_id)
         if first is None or last is None or first > last:
@@ -2062,45 +2207,62 @@ def _semantic_issues(
 def _graphic_overlays(graphic: SemanticGraphic | None, duration: int) -> list[Overlay]:
     if graphic is None:
         return []
-    if graphic.template in {"kinetic_type", "focus_sweep"}:
-        labels = [
-            Overlay(kind="label", start_frame=0, end_frame=duration,
-                    text=graphic.primary_text, x=0.1, y=0.32, width=0.8, height=0.3)
+    if graphic.template == "schulte_challenge" and graphic.grid_layout == "preview":
+        overlays = [
+            Overlay(kind="data_grid", preset="schulte_6x6", grid_layout="preview", start_frame=0, end_frame=duration),
+            Overlay(kind="challenge_frame", grid_layout="preview", start_frame=0, end_frame=duration),
+            Overlay(kind="card", start_frame=0, end_frame=duration, text=graphic.primary_text,
+                    x=.06, y=.09, width=.44, height=.14),
         ]
+        for i, icon in enumerate(graphic.icons):
+            overlays.append(Overlay(kind="pictogram", icon=icon, start_frame=0, end_frame=duration,
+                                    x=.08 + i * .23, y=.31, width=.40 if len(graphic.icons) == 1 else .20, height=.42))
         if graphic.secondary_text.strip():
-            labels.append(
-                Overlay(kind="label", start_frame=0, end_frame=duration,
-                        text=graphic.secondary_text, x=0.1, y=0.65, width=0.8, height=0.14)
-            )
+            overlays.append(Overlay(kind="card", start_frame=0, end_frame=duration, text=graphic.secondary_text,
+                                    x=.06, y=.77, width=.44, height=.11))
+        return overlays
+    if graphic.icons and graphic.template != "schulte_challenge":
+        objects = []
+        for i, icon in enumerate(graphic.icons):
+            paired = len(graphic.icons) == 2
+            objects.append(Overlay(kind="pictogram", icon=icon, start_frame=0, end_frame=duration,
+                                   x=(.12 + i * .46) if paired else .33, y=.20,
+                                   width=.30 if paired else .34, height=.48))
+            copy = graphic.primary_text if i == 0 else graphic.secondary_text
+            if copy.strip():
+                objects.append(Overlay(kind="card", start_frame=0, end_frame=duration, text=copy,
+                                       x=(.08 + i * .46) if paired else .12, y=.74,
+                                       width=.38 if paired else .76, height=.14))
+        if len(graphic.icons) == 1 and graphic.secondary_text.strip():
+            objects.append(Overlay(kind="card", start_frame=0, end_frame=duration, text=graphic.secondary_text,
+                                   x=.12, y=.06, width=.76, height=.10))
+        return objects
+    if graphic.template in {"kinetic_type", "focus_sweep"}:
+        labels = [Overlay(kind="label", start_frame=0, end_frame=duration,
+                          text=graphic.primary_text, x=.1, y=.32, width=.8, height=.3)]
+        if graphic.secondary_text.strip():
+            labels.append(Overlay(kind="label", start_frame=0, end_frame=duration,
+                                  text=graphic.secondary_text, x=.1, y=.65, width=.8, height=.14))
         if graphic.template == "focus_sweep":
             labels.insert(0, Overlay(kind="focus_sweep", start_frame=0, end_frame=duration,
-                                     x=0.08, y=0.18, width=0.84, height=0.64))
+                                     x=.08, y=.18, width=.84, height=.64))
         return labels
     if graphic.template == "comparison":
-        return [
-            Overlay(
-                kind="comparison",
-                start_frame=0,
-                end_frame=duration,
-                text=graphic.primary_text,
-                secondary_text=graphic.secondary_text,
-                x=0.08,
-                y=0.18,
-                width=0.84,
-                height=0.64,
-            )
-        ]
-    start_copy = graphic.secondary_text or "Start"
-    return [
+        return [Overlay(kind="comparison", start_frame=0, end_frame=duration,
+                        text=graphic.primary_text, secondary_text=graphic.secondary_text,
+                        x=.08, y=.18, width=.84, height=.64)]
+    overlays = [
         Overlay(kind="data_grid", preset="schulte_6x6", start_frame=0, end_frame=duration),
-        Overlay(kind="timer", start_frame=0, end_frame=duration, text=graphic.timer_text,
-                x=0.82, y=0.025, width=0.15, height=0.08),
         Overlay(kind="challenge_frame", start_frame=0, end_frame=duration),
         Overlay(kind="rule_reveal", start_frame=0, end_frame=duration, text=graphic.primary_text),
-        Overlay(kind="fixation_cue", start_frame=0, end_frame=duration),
-        Overlay(kind="target_indicator", start_frame=0, end_frame=duration, target_cell=SCHULTE_6X6.index("1")),
-        Overlay(kind="start_transition", start_frame=0, end_frame=duration, text=start_copy),
     ]
+    if graphic.secondary_text.strip() and graphic.secondary_text.strip() != "Start":
+        overlays.append(Overlay(kind="label", start_frame=0, end_frame=duration,
+                                text=graphic.secondary_text, x=.1, y=.025, width=.65, height=.08))
+    for i, icon in enumerate(graphic.icons):
+        overlays.append(Overlay(kind="pictogram", icon=icon, start_frame=0, end_frame=duration,
+                                x=.005, y=.30 + i * .24, width=.07, height=.18))
+    return overlays
 
 
 def _compiled_framing(
@@ -2210,6 +2372,7 @@ def _compile_semantic_batch(
             asset_id=asset_id,
             reference_asset_id=reference_asset_id,
             entity_ids=intent.entity_ids,
+            character_ids=intent.character_ids,
             span_ids=span_ids_for_frames(timeline, start_frame, end_frame),
             start_frame=start_frame,
             end_frame=end_frame,
@@ -2237,6 +2400,9 @@ def _compile_semantic_batch(
                                intent.graphic.template != "comparison" else None),
             overlays=_graphic_overlays(intent.graphic, duration),
         )
+        from .graphic_cues import bind_schulte_overlays
+
+        shot.overlays = bind_schulte_overlays(shot, timeline)
         compiled.append(shot)
         compiled_by_beat[intent.beat_id] = shot
         if shot.operation != "reuse":
@@ -2485,10 +2651,12 @@ def _hook_repair_partition(
         if repair_start == 0
         else positions[batch.shots[repair_start - 1].last_unit_id]
     )
+    last_hook = next(shot for shot in batch.shots if shot.beat_id == rejected_hook_ids[-1])
+    suffix_last = positions[last_hook.last_unit_id]
     eligible = [
         index
         for index, unit in enumerate(units)
-        if index > prefix_last and unit.end_frame <= round(15 * fps)
+        if prefix_last < index <= suffix_last and unit.end_frame <= round(15 * fps)
     ]
     if len(eligible) < len(rejected_hook_ids):
         return []
@@ -2509,12 +2677,12 @@ def _hook_repair_partition(
         )
         cursor = eligible.index(last_index) + 1
     continuation_start = eligible[-1] + 1
-    if continuation_start < len(units):
+    if continuation_start <= suffix_last:
         partition.append(
             {
                 "beat_id": f"{rejected_hook_ids[-1]}__continuation",
                 "first_unit_id": units[continuation_start].unit_id,
-                "last_unit_id": units[-1].unit_id,
+                "last_unit_id": units[suffix_last].unit_id,
             }
         )
     return partition
@@ -2666,6 +2834,9 @@ def _repair_slot_constraints(
                     "current_continuity": intent.continuity,
                     "current_reference_id": intent.reference_id,
                     "current_entity_ids": intent.entity_ids,
+                    "current_character_ids": intent.character_ids,
+                    "episode_characters": [character.model_dump(mode="json") for character in episode_cast(brief).values()],
+                    "character_rules": "Use only declared character_ids. Persistent characters may move across new scenes; scene-local entity_ids may not. Keep exact character identity on unchanged reuse. Do not force a character into unrelated narration or local graphics.",
                     "earlier_entity_ids": sorted(known_entity_ids),
                     "allowed_framings": [
                         framing
@@ -2870,7 +3041,10 @@ def _save_partial_plan(
     next_window: int,
     shots: list[Shot],
 ) -> None:
+    from .audio_adoption import assert_audio_lineage
+
     with publication_guard():
+        assert_audio_lineage(path.parent, brief, timeline)
         atomic_write_json(str(path), {
             "version": 1,
             "brief_sha256": fingerprint(brief),
@@ -2907,7 +3081,7 @@ def _load_semantic_partial_plan(
         or not 0 < next_window <= len(windows)
     ):
         raise ValueError("Semantic partial shot plan does not match current planning inputs")
-    if migrating and checkpoint_lineage not in {(17, 8), (18, 9), (20, 10), (21, 10), (22, 11)}:
+    if migrating and checkpoint_lineage not in {(17, 8), (18, 9), (20, 10), (21, 10), (22, 11), (23, 12)}:
         accepted_end = windows[next_window - 1][1]
         if any(
             event.introduction_frame < accepted_end
@@ -2935,7 +3109,10 @@ def _load_semantic_partial_plan(
                 # Archive its accepted evidence and reopen only the affected suffix.
                 archived = path.parent / "planner_rejections"
                 archived.mkdir(exist_ok=True)
+                from .audio_adoption import assert_audio_lineage
+
                 with publication_guard():
+                    assert_audio_lineage(path.parent, brief, timeline)
                     atomic_write_json(str(archived / f"framing-{fingerprint(checkpoint)}.json"), checkpoint)
                 batches = batches[:window_index]
                 _save_semantic_partial_plan(path, brief, timeline, windows, batches)
@@ -2988,7 +3165,10 @@ def _save_semantic_partial_plan(
     windows: list[tuple[int, int]],
     batches: list[SemanticShotBatch],
 ) -> None:
+    from .audio_adoption import assert_audio_lineage
+
     with publication_guard():
+        assert_audio_lineage(path.parent, brief, timeline)
         atomic_write_json(
             str(path),
             {
@@ -3144,18 +3324,34 @@ def ensure_editorial_review(
     ask: Callable[[str], str],
 ) -> EditorialReview:
     """Run a clean, content-bound semantic review before a v3 plan reaches Flow."""
+    from .audio_adoption import (
+        assert_audio_lineage,
+        assert_current_audio_state,
+        capture_audio_state,
+    )
     from .render import overlay_review_evidence
-
     root = Path(run_dir)
+    with publication_guard():
+        audio_state = capture_audio_state(root, validate_pair=False)
     path = root / "editorial_review.json"
+    with publication_guard():
+        assert_audio_lineage(root, brief, timeline)
+    renderer_evidence = [overlay_review_evidence(shot, plan.fps) for shot in plan.shots]
+    renderer_evidence_sha256 = fingerprint({"evidence": renderer_evidence})
+    human_feedback = _human_quality_feedback(root, brief)
+    feedback_hash = fingerprint(human_feedback) if human_feedback else None
     if path.exists():
         existing = EditorialReview.model_validate_json(path.read_text(encoding="utf-8"))
-        if existing.plan_sha256 == fingerprint(plan) and [s.shot_id for s in existing.shots] == [s.shot_id for s in plan.shots]:
+        if existing.plan_sha256 == fingerprint(plan) and existing.human_feedback_sha256 == feedback_hash and [s.shot_id for s in existing.shots] == [s.shot_id for s in plan.shots] and existing.render_evidence_sha256 == renderer_evidence_sha256:
             existing.assert_approved(plan)
+            with publication_guard():
+                assert_current_audio_state(root, audio_state, validate_pair=False)
+                assert_audio_lineage(root, brief, timeline)
             return existing
         rejection_dir = root / "editorial_rejections"
         rejection_dir.mkdir(exist_ok=True)
         with publication_guard():
+            assert_current_audio_state(root, audio_state, validate_pair=False)
             atomic_write_json(
                 str(rejection_dir / f"{fingerprint(existing)}.json"),
                 existing.model_dump(mode="json"),
@@ -3184,10 +3380,11 @@ def ensure_editorial_review(
         + fingerprint(plan)
         + "\nEPISODE VISUAL STRATEGY:\n"
         + (brief.visual_strategy.model_dump_json() if brief.visual_strategy else "null")
+        + human_feedback
         + "\nSHOT PLAN:\n"
         + plan.model_dump_json()
         + "\nRENDERER EVIDENCE FROM COMPILED ASS:\n"
-        + json.dumps([overlay_review_evidence(shot, plan.fps) for shot in plan.shots], ensure_ascii=False)
+        + json.dumps(renderer_evidence, ensure_ascii=False)
         + "\nREQUIRED SHOT IDS IN EXACT ORDER:\n"
         + json.dumps([shot.shot_id for shot in plan.shots])
     )
@@ -3212,8 +3409,12 @@ def ensure_editorial_review(
         if coverage_attempt == 2:
             raise ValueError(review_error)
     # Plan lineage is system-owned; the critic judges content and cannot select its target.
-    review = review.model_copy(update={"plan_sha256": fingerprint(plan)})
+    review = review.model_copy(update={"plan_sha256": fingerprint(plan), "human_feedback_sha256": feedback_hash, "render_evidence_sha256": renderer_evidence_sha256})
     with publication_guard():
+        assert_current_audio_state(root, audio_state, validate_pair=False)
+        assert_audio_lineage(root, brief, timeline)
+        if fingerprint({"evidence": [overlay_review_evidence(shot, plan.fps) for shot in plan.shots]}) != renderer_evidence_sha256:
+            raise ValueError("Renderer evidence changed during editorial review")
         atomic_write_json(str(path), review.model_dump(mode="json"))
     try:
         review.assert_approved(plan)
@@ -3228,11 +3429,34 @@ def require_editorial_review(
 ) -> EditorialReview:
     if brief.version < 3:
         raise ValueError("Editorial review receipts apply only to version 3 briefs")
+    from .audio_adoption import (
+        assert_audio_lineage,
+        assert_current_audio_state,
+        capture_audio_state,
+    )
+
+    root = Path(run_dir)
+    with publication_guard():
+        audio_state = capture_audio_state(root)
+        assert_audio_lineage(root, brief, plan=plan)
     path = Path(run_dir) / "editorial_review.json"
     if not path.exists():
         raise ValueError("Version 3 shot plan has no editorial review receipt")
     review = EditorialReview.model_validate_json(path.read_text(encoding="utf-8"))
+    feedback = _human_quality_feedback(Path(run_dir), brief)
+    if review.human_feedback_sha256 != (fingerprint(feedback) if feedback else None):
+        raise ValueError("Editorial review predates current human feedback; fresh complete review required")
+    from .audio_adoption import assert_no_pending_audio_adoption
+    from .render import overlay_review_evidence
+
+    assert_no_pending_audio_adoption(Path(run_dir))
+    expected = fingerprint({"evidence": [overlay_review_evidence(shot, plan.fps) for shot in plan.shots]})
+    if review.render_evidence_sha256 != expected:
+        raise ValueError("Fresh editorial review required for current renderer evidence")
     review.assert_approved(plan)
+    with publication_guard():
+        assert_current_audio_state(root, audio_state)
+        assert_audio_lineage(root, brief, plan=plan)
     return review
 
 
@@ -3346,7 +3570,8 @@ def _semantic_planning_prompt(
         "using a canvas, backdrop, background, surface or substrate token.\n"
         "4. continuity=new creates a distinct scene. continuity=reuse means unchanged pixels suffice. continuity=edit "
         "means the visible state changes. reference_id names an established asset_id from context or an earlier beat_id "
-        "in this response.\n"
+        "in this response. character_ids names only the explicit EPISODE STRATEGY cast; these identities persist across settings and long gaps. "
+        "Never put cast IDs in scene-local entity_ids. Do not invent a recurring protagonist or add one to unrelated narration/local graphics.\n"
         "5. Framing is an editorial meaning choice, not a repeating camera cycle. Use diagram only for the local "
         "Schulte canvas. Keep ordinary staging plausible and source-grounded.\n"
         f"6. Use only these visual modes: {json.dumps(strategy.visual_modes)}.\n"
@@ -3401,7 +3626,10 @@ def _plan_semantic_windows(
                                if any(f"p{i}_{intent.beat_id}" in rejected for intent in batch.shots)), 0)
                 archived = root / "editorial_rejections"
                 archived.mkdir(exist_ok=True)
+                from .audio_adoption import assert_audio_lineage
+
                 with publication_guard():
+                    assert_audio_lineage(root, brief, timeline)
                     atomic_write_json(str(archived / f"semantic-{fingerprint(review)}.json"),
                                       json.loads(checkpoint_path.read_text(encoding="utf-8")))
                 accepted_batches = accepted_batches[:reopen]
@@ -3410,7 +3638,10 @@ def _plan_semantic_windows(
                 if accepted_batches:
                     _save_semantic_partial_plan(checkpoint_path, brief, timeline, windows, accepted_batches)
                 else:
+                    from .audio_adoption import assert_audio_lineage
+
                     with publication_guard():
+                        assert_audio_lineage(root, brief, timeline)
                         checkpoint_path.unlink(missing_ok=True)
     for offset in range(next_window, len(windows)):
         start, end = windows[offset]
@@ -3428,6 +3659,7 @@ def _plan_semantic_windows(
                 "asset_id": shot.asset_id,
                 "scene_id": shot.scene_id,
                 "entity_ids": shot.entity_ids,
+                "character_ids": shot.character_ids,
                 "subject": shot.subject,
                 "visible_state": shot.visible_state,
                 "setting": shot.setting,
@@ -3444,6 +3676,7 @@ def _plan_semantic_windows(
         prompt = _semantic_planning_prompt(
             brief, units, established, events, offset, prior_critic_feedback
         )
+        prompt += _human_quality_feedback(root, brief)
         prompt += "\nNON-GRID SCENE BUDGET: An established asset with remaining_non_grid_appearances=0 cannot be reused or edited for non-Schulte content. Choose a genuinely fresh scene with distinct entity IDs instead."
         cues = _schulte_start_cue_spans(timeline)
         if cues:
@@ -3606,7 +3839,13 @@ def _plan_semantic_windows(
 
 
 def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan:
+    from .audio_adoption import (
+        assert_current_audio_state,
+        capture_audio_state,
+    )
     root = Path(run_dir)
+    with publication_guard():
+        audio_state = capture_audio_state(root, validate_pair=False)
     brief = load_brief(root)
     timeline = json.loads((root / "timeline.json").read_text(encoding="utf-8"))
     path = root / "shot_plan.json"
@@ -3880,6 +4119,7 @@ def ensure_shot_plan(run_dir: str | Path, ask: Callable[[str], str]) -> ShotPlan
     if brief.version >= 3:
         ensure_editorial_review(root, plan, timeline, brief, ask)
     with publication_guard():
+        assert_current_audio_state(root, audio_state, validate_pair=False)
         atomic_write_json(str(path), plan.model_dump(mode="json"))
         partial_path.unlink(missing_ok=True)
     return plan
@@ -3910,6 +4150,11 @@ def generation_prompt(shot: Shot, brief: Brief) -> str:
         )
     if shot.treatment == "host":
         content += " Stable host identity: " + brief.channel.host_description + "."
+    cast = episode_cast(brief)
+    for character_id in shot.character_ids:
+        if character_id not in cast:
+            raise ValueError(f"Unknown episode character: {character_id}")
+        content += f" Preserve attached character {character_id}: {cast[character_id].description}."
     return (
         content
         + "\nChannel style: "

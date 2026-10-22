@@ -23,13 +23,14 @@ def test_adaptive_tts_refuses_a_busy_browser_lease(tmp_path, monkeypatch):
 
 
 def test_adaptive_tts_does_not_launch_browser_when_cdp_is_unavailable(monkeypatch):
-    def fail_connect(_endpoint):
+    def fail_connect(_endpoint, **_kwargs):
         raise ConnectionError("CDP offline")
 
     monkeypatch.setattr(
         tts_generator, "launch_browser_with_profile",
         lambda *_args: pytest.fail("Adaptive TTS must not launch or replace a browser"),
     )
+    monkeypatch.setattr(tts_generator.ui_guard, "foreign_debugger_targets", lambda *_a, **_k: [])
     playwright = SimpleNamespace(chromium=SimpleNamespace(connect_over_cdp=fail_connect))
     with pytest.raises(tts_generator.AdaptiveBrowserOwnershipError, match="existing CDP"):
         tts_generator.connect_tts_browser(

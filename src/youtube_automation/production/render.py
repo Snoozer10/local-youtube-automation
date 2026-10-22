@@ -2,22 +2,29 @@
 
 from __future__ import annotations
 
+import ast
+import hashlib
 import json
 import math
 import os
 import subprocess
 import tempfile
 import uuid
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from youtube_automation.core.utils import atomic_write_json
 from youtube_automation.video.encoder import _build_encoder_config, detect_hardware_encoder
 
+from ..video import encoder as video_encoder
 from .assets import asset_storage_id, file_digest, read_receipt, read_shot_receipt
 from .contracts import fingerprint, load_brief
 from .flow import verify_generated_assets
+from .graphic_cues import timer_segments
 from .ledger import leased_resource, publication_guard, resource_database
+from .pictograms import pictogram_ass
 from .shots import Shot, ShotPlan, require_editorial_review, validate_plan
 from .writing import atomic_text
 
@@ -52,14 +59,63 @@ def probe_video(
     num, den = map(int, video["avg_frame_rate"].split("/"))
     if den == 0 or num / den != fps:
         raise ValueError("Rendered frame rate differs from the edit plan")
+    if video.get("pix_fmt") != "yuv420p":
+        raise ValueError("Rendered pixel format is not yuv420p")
+    if video.get("color_range") != "tv":
+        raise ValueError("Rendered color range is not limited (tv)")
     if require_audio and not any(s["codec_type"] == "audio" for s in streams):
         raise ValueError("Final output has no audio stream")
     return video
+
+def _pixel_format_for_encoder(encoder_recipe: Mapping[str, Any]) -> str:
+    return "nv12" if encoder_recipe["video_codec"] == "h264_qsv" else "yuv420p"
+
+
+def _normalize_color_range_filter(pixel_format: str) -> str:
+    """Convert detected source range to TV range, then tag the supported output format."""
+    if pixel_format not in {"nv12", "yuv420p"}:
+        raise ValueError("Adaptive render pixel format must be nv12 or yuv420p")
+    return (
+        f"scale=w=iw:h=ih:in_range=auto:out_range=tv,"
+        f"format={pixel_format},setparams=range=tv"
+    )
 
 
 def _render_journal_path(root: Path, generation: str, preview: bool) -> Path:
     kind = "preview" if preview else "master"
     return root / ".publication_journal" / "renders" / f"{kind}-{generation}.json"
+
+
+def require_current_preview(
+    root: Path, inputs: dict[str, Any], frames: int
+) -> dict[str, Any]:
+    """Approval and master activation require the exact still-available preview bytes."""
+    pointer_value: object = json.loads((root / "adaptive_preview.json").read_text(encoding="utf-8"))
+    if not isinstance(pointer_value, dict):
+        raise ValueError("current preview pointer must be a JSON object")
+    pointer: dict[str, Any] = pointer_value
+    if (
+        not isinstance(pointer.get("path"), str)
+        or not isinstance(pointer.get("sha256"), str)
+        or not isinstance(pointer.get("inputs"), dict)
+        or not isinstance(pointer.get("generation"), str)
+        or type(pointer.get("frames")) is not int
+        or not isinstance(pointer.get("editorial_status"), str)
+    ):
+        raise ValueError("current preview pointer metadata is malformed")
+    artifact = (root / pointer["path"]).resolve()
+    if (
+        not artifact.is_relative_to(root.resolve())
+        or not artifact.is_file()
+        or file_digest(artifact) != pointer["sha256"]
+        or pointer.get("inputs") != inputs
+        or pointer.get("generation") != fingerprint(inputs)
+        or pointer.get("frames") != frames
+        or pointer.get("editorial_status") != "pending"
+    ):
+        raise ValueError("Preview is stale or changed; render a new preview before approval")
+    require_encoder_execution(pointer, inputs)
+    return pointer
 
 
 def _remove_journal(path: Path) -> None:
@@ -79,6 +135,16 @@ def _recover_render_publication(
     *,
     preview: bool,
 ) -> Path | None:
+    from .audio_adoption import (
+        assert_current_audio_state,
+        capture_audio_state,
+    )
+    with publication_guard():
+        audio_state = capture_audio_state(root)
+        if (root / "shot_plan.json").is_file():
+            current = ShotPlan.model_validate_json((root / "shot_plan.json").read_text(encoding="utf-8"))
+            if fingerprint(current) != inputs["plan"]:
+                raise ValueError("Recovered render has stale current audio/plan lineage")
     journal = _render_journal_path(root, generation, preview)
     try:
         pending: dict[str, Any] = json.loads(journal.read_text(encoding="utf-8"))
@@ -108,10 +174,23 @@ def _recover_render_publication(
             or file_digest(destination) != expected_hash
         ):
             return None
+        require_encoder_execution(pointer, inputs)
         probe_video(destination, frames, fps, require_audio=True)
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError, subprocess.SubprocessError):
         return None
     with publication_guard():
+        assert_current_audio_state(root, audio_state)
+        if preview:
+            from .review import require_no_human_rejection
+
+            require_no_human_rejection(root, inputs["plan"], pointer["sha256"])
+        if not preview:
+            from .review import require_no_human_rejection
+
+            current_preview = require_current_preview(root, inputs, frames)
+            require_no_human_rejection(root, inputs["plan"], current_preview["sha256"])
+            approval = json.loads((root / "editorial_approval.json").read_text(encoding="utf-8"))
+            require_no_human_rejection(root, inputs["plan"], approval.get("preview_sha256", ""))
         atomic_write_json(
             str(root / ("adaptive_preview.json" if preview else "active_master.json")),
             pointer,
@@ -174,12 +253,164 @@ def camera_filter(
     )
 
 
-RENDERER_VERSION = 4
+RENDERER_VERSION = 14
+
+
+def render_code_fingerprint() -> str:
+    paths = {name: Path(__file__).with_name(name) for name in ("render.py", "graphic_cues.py", "pictograms.py")}
+    paths["video/encoder.py"] = Path(video_encoder.__file__)
+    sources: dict[str, str] = {}
+    for name, path in paths.items():
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=name)
+        sources[name] = ast.dump(tree, include_attributes=False)
+    return fingerprint(sources)
+
+
+def render_tool_version() -> str:
+    """Include the actual FFmpeg build, not only its advertised release number."""
+    result = subprocess.run(
+        ["ffmpeg", "-version"], capture_output=True, text=True,
+        encoding="utf-8", timeout=15, check=True,
+    )
+    return result.stdout.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def current_render_inputs(
+    plan: ShotPlan,
+    assets: dict[str, str],
+    audio: Path,
+    config: dict[str, Any],
+    *,
+    encoder_config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The same current recipe governs encoding, cache adoption and human approval."""
+    width, height = int(config["OUTPUT_WIDTH"]), int(config["OUTPUT_HEIGHT"])
+    if min(width, height) < 2 or width % 2 or height % 2:
+        raise ValueError("Output dimensions must be even")
+    render_config = dict(config, OUTPUT_FPS=plan.fps)
+    selected_encoder = encoder_config
+    if selected_encoder is None:
+        selected_encoder = detect_hardware_encoder(render_config)
+    encoder_recipe = dict(selected_encoder, encoder_args=list(selected_encoder["encoder_args"]))
+    fallback = encoder_recipe if encoder_recipe["video_codec"] == "libx264" else _build_encoder_config("libx264", render_config)
+    return {
+        "renderer_version": RENDERER_VERSION,
+        "tool": render_tool_version(),
+        "plan": fingerprint(plan),
+        "assets": assets,
+        "audio": file_digest(audio),
+        "config": dict(config, OUTPUT_FPS=plan.fps),
+        "render_code_sha256": render_code_fingerprint(),
+        "overlay_recipes": {
+            shot.shot_id: overlay_filter_recipe(shot, width, height, plan.fps).fingerprint
+            for shot in plan.shots if shot.overlays
+        },
+        "encoder_recipe": encoder_recipe,
+        "encoder_policy": {
+            "version": 1,
+            "cpu_fallback": dict(fallback, encoder_args=list(fallback["encoder_args"])),
+            "clip_count": len(plan.shots),
+            "assembly": {"video_codec": "libx264", "preset": "veryfast",
+                         "crf": str(config.get("CPU_CRF", 17)), "pix_fmt": "yuv420p",
+                         "fps": plan.fps, "audio_codec": "aac", "audio_bitrate": "192k"},
+        },
+           }
+
+
+def _require_clip_encoder_execution(execution: Any, inputs: dict[str, Any]) -> None:
+    preferred = inputs["encoder_recipe"]
+    fallback = inputs["encoder_policy"]["cpu_fallback"]
+    if not isinstance(execution, dict):
+        raise ValueError("Missing encoder execution evidence")
+    actual = execution.get("encoder_recipe")
+    origin = execution.get("fallback_from")
+    if not ((actual == preferred and origin is None)
+            or (actual == fallback and actual != preferred and origin == preferred)):
+        raise ValueError("Encoder execution is inconsistent with the declared fallback policy")
+
+
+def require_encoder_execution(pointer: dict[str, Any], inputs: dict[str, Any]) -> None:
+    """Publication/cache metadata binds actual clip execution to the allowed recipe."""
+    execution = pointer.get("encoder_execution")
+    policy = inputs.get("encoder_policy")
+    if not isinstance(policy, dict) or policy.get("version") != 1 or not isinstance(execution, dict):
+        raise ValueError("Missing current encoder execution policy or evidence")
+    clips = execution.get("clips")
+    if (execution.get("version") != 1 or execution.get("assembly") != policy.get("assembly")
+            or not isinstance(clips, list) or len(clips) != policy.get("clip_count")):
+        raise ValueError("Incomplete encoder execution evidence")
+    for index, clip in enumerate(clips):
+        if (not isinstance(clip, dict) or clip.get("index") != index
+                or not isinstance(clip.get("sha256"), str)
+                or len(clip["sha256"]) != 64
+                or any(char not in "0123456789abcdef" for char in clip["sha256"])):
+            raise ValueError("Malformed encoder execution clip evidence")
+        _require_clip_encoder_execution(clip.get("execution"), inputs)
 
 
 def _ass_time(frame: int, fps: int) -> str:
     cs = round(frame * 100 / fps)
     return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
+
+
+def _timer_ass_time(frame: int, fps: int) -> str:
+    cs = frame * 100 // fps
+    return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
+
+
+def _scaled_timer_ass_time(frame: int, fps: int) -> str:
+    """Serialize a timer frame on the doubled centisecond PTS axis."""
+    cs = frame * 200 // fps
+    return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
+
+
+_TIMER_FRAME_EVENT_PREFIX = "__timer_frame__:"
+
+
+@dataclass(frozen=True)
+class OverlayAssPass:
+    layer: int
+    timer_pts_scaled: bool
+    ass_text: str
+
+    @property
+    def sha256(self) -> str:
+        encoded = self.ass_text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+
+@dataclass(frozen=True)
+class OverlayFilterRecipe:
+    fps: int
+    passes: tuple[OverlayAssPass, ...]
+
+    @property
+    def fingerprint(self) -> str:
+        return fingerprint({
+            "renderer_version": RENDERER_VERSION,
+            "fps": self.fps,
+            "passes": [
+                {
+                    "layer": item.layer,
+                    "timer_pts_scaled": item.timer_pts_scaled,
+                    "ass_sha256": item.sha256,
+                }
+                for item in self.passes
+            ],
+        })
+
+    def filter_chain(self, ass_files: list[str] | tuple[str, ...]) -> str:
+        if len(ass_files) != len(self.passes):
+            raise ValueError("ASS file count does not match the overlay recipe")
+        filters: list[str] = []
+        for item, ass_file in zip(self.passes, ass_files, strict=True):
+            if not ass_file or Path(ass_file).name != ass_file or any(c in ass_file for c in ",;[]"):
+                raise ValueError("ASS pass filenames must be simple filter-safe names")
+            if item.timer_pts_scaled:
+                filters.append(f"setpts=2*PTS,ass={ass_file},setpts=PTS/2")
+            else:
+                filters.append(f"ass={ass_file}")
+        return ",".join(filters)
 
 
 def _safe_ass_text(value: str) -> str:
@@ -192,7 +423,15 @@ def _safe_ass_text(value: str) -> str:
     )
 
 
-def overlay_ass(shot: Shot, width: int, height: int, fps: int, font: str = "Arial") -> str:
+def overlay_ass(
+    shot: Shot,
+    width: int,
+    height: int,
+    fps: int,
+    font: str = "Arial",
+    *,
+    mark_timer_events: bool = False,
+) -> str:
     if any(c in font for c in "\n\r,"):
         raise ValueError("ASS font must be a single font family")
     header = f"""[Script Info]
@@ -230,18 +469,54 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 .replace("\n", "\\N")
             )
             if overlay.kind == "timer":
+                if overlay.clock_start_frame is not None:
+                    assert overlay.value_from is not None
+                    for begin, finish, clock_text in timer_segments(
+                        overlay.start_frame, overlay.end_frame, shot.start_frame,
+                        overlay.clock_start_frame, overlay.value_from, fps,
+                    ):
+                        timer_name = (
+                            f"{_TIMER_FRAME_EVENT_PREFIX}{begin}:{finish}"
+                            if mark_timer_events else ""
+                        )
+                        events.append(
+                            f"Dialogue: 0,{_timer_ass_time(begin, fps)},{_timer_ass_time(finish, fps)},Default,{timer_name},0,0,0,,"
+                            f"{{\\an5\\b1\\fs{max(54, h // 2)}\\bord0\\1c&H66391E&"
+                            f"\\pos({x + w // 2},{y + h // 2})}}{clock_text}"
+                        )
+                    continue
                 contents.append(
-                    f"{{\\an5\\b1\\fs{max(54, h // 2)}\\bord3\\pos({x + w // 2},{y + h // 2})}}{text}"
+                    f"{{\\an5\\b1\\fs{max(54, h // 2)}\\bord0\\1c&H66391E&\\pos({x + w // 2},{y + h // 2})}}{text}"
                 )
             elif shot.local_composition in {"kinetic_type", "focus_sweep"}:
                 longest_line = max(len(line) for line in overlay.text.splitlines())
-                font_size = max(54, min(80, round(w / max(1, longest_line * 0.5))))
+                primary = overlay.y < 0.55
+                font_size = max(64, min(174 if primary else 104, round(w / max(1, longest_line * 0.52))))
                 contents.append(
-                    f"{{\\an5\\b1\\fs{font_size}\\bord2\\1c&H332017&\\3c&HFFFFFF&\\fad(120,0)"
+                    f"{{\\an5\\b1\\fs{font_size}\\bord0\\1c&H66391E&\\fad(180,0)"
                     f"\\pos({x + w // 2},{y + h // 2})}}{text}"
                 )
             else:
                 contents.append(f"{{\\pos({x},{y})}}{text}")
+        elif overlay.kind == "pictogram":
+            assert overlay.icon is not None
+            if overlay.motion_to is None:
+                contents.extend(pictogram_ass(overlay.icon, x, y, w, h))
+            else:
+                if overlay.motion_end_frame is None:
+                    raise ValueError("Moving pictograms need an arrival frame")
+                move_to = (
+                    round(overlay.motion_to[0] * width),
+                    round(overlay.motion_to[1] * height),
+                )
+                move_ms = round((overlay.motion_end_frame - overlay.start_frame) * 1000 / fps)
+                if move_ms <= 0:
+                    raise ValueError("Moving pictograms need a positive serialized duration")
+                contents.extend(
+                    pictogram_ass(
+                        overlay.icon, x, y, w, h, move_to=move_to, move_ms=move_ms
+                    )
+                )
         elif overlay.kind == "highlight":
             contents.append(
                 f"{{\\pos({x},{y})\\p1\\bord3\\1a&HFF&\\3c&H00BFFF&}}m 0 0 l {w} 0 {w} {h} 0 {h} 0 0{{\\p0}}"
@@ -258,11 +533,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0{{\\p0}}"
             )
         elif overlay.kind == "card":
+            size = max(22, min(72, round(h * .5),
+                               round((w - 32) / max(1, len(overlay.text) * .52))))
             contents.extend(
                 [
-                    f"{{\\pos({x},{y})\\p1\\bord2\\1c&H20283A&\\3c&H5AE0FF&}}"
+                    f"{{\\pos({x},{y})\\p1\\bord2\\1c&H66391E&\\3c&H5AE0FF&\\fad(120,0)}}"
                     f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0{{\\p0}}",
-                    f"{{\\an5\\b1\\fs{max(22, h // 4)}\\pos({x + w // 2},{y + h // 2})}}"
+                    f"{{\\an5\\b1\\fs{size}\\bord0\\1c&HFFFFFF&\\fad(120,0)"
+                    f"\\pos({x + w // 2},{y + h // 2})}}"
                     f"{_safe_ass_text(overlay.text)}",
                 ]
             )
@@ -317,12 +595,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f"m 0 0 l {bar} 0 {bar} {h} 0 {h} 0 0{{\\p0}}"
             )
         elif overlay.kind == "comparison":
+            size = max(64, min(122, round((w / 2 - 64) / max(1, max(len(overlay.text), len(overlay.secondary_text)) * 0.5))))
             contents.extend(
                 [
-                    f"{{\\pos({x},{y})\\p1\\bord2\\1c&H20283A&\\3c&H697386&}}"
-                    f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0 m {w // 2} 0 l {w // 2} {h}{{\\p0}}",
-                     f"{{\\an5\\b1\\fs{max(54,height // 15)}\\pos({x + w // 4},{y + h // 2})}}{_safe_ass_text(overlay.text)}",
-                     f"{{\\an5\\b1\\fs{max(54,height // 15)}\\1c&H5AE0FF&\\pos({x + 3 * w // 4},{y + h // 2})}}"
+                    f"{{\\pos({x},{y})\\p1\\bord0\\1c&H66391E&}}"
+                    f"m 0 0 l {w // 2 - 12} 0 {w // 2 - 12} {h} 0 {h} 0 0{{\\p0}}",
+                    f"{{\\pos({x},{y})\\p1\\bord0\\1c&HCEE7F2&}}"
+                    f"m {w // 2 + 12} 0 l {w} 0 {w} {h} {w // 2 + 12} {h} {w // 2 + 12} 0{{\\p0}}",
+                     f"{{\\an5\\b1\\fs{size}\\bord0\\1c&HFFFFFF&\\fad(180,0)\\pos({x + w // 4},{y + h // 2})}}{_safe_ass_text(overlay.text)}",
+                     f"{{\\an5\\b1\\fs{size}\\bord0\\1c&H66391E&\\fad(240,0)\\pos({x + 3 * w // 4},{y + h // 2})}}"
                     f"{_safe_ass_text(overlay.secondary_text)}",
                 ]
             )
@@ -362,20 +643,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         elif overlay.kind == "rule_reveal":
             contents.extend(
                 [
-                    f"{{\\pos({x},{y})\\p1\\bord0\\1c&H20283A&\\1a&H20&\\fad(180,0)}}"
+                    f"{{\\pos({x},{y})\\p1\\bord0\\1c&H66391E&\\1a&H00&\\fad(180,0)}}"
                     f"m 0 0 l {w} 0 {w} {h} 0 {h} 0 0{{\\p0}}",
-                    f"{{\\an5\\b1\\fs{max(48, height // 22)}\\pos({x + w // 2},{y + h // 2})"
+                    f"{{\\an5\\b1\\fs{max(48, height // 17)}\\bord0\\pos({x + w // 2},{y + h // 2})"
                     f"\\fad(180,0)}}{_safe_ass_text(overlay.text)}",
                 ]
             )
         elif overlay.kind == "fixation_cue":
             cx, cy = x + w // 2, y + h // 2
             radius = max(8, min(w, h) // 5)
-            duration_ms = max(1, round((overlay.end_frame - overlay.start_frame) * 1000 / fps))
             contents.extend(
                 [
-                    f"{{\\pos({cx},{cy})\\p1\\bord3\\1a&HFF&\\3c&H5AE0FF&"
-                    f"\\t(0,{duration_ms},\\fscx125\\fscy125\\3a&H80&)}}"
+                    f"{{\\pos({cx},{cy})\\p1\\bord3\\1a&HFF&\\3c&H5AE0FF&}}"
                     f"m {-radius} 0 l {radius} 0 m 0 {-radius} l 0 {radius}{{\\p0}}",
                     f"{{\\an5\\b1\\fs{max(18, radius)}\\pos({cx},{cy})}}+",
                 ]
@@ -398,13 +677,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f"m {-radius} {-radius} l {radius} {-radius} {radius} {radius} {-radius} {radius} {-radius} {-radius}{{\\p0}}"
             )
         elif overlay.kind == "start_transition":
-            badge_y = round(height * 0.075)
+            badge_y = round(height * 0.0525)
             if overlay.text == "Start":
                 continue  # Generic readiness chrome must not announce a premature start.
             contents.extend(
                 [
-                    f"{{\\an5\\b1\\fs{max(54, height // 18)}\\pos({width // 2},{badge_y})"
-                    f"\\fad(80,160)}}{_safe_ass_text(overlay.text)}",
+                     f"{{\\an5\\b1\\fs{max(32, min(round(height * 0.0625), round(h * 0.85)))}\\bord0\\1c&H66391E&\\pos({width // 2},{badge_y})}}"
+                     f"{_safe_ass_text(overlay.text)}",
                 ]
             )
         else:
@@ -466,19 +745,124 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return header + "\n".join(events) + "\n"
 
 
+def _overlay_recipe_from_ass(
+    ass_text: str, fps: int, *, scale_timer_events: bool
+) -> OverlayFilterRecipe:
+    if not scale_timer_events:
+        return OverlayFilterRecipe(fps, (OverlayAssPass(0, False, ass_text),))
+
+    first_dialogue = ass_text.find("Dialogue: ")
+    if first_dialogue < 0:
+        return OverlayFilterRecipe(fps, (OverlayAssPass(0, False, ass_text),))
+    header = ass_text[:first_dialogue]
+    lines = [
+        line for line in ass_text[first_dialogue:].split("\n")
+        if line.startswith("Dialogue: ")
+    ]
+    layered: dict[int, list[tuple[bool, str]]] = {}
+    has_running_timer = False
+    for line in lines:
+        fields = line[len("Dialogue: "):].split(",", 9)
+        if len(fields) != 10:
+            raise ValueError("Malformed ASS dialogue in overlay recipe")
+        try:
+            layer = int(fields[0])
+        except ValueError as exc:
+            raise ValueError("ASS dialogue layer must be an integer") from exc
+        timer_pts_scaled = False
+        if fields[4].startswith(_TIMER_FRAME_EVENT_PREFIX):
+            frame_parts = fields[4][len(_TIMER_FRAME_EVENT_PREFIX):].split(":")
+            if len(frame_parts) != 2:
+                raise ValueError("Malformed timer frame marker in ASS dialogue")
+            begin, finish = (int(part) for part in frame_parts)
+            fields[1] = _scaled_timer_ass_time(begin, fps)
+            fields[2] = _scaled_timer_ass_time(finish, fps)
+            fields[4] = ""
+            timer_pts_scaled = True
+            has_running_timer = True
+        layered.setdefault(layer, []).append(
+            (timer_pts_scaled, "Dialogue: " + ",".join(fields))
+        )
+
+    if not has_running_timer:
+        layer = min(layered, default=0)
+        return OverlayFilterRecipe(fps, (OverlayAssPass(layer, False, ass_text),))
+
+    passes: list[OverlayAssPass] = []
+    for layer in sorted(layered):
+        run_kind: bool | None = None
+        run: list[str] = []
+        for timer_pts_scaled, line in layered[layer]:
+            if run and timer_pts_scaled != run_kind:
+                passes.append(
+                    OverlayAssPass(layer, bool(run_kind), header + "\n".join(run) + "\n")
+                )
+                run = []
+            run_kind = timer_pts_scaled
+            run.append(line)
+        if run:
+            passes.append(
+                OverlayAssPass(layer, bool(run_kind), header + "\n".join(run) + "\n")
+            )
+    return OverlayFilterRecipe(fps, tuple(passes))
+
+
+def overlay_filter_recipe(
+    shot: Shot, width: int, height: int, fps: int, font: str = "Arial"
+) -> OverlayFilterRecipe:
+    """Build shared ASS passes, scaling only running timer PTS above 100 FPS."""
+    if not shot.overlays:
+        return OverlayFilterRecipe(fps, ())
+    scale_timer_events = fps > 100 and any(
+        overlay.kind == "timer" and overlay.clock_start_frame is not None
+        for overlay in shot.overlays
+    )
+    ass_text = overlay_ass(
+        shot, width, height, fps, font, mark_timer_events=scale_timer_events
+    )
+    return _overlay_recipe_from_ass(
+        ass_text, fps, scale_timer_events=scale_timer_events
+    )
+
+
 def overlay_review_evidence(shot: Shot, fps: int) -> dict[str, Any]:
-    """Describe actual compiled ASS behavior, independently of camera motion."""
-    rendered = overlay_ass(shot, 1920, 1080, fps)
+    """Describe compiled behavior at a declared canonical review canvas size."""
+    recipe = overlay_filter_recipe(shot, 1920, 1080, fps)
+    rendered = "\n".join(item.ass_text for item in recipe.passes)
+    ass_files = [f"overlay_pass_{index}.ass" for index in range(len(recipe.passes))]
+    timer_overlays = [o for o in shot.overlays if o.kind == "timer"]
+    running_clocks = sorted({
+        int(o.clock_start_frame) for o in timer_overlays
+        if o.clock_start_frame is not None
+    })
+    recipe_evidence = {
+        "canvas": {"width": 1920, "height": 1080},
+        "fingerprint": recipe.fingerprint,
+        "passes": [
+            {
+                "layer": item.layer,
+                "timer_pts_scaled": item.timer_pts_scaled,
+                "ass_sha256": item.sha256,
+            }
+            for item in recipe.passes
+        ],
+        "filter_chain": recipe.filter_chain(ass_files) if ass_files else "",
+    }
     return {
         "shot_id": shot.shot_id,
+        "renderer_version": RENDERER_VERSION,
         "camera_motion": shot.motion,
         "local_position_animation": "\\move(" in rendered,
         "local_property_animation": "\\t(" in rendered,
         "local_fade_animation": "\\fad(" in rendered,
+        "overlay_recipe": recipe_evidence,
         "visible_copy": [overlay.text for overlay in shot.overlays if overlay.text
                          and not (overlay.kind == "start_transition" and overlay.text == "Start")],
-        "timer_behavior": "fixed readout" if any(o.kind == "timer" for o in shot.overlays) else None,
-        "start_transition_behavior": "fading header badge; grid unobscured"
+        "timer_behavior": (
+            f"global frame countdown at clock starts {running_clocks}"
+            if running_clocks else "fixed readout" if timer_overlays else None
+        ),
+        "start_transition_behavior": "static cue-bound header badge; grid unobscured"
             if any(o.kind == "start_transition" and o.text != "Start" for o in shot.overlays) else None,
     }
 
@@ -489,8 +873,16 @@ def render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool = 
 
 
 def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool = False) -> Path:
+    from .audio_adoption import (
+        assert_current_audio_state,
+        capture_audio_state,
+        require_adopted_audio_review,
+    )
     root = Path(run_dir).resolve()
+    with publication_guard():
+        audio_state = capture_audio_state(root, validate_pair=True)
     brief = load_brief(root)
+    require_adopted_audio_review(root, brief)
     plan = ShotPlan.model_validate_json((root / "shot_plan.json").read_text(encoding="utf-8"))
     timeline = json.loads((root / "timeline.json").read_text(encoding="utf-8"))
     validate_plan(plan, timeline, brief)
@@ -499,11 +891,16 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
     verify_generated_assets(root, plan, brief)
     from .visual_gate import require_visual_audit
 
-    require_visual_audit(root, plan, brief)
+    require_visual_audit(root, plan, brief, render_config=config)
     receipts = {asset_storage_id(s): read_shot_receipt(root, s) for s in plan.shots}
     asset_hashes = {asset_storage_id(s): read_shot_receipt(root, s)["sha256"] for s in plan.shots}
     if not preview:
         approval = json.loads((root / "editorial_approval.json").read_text(encoding="utf-8"))
+        from .review import require_no_human_rejection
+
+        current_preview = json.loads((root / "adaptive_preview.json").read_text(encoding="utf-8"))
+        require_no_human_rejection(root, fingerprint(plan), current_preview["sha256"])
+        require_no_human_rejection(root, fingerprint(plan), approval.get("preview_sha256", ""))
         if approval.get("plan") != fingerprint(plan) or approval.get("assets") != asset_hashes:
             raise ValueError("Editorial approval does not match this plan and these assets")
     audio = (root / timeline["audio_file"]).resolve()
@@ -531,22 +928,19 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
     if min(width, height) < 2 or width % 2 or height % 2:
         raise ValueError("Output dimensions must be even")
     render_config = dict(config, OUTPUT_FPS=plan.fps)
-    encoder = detect_hardware_encoder(render_config)
-    audio_hash = file_digest(audio)
-    tool_version = subprocess.run(
-        ["ffmpeg", "-version"], capture_output=True, text=True, timeout=15, check=True
-    ).stdout.splitlines()[0]
-    inputs = {
-        "renderer_version": RENDERER_VERSION,
-        "tool": tool_version,
-        "plan": fingerprint(plan),
-        "assets": asset_hashes,
-        "audio": audio_hash,
-        "config": render_config,
+    overlay_recipes = {
+        shot.shot_id: overlay_filter_recipe(shot, width, height, plan.fps)
+        for shot in plan.shots if shot.overlays
     }
+    encoder = detect_hardware_encoder(render_config)
+    inputs = current_render_inputs(plan, asset_hashes, audio, config, encoder_config=encoder)
     generation = fingerprint(inputs)
     if not preview and approval.get("generation") != generation:
         raise ValueError("Render settings or audio changed after preview approval")
+    if not preview:
+        current_preview = require_current_preview(root, inputs, plan.total_frames)
+        if approval.get("preview_sha256") != current_preview["sha256"]:
+            raise ValueError("Editorial approval does not match the current preview")
     recovered = _recover_render_publication(
         root,
         generation,
@@ -561,6 +955,8 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
     work.mkdir(parents=True, exist_ok=True)
     invocation = uuid.uuid4().hex
     clips = []
+    clip_executions = []
+    fallback_from = None
     for index, shot in enumerate(plan.shots):
         receipt = receipts[asset_storage_id(shot)]
         iw, ih = receipt["dimensions"]
@@ -574,36 +970,47 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
         if clip.exists() and clip_receipt.exists():
             try:
                 cached = json.loads(clip_receipt.read_text(encoding="utf-8"))
-                if cached != {"generation": generation, "sha256": file_digest(clip)}:
+                if (not isinstance(cached, dict) or cached.get("generation") != generation
+                        or cached.get("sha256") != file_digest(clip)):
                     raise ValueError("Cached clip content changed")
+                cached_execution = cached.get("execution")
+                _require_clip_encoder_execution(cached_execution, inputs)
                 probe_video(clip, frames, plan.fps)
+                clip_executions.append({"index": index, "sha256": cached["sha256"], "execution": cached["execution"]})
                 clips.append(clip)
                 continue
             except (ValueError, OSError, KeyError, StopIteration, subprocess.SubprocessError):
                 pass
-        ass_name = f"overlay_{index:05d}_{invocation}.ass"
-        ass_content = ""
-        if shot.overlays:
-            ass_content = overlay_ass(shot, width, height, plan.fps)
-            atomic_text(work / ass_name, ass_content)
+        recipe = overlay_recipes.get(shot.shot_id)
+        ass_names = [
+            f"overlay_{index:05d}_{pass_index:02d}_{invocation}.ass"
+            for pass_index in range(len(recipe.passes))
+        ] if recipe else []
+        if recipe:
+            for ass_name, ass_pass in zip(ass_names, recipe.passes, strict=True):
+                atomic_text(work / ass_name, ass_pass.ass_text)
         for attempt in range(2):
             filters = camera_filter(shot, width, height, plan.fps, (iw, ih))
-            if shot.overlays:
-                filters += f",ass={ass_name}"
-            filters += ",format=" + ("nv12" if encoder["video_codec"] == "h264_qsv" else "yuv420p")
+            if recipe:
+                recipe_filters = recipe.filter_chain(ass_names)
+                if recipe_filters:
+                    filters += f",{recipe_filters}"
+            pixel_format = _pixel_format_for_encoder(encoder)
+            filters += "," + _normalize_color_range_filter(pixel_format)
             graph_name = f"graph_{index:05d}_{invocation}.txt"
             graph_content = f"[0:v]{filters}[vout]"
             atomic_text(work / graph_name, graph_content)
             execution_dir = work
             scratch: tempfile.TemporaryDirectory[str] | None = None
-            if shot.overlays or len(str(work)) > 240:
+            if recipe or len(str(work)) > 240:
                 # libass and Windows CreateProcess fail when process cwd resolves beyond
                 # the legacy MAX_PATH limit. Keep durable debug copies in the run, but execute
                 # from a short system-temp directory.
                 scratch = tempfile.TemporaryDirectory(prefix="youtube-overlay-")
                 execution_dir = Path(scratch.name)
-                if shot.overlays:
-                    atomic_text(execution_dir / ass_name, ass_content)
+                if recipe:
+                    for ass_name, ass_pass in zip(ass_names, recipe.passes, strict=True):
+                        atomic_text(execution_dir / ass_name, ass_pass.ass_text)
                 atomic_text(execution_dir / graph_name, graph_content)
             temporary = work / f"clip_{index:05d}_{invocation}.pending.mp4"
             args = [
@@ -625,22 +1032,30 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
                 "-c:v",
                 encoder["video_codec"],
                 *encoder["encoder_args"],
+                "-bsf:v",
+                "h264_metadata=video_full_range_flag=0",
                 str(temporary),
             ]
             try:
                 run_command(args, execution_dir)
                 probe_video(temporary, frames, plan.fps)
                 clip_hash = file_digest(temporary)
+                execution = {"encoder_recipe": dict(encoder, encoder_args=list(encoder["encoder_args"])),
+                             "fallback_from": fallback_from}
+                _require_clip_encoder_execution(execution, inputs)
                 with publication_guard():
+                    assert_current_audio_state(root, audio_state, validate_pair=True)
                     os.replace(temporary, clip)
                     atomic_write_json(
-                        str(clip_receipt), {"generation": generation, "sha256": clip_hash}
+                        str(clip_receipt), {"generation": generation, "sha256": clip_hash, "execution": execution}
                     )
+                clip_executions.append({"index": index, "sha256": clip_hash, "execution": execution})
                 break
             except (RuntimeError, ValueError, KeyError, StopIteration, subprocess.SubprocessError):
                 if attempt or encoder["video_codec"] == "libx264":
                     raise
-                encoder = _build_encoder_config("libx264", render_config)
+                fallback_from = inputs["encoder_recipe"]
+                encoder = inputs["encoder_policy"]["cpu_fallback"]
             finally:
                 if scratch is not None:
                     scratch.cleanup()
@@ -678,6 +1093,8 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
                 concat_input,
                 "-i",
                 str(audio),
+                "-vf",
+                _normalize_color_range_filter("yuv420p"),
                 "-map",
                 "0:v:0",
                 "-map",
@@ -690,6 +1107,10 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
                 str(config.get("CPU_CRF", 17)),
                 "-pix_fmt",
                 "yuv420p",
+                "-color_range",
+                "tv",
+                "-bsf:v",
+                "h264_metadata=video_full_range_flag=0",
                 "-r",
                 str(plan.fps),
                 "-fps_mode",
@@ -718,7 +1139,7 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
         load_brief(root) != brief
         or current_plan != plan
         or fingerprint(current_timeline) != plan.timeline_sha256
-        or file_digest(audio) != audio_hash
+        or current_render_inputs(plan, asset_hashes, audio, config) != inputs
     ):
         raise ValueError("Production inputs changed during rendering")
     if {key: read_receipt(root, key)["sha256"] for key in asset_hashes} != asset_hashes:
@@ -738,10 +1159,14 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
         "sha256": output_hash,
         "frames": plan.total_frames,
         "editorial_status": "pending" if preview else "approved",
+        "encoder_execution": {"version": 1, "clips": clip_executions,
+                              "assembly": inputs["encoder_policy"]["assembly"]},
     }
+    require_encoder_execution(pointer, inputs)
     journal = _render_journal_path(root, generation, preview)
     journal.parent.mkdir(parents=True, exist_ok=True)
     with publication_guard():
+        assert_current_audio_state(root, audio_state, validate_pair=True)
         atomic_write_json(
             str(journal),
             {
@@ -751,6 +1176,11 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
             },
         )
     with publication_guard():
+        assert_current_audio_state(root, audio_state, validate_pair=True)
+        if not preview:
+            current_preview = require_current_preview(root, inputs, plan.total_frames)
+            require_no_human_rejection(root, fingerprint(plan), current_preview["sha256"])
+            require_no_human_rejection(root, fingerprint(plan), approval.get("preview_sha256", ""))
         os.replace(pending, destination)
         atomic_write_json(
             str(root / ("adaptive_preview.json" if preview else "active_master.json")),

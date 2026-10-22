@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from typing import Any
 
 
-def fix_arabic_srt(input_path, output_path):
+def fix_arabic_srt(input_path: str, output_path: str) -> None:
     with open(input_path, encoding="utf-8-sig") as f:
         content = f.read()
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(content)
 
 
-def build_subtitle_style_string(config: dict) -> str:
+def build_subtitle_style_string(config: Mapping[str, Any]) -> str:
     return (
         f"Fontname={config['SUB_FONT_NAME']},"
         f"Fontsize={config['SUB_FONT_SIZE']},"
@@ -30,10 +31,10 @@ def build_subtitle_style_string(config: dict) -> str:
 def build_dynamic_ass_subtitles(
     raw_transcript_path: str,
     output_ass_path: str,
-    config: dict,
+    config: Mapping[str, Any],
     total_duration: float = 0.0,
     scene_graph: Any = None,
-):
+) -> str | None:
     """
     Generates broadcast-grade Advanced SubStation Alpha (.ass) subtitles with
     dynamic active-word color highlights and Arabic typography shaping (Cairo / Tajawal).

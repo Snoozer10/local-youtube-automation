@@ -163,7 +163,7 @@ def _is_transient_placeholder(text: str) -> bool:
 def _log_response_diagnostic(
     baseline_count: int,
     new_count: int,
-    gen_control_visible: bool,
+    gen_control_visible: bool | None,
     stable_polls: int,
     response_len: int,
     decision: str,
@@ -172,7 +172,7 @@ def _log_response_diagnostic(
         "[gemini_detector] baseline_count=%d new_count=%d gen_control=%s stable_polls=%d response_len=%d decision=%s",
         baseline_count,
         new_count,
-        "visible" if gen_control_visible else "absent",
+        "visible" if gen_control_visible is True else "absent" if gen_control_visible is False else "unknown",
         stable_polls,
         response_len,
         decision,
@@ -290,6 +290,15 @@ def find_send_button(page: Page) -> Any | None:
     return None
 
 
+def _gemini_stop_control_state(page: Page) -> bool | None:
+    """Return the Stop-control state, or None when it cannot be read."""
+    try:
+        return bool(page.evaluate(STOP_CONTROL_CHECK_JS))
+    except Exception as exc:
+        logger.debug("Gemini Stop-control state probe failed: %s", exc)
+        return None
+
+
 def is_gemini_stop_control_visible(page: Page) -> bool:
     """Detect if Gemini has a real visible Stop-generating control.
 
@@ -303,11 +312,7 @@ def is_gemini_stop_control_visible(page: Page) -> bool:
     Returns:
         True if an active generation stop control is visible, False otherwise.
     """
-    try:
-        return bool(page.evaluate(STOP_CONTROL_CHECK_JS))
-    except Exception as exc:
-        logger.debug("is_gemini_stop_control_visible evaluation failed: %s", exc)
-        return False
+    return _gemini_stop_control_state(page) is True
 
 
 def is_gemini_generating(page: Page) -> bool:
@@ -629,9 +634,9 @@ def wait_for_gemini_response(
             return ""
 
         current_count = page.locator(RESPONSE_SELECTOR).count()
-        stop_visible = is_gemini_stop_control_visible(page)
+        stop_state = _gemini_stop_control_state(page)
 
-        if stop_visible or current_count > initial_count:
+        if stop_state is True or current_count > initial_count:
             new_response_started = True
             break
 
@@ -659,8 +664,8 @@ def wait_for_gemini_response(
             return ""
 
         current_count = page.locator(RESPONSE_SELECTOR).count()
-        stop_visible = is_gemini_stop_control_visible(page)
-        if stop_visible or current_count > initial_count:
+        stop_state = _gemini_stop_control_state(page)
+        if stop_state is True or current_count > initial_count:
             new_response_started = True
 
     if not new_response_started:
@@ -680,7 +685,7 @@ def wait_for_gemini_response(
     last_text = ""
     stable_count = 0
     last_count = initial_count
-    stop_visible = False
+    stop_state = None
 
     while time.monotonic() < deadline:
         if check_gemini_error_state(page):
@@ -688,7 +693,7 @@ def wait_for_gemini_response(
             _log_response_diagnostic(
                 baseline_count=initial_count,
                 new_count=last_count,
-                gen_control_visible=stop_visible,
+                gen_control_visible=stop_state,
                 stable_polls=stable_count,
                 response_len=len(last_text),
                 decision="error_card_mid_stream",
@@ -698,7 +703,7 @@ def wait_for_gemini_response(
         try:
             current_count = page.locator(RESPONSE_SELECTOR).count()
             last_count = current_count
-            stop_visible = is_gemini_stop_control_visible(page)
+            stop_state = _gemini_stop_control_state(page)
 
             if current_count > initial_count:
                 last_el = page.locator(RESPONSE_SELECTOR).nth(current_count - 1)
@@ -712,7 +717,7 @@ def wait_for_gemini_response(
 
                 # Completion stability starts only after Gemini's real Stop control is gone.
                 if (
-                    not stop_visible
+                    stop_state is False
                     and not is_placeholder
                     and len(current_text) >= min_length
                 ):
@@ -727,11 +732,11 @@ def wait_for_gemini_response(
 
                 # Return only when:
                 # a. a new response node exists (current_count > initial_count)
-                # b. the real Stop control is absent (not stop_visible)
+                # b. the real Stop control is absent (stop_state is False)
                 # c. the text is not a placeholder and meets min_length
                 # d. the configured stability_polls threshold has actually been reached
                 if (
-                    not stop_visible
+                    stop_state is False
                     and not is_placeholder
                     and len(current_text) >= min_length
                     and stable_count >= stability_polls
@@ -756,7 +761,7 @@ def wait_for_gemini_response(
         now = time.monotonic()
         if now >= deadline:
             break
-        sleep_dur = poll_interval if not stop_visible else min(poll_interval * 1.5, 0.75)
+        sleep_dur = poll_interval if stop_state is False else min(poll_interval * 1.5, 0.75)
         rem_ms = int(max(0, (deadline - now) * 1000))
         actual_wait = min(int(sleep_dur * 1000), rem_ms)
         if actual_wait > 0:
@@ -765,7 +770,7 @@ def wait_for_gemini_response(
     # 3. Final DOM observation at timeout boundary
     # Must preserve the exact same stability and completion criteria:
     # a. new response node exists (final_count > initial_count)
-    # b. real Stop control is absent (not final_stop_visible)
+    # b. real Stop control is absent (final_stop_state is False)
     # c. text is not a placeholder and meets min_length
     # d. stability_polls threshold has actually been reached (stable_count >= stability_polls)
     try:
@@ -774,7 +779,7 @@ def wait_for_gemini_response(
             _log_response_diagnostic(
                 baseline_count=initial_count,
                 new_count=last_count,
-                gen_control_visible=stop_visible,
+                gen_control_visible=stop_state,
                 stable_polls=stable_count,
                 response_len=len(last_text),
                 decision="error_card_at_boundary",
@@ -782,7 +787,7 @@ def wait_for_gemini_response(
             return ""
 
         final_count = page.locator(RESPONSE_SELECTOR).count()
-        final_stop_visible = is_gemini_stop_control_visible(page)
+        final_stop_state = _gemini_stop_control_state(page)
 
         if final_count > initial_count:
             last_el = page.locator(RESPONSE_SELECTOR).nth(final_count - 1)
@@ -791,7 +796,7 @@ def wait_for_gemini_response(
             is_placeholder = _is_transient_placeholder(final_text)
 
             if (
-                not final_stop_visible
+                final_stop_state is False
                 and not is_placeholder
                 and len(final_text) >= min_length
             ):
@@ -805,7 +810,7 @@ def wait_for_gemini_response(
                 stable_count = 0
 
             if (
-                not final_stop_visible
+                final_stop_state is False
                 and not is_placeholder
                 and len(final_text) >= min_length
                 and stable_count >= stability_polls
@@ -825,7 +830,7 @@ def wait_for_gemini_response(
     _log_response_diagnostic(
         baseline_count=initial_count,
         new_count=last_count,
-        gen_control_visible=stop_visible,
+        gen_control_visible=stop_state,
         stable_polls=stable_count,
         response_len=len(last_text),
         decision="timeout",

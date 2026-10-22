@@ -6,15 +6,17 @@ without disturbing speech alignment timestamps.
 """
 
 import difflib
+import io
 import json
 import os
 import re
 import sys
+from collections.abc import Sequence
 
 print("DEBUG: [Checkpoint 1] Imports completed successfully.", flush=True)
 
 
-def get_target_directory():
+def get_target_directory() -> str:
     print("DEBUG: [Checkpoint 4] Entering get_target_directory().", flush=True)
     base_runs_dir = "youtube_runs"
 
@@ -50,7 +52,7 @@ def get_target_directory():
     return "."
 
 
-def align_and_correct_file(file_path, ref_words, file_type):
+def align_and_correct_file(file_path: str, ref_words: Sequence[str], file_type: str) -> None:
     """Aligns and spelling-corrects a target file against the reference words list.
 
     Supports 'txt' (timestamped timelines) and 'srt' (standard subtitle files) formats.
@@ -87,7 +89,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
     elif file_type == "srt":
         srt_headers = []  # List of (idx_str, time_str)
         blocks = []
-        current_block = []
+        current_block: list[str] = []
         for line in lines:
             if line.strip() == "":
                 if current_block:
@@ -124,7 +126,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
     matcher = difflib.SequenceMatcher(None, trans_words_seq, ref_words, autojunk=False)
 
     # Store word structures for reconstruction
-    corrected_groups_words = [[] for _ in range(original_group_count)]
+    corrected_groups_words: list[list[str]] = [[] for _ in range(original_group_count)]
 
     # Distribute matching sequences safely
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
@@ -187,7 +189,7 @@ def align_and_correct_file(file_path, ref_words, file_type):
     os.replace(tmp_path, file_path)
 
 
-def correct_transcript():
+def correct_transcript() -> None:
     print("DEBUG: [Checkpoint 3] Entering correct_transcript().", flush=True)
     target_dir = get_target_directory()
     print(f"DEBUG: [Checkpoint 5] Target directory resolved to: '{target_dir}'", flush=True)
@@ -275,11 +277,11 @@ def correct_transcript():
     print("=============================================")
 
 
-def main():
+def main() -> None:
     print("DEBUG: [Checkpoint 2] Entered main block.", flush=True)
 
     # Safely reconfigure consoles with replacements to avoid crash loops
-    if sys.platform.startswith("win"):
+    if sys.platform.startswith("win") and isinstance(sys.stdout, io.TextIOWrapper) and isinstance(sys.stderr, io.TextIOWrapper):
         try:
             sys.stdout.reconfigure(encoding="utf-8", errors="replace")
             sys.stderr.reconfigure(encoding="utf-8", errors="replace")

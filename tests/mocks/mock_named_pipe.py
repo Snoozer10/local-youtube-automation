@@ -2,7 +2,7 @@
 
 Simulates \\\\.\\pipe\\ToSrvPipe (write) and \\\\.\\pipe\\FromSrvPipe (read)
 following the protocol consumed by automate_audacity.send_audacity_command:
-commands are framed with a trailing newline; every server response is a run of
+commands use Windows CRLF + NUL or POSIX LF framing; server replies are runs of
 newline-terminated lines followed by a single EMPTY line ("\\n") that
 terminates the reply. A readline() returning "" means EOF/crashed pipe.
 """
@@ -49,7 +49,15 @@ class NamedPipePair:
 
     @property
     def sent_commands(self) -> list[str]:
-        return [c[:-1] if c.endswith("\n") else c for c in self.sent_chunks]
+        commands = []
+        for chunk in self.sent_chunks:
+            if chunk.endswith("\r\n\0"):
+                commands.append(chunk[:-3])
+            elif chunk.endswith("\n") and not chunk.endswith("\r\n"):
+                commands.append(chunk[:-1])
+            else:
+                commands.append(chunk)
+        return commands
 
     def enqueue_response(self, *lines: str) -> None:
         """Queue canned server output verbatim.

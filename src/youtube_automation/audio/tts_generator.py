@@ -15,11 +15,26 @@ import re
 import sys
 import time
 import wave
+from collections.abc import Callable, Mapping
 from contextlib import ExitStack
+from functools import partial
+from pathlib import Path
+from typing import Any, Literal, TypedDict, overload
+from urllib.parse import parse_qs, urlparse
 
+from playwright.sync_api import (
+    Browser,
+    BrowserContext,
+    Locator,
+    Page,
+    Playwright,
+    Response,
+    sync_playwright,
+)
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from playwright.sync_api import sync_playwright
 
+from youtube_automation.audio.wav_validation import AudioProbe
+from youtube_automation.browser import network_health, ui_guard
 from youtube_automation.core.utils import (
     get_config_value,
     get_runtime_state,
@@ -27,6 +42,8 @@ from youtube_automation.core.utils import (
     launch_browser_with_profile,
     rotate_profile_index,
 )
+from youtube_automation.production.contracts import Brief
+from youtube_automation.production.voice_direction import SpeechText, VoiceDirection
 from youtube_automation.prompts import loader
 
 # Selector constants for the standard Gemini Web App
@@ -36,7 +53,7 @@ AUDIO_MANIFEST_FILE_NAME = "audio_manifest.json"
 DEFAULT_SILENCE_PADDING_SEC = 0.300
 
 # Global tracker for human mouse emulation coordinates
-current_mouse_pos = [100, 100]
+current_mouse_pos: list[float] = [100, 100]
 
 # Windows API Constants for native clipboard manipulation using ctypes
 GMEM_MOVEABLE = 0x0002
@@ -61,7 +78,20 @@ user32.GetClipboardData.argtypes = [ctypes.c_uint]
 user32.GetClipboardData.restype = ctypes.c_void_p
 
 
-def set_clipboard_text(text):
+class NetworkAuditState(TypedDict):
+    status: int | None
+    url: str | None
+    is_403: bool
+
+
+class PartitionedChapter(TypedDict):
+    chapter_num: int
+    text: str
+    audio_file: str
+    status: str
+
+
+def set_clipboard_text(text: str) -> bool:
     """Sets Unicode text directly to the Windows system clipboard using native ctypes with retries."""
     from youtube_automation.production.ledger import leased_resource, resource_database
 
@@ -69,7 +99,7 @@ def set_clipboard_text(text):
         return _set_clipboard_text(text)
 
 
-def _set_clipboard_text(text):
+def _set_clipboard_text(text: str) -> bool:
     """Own the already-leased Windows clipboard for one bounded write."""
     opened = False
     for _i in range(10):
@@ -97,7 +127,7 @@ def _set_clipboard_text(text):
 
 
 # Preset Configuration File Parser
-def read_voice_options():
+def read_voice_options() -> dict[str, str]:
     preset_path = "voice_option_notes.txt"
     options = {
         "model": get_config_value("TTS_MODEL", "gemini-2.5-pro-preview-tts"),
@@ -130,16 +160,16 @@ def read_voice_options():
 
 
 # Manifest Checkpoint Persistence Helpers
-def get_manifest_path(latest_run):
+def get_manifest_path(latest_run: str) -> str:
     return os.path.join(latest_run, MANIFEST_FILE_NAME)
 
 
-def load_or_create_manifest(latest_run, voice_options):
+def load_or_create_manifest(latest_run: str, voice_options: Mapping[str, Any]) -> dict[str, Any]:
     manifest_path = get_manifest_path(latest_run)
     if os.path.exists(manifest_path):
         try:
             with open(manifest_path, encoding="utf-8") as f:
-                data = json.load(f)
+                data: dict[str, Any] = json.load(f)
                 print(f"[MANIFEST] Loaded active manifest checkpoint from '{manifest_path}'.")
                 if "voice_config" not in data or not data["voice_config"]:
                     data["voice_config"] = voice_options
@@ -147,7 +177,7 @@ def load_or_create_manifest(latest_run, voice_options):
         except Exception as e:
             print(f"[MANIFEST WARNING] Could not parse manifest ({e}). Creating fresh manifest.")
 
-    initial_manifest = {
+    initial_manifest: dict[str, Any] = {
         "voice_config": voice_options,
         "archetype_plan": "",
         "gemini_completed": False,
@@ -157,7 +187,7 @@ def load_or_create_manifest(latest_run, voice_options):
     return initial_manifest
 
 
-def save_manifest(latest_run, manifest_data):
+def save_manifest(latest_run: str, manifest_data: Mapping[str, Any]) -> None:
     manifest_path = get_manifest_path(latest_run)
     tmp_path = manifest_path + ".tmp"
     try:
@@ -177,7 +207,7 @@ def save_manifest(latest_run, manifest_data):
         raise OSError(f"Failed to write manifest checkpoint: {manifest_path}") from e
 
 
-def probe_audio_file(file_path):
+def probe_audio_file(file_path: str) -> AudioProbe | None:
     """Extracts exact physical duration and audio format parameters via wave header inspection.
 
     Returns dict with keys: duration, framerate, channels, sampwidth, nframes, or None on error.
@@ -204,7 +234,7 @@ def probe_audio_file(file_path):
         return None
 
 
-def sync_audio_manifest(latest_run, manifest, silence_padding_sec=DEFAULT_SILENCE_PADDING_SEC):
+def sync_audio_manifest(latest_run: str, manifest: dict[str, Any], silence_padding_sec: float = DEFAULT_SILENCE_PADDING_SEC) -> dict[str, Any]:
     """Enforces monotonic timeline progression and exports audio_manifest.json with exact 7-field schema.
 
     Schema per segment:
@@ -346,7 +376,7 @@ def sync_audio_manifest(latest_run, manifest, silence_padding_sec=DEFAULT_SILENC
     return manifest_payload
 
 
-def extract_total_blocks_count(text):
+def extract_total_blocks_count(text: str) -> tuple[int | None, int | None]:
     """Extracts (current_idx, total_idx) from headers like 'TTS BLOCK 1 of 8'.
 
     Scans ALL header occurrences and returns the highest current index found,
@@ -375,7 +405,7 @@ def extract_total_blocks_count(text):
     return best_curr, best_total
 
 
-def check_is_gemini_complete(manifest, transcript_text, last_raw_response=""):
+def check_is_gemini_complete(manifest: Mapping[str, Any], transcript_text: str, last_raw_response: str = "") -> bool:
     """Determines if Gemini text generation is complete based on block headers.
 
     Header-driven only: the char-ratio/ending-keyword heuristics were removed
@@ -420,7 +450,7 @@ def check_is_gemini_complete(manifest, transcript_text, last_raw_response=""):
 
 
 # Human-like Mouse Emulation functions
-def simulate_human_mouse_move(page, target_locator, steps=25):
+def simulate_human_mouse_move(page: Page, target_locator: Locator, steps: int = 25) -> None:
     """Moves the mouse from current position to target element using organic Bezier curves."""
     global current_mouse_pos
     try:
@@ -456,7 +486,7 @@ def simulate_human_mouse_move(page, target_locator, steps=25):
     time.sleep(random.uniform(0.12, 0.28))
 
 
-def human_click(page, target_locator):
+def human_click(page: Page, target_locator: Locator) -> None:
     """Performs an organic click containing scrolling, path curves, and down/up click pauses."""
     try:
         target_locator.scroll_into_view_if_needed()
@@ -489,7 +519,7 @@ def human_click(page, target_locator):
             pass
 
 
-def human_hover_and_click(page, locator):
+def human_hover_and_click(page: Page, locator: Locator) -> bool:
     """Simulates organic mouse movement, hovers, pauses, then clicks the element."""
     try:
         locator.scroll_into_view_if_needed()
@@ -509,7 +539,7 @@ def human_hover_and_click(page, locator):
             return False
 
 
-def humanize_text_input(page, textbox, text):
+def humanize_text_input(page: Page, textbox: Locator, text: str) -> bool:
     """Clicks, inputs the text, and triggers native event listeners with micro-edits."""
     try:
         textbox.click()
@@ -532,7 +562,7 @@ def humanize_text_input(page, textbox, text):
             return False
 
 
-def sanitize_script_text(text):
+def sanitize_script_text(text: str) -> str:
     """
     Cleans up raw markdown code fences, strips casting reports, breakdown headers,
     voice profile anchors, and control keywords, leaving only the pure expressive script text.
@@ -581,7 +611,7 @@ def sanitize_script_text(text):
         text = re.sub(pat, "", text)
 
     # 4. Enforce Speech Tag Armor (Force lowercase on all bracket tags)
-    def lowercase_tts_tags(match):
+    def lowercase_tts_tags(match: re.Match[str]) -> str:
         return match.group(0).lower()
 
     text = re.sub(r"\[(tone|pace|pause)\s*:[^\]]+\]", lowercase_tts_tags, text, flags=re.IGNORECASE)
@@ -605,7 +635,7 @@ def clean_text_for_speech(raw_text: str) -> str:
     return sanitize_script_text(raw_text)
 
 
-def calculate_script_coverage(manifest, transcript_text: str) -> float:
+def calculate_script_coverage(manifest: Mapping[str, Any], transcript_text: str) -> float:
     """Calculates word-level coverage of manifest chapters against the reference script."""
     if not transcript_text or not manifest.get("chapters"):
         return 0.0
@@ -618,7 +648,7 @@ def calculate_script_coverage(manifest, transcript_text: str) -> float:
     return chap_words / float(script_words)
 
 
-def partition_script_to_chapters(latest_run: str, transcript_text: str, max_words_per_chapter: int = 220) -> list:
+def partition_script_to_chapters(latest_run: str, transcript_text: str, max_words_per_chapter: int = 220) -> list[PartitionedChapter]:
     """Deterministically partitions the refined script or tts_payload into balanced chapters.
     Guarantees 100% script coverage and eliminates chat truncation / meta-talk risks.
     """
@@ -639,8 +669,8 @@ def partition_script_to_chapters(latest_run: str, transcript_text: str, max_word
     if not paragraphs:
         paragraphs = [p.strip() for p in re.split(r"\n\s*\n", transcript_text) if p.strip()]
 
-    chapters = []
-    current_paras = []
+    chapters: list[PartitionedChapter] = []
+    current_paras: list[str] = []
     current_words = 0
     voice_folder = os.path.join(latest_run, "voice_chapters")
     os.makedirs(voice_folder, exist_ok=True)
@@ -677,7 +707,7 @@ def partition_script_to_chapters(latest_run: str, transcript_text: str, max_word
     return chapters
 
 
-def get_latest_run_folder(runs_path="youtube_runs"):
+def get_latest_run_folder(runs_path: str = "youtube_runs") -> str | None:
     if not os.path.exists(runs_path):
         print(f"Error: Directory '{runs_path}' does not exist.")
         return None
@@ -688,7 +718,7 @@ def get_latest_run_folder(runs_path="youtube_runs"):
     return latest_folder
 
 
-def find_input_box(page):
+def find_input_box(page: Page) -> Locator | None:
     selectors = [
         "rich-textarea div[contenteditable='true']",
         "rich-textarea [contenteditable='true']",
@@ -717,7 +747,7 @@ def find_input_box(page):
     return None
 
 
-def find_send_button(page):
+def find_send_button(page: Page) -> Locator | None:
     selectors = [
         "button.send-button",
         "button[aria-label*='Send message' i]",
@@ -741,7 +771,7 @@ def find_send_button(page):
     return None
 
 
-def send_gemini_prompt(page, text):
+def send_gemini_prompt(page: Page, text: str) -> None:
     """Pastes text into the Gemini chat input, ensures DOM state sync, and guarantees dispatch.
 
     Root cause this guards against: clicking Send / pressing Ctrl+Enter before the rich
@@ -786,7 +816,7 @@ def send_gemini_prompt(page, text):
     time.sleep(1.5)
 
     # 5. Guardrail: if text still sits in the box, force one more Enter
-    def _input_still_full():
+    def _input_still_full() -> bool:
         try:
             return len(chat_box.inner_text().strip()) > 10
         except Exception:
@@ -807,13 +837,13 @@ def send_gemini_prompt(page, text):
             )
 
 
-def get_last_response(page):
+def get_last_response(page: Page) -> str:
     try:
         elements = page.locator(RESPONSE_SELECTOR)
         count = elements.count()
         if count > 0:
             last_el = elements.nth(count - 1)
-            text = last_el.evaluate("el => el.innerText").strip()
+            text: str = last_el.evaluate("el => el.innerText").strip()
             if text.startswith("Gemini said"):
                 text = text[len("Gemini said") :].strip()
             return text
@@ -822,7 +852,7 @@ def get_last_response(page):
     return ""
 
 
-def start_clean_gemini_chat(page):
+def start_clean_gemini_chat(page: Page) -> None:
     print("Requesting a clean chat session...")
     new_chat_selectors = [
         "[aria-label='New chat']",
@@ -869,7 +899,7 @@ def start_clean_gemini_chat(page):
     time.sleep(2)
 
 
-def prepare_gemini_chat_session(page, manifest):
+def prepare_gemini_chat_session(page: Page, manifest: Mapping[str, Any]) -> bool:
     """Resumes an ongoing chat session if present in DOM or sidebar, avoiding new chat generation when resuming."""
     try:
         last_resp = get_last_response(page)
@@ -906,16 +936,228 @@ def prepare_gemini_chat_session(page, manifest):
     return False
 
 
+_TTS_NAV_RETRY_LIMIT = 2
+# Entry check (ensure_speech_playground_tab + the check right after it) also requires
+# ?model=<target>. In-loop checks never do. Flip to False if a live probe shows AI Studio
+# drops the query after load.
+_TTS_REQUIRE_MODEL_QUERY_AT_ENTRY = True
+_SPEECH_WORKSPACE_MARKERS = (
+    "text='Turn text into natural-sounding speech...'",
+    "textarea[aria-label='Enter a prompt']",
+    "ms-run-settings",
+    "ms-run-settings .active-voice-card",
+    "ms-run-settings .voice-card",
+    "ms-run-settings [aria-label*='Speaker' i]",
+    "ms-run-settings :text('Speaker 1')",
+)
+
+# Active-model gate: text of the run-settings model card (exactly one, equal to the target).
+_TTS_MODEL_CARD_SELECTOR = "ms-run-settings button.model-selector-card [data-test-id='model-name']"
+
+# Today's speech UI (probed live 2026-10-07; docs/sessions/CLAUDE_INTERIM_RESULT.md, "Live AI Studio
+# findings"). generate-speech opens a landing page; "Create new dialog" opens the editor on the
+# same URL. Attribute selectors only: Angular strips the whitespace between spans.
+_TTS_CREATE_DIALOG_SELECTOR = "[data-testid='create-new-dialog-card']"
+_TTS_TEXT_TOGGLE_SELECTOR = "button[role='radio'][data-value='TEXT']"
+_TTS_TEXT_TOGGLE_LABEL = re.compile(r"^\s*(edit_note\s*)?Text\s*$")
+_TTS_PROMPT_SELECTOR = "textarea[aria-label='Enter a prompt']"
+_TTS_RUN_SETTINGS_SELECTOR = "ms-run-settings"
+_TTS_RUN_SETTINGS_TOGGLE_SELECTOR = "button[aria-label='Toggle run settings panel']"
+_TTS_VOICE_NAME_SELECTOR = "ms-voice-settings .voice-display-name"
+_TTS_VOICE_OPEN_SELECTOR = "ms-voice-settings button[aria-label='Open voice settings']"
+_TTS_VOICE_DIALOG_SELECTOR = "mat-dialog-container"
+_TTS_VOICE_CLOSE_SELECTOR = "mat-dialog-container button[aria-label='Close panel']"
+_TTS_VOICE_NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z-]{0,39}$")
+# Temperature sits under the collapsed "Model settings" group; the 01:30Z rehearsal resolved it as
+# <input ms-input type="text" inputmode="decimal" role="spinbutton" class="slider-number-input
+# small" aria-valuenow=...> (probe/rehearsal_report.json clicks[2]).
+_TTS_MODEL_SETTINGS_EXPANDER_SELECTOR = (
+    "ms-run-settings button[aria-label='Expand or collapse Model settings']"
+)
+_TTS_TEMPERATURE_SELECTOR = "ms-run-settings input.slider-number-input"
+_TTS_SWITCH_MODEL_DIALOG_SELECTOR = (
+    ":is(mat-dialog-container, [role='dialog']):has-text('Switch model')"
+)
+_TTS_SWITCH_MODEL_CANCEL_SELECTOR = f"{_TTS_SWITCH_MODEL_DIALOG_SELECTOR} button:has-text('Cancel')"
+_TTS_UI_WAIT_SEC = 20.0
+_TTS_UI_POLL_SEC = 0.25
+_TTS_SWITCH_SETTLE_SEC = 1.0
+_TTS_CREATE_DIALOG_MAX_CLICKS = 2
+# Gemini 3.8 Flash TTS editor (zero-send probes 2026-10-09, attempt_22 probe3/probe4 receipts): one
+# ms-speech-block textarea and no Text/Composer toggle; a Style menu whose click-blocking backdrop
+# closes it; a searchable voice list whose cards render only after a search.
+_TTS_FLASH_MODEL = "gemini-3.8-flash-tts"
+_TTS_FLASH_PROMPT_SELECTOR = "textarea[aria-label='Speech block text']"
+_TTS_STYLE_BUTTON_SELECTOR = "ms-voice-style-dropdown button[aria-label='Style']"
+_TTS_STYLE_LABEL_SELECTOR = f"{_TTS_STYLE_BUTTON_SELECTOR} .chip-label"
+_TTS_STYLE_TEXTAREA_SELECTOR = "textarea[aria-label='Describe the voice style']"
+_TTS_OVERLAY_BACKDROP_SELECTOR = ".cdk-overlay-backdrop-showing"
+_TTS_VOICE_SEARCH_SELECTOR = f"{_TTS_VOICE_DIALOG_SELECTOR} input[placeholder*='Search' i]"
+_TTS_VOICE_SEARCH_WAIT_SEC = 3.0
+_TTS_PIECE_GAP_SEC = 0.45
+_TTS_UNIT_ATTEMPT_LIMIT = 2
+_TTS_TYPE_TO_RUN_MAX_SEC = 45.0
+_TTS_ADAPTIVE_COOLDOWN_MAX_SEC = 30.0
+_TTS_TEMPERATURE_TOLERANCE = 0.01
+
+
+def _is_flash_model(model: Any) -> bool:
+    return str(model or "").strip() == _TTS_FLASH_MODEL
+
+
+def _tts_prompt_selector(model: Any) -> str:
+    """Flash types into its speech block; Pro keeps the Text-mode prompt box."""
+    return _TTS_FLASH_PROMPT_SELECTOR if _is_flash_model(model) else _TTS_PROMPT_SELECTOR
+
+
+class TTSWorkspaceUnavailableError(RuntimeError):
+    """AI Studio did not show the Speech Playground; never retried automatically."""
+
+
+class TTSProviderError(RuntimeError):
+    """AI Studio returned a non-retryable provider error."""
+
+
+def _adaptive_post_run_failure(err_msg: str) -> None:
+    """Adaptive runs may retry only transient provider errors; anything else stops."""
+    kind = ui_guard.classify_provider_error(err_msg)
+    if kind != "transient":
+        detail = re.sub(r"\s+", " ", err_msg or "").strip()[:200]
+        raise TTSProviderError(f"{kind}: {detail}")
+
+
+def _adaptive_salvage_download(page: Any, target_dest: str) -> bool:
+    """Re-check the Download button once for up to 3 s; the only click is Download."""
+    button = page.locator(
+        "button[aria-label*='Download' i], button:has-text('Download')"
+    ).first
+    try:
+        button.wait_for(state="visible", timeout=3000)
+    except Exception:
+        pass
+    try:
+        if not button.is_visible():
+            return False
+        with page.expect_download(timeout=15000) as download_info:
+            human_hover_and_click(page, button)
+        download_info.value.save_as(target_dest)
+    except Exception as exc:
+        print(f"[ERROR] Download salvage failed: {exc}")
+        return False
+    print(f"Audio file downloaded and saved (salvage): {target_dest}")
+    return True
+
+
+def _is_speech_url(url: str, model: str | None = None) -> bool:
+    """Accept only the approved HTTPS AI Studio speech origin and exact path."""
+    try:
+        parsed = urlparse(url or "")
+        if (
+            parsed.scheme.lower() != "https"
+            or parsed.hostname != "aistudio.google.com"
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.port not in (None, 443)
+            or parsed.netloc.lower() not in {
+                "aistudio.google.com",
+                "aistudio.google.com:443",
+            }
+        ):
+            return False
+    except ValueError:
+        return False
+    if parsed.path not in ("/generate-speech", "/generate-speech/"):
+        return False
+    if not model or not _TTS_REQUIRE_MODEL_QUERY_AT_ENTRY:
+        return True
+    return parse_qs(parsed.query).get("model") == [model]
+
+
+def _is_speech_workspace(page: Any, model: str | None = None) -> bool:
+    """True only on a speech URL (see _is_speech_url) with a visible speech marker."""
+    try:
+        if not _is_speech_url(page.url or "", model):
+            return False
+        for selector in _SPEECH_WORKSPACE_MARKERS:
+            if page.locator(selector).first.is_visible():
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _require_speech_workspace(page: Any, model: str | None = None) -> None:
+    """Fail closed before settings, typing or a Run click touch a non-speech page."""
+    if not _is_speech_workspace(page, model):
+        raise TTSWorkspaceUnavailableError(
+            f"AI Studio Speech Playground is unavailable (current URL: {getattr(page, 'url', '')})"
+        )
+
+
+def _wait_for_speech_workspace_ready(page: Any, model: str) -> None:
+    """Wait at entry only; pump CDP events while retaining exact URL/model checks.
+
+    The verified run-settings panel and target model card must hydrate before settings.
+    Pre-typing and pre-Run workspace/model gates remain synchronous and unchanged.
+    """
+    if not model:
+        raise TTSWorkspaceUnavailableError("AI Studio target TTS model is empty; refusing to send.")
+    for _ in range(max(1, int(_TTS_UI_WAIT_SEC / _TTS_UI_POLL_SEC))):
+        if not _is_speech_url(getattr(page, "url", ""), model):
+            raise _tts_settings_error(page, "AI Studio left the exact target speech URL during entry")
+        try:
+            names = [n.strip() for n in page.locator(_TTS_MODEL_CARD_SELECTOR).all_text_contents()]
+            panel_visible = page.locator("ms-run-settings").first.is_visible()
+        except Exception as exc:
+            raise _tts_settings_error(page, f"Cannot verify speech entry markers: {exc}") from exc
+        if names and names != [model]:
+            _require_active_tts_model(page, model)
+        if panel_visible and names == [model]:
+            return
+        try:
+            page.wait_for_timeout(_TTS_UI_POLL_SEC * 1000)
+        except Exception as exc:
+            raise _tts_settings_error(page, f"Cannot wait for speech entry hydration: {exc}") from exc
+    raise _tts_settings_error(page, "AI Studio speech entry did not finish loading within 20 seconds")
+
+
+def _require_active_tts_model(page: Any, model: str) -> None:
+    """Fail closed unless the run-settings model card shows exactly the target TTS model.
+
+    Probed live 2026-10-07 (docs/sessions/CLAUDE_INTERIM_RESULT.md): a chat model page on the
+    speech path also shows ms-run-settings and the prompt textarea, so the workspace check alone
+    cannot tell them apart. No click, keypress or navigation happens here.
+    """
+    if not model:
+        raise TTSWorkspaceUnavailableError("AI Studio target TTS model is empty; refusing to send.")
+    try:
+        names = [n.strip() for n in page.locator(_TTS_MODEL_CARD_SELECTOR).all_text_contents()]
+    except Exception:
+        names = None
+    if names != [model]:
+        if names:
+            detail = "The active model does not match the target TTS model."
+        else:
+            detail = (
+                "The run-settings panel must be open, because closing it removes the model card, "
+                "so a closed panel or an unavailable model card makes this gate fail closed."
+            )
+        raise TTSWorkspaceUnavailableError(
+            f"AI Studio active model is not verified as {model!r}: model card names={names!r} "
+            f"(current URL: {getattr(page, 'url', '')}). {detail}"
+        )
+
+
 def ensure_speech_playground_tab(
-    context, target_tts_model="gemini-2.5-pro-preview-tts", *, owned_page=None
-):
+    context: BrowserContext, target_tts_model: str = "gemini-2.5-pro-preview-tts", *, owned_page: Page | None = None
+) -> Page:
     """Finds or opens the Google AI Studio Speech Playground tab and guarantees Playwright is on the correct UI."""
     tab1_speech = owned_page
 
     # 1. Search existing tabs for generate-speech
     if tab1_speech is None:
         for page in context.pages:
-            if "generate-speech" in page.url:
+            if _is_speech_url(page.url):
                 tab1_speech = page
                 break
 
@@ -933,7 +1175,7 @@ def ensure_speech_playground_tab(
 
     clean_speech_url = f"https://aistudio.google.com/generate-speech?model={target_tts_model}"
 
-    if "generate-speech" not in tab1_speech.url or f"model={target_tts_model}" not in tab1_speech.url:
+    if not _is_speech_url(tab1_speech.url, target_tts_model):
         print(f"Navigating to Speech Playground: {clean_speech_url}")
         try:
             tab1_speech.goto(clean_speech_url, wait_until="domcontentloaded", timeout=30000)
@@ -942,7 +1184,7 @@ def ensure_speech_playground_tab(
         time.sleep(4)
 
     # 3. Guardrail: If AI Studio redirected away to /prompts/..., force direct navigation
-    if "generate-speech" not in tab1_speech.url or f"model={target_tts_model}" not in tab1_speech.url:
+    if not _is_speech_url(tab1_speech.url, target_tts_model):
         print(
             "[WARNING] AI Studio redirected away from Speech Playground. Retrying direct navigation..."
         )
@@ -952,10 +1194,15 @@ def ensure_speech_playground_tab(
             print(f"[NOTICE] Guardrail navigation notice: {e}")
         time.sleep(4)
 
+    if not _is_speech_url(tab1_speech.url, target_tts_model):
+        raise TTSWorkspaceUnavailableError(
+            f"AI Studio did not open the Speech Playground (final URL: {tab1_speech.url})"
+        )
+
     return tab1_speech
 
 
-def wait_for_gemini_response(page, step_name="AI Response", max_wait_sec=120):
+def wait_for_gemini_response(page: Page, step_name: str = "AI Response", max_wait_sec: float = 120) -> str:
     print(f"Waiting for {step_name} to generate and stabilize...")
     last_length = 0
     stable_cycles = 0
@@ -983,7 +1230,7 @@ def wait_for_gemini_response(page, step_name="AI Response", max_wait_sec=120):
             current_count = page.locator(RESPONSE_SELECTOR).count()
             if current_count > 0:
                 last_el = page.locator(RESPONSE_SELECTOR).nth(current_count - 1)
-                current_text = last_el.evaluate("el => el.innerText").strip()
+                current_text: str = last_el.evaluate("el => el.innerText").strip()
                 if current_text.startswith("Gemini said"):
                     current_text = current_text[len("Gemini said") :].strip()
 
@@ -1012,7 +1259,7 @@ def wait_for_gemini_response(page, step_name="AI Response", max_wait_sec=120):
     return get_last_response(page)
 
 
-def select_gemini_model(page, model_name):
+def select_gemini_model(page: Page, model_name: str) -> bool:
     print(f"[SYSTEM] Attempting to select Gemini model: {model_name}")
     trigger_selectors = [
         "button[aria-haspopup='menu']:has-text('Flash')",
@@ -1073,7 +1320,7 @@ def select_gemini_model(page, model_name):
     return False
 
 
-def select_ai_studio_tts_model(page, target_model):
+def select_ai_studio_tts_model(page: Page, target_model: str) -> bool:
     """Selects the target TTS model (e.g., gemini-2.5-pro-preview-tts) inside Google AI Studio Speech Playground UI."""
     if not target_model:
         return True
@@ -1174,8 +1421,490 @@ def select_ai_studio_tts_model(page, target_model):
         return False
 
 
-def reapply_speech_settings(page, options):
-    """Re-applies preset voice model settings from voice_option_notes.txt directly into the Speech Playground."""
+def _tts_visible(page: Any, selector: str, label: re.Pattern[str] | None = None) -> list[Any]:
+    """Visible matches of selector (and of label, if given, on inner text); errors count as none."""
+    try:
+        elements = page.locator(selector).all()
+    except Exception:
+        return []
+    found = []
+    for element in elements:
+        try:
+            if element.is_visible() and (
+                label is None or label.match(element.inner_text(timeout=1000) or "")
+            ):
+                found.append(element)
+        except Exception:
+            continue
+    return found
+
+
+def _tts_wait_until(page: Any, check: Callable[[], bool], timeout_sec: float | None = None) -> bool:
+    """Bounded poll of real page markers (never a blind fixed sleep); False on timeout."""
+    limit = _TTS_UI_WAIT_SEC if timeout_sec is None else timeout_sec
+    for _ in range(max(1, int(limit / _TTS_UI_POLL_SEC))):
+        try:
+            if check():
+                return True
+        except TTSWorkspaceUnavailableError:
+            raise
+        except Exception:
+            pass
+        page.wait_for_timeout(_TTS_UI_POLL_SEC * 1000)
+    return False
+
+
+def _tts_settings_error(page: Any, message: str) -> TTSWorkspaceUnavailableError:
+    return TTSWorkspaceUnavailableError(f"{message} (current URL: {getattr(page, 'url', '')})")
+
+
+def _strict_tts_visible(page: Page, selector: str) -> list[Locator]:
+    """Safety selectors must distinguish no matches from query/visibility failures."""
+    try:
+        matches = page.locator(selector)
+        found = []
+        for index in range(matches.count()):
+            element = matches.nth(index)
+            if element.is_visible():
+                found.append(element)
+        return found
+    except Exception as exc:
+        raise _tts_settings_error(
+            page, f"Cannot verify speech safety selector {selector!r}: {exc}"
+        ) from exc
+
+
+@overload
+def _visible_tts_prompt(page: Page, selector: str, *, allow_missing: Literal[False] = False) -> Locator: ...
+
+
+@overload
+def _visible_tts_prompt(page: Page, selector: str, *, allow_missing: Literal[True]) -> Locator | None: ...
+
+
+def _visible_tts_prompt(
+    page: Page, selector: str, *, allow_missing: bool = False
+) -> Locator | None:
+    """Resolve exactly one visible prompt; hidden matching nodes may coexist."""
+    found = _strict_tts_visible(page, selector)
+    if len(found) > 1:
+        raise _tts_settings_error(
+            page,
+            f"Speech prompt {selector!r} needs exactly one visible match, found {len(found)}",
+        )
+    if not found:
+        if allow_missing:
+            return None
+        raise _tts_settings_error(
+            page,
+            f"Speech prompt {selector!r} needs exactly one visible match, found 0",
+        )
+    return found[0]
+
+def _cancel_switch_model_dialog(page: Any) -> None:
+    """Cancel a model-switch dialog and stop; selector errors also stop the flow."""
+    dialogs = _strict_tts_visible(page, _TTS_SWITCH_MODEL_DIALOG_SELECTOR)
+    if not dialogs:
+        return
+    cancel = _strict_tts_visible(page, _TTS_SWITCH_MODEL_CANCEL_SELECTOR)
+    if len(cancel) != 1:
+        raise _tts_settings_error(
+            page, f"Switch model dialog needs exactly one visible Cancel, found {len(cancel)}"
+        )
+    try:
+        cancel[0].click(timeout=5000)
+    except Exception as exc:
+        raise _tts_settings_error(page, f"Could not cancel Switch model dialog: {exc}") from exc
+    raise _tts_settings_error(
+        page, "AI Studio showed a 'Switch model?' dialog during speech settings"
+    )
+
+
+def _require_one_tts_control(
+    page: Any, selector: str, step: str, label: re.Pattern[str] | None = None
+) -> Any:
+    found = _tts_visible(page, selector, label)
+    if len(found) != 1:
+        raise _tts_settings_error(
+            page,
+            f"Speech settings step '{step}' needs exactly one visible control, found {len(found)}",
+        )
+    return found[0]
+
+
+def _click_tts_setting(page: Any, element: Any, step: str) -> None:
+    """Settings clicks use Playwright locator.click() only: no coordinates, no keys."""
+    try:
+        element.click(timeout=5000)
+    except Exception as exc:
+        overlay = ui_guard.ensure_clear(page, allow_escape=False)
+        try:
+            if not overlay.cleared:
+                raise exc
+            element.click(timeout=5000)
+        except Exception as retry_exc:
+            raise _tts_settings_error(
+                page,
+                f"Speech settings step '{step}' click failed: {retry_exc} "
+                f"(blocked_by: {overlay.blocked_by})",
+            ) from retry_exc
+    _cancel_switch_model_dialog(page)
+
+
+def _require_current_tts_settings(
+    page: Any, model: str, voice_name: Any, *, style: Any = None
+) -> None:
+    """Read current required settings without mutating UI immediately before fill or Run."""
+    voice = str(voice_name or "").strip()
+    if not _TTS_VOICE_NAME_PATTERN.fullmatch(voice):
+        raise _tts_settings_error(page, "Configured TTS voice is missing or invalid")
+    _require_speech_workspace(page)
+    if _strict_tts_visible(page, _TTS_SWITCH_MODEL_DIALOG_SELECTOR):
+        raise _tts_settings_error(page, "Speech model switch is pending; refusing to type or send")
+    if len(_strict_tts_visible(page, _TTS_RUN_SETTINGS_SELECTOR)) != 1:
+        raise _tts_settings_error(page, "Speech settings panel must be exactly one visible panel")
+    _require_active_tts_model(page, model)
+    for selector, expected, label in (
+        (_TTS_MODEL_CARD_SELECTOR, model, "model"),
+        (_TTS_VOICE_NAME_SELECTOR, voice, "voice"),
+    ):
+        elements = _strict_tts_visible(page, selector)
+        if len(elements) != 1:
+            raise _tts_settings_error(page, f"Current TTS {label} must have exactly one visible value")
+        try:
+            actual = elements[0].inner_text(timeout=1000).strip()
+            names = [name.strip() for name in page.locator(selector).all_text_contents()]
+        except Exception as exc:
+            raise _tts_settings_error(page, f"Cannot read current TTS {label}: {exc}") from exc
+        if actual != expected or names != [expected]:
+            raise _tts_settings_error(page, f"Current TTS {label} is not verified as {expected!r}")
+    if _is_flash_model(model):
+        _require_tts_style_title(page, style)
+
+
+def _tts_voice_names(page: Any) -> list[str] | None:
+    try:
+        return [n.strip() for n in page.locator(_TTS_VOICE_NAME_SELECTOR).all_text_contents()]
+    except Exception:
+        return None
+
+
+def _tts_style_text(value: Any) -> str:
+    return " ".join(str(value or "").split())
+
+
+def _tts_style_readback(page: Any) -> tuple[str | None, str | None]:
+    """(title, chip label) of the one visible Style button; (None, None) when unreadable."""
+    try:
+        buttons = _tts_visible(page, _TTS_STYLE_BUTTON_SELECTOR)
+        labels = _tts_visible(page, _TTS_STYLE_LABEL_SELECTOR)
+        if len(buttons) != 1 or len(labels) != 1:
+            return (None, None)
+        title = buttons[0].get_attribute("title", timeout=1000)
+        label = labels[0].inner_text(timeout=1000)
+    except Exception:
+        return (None, None)
+    return (_tts_style_text(title), _tts_style_text(label))
+
+
+def _require_tts_style_title(page: Any, style: Any) -> None:
+    """Read-only Flash gate before typing and Run: the Style button title equals the Style."""
+    expected = _tts_style_text(style)
+    if not expected:
+        raise _tts_settings_error(page, f"{_TTS_FLASH_MODEL} needs a nonempty Style")
+    buttons = _strict_tts_visible(page, _TTS_STYLE_BUTTON_SELECTOR)
+    if len(buttons) != 1:
+        raise _tts_settings_error(page, "Current TTS Style must have exactly one visible button")
+    try:
+        title = buttons[0].get_attribute("title", timeout=1000)
+    except Exception as exc:
+        raise _tts_settings_error(page, f"Cannot read current TTS Style: {exc}") from exc
+    if _tts_style_text(title) != expected:
+        raise _tts_settings_error(page, "Current TTS Style is not verified as the run's Style")
+
+
+def _require_tts_temperature(page: Any, expected: Any) -> None:
+    """Read-only adaptive gate: the one visible Temperature input equals the configured value."""
+    target = _tts_number(expected)
+    if target is None:
+        raise _tts_settings_error(page, f"Configured TTS temperature {expected!r} is not a number")
+    inputs = _strict_tts_visible(page, _TTS_TEMPERATURE_SELECTOR)
+    if len(inputs) != 1:
+        raise _tts_settings_error(
+            page, "Current TTS temperature must have exactly one visible input"
+        )
+    try:
+        actual = _tts_number(inputs[0].input_value(timeout=1000))
+    except Exception as exc:
+        raise _tts_settings_error(page, f"Cannot read current TTS temperature: {exc}") from exc
+    if actual is None or abs(actual - target) > _TTS_TEMPERATURE_TOLERANCE:
+        raise _tts_settings_error(
+            page, f"Current TTS temperature {actual!r} is not verified as {target:g}"
+        )
+
+
+def _verify_tts_settings(
+    page: Any, model: Any, voice_name: Any, style: Any = None, temperature: Any = None
+) -> None:
+    """Pro keeps the original three-argument check; Flash adds the read-only Style gate.
+
+    Adaptive callers pass the configured temperature, which must then read back exactly.
+    """
+    if _is_flash_model(model):
+        _require_current_tts_settings(page, model, voice_name, style=style)
+    else:
+        _require_current_tts_settings(page, model, voice_name)
+    if temperature is not None:
+        try:
+            _require_tts_temperature(page, temperature)
+        except Exception as exc:
+            print(f"Warning: Could not verify optional TTS temperature: {exc}")
+
+def _set_tts_style(page: Any, style: Any) -> None:
+    """Flash only: write the run's Style and fail closed unless title and chip read it back.
+
+    Clicks are Playwright locator.click() only and no key is pressed. The open menu has a
+    click-blocking backdrop (a second Style click times out), so the backdrop closes it.
+    """
+    text = str(style or "").strip()
+    expected = _tts_style_text(text)
+    if not expected:
+        raise _tts_settings_error(page, f"{_TTS_FLASH_MODEL} needs a nonempty Style")
+    if _tts_style_readback(page) == (expected, expected):
+        print("Speech Style already set.")
+        return
+    button = _require_one_tts_control(page, _TTS_STYLE_BUTTON_SELECTOR, "Style")
+    _click_tts_setting(page, button, "Style")
+    if not _tts_wait_until(
+        page, lambda: len(_tts_visible(page, _TTS_STYLE_TEXTAREA_SELECTOR)) == 1
+    ):
+        raise _tts_settings_error(page, "AI Studio Style menu needs exactly one visible style box")
+    field = _require_one_tts_control(page, _TTS_STYLE_TEXTAREA_SELECTOR, "Describe the voice style")
+    try:
+        field.fill(text, timeout=5000)
+    except Exception as exc:
+        raise _tts_settings_error(page, f"Could not fill the voice Style: {exc}") from exc
+    backdrops = _tts_visible(page, _TTS_OVERLAY_BACKDROP_SELECTOR)
+    if not backdrops:
+        raise _tts_settings_error(page, "AI Studio Style menu has no backdrop to close it")
+    _click_tts_setting(page, backdrops[-1], "Close Style menu")
+    if not _tts_wait_until(page, lambda: not _tts_visible(page, _TTS_OVERLAY_BACKDROP_SELECTOR)):
+        raise _tts_settings_error(page, "AI Studio Style menu did not close")
+    if not _tts_wait_until(
+        page, lambda: _tts_style_readback(page) == (expected, expected), timeout_sec=3.0
+    ):
+        raise _tts_settings_error(
+            page, f"AI Studio Style is not verified: read back {_tts_style_readback(page)!r}"
+        )
+    print("Successfully set the speech Style.")
+
+
+def _open_tts_editor(page: Any, model: Any = None) -> None:
+    """Landing page -> "Create new dialog" -> bounded wait for the hydrated editor.
+
+    For ~3 s after the click a placeholder editor shows with empty run settings, so readiness
+    needs the Text toggle plus the model card (or, with the panel closed, its reopen toggle).
+    The card can render late, and a second page navigation 4-24 s after load can bring it back,
+    so it is clicked inside the poll whenever it (re)appears: at most twice, then fail closed.
+    """
+
+    def ready() -> bool:
+        try:
+            if _is_flash_model(model):
+                if len(_tts_visible(page, _TTS_FLASH_PROMPT_SELECTOR)) != 1:
+                    return False
+            elif len(_tts_visible(page, _TTS_TEXT_TOGGLE_SELECTOR, _TTS_TEXT_TOGGLE_LABEL)) != 1:
+                return False
+            return bool(page.locator(_TTS_MODEL_CARD_SELECTOR).all_text_contents()) or bool(
+                _tts_visible(page, _TTS_RUN_SETTINGS_TOGGLE_SELECTOR)
+            )
+        except Exception:
+            return False
+
+    clicks = 0
+    card_gone_since_click = True
+    for _ in range(max(1, int(_TTS_UI_WAIT_SEC / _TTS_UI_POLL_SEC))):
+        if _tts_visible(page, _TTS_CREATE_DIALOG_SELECTOR):
+            if card_gone_since_click:
+                if clicks >= _TTS_CREATE_DIALOG_MAX_CLICKS:
+                    raise _tts_settings_error(
+                        page, f"AI Studio showed 'Create new dialog' again after {clicks} clicks"
+                    )
+                card = _require_one_tts_control(
+                    page, _TTS_CREATE_DIALOG_SELECTOR, "Create new dialog"
+                )
+                _click_tts_setting(page, card, "Create new dialog")
+                clicks += 1
+                card_gone_since_click = False
+        else:
+            card_gone_since_click = True
+            if ready():
+                return
+        page.wait_for_timeout(_TTS_UI_POLL_SEC * 1000)
+    raise _tts_settings_error(page, "AI Studio speech editor did not finish loading")
+
+
+def _select_tts_text_mode(page: Any) -> None:
+    prompt = _visible_tts_prompt(page, _TTS_PROMPT_SELECTOR, allow_missing=True)
+    if prompt is not None:
+        return
+    toggle = _require_one_tts_control(
+        page, _TTS_TEXT_TOGGLE_SELECTOR, "Text mode", _TTS_TEXT_TOGGLE_LABEL
+    )
+    _click_tts_setting(page, toggle, "Text mode")
+
+    def prompt_is_ready() -> bool:
+        return (
+            _visible_tts_prompt(page, _TTS_PROMPT_SELECTOR, allow_missing=True)
+            is not None
+        )
+
+    if not _tts_wait_until(page, prompt_is_ready):
+        raise _tts_settings_error(page, "AI Studio Text mode did not show the speech prompt box")
+    _visible_tts_prompt(page, _TTS_PROMPT_SELECTOR)
+
+
+def _ensure_run_settings_open(page: Any) -> None:
+    """The model gate reads the model card, which exists only while this panel is open."""
+    if _tts_visible(page, _TTS_RUN_SETTINGS_SELECTOR):
+        return
+    toggle = _require_one_tts_control(
+        page, _TTS_RUN_SETTINGS_TOGGLE_SELECTOR, "Toggle run settings panel"
+    )
+    _click_tts_setting(page, toggle, "Toggle run settings panel")
+    if not _tts_wait_until(page, lambda: bool(_tts_visible(page, _TTS_RUN_SETTINGS_SELECTOR))):
+        raise _tts_settings_error(page, "AI Studio run-settings panel did not reopen")
+
+
+def _select_tts_voice(page: Any, voice_name: Any, model: Any = None) -> None:
+    """Sets the page-local speaker voice and fails closed unless it reads back exactly."""
+    voice = str(voice_name or "").strip()
+    if not _TTS_VOICE_NAME_PATTERN.match(voice):
+        raise _tts_settings_error(page, f"AI Studio voice name {voice_name!r} is not a plain name")
+    if _tts_voice_names(page) == [voice]:
+        print(f"Speaker voice already set to: {voice}")
+        return
+    opener = _require_one_tts_control(page, _TTS_VOICE_OPEN_SELECTOR, "Open voice settings")
+    _click_tts_setting(page, opener, "Open voice settings")
+    card = f"{_TTS_VOICE_DIALOG_SELECTOR} div.voice-card[data-voice-name='{voice}']"
+    option_selector = f"{card} button.voice-card-content"  # never the Play voice sample sibling
+    flash = _is_flash_model(model)
+    first_wait = _TTS_VOICE_SEARCH_WAIT_SEC if flash else None
+    if not _tts_wait_until(page, lambda: bool(_tts_visible(page, option_selector)), first_wait):
+        offered = False
+        if flash:  # Flash lists 2,000+ voices and renders a card only after a search
+            remaining = _TTS_UI_WAIT_SEC - _TTS_VOICE_SEARCH_WAIT_SEC
+            searches = _tts_visible(page, _TTS_VOICE_SEARCH_SELECTOR)
+            if len(searches) == 1:
+                try:
+                    searches[0].fill(voice, timeout=5000)
+                except Exception as exc:
+                    raise _tts_settings_error(
+                        page, f"AI Studio voice search failed: {exc}"
+                    ) from exc
+                remaining = _TTS_UI_WAIT_SEC
+            offered = _tts_wait_until(
+                page, lambda: bool(_tts_visible(page, option_selector)), remaining
+            )
+        if not offered:
+            raise _tts_settings_error(
+                page, f"AI Studio Speaker settings did not offer voice {voice!r}"
+            )
+    option = _require_one_tts_control(page, option_selector, f"voice {voice}")
+    _click_tts_setting(page, option, f"voice {voice}")
+    selected = f"{_TTS_VOICE_DIALOG_SELECTOR} div.voice-card.selected[data-voice-name='{voice}']"
+    if not _tts_wait_until(page, lambda: bool(_tts_visible(page, selected))):
+        raise _tts_settings_error(page, f"AI Studio did not mark voice {voice!r} as selected")
+    closer = _require_one_tts_control(page, _TTS_VOICE_CLOSE_SELECTOR, "Close voice settings")
+    _click_tts_setting(page, closer, "Close voice settings")
+    if not _tts_wait_until(page,
+        lambda: not _tts_visible(page, selected) and _tts_voice_names(page) == [voice]
+    ):
+        raise _tts_settings_error(
+            page,
+            f"AI Studio speaker voice is not verified as {voice!r}: "
+            f"voice names={_tts_voice_names(page)!r}",
+        )
+    print(f"Successfully assigned speaker to: {voice}")
+
+
+def _tts_number(value: Any) -> float | None:
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _set_tts_temperature(page: Any, temp_val: Any) -> bool:
+    """Best effort (log and continue): fill, blur and read back; never presses a key.
+
+    Only a "Switch model?" dialog raises here.
+    """
+    try:
+        target = float(str(temp_val).strip())
+    except ValueError:
+        print(f"Warning: Temperature {temp_val!r} is not a number; keeping AI Studio's value.")
+        return False
+    if not _tts_visible(page, _TTS_TEMPERATURE_SELECTOR):
+        # Only click the expander while the input is hidden: a second click collapses the group.
+        expanders = _tts_visible(page, _TTS_MODEL_SETTINGS_EXPANDER_SELECTOR)
+        if len(expanders) == 1:
+            try:
+                expanders[0].click(timeout=5000)
+            except Exception as exc:
+                print(f"Warning: Could not expand Model settings: {exc}")
+            _tts_wait_until(page,
+                lambda: bool(_strict_tts_visible(page, _TTS_SWITCH_MODEL_DIALOG_SELECTOR)),
+                timeout_sec=_TTS_SWITCH_SETTLE_SEC,
+            )
+            _cancel_switch_model_dialog(page)
+            _tts_wait_until(page,
+                lambda: bool(_tts_visible(page, _TTS_TEMPERATURE_SELECTOR)), timeout_sec=3.0
+            )
+    inputs = _tts_visible(page, _TTS_TEMPERATURE_SELECTOR)
+    if len(inputs) != 1:
+        print(
+            f"Warning: Found {len(inputs)} temperature inputs in run settings (need exactly one); "
+            "keeping AI Studio's value."
+        )
+        return False
+    field = inputs[0]
+
+    def committed() -> bool:
+        return _tts_number(field.get_attribute("aria-valuenow", timeout=1000)) == target
+
+    actual = None
+    aria_ok = False
+    try:
+        field.fill(f"{target:g}", timeout=5000)
+        field.blur(timeout=1000)
+        actual = _tts_number(field.input_value(timeout=1000))
+        aria_ok = _tts_wait_until(page, committed, timeout_sec=1.0)
+    except Exception as exc:
+        print(f"Warning: Could not set temperature: {exc}; keeping AI Studio's value.")
+    _cancel_switch_model_dialog(page)
+    if actual is None or abs(actual - target) > 1e-6:
+        print(f"Warning: Temperature reads back as {actual!r}, not {target:g}; continuing.")
+        return False
+    if not aria_ok:
+        try:
+            aria = field.get_attribute("aria-valuenow", timeout=1000)
+        except Exception as exc:
+            aria = f"unreadable ({exc})"
+        print(f"Warning: Temperature aria-valuenow is {aria!r}, not {target:g}; continuing.")
+        return False
+    print(f"Successfully set Temperature to: {actual:g}")
+    return True
+
+
+def reapply_speech_settings(page: Page, options: Mapping[str, Any]) -> None:
+    """Prepares today's Speech Playground editor (Text mode, voice, temperature) and verifies it.
+
+    The ?model= URL selects the model; the model card is read, never clicked, and the
+    run-settings panel stays open so _require_active_tts_model can read it. Every click is a
+    Playwright locator.click() and no key is pressed. Fails closed with
+    TTSWorkspaceUnavailableError (see docs/sessions/CLAUDE_INTERIM_RESULT.md).
+    """
     target_model = options.get("model", "gemini-2.5-pro-preview-tts")
     temp_val = options.get("temperature", "1.1")
     voice_name = options.get("voice", "Achird")
@@ -1184,119 +1913,39 @@ def reapply_speech_settings(page, options):
         f"Re-applying Speech Playground settings (Model {target_model}, Temperature {temp_val}, speaker {voice_name})..."
     )
 
-    # 0. Bypass Splash screen
-    splash_selector = "text='Turn text into natural-sounding speech...'"
-    try:
-        if page.locator(splash_selector).is_visible():
-            human_click(page, page.locator(splash_selector).first)
-            time.sleep(2)
-    except Exception:
-        pass
-
-    # 1. Ensure Model settings sidebar panel is expanded
-    try:
-        settings_btn = page.locator("ms-run-settings button[aria-label*='Model settings']").first
-        if settings_btn.is_visible():
-            human_click(page, settings_btn)
-            time.sleep(1.2)
-    except Exception as e:
-        print(f"Model settings dropdown click: {e}")
-
-    # 2. Select Target TTS Model
-    select_ai_studio_tts_model(page, target_model)
-
-    # 3. Ensure Text mode
-    try:
-        text_btn = page.locator("button:has-text('Text')").first
-        if text_btn.is_visible():
-            human_click(page, text_btn)
-            time.sleep(1.2)
-    except Exception as e:
-        print(f"Text mode option check: {e}")
-
-    # 4. Temperature slider adjustment
-    try:
-        temp_input = None
-        temp_selectors = [
-            "ms-run-settings input[type='number']",
-            "ms-run-settings input.slider-number-input",
-            "input[type='number']",
-            "ms-run-settings input",
-        ]
-        for sel in temp_selectors:
-            loc = page.locator(sel).first
-            if loc.is_visible():
-                temp_input = loc
-                break
-
-        if temp_input:
-            human_click(page, temp_input)
-            page.keyboard.press("Control+a")
-            time.sleep(0.1)
-            page.keyboard.press("Backspace")
-            time.sleep(0.1)
-            page.keyboard.type(temp_val)
-            page.keyboard.press("Enter")
-            print(f"Successfully set Temperature slider to: {temp_val}")
-            time.sleep(1.2)
-        else:
-            print("Warning: Could not find Temperature input box.")
-    except Exception as e:
-        print(f"Could not adjust temperature slider input: {e}")
-
-    # 5. Speaker configuration (Voice Selection)
-    try:
-        speaker_card = None
-        card_selectors = [
-            "ms-run-settings .active-voice-card",
-            "ms-run-settings mat-card",
-            "ms-run-settings .voice-card",
-            "ms-run-settings [aria-label*='Speaker' i]",
-            "ms-run-settings :text('Speaker 1')",
-        ]
-        for sel in card_selectors:
-            loc = page.locator(sel).first
-            if loc.is_visible():
-                speaker_card = loc
-                break
-
-        if speaker_card:
-            human_click(page, speaker_card)
-            time.sleep(2.0)
-
-            voice_option = page.locator(
-                f"mat-dialog-container :text('{voice_name}'), mat-dialog-container button:has-text('{voice_name}'), :text('{voice_name}')"
-            ).first
-            if voice_option.is_visible():
-                human_click(page, voice_option)
-                print(f"Successfully assigned speaker to: {voice_name}")
-                time.sleep(1.2)
-
-                close_btn = page.locator(
-                    "mat-dialog-container button:has-text('Close'), mat-dialog-container button:has-text('OK'), mat-dialog-container button[aria-label*='Close' i]"
-                ).first
-                if close_btn.is_visible():
-                    human_click(page, close_btn)
-                    time.sleep(1.2)
-            else:
-                print(f"Warning: Could not find voice '{voice_name}' in selection modal dialog.")
-        else:
-            print("Warning: Could not locate active speaker card button.")
-    except Exception as e:
-        print(f"Could not set speaker config: {e}")
-
-    # 6. Collapse settings sidebar to make editing field fully open
-    try:
-        close_sidebar_btn = page.locator("button[aria-label*='Close run settings panel']").first
-        if close_sidebar_btn.is_visible():
-            human_click(page, close_sidebar_btn)
-            print("Successfully closed sidebar settings panel.")
-            time.sleep(1.2)
-    except Exception as e:
-        print(f"Could not collapse sidebar setting: {e}")
+    _cancel_switch_model_dialog(page)
+    # 1. Landing page -> "Create new dialog" -> hydrated editor (same URL)
+    _open_tts_editor(page, target_model)
+    # 2. Text mode (Composer is the default) shows the speech prompt box; Flash has no toggle
+    if not _is_flash_model(target_model):
+        _select_tts_text_mode(page)
+    # 3. Keep run settings open; verify (never click) the model the URL selected
+    _ensure_run_settings_open(page)
+    _require_active_tts_model(page, target_model)
+    # 4. Speaker voice is page-local, so it is set and verified on every page
+    if _is_flash_model(target_model):
+        _select_tts_voice(page, voice_name, target_model)
+    else:
+        _select_tts_voice(page, voice_name)
+    # 5. Temperature: best effort, see _set_tts_temperature
+    adaptive = bool(options.get("adaptive"))
+    _set_tts_temperature(page, temp_val)  # optional; required model and voice checks remain strict
+    # 5b. Style: required and verified on Flash; Pro has no Style
+    if _is_flash_model(target_model):
+        _set_tts_style(page, options.get("style"))
+    elif options.get("style"):
+        raise _tts_settings_error(page, f"Speech Style is only supported by {_TTS_FLASH_MODEL}")
+    # 6. Reopen after optional settings and verify all required current state.
+    _cancel_switch_model_dialog(page)
+    _ensure_run_settings_open(page)
+    _verify_tts_settings(
+        page, target_model, voice_name, options.get("style"), temp_val if adaptive else None
+    )
+    if not _tts_visible(page, _tts_prompt_selector(target_model)):
+        raise _tts_settings_error(page, "AI Studio speech prompt box is hidden after settings")
 
 
-def get_file_md5(file_path):
+def get_file_md5(file_path: str) -> str | None:
     if not os.path.exists(file_path):
         return None
     hash_md5 = hashlib.md5()
@@ -1310,7 +1959,7 @@ def get_file_md5(file_path):
         return None
 
 
-def is_valid_wav_file(file_path, min_frames=1000):
+def is_valid_wav_file(file_path: str, min_frames: int = 1000) -> bool:
     """Verifies the file is a readable, non-truncated WAV containing actual audio frames.
 
     Guards against AI Studio serving silent failures: quota-limited or 500-errored
@@ -1347,7 +1996,7 @@ def is_ai_studio_quota_error(text: str) -> bool:
     return any(k in t for k in quota_keywords)
 
 
-def check_ai_studio_errors(page):
+def check_ai_studio_errors(page: Page) -> tuple[bool, str]:
     error_selectors = [
         "text='Link a paid API key'",
         "text='Paid API key'",
@@ -1387,7 +2036,7 @@ def check_ai_studio_errors(page):
     return False, ""
 
 
-def main():
+def main() -> None:
     """Lease the shared browser before any TTS run can touch CDP."""
     latest_run = sys.argv[1] if len(sys.argv) > 1 else get_latest_run_folder()
     if latest_run and os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
@@ -1403,11 +2052,24 @@ class AdaptiveBrowserOwnershipError(RuntimeError):
     """Adaptive TTS cannot take over or terminate an unowned browser process."""
 
 
-def connect_tts_browser(playwright, *, adaptive, browser_type, profile_index, port):
+def connect_tts_browser(playwright: Playwright, *, adaptive: bool, browser_type: str, profile_index: str | int, port: int) -> Browser:
     """Attach to CDP; only the legacy path may launch a replacement process."""
     endpoint = f"http://127.0.0.1:{port}"
+    if adaptive:
+        network_health.require_healthy(network_health.AI_STUDIO_URL)
+        foreign = ui_guard.foreign_debugger_targets(port)
+        if foreign:
+            origins = ", ".join(sorted({target["origin"] for target in foreign}))
+            raise AdaptiveBrowserOwnershipError(
+                "Adaptive TTS requires an existing CDP browser session without foreign "
+                f"debugger tabs; close these tabs and retry: {origins}"
+            )
     try:
-        browser = playwright.chromium.connect_over_cdp(endpoint)
+        browser = (
+            playwright.chromium.connect_over_cdp(endpoint, timeout=30000)
+            if adaptive
+            else playwright.chromium.connect_over_cdp(endpoint)
+        )
         print(f"Successfully connected to existing {browser_type.capitalize()} session.")
         return browser
     except Exception as exc:
@@ -1421,7 +2083,796 @@ def connect_tts_browser(playwright, *, adaptive, browser_type, profile_index, po
     return playwright.chromium.connect_over_cdp(endpoint)
 
 
-def _run_voice_generation():
+_ADAPTIVE_SPLIT_TIERS = ("flash_split", "pro_split")
+_ADAPTIVE_DOWNLOAD_SELECTOR = "button[aria-label*='Download' i], button:has-text('Download')"
+_ADAPTIVE_RUN_SELECTOR = "button[type='submit'], button:has-text('Run')"
+_ADAPTIVE_FLASH_SPLIT_DISABLED = (
+    "Flash split failed; Pro fallback disabled (set ADAPTIVE_TTS_PRO_FALLBACK=1)"
+)
+
+
+class _TTSUnitFailure(RuntimeError):
+    """One adaptive send (a full chapter or one piece) gave no usable audio after Run."""
+
+    def __init__(self, kind: str, detail: str) -> None:
+        super().__init__(f"{kind}: {detail}")
+        self.kind = kind
+        self.detail = detail
+        normalized = re.sub(r"\s+", " ", detail or "").strip().lower()
+        collapsed = re.sub(r"[0-9]{5,}", "#", normalized)[:200]
+        self.signature = f"{kind}:{collapsed}"
+
+
+def _adaptive_unit_failure(err_msg: str, fallback_kind: str) -> _TTSUnitFailure:
+    """Quota/account errors stop the run at once; any other error fails only this unit."""
+    detail = re.sub(r"\s+", " ", err_msg or "").strip()[:200]
+    kind = ui_guard.classify_provider_error(detail) if detail else fallback_kind
+    if kind in ("quota", "account"):
+        raise TTSProviderError(f"{kind}: {detail}")
+    return _TTSUnitFailure(kind, detail or fallback_kind)
+
+
+def _adaptive_require_no_403(alkali_state: NetworkAuditState) -> None:
+    if alkali_state.get("is_403"):
+        raise TTSProviderError(
+            f"quota: AI Studio speech returned HTTP 403 ({alkali_state.get('url')})"
+        )
+
+
+def _adaptive_discard(path: str) -> None:
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
+
+
+def _require_typed_text(page: Any, speech_input: Any, text: str) -> None:
+    """Read-only: the prompt textarea holds exactly the text (whitespace-collapsed)."""
+    try:
+        value = speech_input.input_value(timeout=1000)
+    except Exception as exc:
+        raise _tts_settings_error(page, f"Cannot read back the typed speech text: {exc}") from exc
+    if " ".join(str(value or "").split()) != " ".join(text.split()):
+        raise _tts_settings_error(page, "Typed speech text does not match the text to send")
+
+
+def _require_run_button(page: Any) -> Any:
+    """Read-only: exactly one visible, enabled Run control."""
+    found = _strict_tts_visible(page, _ADAPTIVE_RUN_SELECTOR)
+    if len(found) != 1:
+        raise _tts_settings_error(
+            page, f"Run needs exactly one visible control, found {len(found)}"
+        )
+    button = found[0]
+    try:
+        enabled = button.is_enabled(timeout=1000)
+        aria_disabled = button.get_attribute("aria-disabled", timeout=1000)
+    except Exception as exc:
+        raise _tts_settings_error(page, f"Cannot verify the Run control: {exc}") from exc
+    if not enabled or str(aria_disabled or "").strip().lower() == "true":
+        raise _tts_settings_error(page, "Run control is disabled")
+    return button
+
+
+def _adaptive_send_unit(
+    page: Any,
+    text: str,
+    dest: str,
+    options: dict[str, Any],
+    alkali_state: NetworkAuditState,
+    *,
+    recover: bool = False,
+    on_sent: Callable[[], None] | None = None,
+) -> None:
+    """One adaptive TTS send that leaves a frame-validated WAV at dest.
+
+    Every setting (voice, Style, temperature) is applied and verified before typing; after typing
+    only read-only checks run and the Run click is the only click; Control+Enter is never pressed.
+    on_sent runs immediately before the one Run click to durably account for possible dispatch.    Raises _TTSUnitFailure for a post-Run failure of this unit and TTSProviderError to stop.
+    """
+    model = options.get("model")
+    selector = _tts_prompt_selector(model)
+    temperature = options.get("temperature")
+    temperature = "" if temperature is None else temperature  # missing fails the gate
+    if recover:
+        print("[RECOVER] Reloading the Speech Playground tab before this send...")
+        page.reload(wait_until="domcontentloaded")
+        time.sleep(5)
+        _require_speech_workspace(page)
+        reapply_speech_settings(page, options)
+    _require_speech_workspace(page)
+    if _visible_tts_prompt(page, selector, allow_missing=True) is None:
+        print("Speech prompt box is hidden. Re-applying speech settings...")
+        reapply_speech_settings(page, options)
+    network_health.require_healthy(network_health.AI_STUDIO_URL)
+    _verify_tts_settings(page, model, options.get("voice"), options.get("style"), temperature)
+    speech_input = _visible_tts_prompt(page, selector)
+    _adaptive_discard(dest)
+    alkali_state["is_403"] = False
+    try:
+        page.bring_to_front()  # a background tab stalls rendering and downloads
+    except Exception as exc:
+        print(f"Warning: Could not bring the speech tab to the front: {exc}")
+    print(f"Entering {len(text)} chars into AI Studio ({model})...")
+    typed_at = time.monotonic()
+    if humanize_text_input(page, speech_input, text) is not True:
+        raise _tts_settings_error(page, "Typing into the speech prompt did not complete")
+    cooldown = 3.0 + (len(text) / 500.0) * random.uniform(1.2, 2.8)
+    cooldown = min(cooldown, _TTS_ADAPTIVE_COOLDOWN_MAX_SEC)  # stays inside the Run window
+    print(f"Applying dynamic safety cooldown of {cooldown:.2f}s...")
+    time.sleep(cooldown)
+    _verify_tts_settings(page, model, options.get("voice"), options.get("style"), temperature)
+    _visible_tts_prompt(page, selector)
+    _require_typed_text(page, speech_input, text)
+    run_btn = _require_run_button(page)
+    elapsed = time.monotonic() - typed_at
+    if elapsed >= _TTS_TYPE_TO_RUN_MAX_SEC:
+        raise _tts_settings_error(
+            page, f"{elapsed:.1f}s passed since typing (limit {_TTS_TYPE_TO_RUN_MAX_SEC:g}s)"
+        )
+    if on_sent is not None:
+        on_sent()
+    remaining_seconds = _TTS_TYPE_TO_RUN_MAX_SEC - (time.monotonic() - typed_at)
+    timeout_ms = int(remaining_seconds * 1000)
+    if timeout_ms <= 0:
+        raise TTSProviderError(
+            "uncertain: adaptive Run deadline expired after durable reservation; "
+            "the durable attempt remains in flight"
+        )
+    try:
+        click_result = run_btn.click(timeout=min(3000, timeout_ms))
+    except Exception as exc:
+        raise TTSProviderError(
+            "uncertain: adaptive Run click outcome could not be confirmed; "
+            "the durable attempt remains in flight"
+        ) from exc
+    if click_result is not None:
+        raise TTSProviderError(
+            "uncertain: adaptive Run click returned an unexpected result; "
+            "the durable attempt remains in flight"
+        )
+
+    print("Synthesis started. Waiting dynamically for rendering to complete...")
+    try:
+        page.wait_for_selector("button:has-text('Stop')", timeout=8000)
+    except Exception:
+        has_error, err_msg = check_ai_studio_errors(page)
+        if has_error:
+            raise _adaptive_unit_failure(err_msg, "unknown") from None
+        _adaptive_require_no_403(alkali_state)
+        # Never re-type after an unconfirmed Run: a slow page may still be synthesizing.
+        try:
+            page.wait_for_selector(
+                f"button:has-text('Stop'), {_ADAPTIVE_DOWNLOAD_SELECTOR}", timeout=30000
+            )
+        except Exception as exc:
+            raise TTSProviderError(
+                "unknown: AI Studio showed no Stop button, no Download button "
+                "and no error banner after Run"
+            ) from exc
+    _adaptive_require_no_403(alkali_state)
+    synth_timeout_ms = int(get_config_value("TTS_SYNTHESIS_TIMEOUT", "300")) * 1000
+    try:
+        page.wait_for_selector("button:has-text('Run')", timeout=synth_timeout_ms)
+        print("Audio synthesis complete!")
+    except Exception as exc:
+        print(f"Warning: Timeout or error waiting for synthesis: {exc}")
+    time.sleep(2.0)
+    download_btn = page.locator(_ADAPTIVE_DOWNLOAD_SELECTOR).first
+    try:
+        download_btn.wait_for(state="visible", timeout=10000)
+    except Exception:
+        pass
+    saved = False
+    try:
+        if download_btn.is_visible():
+            with page.expect_download(timeout=15000) as download_info:
+                human_hover_and_click(page, download_btn)
+            download_info.value.save_as(dest)
+            saved = True
+            print(f"Audio file downloaded and saved: {dest}")
+    except Exception as exc:
+        print(f"[ERROR] Error downloading audio file: {exc}")
+    if not saved:
+        saved = _adaptive_salvage_download(page, dest)
+    _adaptive_require_no_403(alkali_state)
+    if saved and is_valid_wav_file(dest):
+        return
+    _adaptive_discard(dest)
+    has_error, err_msg = check_ai_studio_errors(page)
+    raise _adaptive_unit_failure(
+        err_msg if has_error else "", "invalid_audio" if saved else "no_audio"
+    )
+
+
+def _adaptive_speech_text(model: Any, speech: SpeechText) -> str:
+    """Flash speaks the directed text (tags included); tags are never sent to Pro."""
+    return speech.directed_text if _is_flash_model(model) else speech.clean_text
+
+
+def _adaptive_unit_options(voice_config: dict[str, Any], model: str) -> dict[str, Any]:
+    options = {key: value for key, value in voice_config.items() if key != "style"}
+    options["model"] = model
+    options["adaptive"] = True  # settings (temperature included) fail closed
+    if _is_flash_model(model):
+        options["style"] = voice_config.get("style")
+    return options
+
+
+def _adaptive_switch_model(page: Any, options: dict[str, Any]) -> None:
+    """Re-navigate to the exact model URL (Pro fallback and back) and redo every setting."""
+    model = options["model"]
+    print(f"[TIER] Switching the Speech Playground tab to {model}...")
+    page.goto(
+        f"https://aistudio.google.com/generate-speech?model={model}",
+        wait_until="domcontentloaded",
+        timeout=30000,
+    )
+    _wait_for_speech_workspace_ready(page, model)
+    _require_speech_workspace(page, model)
+    reapply_speech_settings(page, options)
+
+
+def _adaptive_prior_md5s(
+    manifest: dict[str, Any], voice_folder: str, chap_num: int, *, skip_pieces_of: Any = None
+) -> set[str]:
+    """MD5s of every completed chapter and piece, plus the previous chapter file on disk."""
+    digests: set[Any] = set()
+    for chap in manifest.get("chapters", []):
+        if chap.get("md5"):
+            digests.add(chap["md5"])
+        if chap is skip_pieces_of:
+            continue
+        for piece in chap.get("pieces") or []:
+            if piece.get("md5"):
+                digests.add(piece["md5"])
+    previous = os.path.join(voice_folder, f"Chapter_{chap_num - 1}.wav")
+    if chap_num > 1 and os.path.exists(previous):
+        digests.add(get_file_md5(previous))
+    digests.discard(None)
+    return digests
+
+
+def _adaptive_attempt(
+    page: Any,
+    text: str,
+    dest: str,
+    options: dict[str, Any],
+    alkali_state: NetworkAuditState,
+    prior_md5s: set[str],
+    session: dict[str, Any],
+    on_sent: Callable[[], None] | None = None,
+) -> str | None:
+    """One send of one unit; returns the MD5 of a valid WAV that matches no earlier audio."""
+    if session["page_model"] != options["model"]:
+        _adaptive_switch_model(page, options)
+        session.update(page_model=options["model"], dirty=False, sends=0)
+    reload_limit = int(get_config_value("TTS_PROACTIVE_RELOAD_INTERVAL", "40"))
+    recover = bool(session["dirty"]) or session["sends"] >= reload_limit
+    if recover:
+        session["sends"] = 0
+    session["dirty"] = True
+    session["sends"] += 1
+    if on_sent is None:
+        _adaptive_send_unit(page, text, dest, options, alkali_state, recover=recover)
+    else:
+        _adaptive_send_unit(
+            page, text, dest, options, alkali_state, recover=recover, on_sent=on_sent
+        )
+    digest = get_file_md5(dest)
+    if digest and digest in prior_md5s:
+        _adaptive_discard(dest)
+        raise _TTSUnitFailure("duplicate", "audio matches an earlier chapter or piece")
+    session["dirty"] = False
+    return digest
+
+
+def _adaptive_retry_state(
+    latest_run: str, manifest: dict[str, Any], chap: dict[str, Any], speech: SpeechText,
+    voice_config: dict[str, Any], sha: str | None,
+) -> dict[str, Any]:
+    """Bind durable chapter spending before any browser action; never infer old entitlements."""
+    from youtube_automation.production import voice_direction
+
+    recipe = {
+        "chapter_num": int(chap["chapter_num"]),
+        "clean_text": speech.clean_text,
+        "directed_text": speech.directed_text,
+        "paragraph_count": speech.paragraph_count,
+        "direction_sha256": sha,
+        "primary": _adaptive_unit_options(voice_config, voice_config["model"]),
+        "pro": _adaptive_unit_options(voice_config, voice_direction.PRO_MODEL),
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(recipe, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    state = chap.get("tts_attempts")
+    if state is None:
+        if chap.get("full_sent") or chap.get("voice_tier") or chap.get("pieces") or chap.get("md5"):
+            raise ValueError(
+                f"Chapter {chap['chapter_num']} has incomplete legacy sends without durable "
+                "TTS accounting; refusing to resend"
+            )
+        state = {
+            "version": 1, "recipe_sha256": fingerprint, "retries_left": 1,
+            "previous_failure": None, "units": {},
+        }
+        chap["tts_attempts"] = state
+        save_manifest(latest_run, manifest)
+    if not isinstance(state, dict) or type(state.get("version")) is not int or state["version"] != 1:
+        raise ValueError("Malformed or unsupported durable TTS accounting")
+    if state.get("recipe_sha256") != fingerprint:
+        raise ValueError("Durable TTS chapter recipe changed; refusing a fresh send entitlement")
+    _adaptive_validate_retry_state(state)
+    if chap.get("full_sent") and "full" not in state["units"]:
+        raise ValueError("Durable TTS accounting is missing the full chapter reservation")
+    if chap.get("voice_tier") in _ADAPTIVE_SPLIT_TIERS and "full" not in state["units"]:
+        raise ValueError("Durable TTS accounting is missing the split tier's full attempt")
+    return state
+
+
+def _adaptive_validate_retry_state(state: dict[str, Any]) -> None:
+    """Validate spend and signature history rather than trusting a mutable remaining counter."""
+    if type(state.get("retries_left")) is not int or state["retries_left"] not in (0, 1):
+        raise ValueError("Malformed durable TTS retry allowance")
+    units = state.get("units")
+    if not isinstance(units, dict):
+        raise ValueError("Malformed durable TTS units")
+    ordered = []
+    for unit_id, unit in units.items():
+        if not isinstance(unit_id, str) or not re.fullmatch(r"full|(?:pro_)?part_[1-9][0-9]*", unit_id):
+            raise ValueError("Malformed durable TTS unit identity")
+        if not isinstance(unit, dict) or not isinstance(unit.get("model"), str):
+            raise ValueError("Malformed durable TTS unit")
+        if not isinstance(unit.get("recipe_sha256"), str) or not re.fullmatch(
+            r"[0-9a-f]{64}", unit["recipe_sha256"]
+        ) or not isinstance(unit.get("audio_file"), str):
+            raise ValueError("Malformed durable TTS unit recipe")
+        attempts = unit.get("attempts")
+        limit = 1 if unit_id == "full" else _TTS_UNIT_ATTEMPT_LIMIT
+        if not isinstance(attempts, list) or not 1 <= len(attempts) <= limit:
+            raise ValueError("Malformed durable TTS unit attempts")
+        for index, attempt in enumerate(attempts):
+            if not isinstance(attempt, dict) or type(attempt.get("sequence")) is not int:
+                raise ValueError("Malformed durable TTS attempt sequence")
+            status = attempt.get("status")
+            if status not in ("IN_FLIGHT", "FAILED", "COMPLETED"):
+                raise ValueError("Malformed durable TTS attempt status")
+            if index < len(attempts) - 1 and status != "FAILED":
+                raise ValueError("Durable TTS attempted an already completed or uncertain unit")
+            if type(attempt.get("is_retry")) is not bool or attempt["is_retry"] != (index > 0):
+                raise ValueError("Malformed durable TTS retry reservation")
+            if status == "COMPLETED" and not isinstance(attempt.get("md5"), str):
+                raise ValueError("Malformed completed durable TTS attempt")
+            if status == "FAILED":
+                if not isinstance(attempt.get("kind"), str) or not isinstance(attempt.get("detail"), str):
+                    raise ValueError("Malformed durable TTS failure")
+                if attempt.get("signature") != _TTSUnitFailure(attempt["kind"], attempt["detail"]).signature:
+                    raise ValueError("Malformed durable TTS failure signature")
+                if type(attempt.get("retry_allowed")) is not bool:
+                    raise ValueError("Malformed durable TTS failure entitlement")
+            ordered.append((attempt["sequence"], unit_id, index, unit, attempt))
+    ordered.sort(key=lambda row: row[0])
+    if [row[0] for row in ordered] != list(range(1, len(ordered) + 1)):
+        raise ValueError("Malformed durable TTS accounting order")
+    previous = None
+    retries_left = 1
+    for _sequence, unit_id, index, unit, attempt in ordered:
+        if attempt["is_retry"]:
+            if retries_left <= 0 or not unit["attempts"][index - 1].get("retry_allowed"):
+                raise ValueError("Durable TTS retry allowance was exceeded")
+            retries_left -= 1
+        if attempt["status"] == "FAILED":
+            current = {"model": unit["model"], "signature": attempt["signature"]}
+            expected = (
+                unit_id != "full" and attempt["kind"] == "transient" and previous != current
+                and retries_left > 0 and index + 1 < _TTS_UNIT_ATTEMPT_LIMIT
+            )
+            if attempt["retry_allowed"] != expected:
+                raise ValueError("Malformed durable TTS failure retry decision")
+            previous = current
+    if state.get("previous_failure") != previous or state["retries_left"] != retries_left:
+        raise ValueError("Durable TTS retry allowance or failure history changed")
+    if any(row[4]["status"] == "IN_FLIGHT" for row in ordered):
+        raise TTSProviderError(
+            "uncertain: durable TTS action was interrupted; refusing any new browser action"
+        )
+
+
+def _adaptive_journaled_attempt(
+    page: Any, text: str, dest: str, options: dict[str, Any], alkali_state: NetworkAuditState,
+    prior_md5s: Callable[[], set[str]], session: dict[str, Any], latest_run: str, manifest: dict[str, Any],
+    chap: dict[str, Any], budget: dict[str, Any], unit_id: str,
+) -> str | None:
+    """Reserve one action and any retry atomically before navigation, typing or Run."""
+    _adaptive_validate_retry_state(budget)
+    audio_file = os.path.relpath(dest, latest_run).replace("\\", "/")
+    recipe = hashlib.sha256(
+        json.dumps(
+            {"text": text, "options": options, "audio_file": audio_file},
+            ensure_ascii=False, sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    unit = budget["units"].get(unit_id)
+    if unit is None:
+        unit = {"recipe_sha256": recipe, "model": options["model"],
+                "audio_file": audio_file, "attempts": []}
+        budget["units"][unit_id] = unit
+    elif (
+        unit.get("recipe_sha256") != recipe or unit.get("model") != options["model"]
+        or unit.get("audio_file") != audio_file
+    ):
+        raise ValueError(f"Durable TTS unit {unit_id} recipe changed; refusing to resend")
+    attempts = unit["attempts"]
+    if attempts:
+        last = attempts[-1]
+        if last["status"] == "COMPLETED":
+            if not is_valid_wav_file(dest) or get_file_md5(dest) != last["md5"]:
+                raise ValueError(f"Completed TTS unit {unit_id} is missing or changed; refusing to resend")
+            cached_digest: str = last["md5"]
+            return cached_digest
+        if not last["retry_allowed"]:
+            if last["kind"] in ("quota", "account"):
+                raise TTSProviderError(f"{last['kind']}: {last['detail']}")
+            raise _TTSUnitFailure(last["kind"], last["detail"])
+        budget["retries_left"] -= 1
+    attempt = {
+        "sequence": sum(len(u["attempts"]) for u in budget["units"].values()) + 1,
+        "status": "IN_FLIGHT", "is_retry": bool(attempts),
+    }
+    attempts.append(attempt)
+    save_manifest(latest_run, manifest)
+    try:
+        kwargs = {}
+        if unit_id == "full":
+            kwargs["on_sent"] = lambda: _adaptive_mark_full_sent(latest_run, manifest, chap)
+        digest = _adaptive_attempt(
+            page, text, dest, options, alkali_state, prior_md5s(), session, **kwargs
+        )
+    except _TTSUnitFailure as failure:
+        current = {"model": options["model"], "signature": failure.signature}
+        retry_allowed = (
+            unit_id != "full" and failure.kind == "transient"
+            and current != budget["previous_failure"] and budget["retries_left"] > 0
+            and len(attempts) < _TTS_UNIT_ATTEMPT_LIMIT
+        )
+        attempt.update(
+            status="FAILED", kind=failure.kind, detail=failure.detail,
+            signature=failure.signature, retry_allowed=retry_allowed,
+        )
+        budget["previous_failure"] = current
+        save_manifest(latest_run, manifest)
+        raise
+    except TTSProviderError as failure:
+        kind, separator, detail = str(failure).partition(":")
+        if separator and kind in ("quota", "account"):
+            known = _TTSUnitFailure(kind, detail.strip())
+            attempt.update(
+                status="FAILED", kind=kind, detail=known.detail, signature=known.signature,
+                retry_allowed=False,
+            )
+            budget["previous_failure"] = {"model": options["model"], "signature": known.signature}
+            save_manifest(latest_run, manifest)
+        raise
+    # Any other exception leaves the reservation uncertain, including a click or write failure.
+    if not isinstance(digest, str) or not digest:
+        raise TTSProviderError("unknown: completed TTS action has no verified audio digest")
+    attempt.update(status="COMPLETED", md5=digest)
+    save_manifest(latest_run, manifest)
+    return digest
+
+
+def _adaptive_retry_piece(
+    page: Any, text: str, dest: str, options: dict[str, Any], alkali_state: NetworkAuditState,
+    prior_md5s: Callable[[], set[str]], session: dict[str, Any], label: str, budget: dict[str, Any],
+    latest_run: str, manifest: dict[str, Any], chap: dict[str, Any], unit_id: str,
+) -> str | None:
+    """Retry only a durably authorized transient failure under the chapter's shared allowance."""
+    while True:
+        try:
+            return _adaptive_journaled_attempt(
+                page, text, dest, options, alkali_state, prior_md5s, session, latest_run,
+                manifest, chap, budget, unit_id,
+            )
+        except _TTSUnitFailure as failure:
+            print(f"[TIER] {label} failed: {failure}")
+            if not budget["units"][unit_id]["attempts"][-1]["retry_allowed"]:
+                raise
+
+
+def _adaptive_voice_pieces(
+    page: Any, latest_run: str, voice_folder: str, manifest: dict[str, Any],
+    chap: dict[str, Any], speech: SpeechText, options: dict[str, Any], part_tag: str,
+    alkali_state: NetworkAuditState, session: dict[str, Any], budget: dict[str, Any],
+) -> list[str]:
+    """Voice pieces in order, preserving completed takes across restart and tier changes."""
+    from youtube_automation.production.voice_direction import split_pieces
+
+    chap_num = int(chap["chapter_num"])
+    parts_dir = os.path.join(voice_folder, "parts")
+    os.makedirs(parts_dir, exist_ok=True)
+    records = chap.setdefault("pieces", [])
+    paths = []
+    for index, piece in enumerate(split_pieces(speech, 2), 1):
+        unit_id = f"{part_tag}_{index}"
+        dest = os.path.abspath(
+            os.path.join(parts_dir, f"Chapter_{chap_num}_{unit_id}.wav")
+        )
+        record = next((r for r in records if r.get("unit_id") == unit_id), None)
+        if record is not None and record.get("status") == "COMPLETED":
+            unit = budget["units"].get(unit_id)
+            attempt = unit["attempts"][-1] if unit else {}
+            if (
+                attempt.get("status") != "COMPLETED" or attempt.get("md5") != record.get("md5")
+                or not is_valid_wav_file(dest) or get_file_md5(dest) != record.get("md5")
+                or record.get("audio_file") != os.path.relpath(dest, latest_run).replace("\\", "/")
+            ):
+                raise ValueError(
+                    f"Completed voice piece {index} of Chapter {chap_num} is missing or changed; "
+                    "refusing to resend it"
+                )
+            _adaptive_journaled_attempt(
+                page, _adaptive_speech_text(options["model"], piece), dest, options, alkali_state,
+                lambda: _adaptive_prior_md5s(manifest, voice_folder, chap_num),
+                session, latest_run, manifest, chap, budget, unit_id,
+            )
+            print(f"[SKIP] Chapter {chap_num} piece {index} already completed.")
+            paths.append(dest)
+            continue
+        label = f"Chapter {chap_num} piece {index} ({options['model']})"
+        print(f"\nSynthesizing {label}...")
+        digest = _adaptive_retry_piece(
+            page, _adaptive_speech_text(options["model"], piece), dest, options, alkali_state,
+            lambda: _adaptive_prior_md5s(manifest, voice_folder, chap_num),
+            session, label, budget, latest_run, manifest, chap, unit_id,
+        )
+        if record is None:
+            record = {"index": index, "unit_id": unit_id, "model": options["model"]}
+            records.append(record)
+        record.update(
+            audio_file=os.path.relpath(dest, latest_run).replace("\\", "/"),
+            md5=digest, status="COMPLETED",
+        )
+        save_manifest(latest_run, manifest)
+        paths.append(dest)
+    return paths
+
+
+def _adaptive_split_tier(
+    chap_num: int, speech: SpeechText, model: str, failure: _TTSUnitFailure | None
+) -> str:
+    """Tier after a sent one-send chapter; never one that would resend the same text.
+
+    failure is None when an earlier run already sent the full chapter (manifest full_sent).
+    """
+    from youtube_automation.production import voice_direction
+
+    flash = _is_flash_model(model)
+    if len(voice_direction.split_pieces(speech, 2)) > 1:
+        return "flash_split" if flash else "pro_split"
+    if flash and voice_direction.pro_fallback_enabled():
+        return "pro_split"  # another model and the clean text, so not an unchanged resend
+    if failure is None:
+        kind, detail = "unknown", "the full chapter was already sent by an earlier run"
+    else:
+        kind = failure.kind if failure.kind in ("transient", "unknown") else "unknown"
+        detail = failure.detail
+    note = "Pro fallback disabled (set ADAPTIVE_TTS_PRO_FALLBACK=1)" if flash else "no other tier"
+    raise TTSProviderError(
+        f"{kind}: {detail} (Chapter {chap_num} has <=2 paragraphs, so a split would "
+        f"resend it unchanged; {note})"
+    ) from failure
+
+
+def _adaptive_mark_full_sent(
+    latest_run: str, manifest: dict[str, Any], chap: dict[str, Any]
+) -> None:
+    """Called only after the full chapter's Run click returned: never resend that text."""
+    chap["full_sent"] = True
+    save_manifest(latest_run, manifest)
+
+
+def _adaptive_start_tier(
+    latest_run: str, manifest: dict[str, Any], chap: dict[str, Any], tier: str, model: str,
+    sha: str | None,
+) -> None:
+    chap.update(voice_tier=tier, voice_model=model, voice_direction_sha256=sha)
+    chap.setdefault("pieces", [])  # completed takes and durable spending survive model fallback
+    save_manifest(latest_run, manifest)
+
+
+def _adaptive_complete_chapter(
+    latest_run: str, manifest: dict[str, Any], chap: dict[str, Any], digest: str | None, *,
+    model: str, sha: str | None, tier: str,
+) -> None:
+    """The existing completion path plus the model, direction and tier behind the audio."""
+    chap["status"] = "COMPLETED"
+    if digest:
+        chap["md5"] = digest
+    chap.update(voice_model=model, voice_direction_sha256=sha, voice_tier=tier)
+    sync_audio_manifest(latest_run, manifest)
+    save_manifest(latest_run, manifest)
+    print(
+        f"[MANIFEST] Chapter {chap['chapter_num']} marked COMPLETED via {tier} "
+        f"(MD5: {(digest or 'n/a')[:8]})."
+    )
+
+
+def _require_adaptive_voice_metadata(
+    manifest: dict[str, Any], model: str, sha: str | None, pro_model: str
+) -> None:
+    """Fail closed when finished audio came from another model or direction.
+
+    Legacy audio without metadata is Pro audio, so it is accepted only on a Pro run.
+    """
+    for chap in manifest.get("chapters", []):
+        if "voice_model" not in chap and "voice_direction_sha256" not in chap:
+            if _is_flash_model(model) and chap.get("status") == "COMPLETED":
+                raise ValueError(
+                    f"Voice chapter {chap.get('chapter_num')} is COMPLETED without voice_model "
+                    f"metadata; refusing to stitch it into a {model!r} run"
+                )
+            continue
+        expected_model = pro_model if chap.get("voice_tier") == "pro_split" else model
+        if chap.get("voice_model") == expected_model and chap.get("voice_direction_sha256") == sha:
+            continue
+        done = [p for p in chap.get("pieces") or [] if p.get("status") == "COMPLETED"]
+        if (
+            chap.get("status") == "COMPLETED" or done or chap.get("tts_attempts") is not None
+            or chap.get("full_sent") or chap.get("voice_tier") or chap.get("pieces")
+        ):
+            raise ValueError(
+                f"Voice chapter {chap.get('chapter_num')} was synthesized with model "
+                f"{chap.get('voice_model')!r} and direction "
+                f"{chap.get('voice_direction_sha256')!r}; this run uses {model!r} and {sha!r}"
+            )
+        for key in ("voice_model", "voice_direction_sha256", "voice_tier", "pieces"):
+            chap.pop(key, None)
+
+
+def _prepare_adaptive_voice(
+    latest_run: str, manifest: dict[str, Any], brief: Brief, transcript_text: str
+) -> tuple[dict[str, Any], VoiceDirection | None, dict[int, SpeechText]]:
+    """Choose the adaptive TTS model and its direction before any browser work; fail closed."""
+    from youtube_automation.production import voice_direction
+
+    model = voice_direction.adaptive_tts_model()
+    direction = None  # Pro never speaks tags or a Style, so it needs no direction
+    if _is_flash_model(model):
+        channel_id = getattr(getattr(brief, "channel", None), "channel_id", None)
+        if not isinstance(channel_id, str) or not channel_id.strip():
+            raise ValueError(
+                f"{model} needs the episode brief's channel id to load voice_direction.json"
+            )
+        direction = voice_direction.load_voice_direction(
+            latest_run, transcript_text, channel_id=channel_id
+        )
+        if direction is None:
+            raise ValueError(
+                f"{model} requires an approved voice_direction.json "
+                "(a Style is required on every run)"
+            )
+        if direction.model != model:
+            raise ValueError(f"voice_direction.json targets {direction.model!r}, not {model!r}")
+    sha = direction.sha256 if direction is not None else None
+    _require_adaptive_voice_metadata(manifest, model, sha, voice_direction.PRO_MODEL)
+    speech = voice_direction.chapter_speech(
+        transcript_text, manifest.get("chapters", []), direction
+    )
+    voice_config = manifest.setdefault("voice_config", {})
+    voice_config["model"] = model
+    if _is_flash_model(model):
+        if direction is None:
+            raise ValueError("Flash voice direction missing after validation")
+        voice_config["style"] = direction.style
+    else:
+        voice_config.pop("style", None)
+    for chap in manifest.get("chapters", []):
+        if chap.get("status") != "COMPLETED":
+            _adaptive_retry_state(
+                latest_run, manifest, chap, speech[int(chap["chapter_num"])], voice_config, sha
+            )
+    save_manifest(latest_run, manifest)
+    sync_audio_manifest(latest_run, manifest)
+    return voice_config, direction, speech
+
+
+def _adaptive_voice_chapters(
+    page: Any,
+    latest_run: str,
+    voice_folder: str,
+    manifest: dict[str, Any],
+    direction: VoiceDirection | None,
+    speech_map: dict[int, SpeechText],
+    alkali_state: NetworkAuditState,
+) -> None:
+    """Per chapter: one full send, then <=2-paragraph pieces, then (opt-in) Pro pieces.
+
+    A failed full chapter is never resent; quota/account errors stop at once.
+    """
+    from youtube_automation.production import voice_direction
+
+    voice_config = manifest["voice_config"]
+    model = voice_config["model"]
+    sha = direction.sha256 if direction is not None else None
+    prefix = "flash" if _is_flash_model(model) else "pro"
+    primary = _adaptive_unit_options(voice_config, model)
+    pro = _adaptive_unit_options(voice_config, voice_direction.PRO_MODEL)
+    session: dict[str, Any] = {"page_model": model, "dirty": False, "sends": 0}
+    for chap in manifest.get("chapters", []):
+        chap_num = int(chap["chapter_num"])
+        target = chap.get("audio_file") or os.path.join(voice_folder, f"Chapter_{chap_num}.wav")
+        if not os.path.isabs(target):
+            target = os.path.abspath(os.path.join(latest_run, target))
+        if chap.get("status") == "COMPLETED":
+            if not is_valid_wav_file(target) or not chap.get("md5") or get_file_md5(target) != chap["md5"]:
+                raise ValueError(f"Completed Chapter {chap_num} is missing or changed; refusing to resend")
+            print(f"[SKIP] Chapter {chap_num} audio already generated and verified.")
+            continue
+        speech = speech_map[chap_num]
+        tier = chap.get("voice_tier")
+        budget = _adaptive_retry_state(latest_run, manifest, chap, speech, voice_config, sha)
+        if tier not in _ADAPTIVE_SPLIT_TIERS:
+            print(f"\nSynthesizing Chapter {chap_num} in one send ({prefix}_full)...")
+            try:
+                digest = _adaptive_journaled_attempt(
+                    page, _adaptive_speech_text(model, speech), target, primary, alkali_state,
+                    partial(_adaptive_prior_md5s, manifest, voice_folder, chap_num),
+                    session, latest_run, manifest, chap, budget, "full",
+                )
+            except _TTSUnitFailure as failure:
+                tier = _adaptive_split_tier(chap_num, speech, model, failure)
+                print(f"[TIER] Chapter {chap_num} failed ({failure}); {tier}, no full resend.")
+                tier_start_model = voice_direction.PRO_MODEL if tier == "pro_split" else model
+                _adaptive_start_tier(latest_run, manifest, chap, tier, tier_start_model, sha)
+            else:
+                _adaptive_complete_chapter(
+                    latest_run, manifest, chap, digest, model=model, sha=sha, tier=f"{prefix}_full"
+                )
+                continue
+        tier_model = model
+        if tier == "flash_split":
+            try:
+                parts = _adaptive_voice_pieces(
+                    page, latest_run, voice_folder, manifest, chap, speech, primary, "part",
+                    alkali_state, session, budget,
+                )
+            except _TTSUnitFailure as failure:
+                if not voice_direction.pro_fallback_enabled():
+                    raise TTSProviderError(_ADAPTIVE_FLASH_SPLIT_DISABLED) from failure
+                print(f"[TIER] Chapter {chap_num} Flash split failed ({failure}); trying Pro.")
+                tier = "pro_split"
+                _adaptive_start_tier(
+                    latest_run, manifest, chap, tier, voice_direction.PRO_MODEL, sha
+                )
+        if tier == "pro_split":
+            if _is_flash_model(model) and not voice_direction.pro_fallback_enabled():
+                raise TTSProviderError(_ADAPTIVE_FLASH_SPLIT_DISABLED)
+            try:
+                parts = _adaptive_voice_pieces(
+                    page, latest_run, voice_folder, manifest, chap, speech, pro, "pro_part",
+                    alkali_state, session, budget,
+                )
+            except _TTSUnitFailure as failure:
+                raise TTSProviderError(
+                    f"Pro split failed for Chapter {chap_num}: {failure}"
+                ) from failure
+            tier_model = voice_direction.PRO_MODEL
+        voice_direction.concat_wavs(
+            [Path(part) for part in parts], target, gap_sec=_TTS_PIECE_GAP_SEC
+        )
+        if not is_valid_wav_file(target):
+            raise TTSProviderError(f"unknown: joined audio for Chapter {chap_num} is invalid")
+        digest = get_file_md5(target)
+        if digest in _adaptive_prior_md5s(manifest, voice_folder, chap_num, skip_pieces_of=chap):
+            raise TTSProviderError(f"unknown: joined audio for Chapter {chap_num} is a duplicate")
+        _adaptive_complete_chapter(
+            latest_run, manifest, chap, digest, model=tier_model, sha=sha, tier=tier
+        )
+
+
+def _run_voice_generation() -> None:
     print("=============================================")
     print("Starting Voice Generation Automation (Manifest Upgraded)")
     print("=============================================")
@@ -1508,6 +2959,11 @@ def _run_voice_generation():
         manifest = prepare_manifest(latest_run, manifest, adaptive_brief, transcript_text)
         save_manifest(latest_run, manifest)
         sync_audio_manifest(latest_run, manifest)
+        # Adaptive model (ADAPTIVE_TTS_MODEL, not .env TTS_MODEL) and direction, before any browser.
+        voice_config, adaptive_direction, adaptive_speech = _prepare_adaptive_voice(
+            latest_run, manifest, adaptive_brief, transcript_text
+        )
+        target_tts_model = voice_config["model"]
 
     # Legacy Gemini harvesting still uses its own coverage and fallback policy.
     payload_path = os.path.join(latest_run, "tts_payload.json")
@@ -1678,7 +3134,7 @@ def _run_voice_generation():
                     max_harvest_retries = int(get_config_value("FAILOVER_RETRY_LIMIT", "3"))
                     max_nudges = int(get_config_value("MAX_HARVEST_NUDGES", "2"))
 
-                    def _escalate_harvest_failure(chap_idx, reason, switching_enabled):
+                    def _escalate_harvest_failure(chap_idx: int, reason: str, switching_enabled: bool) -> None:
                         """Rotates profile when account switching is on, else hard-stops."""
                         nonlocal failover_triggered
                         if switching_enabled:
@@ -1858,11 +3314,13 @@ def _run_voice_generation():
                 tab1_speech = ensure_speech_playground_tab(
                     context, target_tts_model, owned_page=owned_speech_page
                 )
+                _wait_for_speech_workspace_ready(tab1_speech, target_tts_model)
+                _require_speech_workspace(tab1_speech, target_tts_model)
                 reapply_speech_settings(tab1_speech, voice_config)
 
-                latest_alkali_state = {"status": None, "url": None, "is_403": False}
+                latest_alkali_state: NetworkAuditState = {"status": None, "url": None, "is_403": False}
 
-                def _on_speech_response(response, state=latest_alkali_state):
+                def _on_speech_response(response: Response, state: NetworkAuditState = latest_alkali_state) -> None:
                     if "alkalimakersuite" in response.url and response.status == 403:
                         state["is_403"] = True
                         state["status"] = 403
@@ -1871,11 +3329,16 @@ def _run_voice_generation():
 
                 tab1_speech.on("response", _on_speech_response)
 
-                main.attempt_count = 0
+                attempt_count = 0
                 chapters_since_reload = 0
 
                 # Iterate through all saved chapters from manifest
-                for chap_entry in manifest.get("chapters", []):
+                if adaptive_brief:
+                    _adaptive_voice_chapters(
+                        tab1_speech, latest_run, voice_folder, manifest,
+                        adaptive_direction, adaptive_speech, latest_alkali_state,
+                    )
+                for chap_entry in ([] if adaptive_brief else manifest.get("chapters", [])):
                     chap_num = chap_entry["chapter_num"]
                     chap_text = chap_entry["text"]
                     target_dest = chap_entry.get("audio_file") or os.path.join(
@@ -1891,28 +3354,39 @@ def _run_voice_generation():
                         )
                         continue
 
+                    hidden_input_attempts = 0
                     while True:
                         latest_alkali_state["is_403"] = False
                         print(
-                            f"\nSynthesizing Audio for Chapter {chap_num} (Attempt {getattr(main, 'attempt_count', 0) + 1})..."
+                            f"\nSynthesizing Audio for Chapter {chap_num} (Attempt {attempt_count + 1})..."
                         )
 
                         # URL Guardrail check to prevent typing into standard AI Studio prompt tabs
-                        if "generate-speech" not in tab1_speech.url:
+                        if not _is_speech_url(tab1_speech.url):
                             print(
                                 "[SAFETY CHECK] Correcting tab navigation to Speech Playground..."
                             )
-                            try:
-                                tab1_speech.goto(
-                                    f"https://aistudio.google.com/generate-speech?model={target_tts_model}",
-                                    wait_until="domcontentloaded",
-                                    timeout=30000,
+                            for _nav_attempt in range(_TTS_NAV_RETRY_LIMIT):
+                                try:
+                                    tab1_speech.goto(
+                                        f"https://aistudio.google.com/generate-speech?model={target_tts_model}",
+                                        wait_until="domcontentloaded",
+                                        timeout=30000,
+                                    )
+                                    time.sleep(3)
+                                except Exception as nav_err:
+                                    print(
+                                        f"[WARNING] Speech Playground navigation warning: {nav_err}"
+                                    )
+                                    time.sleep(2)
+                                if _is_speech_workspace(tab1_speech):
+                                    reapply_speech_settings(tab1_speech, voice_config)
+                                    break
+                            else:
+                                raise TTSWorkspaceUnavailableError(
+                                    f"Speech Playground unavailable after {_TTS_NAV_RETRY_LIMIT} navigations "
+                                    f"(current URL: {tab1_speech.url})"
                                 )
-                                time.sleep(3)
-                                reapply_speech_settings(tab1_speech, voice_config)
-                            except Exception as nav_err:
-                                print(f"[WARNING] Speech Playground navigation warning: {nav_err}")
-                                time.sleep(2)
 
                         reload_limit = int(get_config_value("TTS_PROACTIVE_RELOAD_INTERVAL", "40"))
                         if chapters_since_reload >= reload_limit:
@@ -1920,56 +3394,55 @@ def _run_voice_generation():
                                 "\n[MAINTENANCE] Proactively refreshing Speech Playground session..."
                             )
                             tab1_speech.bring_to_front()
-                            try:
-                                tab1_speech.locator("body").first.click(timeout=1000)
-                                time.sleep(0.5)
-                            except Exception:
-                                pass
                             tab1_speech.reload(wait_until="domcontentloaded")
                             time.sleep(5)
+                            _require_speech_workspace(tab1_speech)
                             reapply_speech_settings(tab1_speech, voice_config)
                             chapters_since_reload = 0
 
                         # Recovery reload if prior attempt failed
-                        if getattr(main, "attempt_count", 0) > 0:
+                        if attempt_count > 0:
                             print(
                                 "[RECOVER] Reloading Speech Playground Tab to refresh credentials..."
                             )
                             tab1_speech.bring_to_front()
-                            try:
-                                tab1_speech.locator("body").first.click(timeout=1000)
-                                time.sleep(0.5)
-                            except Exception:
-                                pass
                             tab1_speech.reload(wait_until="domcontentloaded")
                             time.sleep(5)
+                            _require_speech_workspace(tab1_speech)
                             reapply_speech_settings(tab1_speech, voice_config)
                             chapters_since_reload = 0
 
                         tab1_speech.bring_to_front()
-                        try:
-                            tab1_speech.locator("body").first.click(timeout=1000)
-                            time.sleep(0.5)
-                        except Exception:
-                            pass
 
-                        speech_input = tab1_speech.locator(
-                            "textarea[aria-label='Enter a prompt']"
-                        ).first
-                        if not speech_input.is_visible():
+                        speech_input = _visible_tts_prompt(
+                            tab1_speech, _TTS_PROMPT_SELECTOR, allow_missing=True
+                        )
+                        if speech_input is None:
                             print("Speech Playground input box was hidden. Re-applying speech settings to dismiss splash...")
+                            _require_speech_workspace(tab1_speech)
                             reapply_speech_settings(tab1_speech, voice_config)
                             time.sleep(2)
-                            speech_input = tab1_speech.locator(
-                                "textarea[aria-label='Enter a prompt']"
-                            ).first
-                            if not speech_input.is_visible():
-                                main.attempt_count = getattr(main, "attempt_count", 0) + 1
+                            speech_input = _visible_tts_prompt(
+                                tab1_speech, _TTS_PROMPT_SELECTOR, allow_missing=True
+                            )
+                            if speech_input is None:
+                                hidden_input_attempts += 1
+                                if hidden_input_attempts > _TTS_NAV_RETRY_LIMIT:
+                                    raise TTSWorkspaceUnavailableError(
+                                        f"Speech Playground prompt box stayed hidden (current URL: {tab1_speech.url})"
+                                    )
+                                attempt_count = attempt_count + 1
                                 time.sleep(2)
                                 continue
 
                         clean_text = sanitize_script_text(chap_text)
                         print(f"Entering Chapter {chap_num} script text into AI Studio ({len(clean_text)} chars)...")
+                        if adaptive_brief:
+                            network_health.require_healthy(network_health.AI_STUDIO_URL)
+                        _require_current_tts_settings(
+                            tab1_speech, target_tts_model, voice_config.get("voice")
+                        )
+                        speech_input = _visible_tts_prompt(tab1_speech, _TTS_PROMPT_SELECTOR)
                         humanize_text_input(tab1_speech, speech_input, clean_text)
 
                         # Dynamic delay scaled to text length
@@ -1987,9 +3460,15 @@ def _run_voice_generation():
                         run_btn = tab1_speech.locator(
                             "button[type='submit'], button:has-text('Run')"
                         ).first
+                        _require_current_tts_settings(
+                            tab1_speech, target_tts_model, voice_config.get("voice")
+                        )
+                        _visible_tts_prompt(tab1_speech, _TTS_PROMPT_SELECTOR)
                         try:
                             human_hover_and_click(tab1_speech, run_btn)
                         except Exception:
+                            if adaptive_brief:
+                                raise
                             tab1_speech.keyboard.press("Control+Enter")
 
                         print("Synthesis started. Waiting dynamically for rendering to complete...")
@@ -2002,10 +3481,27 @@ def _run_voice_generation():
                             started_rendering = True
                         except Exception:
                             has_error, err_msg = check_ai_studio_errors(tab1_speech)
+                            if adaptive_brief and has_error:
+                                _adaptive_post_run_failure(err_msg)
                             if has_error:
                                 print(f"Synthesis failed due to AI Studio error: {err_msg}")
                             else:
                                 print("Warning: Synthesis 'Stop' button did not appear within 8s.")
+                                if adaptive_brief:
+                                    # Never re-type after an unconfirmed Run: a slow page may still be synthesizing.
+                                    try:
+                                        tab1_speech.wait_for_selector(
+                                            "button:has-text('Stop'), button[aria-label*='Download' i], "
+                                            "button:has-text('Download')",
+                                            timeout=30000,
+                                        )
+                                        print("Synthesis activity confirmed after an extended wait...")
+                                        started_rendering = True
+                                    except Exception as exc:
+                                        raise TTSProviderError(
+                                            "unknown: AI Studio showed no Stop button, no Download button "
+                                            "and no error banner after Run"
+                                        ) from exc
 
                         # Immediate Quota / 403 Failover Gate (Directive: HTTP 403 / "Link a paid API key")
                         is_quota = (
@@ -2036,9 +3532,9 @@ def _run_voice_generation():
                                     os.remove(target_dest)
                                 except Exception:
                                     pass
-                            main.attempt_count = getattr(main, "attempt_count", 0) + 1
+                            attempt_count = attempt_count + 1
                             retry_limit = int(get_config_value("FAILOVER_RETRY_LIMIT", "3"))
-                            if getattr(main, "attempt_count", 0) >= retry_limit:
+                            if attempt_count >= retry_limit:
                                 if accounts_enabled:
                                     print(
                                         f"\n[FAILOVER ALERT] Chapter {chap_num} failed {retry_limit} times to start. Rotating Account Profile..."
@@ -2091,6 +3587,8 @@ def _run_voice_generation():
                                 )
                             except Exception as e:
                                 print(f"\n[ERROR] Error downloading audio file: {e}")
+                        if adaptive_brief and not download_success:
+                            download_success = _adaptive_salvage_download(tab1_speech, target_dest)
 
                         # Frame-level validation: a "successful" download can still be a
                         # bare RIFF header or truncated stream (quota/500 failures).
@@ -2147,7 +3645,22 @@ def _run_voice_generation():
                                         )
                                         sys.exit(1)
 
-                                main.attempt_count = getattr(main, "attempt_count", 0) + 1
+                                attempt_count = attempt_count + 1
+                                retry_limit = int(get_config_value("FAILOVER_RETRY_LIMIT", "3"))
+                                if attempt_count >= retry_limit:
+                                    if accounts_enabled:
+                                        print(
+                                            f"\n[FAILOVER ALERT] Chapter {chap_num} produced duplicate audio {retry_limit} times. Rotating Account Profile..."
+                                        )
+                                        rotate_profile_index()
+                                        kill_cdp_chrome()
+                                        failover_triggered = True
+                                        break
+                                    else:
+                                        print(
+                                            f"\n[FATAL ERROR] Chapter {chap_num} produced duplicate audio after {retry_limit} attempts. Halting."
+                                        )
+                                        sys.exit(1)
                                 continue
 
                             # Update manifest chapter status to COMPLETED
@@ -2188,10 +3701,12 @@ def _run_voice_generation():
                             print("=" * 80 + "\n")
 
                             chapters_since_reload += 1
-                            main.attempt_count = 0
+                            attempt_count = 0
                             break
                         else:
                             has_err, err_msg = check_ai_studio_errors(tab1_speech)
+                            if adaptive_brief:
+                                _adaptive_post_run_failure(err_msg if has_err else "")
                             if (latest_alkali_state.get("is_403") or (has_err and is_ai_studio_quota_error(err_msg))) and accounts_enabled:
                                 print(
                                     "\n[FAILOVER ALERT] Quota saturation observed during synthesis/download (HTTP 403 / 'Link a paid API key'). "
@@ -2202,10 +3717,10 @@ def _run_voice_generation():
                                 failover_triggered = True
                                 break
 
-                            main.attempt_count = getattr(main, "attempt_count", 0) + 1
+                            attempt_count = attempt_count + 1
                             retry_limit = int(get_config_value("FAILOVER_RETRY_LIMIT", "3"))
 
-                            if getattr(main, "attempt_count", 0) >= retry_limit:
+                            if attempt_count >= retry_limit:
                                 if accounts_enabled:
                                     print(
                                         f"\n[FAILOVER ALERT] Chapter {chap_num} failed {retry_limit} times. Rotating Account Profile..."
@@ -2220,7 +3735,7 @@ def _run_voice_generation():
                                     )
                                     sys.exit(1)
 
-                            backoff_delay = 5.0 * (2.0 ** (getattr(main, "attempt_count", 0) - 1))
+                            backoff_delay = 5.0 * (2.0 ** (attempt_count - 1))
                             print(
                                 f"Applying exponential backoff of {backoff_delay:.2f}s before retry..."
                             )
@@ -2242,9 +3757,11 @@ def _run_voice_generation():
                         print("=============================================")
                         break
 
-        except AdaptiveBrowserOwnershipError:
+        except (AdaptiveBrowserOwnershipError, TTSWorkspaceUnavailableError, TTSProviderError):
             raise
         except Exception as e:
+            if adaptive_brief:
+                raise
             print(f"[RECOVERY] Playwright context closed or browser crashed: {e}")
             time.sleep(3)
 
@@ -2252,7 +3769,7 @@ def _run_voice_generation():
             print(
                 "\n[SYSTEM] Reinitializing Playwright environment with new profile. Fast-forwarding...\n"
             )
-            main.attempt_count = 0
+            attempt_count = 0
             time.sleep(2)
             continue
 
@@ -2279,6 +3796,8 @@ __all__ = [
     "GMEM_MOVEABLE",
     "MANIFEST_FILE_NAME",
     "RESPONSE_SELECTOR",
+    "TTSProviderError",
+    "TTSWorkspaceUnavailableError",
     "calculate_script_coverage",
     "check_ai_studio_errors",
     "check_is_gemini_complete",

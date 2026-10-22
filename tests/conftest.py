@@ -211,3 +211,146 @@ def dummy_transcript_file(temp_run_folder):
         f.write("[00:00] Test subtitle\n")
         f.write("[00:05] Another subtitle\n")
     return txt_path
+
+@pytest.fixture(autouse=True)
+def isolated_shared_resource_paths(monkeypatch, tmp_path):
+    """Redirect shared resource state before each test can acquire or write it."""
+    import sys
+    from pathlib import Path
+
+    from youtube_automation.core import utils
+    from youtube_automation.production import ledger
+
+    ledger_resource_database = ledger.resource_database
+    production_database = ledger_resource_database()
+    import sqlite3
+    import traceback
+
+    real_connect = sqlite3.connect
+
+    def isolated_connect(database, *args, **kwargs):
+        if isinstance(database, (str, bytes, Path)):
+            candidate = Path(database.decode() if isinstance(database, bytes) else database)
+            if candidate.resolve() == production_database.resolve():
+                pytest.fail("Attempted real production SQLite connection before isolation: "
+                            + "".join(traceback.format_stack(limit=8)))
+        return real_connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", isolated_connect)
+    production_registry = utils.OWNED_BROWSER_REGISTRY
+    test_database = tmp_path / "adaptive.sqlite3"
+    test_registry = tmp_path / "owned_browsers.json"
+    preexisting_modules = {id(module) for module in tuple(sys.modules.values())}
+
+    def test_resource_database() -> Path:
+        return test_database
+
+    monkeypatch.setattr(ledger, "resource_database", test_resource_database)
+    monkeypatch.setattr(utils, "OWNED_BROWSER_REGISTRY", test_registry)
+
+    for module in tuple(sys.modules.values()):
+        namespace = getattr(module, "__dict__", None)
+        if not isinstance(namespace, dict):
+            continue
+        if namespace.get("resource_database") is ledger_resource_database:
+            monkeypatch.setattr(module, "resource_database", test_resource_database, raising=False)
+        if namespace.get("OWNED_BROWSER_REGISTRY") == production_registry:
+            monkeypatch.setattr(module, "OWNED_BROWSER_REGISTRY", test_registry, raising=False)
+
+    paths = {
+        "database": test_database,
+        "registry": test_registry,
+        "production_database": production_database,
+        "production_registry": production_registry,
+    }
+    try:
+        yield paths
+    finally:
+        for module in tuple(sys.modules.values()):
+            if id(module) in preexisting_modules:
+                continue
+            namespace = getattr(module, "__dict__", None)
+            if not isinstance(namespace, dict):
+                continue
+            if namespace.get("resource_database") is test_resource_database:
+                namespace["resource_database"] = ledger_resource_database
+            if namespace.get("OWNED_BROWSER_REGISTRY") == test_registry:
+                namespace["OWNED_BROWSER_REGISTRY"] = production_registry
+
+
+
+def _shared_resource_fingerprints(database, registry):
+    import hashlib
+    from pathlib import Path
+
+    paths = [Path(database), Path(registry)]
+    paths.extend(Path(f"{database}{suffix}") for suffix in ("-journal", "-wal", "-shm"))
+    fingerprints = {}
+    for path in paths:
+        if not path.exists():
+            fingerprints[str(path)] = None
+            continue
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        fingerprints[str(path)] = (path.stat().st_size, digest.hexdigest())
+    return fingerprints
+
+
+def pytest_sessionstart(session):
+    """Capture real shared resources before per-test monkeypatching begins."""
+    from youtube_automation.core import utils
+    from youtube_automation.production import ledger
+
+    database = ledger.resource_database()
+    registry = utils.OWNED_BROWSER_REGISTRY
+    session._shared_resource_paths = (database, registry)
+    session._shared_resource_baseline = _shared_resource_fingerprints(database, registry)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Fail the run if any test changed a persistent shared resource."""
+    import sys
+
+    paths = getattr(session, "_shared_resource_paths", None)
+    baseline = getattr(session, "_shared_resource_baseline", None)
+    if paths is None or baseline is None:
+        return
+    current = _shared_resource_fingerprints(*paths)
+    if current == baseline:
+        return
+    changed = sorted(
+        path for path in set(baseline) | set(current)
+        if baseline.get(path) != current.get(path)
+    )
+    sys.stderr.write("Persistent production resources changed during pytest: " + ", ".join(changed) + "\\n")
+    session.exitstatus = 1
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-live-browser",
+        action="store_true",
+        default=False,
+        help="run explicitly marked live browser/CDP/socket integration tests",
+    )
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "live_browser: requires an explicit --run-live-browser opt-in",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--run-live-browser"):
+        return
+
+    skip_live_browser = pytest.mark.skip(
+        reason="live browser/CDP/socket test requires --run-live-browser"
+    )
+    for item in items:
+        if item.get_closest_marker("live_browser") is not None:
+            item.add_marker(skip_live_browser)

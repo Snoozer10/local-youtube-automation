@@ -4,11 +4,12 @@ import math
 import os
 import struct
 import wave
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import Any, TypedDict
 
 
 def build_ken_burns_filter(
-    config: dict,
+    config: Mapping[str, Any],
     frame_count: int,
     camera_action: str,
     pix_fmt: str = "yuv420p",
@@ -173,16 +174,16 @@ def derive_multishot_crop(
 class AudioSyncAligner:
     """Scans audio waveform energy to snap visual cuts to natural silence/breath boundaries."""
 
-    def __init__(self, wav_path: str, window_ms: int = 20):
+    def __init__(self, wav_path: str, window_ms: int = 20) -> None:
         self.wav_path = wav_path
         self.window_ms = window_ms
-        self.energy_profile = []
+        self.energy_profile: list[float] = []
         self.sample_rate = 48000
         self.total_duration = 0.0
         self.leading_silence_sec = 0.0
         self._analyze_waveform()
 
-    def _analyze_waveform(self):
+    def _analyze_waveform(self) -> None:
         if not os.path.exists(self.wav_path) or not self.wav_path.lower().endswith(".wav"):
             return
         try:
@@ -245,6 +246,13 @@ class AudioSyncAligner:
         return snapped_sec
 
 
+class PunchFrame(TypedDict):
+    transient_time: float
+    adjusted_punch_time: float
+    relative_frame: int
+    surge_db: float
+
+
 class AudioTransientDetector:
     """Detects acoustic transient peaks in voiceover audio to trigger sub-beat scale punches.
 
@@ -260,7 +268,7 @@ class AudioTransientDetector:
         sample_rate: int = 48000,
         window_ms: float = 20.0,
         hop_ms: float = 10.0,
-    ):
+    ) -> None:
         self.wav_path = wav_path
         self.sample_rate = sample_rate
         self.window_ms = window_ms
@@ -276,7 +284,7 @@ class AudioTransientDetector:
         elif samples is not None:
             self._analyze_samples(samples, sample_rate)
 
-    def _load_from_wav(self, wav_path: str):
+    def _load_from_wav(self, wav_path: str) -> None:
         try:
             with wave.open(wav_path, "rb") as wf:
                 self.sample_rate = wf.getframerate()
@@ -296,7 +304,7 @@ class AudioTransientDetector:
         except Exception as e:
             print(f"  [WARN] AudioTransientDetector WAV read bypassed: {e}")
 
-    def _analyze_samples(self, samples: list[int] | list[float], sample_rate: int):
+    def _analyze_samples(self, samples: Sequence[float], sample_rate: int) -> None:
         self.sample_rate = sample_rate
         self.total_duration = len(samples) / float(sample_rate)
         win_size = max(1, int(sample_rate * (self.window_ms / 1000.0)))
@@ -329,7 +337,7 @@ class AudioTransientDetector:
         min_db_floor: float = 40.0,
         edge_clearance_sec: float = 0.6,
         optical_lag_frames: int = 1,
-    ) -> dict[str, float | int] | None:
+    ) -> PunchFrame | None:
         """Identifies the primary acoustic stress transient within a span window,
         returning the lag-adjusted relative frame for a sub-beat scale punch cut.
         """

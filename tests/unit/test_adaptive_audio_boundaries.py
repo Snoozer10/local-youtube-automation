@@ -82,11 +82,28 @@ def test_legacy_audacity_also_refuses_unowned_open_session(tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize(
-    "response",
-    ["BatchCommand finished: Failed\n\n", "BatchCommand finished.\n\n", ""],
+    ("response", "error", "message"),
+    [
+        (
+            "BatchCommand finished: Failed\n\n",
+            RuntimeError,
+            "did not confirm success",
+        ),
+        (
+            "BatchCommand finished.\n\n",
+            RuntimeError,
+            "did not confirm success",
+        ),
+        ("", RuntimeError, "did not confirm success.*BatchCommand finished status"),
+        (
+            "BatchCommand finished: Failed\n",
+            RuntimeError,
+            "did not confirm success.*terminal blank boundary",
+        ),
+    ],
 )
-def test_adaptive_audacity_requires_explicit_command_success(response):
-    with pytest.raises(RuntimeError, match="did not confirm success"):
+def test_adaptive_audacity_requires_explicit_command_success(response, error, message):
+    with pytest.raises(error, match=message):
         audacity_client.send_audacity_command(
             io.StringIO(), io.StringIO(response), "Normalize:", strict=True
         )

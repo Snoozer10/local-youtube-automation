@@ -13,6 +13,10 @@ from .contracts import Brief, fingerprint, narration_fingerprint
 def require_unpolished_run(run_dir: str | Path) -> None:
     """Prevent a voice rerun from replacing physical polished offsets with raw timings."""
     root = Path(run_dir)
+    from .audio_adoption import PENDING, RECEIPT
+
+    if (root / PENDING).exists() or (root / RECEIPT).exists():
+        raise ValueError("Adaptive voice run already has accepted or pending polished audio; use a fresh run")
     polished = root / "polished_chapters"
     if (root / "full_episode_voice.wav").exists() or (
         polished.exists() and any(polished.glob("Chapter_*.wav"))
@@ -22,6 +26,7 @@ def require_unpolished_run(run_dir: str | Path) -> None:
 
 def split_chapters(run_dir: str | Path, script: str, *, max_words: int = 220) -> list[dict[str, Any]]:
     """Partition source words without asking another model to rewrite the script."""
+    script = script.replace("\r\n", "\n").replace("\r", "\n")
     if max_words <= 0 or not script.strip():
         raise ValueError("Narration needs a nonempty script and positive chapter budget")
     paragraphs = [paragraph.split() for paragraph in script.split("\n\n")]
@@ -52,6 +57,7 @@ def split_chapters(run_dir: str | Path, script: str, *, max_words: int = 220) ->
 
 def prepare_manifest(run_dir: str | Path, manifest: dict[str, Any], brief: Brief, script: str) -> dict[str, Any]:
     """Resume only chapters from this exact script, channel and voice."""
+    script = script.replace("\r\n", "\n").replace("\r", "\n")
     expected = split_chapters(run_dir, script)
     recipe = fingerprint(
         {

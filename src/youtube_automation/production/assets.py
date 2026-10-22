@@ -62,7 +62,7 @@ def validate_background(path: str | Path) -> tuple[int, int]:
     return size
 
 
-def recipe(shot: Shot, brief: Brief, reference_hash: str | None) -> str:
+def recipe(shot: Shot, brief: Brief, reference_hash: str | None, character_hashes: dict[str, str] | None = None) -> str:
     if uses_local_canvas(shot):
         return fingerprint(
             {
@@ -83,6 +83,10 @@ def recipe(shot: Shot, brief: Brief, reference_hash: str | None) -> str:
     }
     if reference_hash:
         payload.update(version=3, reference_transport="exact-prompt-chip-v2")
+    if shot.character_ids:
+        if character_hashes is None or set(character_hashes) != set(shot.character_ids):
+            raise ValueError("Character-bound assets require exact character receipt lineage")
+        payload.update(version=4, characters=character_hashes, character_transport="exact-character-chip-v1")
     return fingerprint(payload)
 
 
@@ -161,7 +165,13 @@ def accepted_asset(root: Path, shot: Shot, brief: Brief) -> dict[str, Any] | Non
         )
     except (OSError, KeyError, ValueError):
         return None
-    expected_recipe = recipe(shot, brief, ref)
+    from .characters import character_lineage
+
+    try:
+        characters = character_lineage(root, brief, shot.character_ids)
+    except (OSError, KeyError, ValueError):
+        return None
+    expected_recipe = recipe(shot, brief, ref, characters)
     try:
         receipt = read_shot_receipt(root, shot)
         if receipt["recipe"] == expected_recipe:
@@ -213,6 +223,9 @@ def ensure_local_canvas(root: Path, shot: Shot, brief: Brief) -> dict[str, Any]:
 def register_asset(
     root: Path, shot: Shot, brief: Brief, path: Path, *, source_url: str = "", project_url: str = ""
 ) -> dict[str, Any]:
+    from .characters import character_lineage
+
+    characters = character_lineage(root, brief, shot.character_ids)
     resolved = path.resolve()
     if not resolved.is_relative_to(root.resolve()):
         raise ValueError("Generated assets must be inside the selected run")
@@ -237,13 +250,15 @@ def register_asset(
         "pixel_sha256": candidate_pixels,
         "dimensions": list(dimensions),
         "reference_sha256": reference,
-        "recipe": recipe(shot, brief, reference),
+        "recipe": recipe(shot, brief, reference, characters),
         "prompt": generation_prompt(shot, brief),
         "source_url": source_url,
         "project_url": project_url,
         "technical_status": "verified",
         "editorial_status": "pending",
     }
+    if characters:
+        receipt["characters"] = characters
     journal = _journal_path(root, asset_storage_id(shot))
     journal.parent.mkdir(parents=True, exist_ok=True)
     with publication_guard():

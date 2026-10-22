@@ -4,14 +4,16 @@ Provides lossless WAV frame concatenation and format homogeneity validation
 across sequential audio chapters.
 """
 
+import io
 import os
 import re
 import sys
 import tempfile
 import wave
+from collections.abc import Sequence
 
 # Windows console hardening: guarantee UTF-8 for Arabic output even when piped.
-if sys.platform.startswith("win"):
+if sys.platform.startswith("win") and isinstance(sys.stdout, io.TextIOWrapper) and isinstance(sys.stderr, io.TextIOWrapper):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -19,7 +21,7 @@ if sys.platform.startswith("win"):
         pass
 
 
-def get_latest_run_folder(runs_path="youtube_runs"):
+def get_latest_run_folder(runs_path: str = "youtube_runs") -> str | None:
     if not os.path.exists(runs_path):
         print(f"Error: Directory '{runs_path}' does not exist.")
         return None
@@ -36,7 +38,7 @@ def get_latest_run_folder(runs_path="youtube_runs"):
     return latest_folder
 
 
-def scan_sequential_chapters(chapters_source_dir, start_index=1):
+def scan_sequential_chapters(chapters_source_dir: str, start_index: int = 1) -> tuple[list[str], list[str]]:
     """Scans for Chapter_X.wav files and identifies genuine gaps between 1 and the max index.
 
     found contains only the contiguous prefix before the first absent index.
@@ -86,7 +88,7 @@ def scan_sequential_chapters(chapters_source_dir, start_index=1):
     return file_list, missing
 
 
-def stitch_files(file_list, output_path):
+def stitch_files(file_list: Sequence[str], output_path: str) -> str:
     """Stitches WAV chapters frame-exactly with strict format homogeneity.
 
     Raises:
@@ -135,7 +137,7 @@ def stitch_files(file_list, output_path):
     return output_path
 
 
-def main():
+def main() -> None:
     latest_run = sys.argv[1] if len(sys.argv) > 1 else get_latest_run_folder()
     if not latest_run:
         print("Error: No active run folders found in 'youtube_runs/'.")
@@ -153,14 +155,14 @@ def main():
     return _stitch_run(latest_run)
 
 
-def _stitch_run(latest_run):
+def _stitch_run(latest_run: str) -> None:
     print("=============================================")
     print("Starting Standalone Audio Chapter Stitcher")
     print("=============================================")
     print(f"Target Video Folder: '{latest_run}'")
 
     adaptive = os.path.isfile(os.path.join(latest_run, "episode_brief.json"))
-    expected_names = None
+    expected_names: list[str] = []
     if adaptive:
         import json
 
