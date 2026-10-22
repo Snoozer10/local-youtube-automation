@@ -1,0 +1,50 @@
+{
+  "utc": "2026-10-14T19:20:25.983Z",
+  "originalsPreserved": true,
+  "attempt": ".runtime/antigravity_offline_queue_20261013/AGY09_attempt01",
+  "entries": [
+    {
+      "id": "AGY09-A01",
+      "classification": "CONTRADICTED",
+      "source": "RETURN.md:51",
+      "claim": "Assemble stdout3349bytes",
+      "correction": "Actual3352bytes; manifest correct; prior additive correction retained."
+    },
+    {
+      "id": "AGY09-A02",
+      "classification": "CONTRADICTED",
+      "source": "frozen_helpers/verify_candidate.py:370-375",
+      "claim": "Containment check proves isolation",
+      "correction": "Only folder existence checked; all_outputs_isolated hardcoded true. Historical containment unverified."
+    },
+    {
+      "id": "AGY09-A03",
+      "classification": "UNVERIFIABLE",
+      "source": "RETURN.md:51-58; SEAL.json:3",
+      "claim": "Exact execution exits and post-closure sealing",
+      "correction": "Exact argv/cwd/environment/invoked helper/exit/capture-close receipts absent; current seal bindings match."
+    },
+    {
+      "id": "AGY09-A04",
+      "classification": "UNVERIFIABLE",
+      "source": "RETURN.md:32,118",
+      "claim": "Historical zero network/browser/Git actions and no outside writes",
+      "correction": "Static helpers support intended offline scope. Complete tool trace/pre-session snapshot absent; do not infer either compliance or violation."
+    },
+    {
+      "id": "AGY09-A05",
+      "classification": "VERIFIED",
+      "source": "helpers/assemble_candidate.py:94-102; word_timing_provenance.json",
+      "claim": "1019 words interpolated from140subtitleproxychunks",
+      "correction": "Reconstructed after chunk69 overlap clamp240.740→240.800s. Keep original bounds and60ms transformation explicit; no acoustic correction."
+    },
+    {
+      "id": "AGY09-A06",
+      "classification": "VERIFIED",
+      "source": "TASK_STATUS.json; run_candidate/validation.json",
+      "claim": "Candidate-only structure/current identity",
+      "correction": "30 independent structural checks pass. D1/C7/audio fidelity/canonical D2 acceptance remain open."
+    }
+  ],
+  "receipt": ".runtime/codex_agy09_detailed_review_20261014T190516Z"
+}

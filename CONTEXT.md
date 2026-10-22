@@ -4,6 +4,14 @@ Canonical sync layer that turns Whisper word timestamps and VAD pauses into imag
 
 ## Language
 
+**production-complete**:
+Every required episode and pilot production acceptance gate has passed against current inputs; any removed requirement has an explicit human scope decision. A recorded blocker makes a handoff resumable, not production-complete. This term says nothing about GitHub release actions.
+_Avoid_: merged, shipped
+
+**GitHub-closeout**:
+The Codex-owned review and repository release work after production handoff, including staging, commits, push, PR review, CodeRabbit review, and merge.
+_Avoid_: production-complete
+
 **timeline**:
 Canonical `timeline.json` holding `words[]` (append-only, never mutate `start`/`end` after Whisper emits) and derived `spans[]` where `spans[i].start == words[k].start`. Sole truth for sync; compile and Flow read it, shims mirror it.
 _Avoid_: `image_timestamps.txt` as source, `master_roadmap.jsonl` as sync source
@@ -47,3 +55,12 @@ _Avoid_: LLM-generated negative, prompt-level ban only
 **continuity_id**:
 Stable handle in 8-part visual_prompt for subject tracking across chunk; built per chunk from prior `subject` fields with embedding similarity fallback (`multilingual-e5`/`bge-m3` local, cosine ≥0.78); if nearest prior match within same chunk ≥ threshold emit `SUMMON_ASSET` with `@asset` chip, else fresh; `±2` spans is soft hint, not hard cutoff.
 _Avoid_: literal name match only, fresh every span
+
+
+**acceptance gate**:
+An observable requirement whose current evidence must pass before dependent work can advance.
+_Avoid_: authorization, plan, historical pass
+
+**authorization**:
+The human permission to perform a specified action within stated limits. Permission permits an attempt; it does not establish the result or satisfy an acceptance gate.
+_Avoid_: acceptance, successful execution

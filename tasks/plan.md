@@ -1,6 +1,6 @@
-# Active adaptive visual engine work
+# Historical adaptive visual engine hardening checklist
 
-See [adaptive-visual-plan.md](adaptive-visual-plan.md).
+Current execution/status: [master](BRANCH_COMPLETION_MASTER.md), [typing closeout](../docs/sessions/STRICT_TYPING_REVIEW_20261022.md) and [F1 dispositions](../docs/sessions/F1_REVIEW_DISPOSITIONS_20261022.md). Engineering review/gates are complete; formal exact-head review/CI/merge remain. The checklist below is historical.
 
 ---
 
