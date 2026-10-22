@@ -1,3 +1,5 @@
+> Current cursor: [23 October review fixes](REVIEW_FIXES_20261023.md) and PR #21 own subsequent repair, review and CI dispositions. CodeRabbit is USER-SKIPPED by explicit owner direction for the file limit. The earlier publication snapshot below remains historical.
+
 > Current CI follow-up: PR #21 is published and ready. Initial exact-head CI at ba0deca passed lint but failed collecting the empirical process test because psutil was absent from requirements-dev.txt. The explicit dependency repair is locally verified; follow-up publication and exact-head CI outcomes are recorded in `.runtime/codex_typing_20261021/publication_20261022/PSUTIL_FOLLOWUP.json`. Codex review was requested; CodeRabbit skipped 363 files over its 100-file limit. No merge.
 
 

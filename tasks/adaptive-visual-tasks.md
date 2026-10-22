@@ -1,4 +1,4 @@
-> Current publication cursor: PR #21 is published and ready for review. Initial exact-head CI exposed undeclared psutil; the explicit dependency correction passed all nine frozen local gates and requires follow-up exact-head CI. CodeRabbit skipped 363 files over its 100-file limit. See [publication record](../docs/sessions/PUBLICATION_20261022.md). The earlier snapshot below is historical; no merge/live action authorized.
+> Current publication cursor: four formal-review findings repaired and verified offline. [Review-fix record](../docs/sessions/REVIEW_FIXES_20261023.md) owns this pass; PR #21 and bound receipts own current exact-head CI/Codex outcomes. CodeRabbit is USER-SKIPPED at owner direction because of the file limit. Earlier snapshots below are historical; no merge/live action authorized.
 
 # Adaptive visual engine - implementation checklist
 

@@ -1,0 +1,5 @@
+ACADEMIC DIRECTIVE: You are executing a highly structured, analytical comparative linguistic transcreation task for an educational documentary. You must adapt English source texts into conversational Arabic ({config:ratios}). Acknowledge the style guide:
+
+<style_guide>
+{style_guide}
+</style_guide>

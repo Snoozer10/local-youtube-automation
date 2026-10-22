@@ -27,8 +27,9 @@ from .briefs import (
     rebind_visual_policy,
     requires_visual_strategy_migration,
     visual_policy_migration_pending,
+    visual_policy_rebind_allowed,
 )
-from .contracts import Brief, fingerprint, load_brief, load_channel
+from .contracts import Brief, Channel, fingerprint, load_brief, load_channel
 from .invalidation import invalidate_stage, reconcile_invalidation
 from .ledger import Ledger, durable_stage, leased_resource, resource_database
 from .render import (
@@ -75,16 +76,49 @@ def _direction_generation_model() -> str:
 
 
 def _direction_transport_receipt(
-    root: Path, *, model: str, prompt: str
-) -> tuple[Path, str]:
+    root: Path, *, model: str, prompt: str, profile_index: int,
+) -> tuple[Path, str, int | None]:
     prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-    receipt_dir = root / "direction_generation_receipts" / prompt_sha256
+    receipt_key = fingerprint({"prompt_sha256": prompt_sha256, "profile_index": profile_index})
+    receipt_dir = root / "direction_generation_receipts" / receipt_key
     receipt_path = receipt_dir / f"{prompt_sha256}.json"
+    legacy_dir = root / "direction_generation_receipts" / prompt_sha256
+    legacy_path = legacy_dir / f"{prompt_sha256}.json"
     from .direction_stage import _contained_transport_receipt_path
 
     _contained_transport_receipt_path(root, receipt_path)
+    _contained_transport_receipt_path(root, legacy_path)
+    if not receipt_path.exists() and legacy_path.exists():
+        try:
+            legacy = json.loads(legacy_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError("Legacy direction receipt is unreadable; inspect it before retrying") from exc
+        attempts = legacy.get("attempts") if isinstance(legacy, dict) else None
+        if (
+            not isinstance(legacy, dict)
+            or legacy.get("version") != 1
+            or legacy.get("prompt_sha256") != prompt_sha256
+            or legacy.get("model") != model
+            or legacy.get("transport") != "inline"
+            or legacy.get("window") is not None
+            or not isinstance(attempts, list)
+            or not attempts
+        ):
+            raise ValueError("Legacy direction transport receipt does not match this request")
+        last = attempts[-1]
+        response = last.get("response") if isinstance(last, dict) else None
+        if not isinstance(last, dict) or last.get("state") != "completed" or not isinstance(response, str):
+            raise ValueError("Unbound legacy direction receipt is unresolved; preserve it and do not retry")
+        from youtube_automation.browser.gemini_utils import is_gemini_usage_limit_text
+
+        from .briefs import _is_provider_soft_refusal
+
+        if _is_provider_soft_refusal(response) or is_gemini_usage_limit_text(response):
+            raise ValueError("Unbound legacy refusal or quota receipt is not retry evidence")
+        _contained_transport_receipt_path(root, legacy_path)
+        return legacy_dir, prompt_sha256, None
     if not receipt_path.exists():
-        return receipt_dir, prompt_sha256
+        return receipt_dir, prompt_sha256, profile_index
     try:
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -97,26 +131,36 @@ def _direction_transport_receipt(
         or receipt.get("model") != model
         or receipt.get("transport") != "inline"
         or receipt.get("window") is not None
+        or receipt.get("profile_index") != profile_index
         or not isinstance(attempts, list)
     ):
         raise ValueError("Existing direction transport receipt does not match this request")
     if not attempts:
-        return receipt_dir, prompt_sha256
+        return receipt_dir, prompt_sha256, profile_index
     last = attempts[-1]
     response = last.get("response") if isinstance(last, dict) else None
-    if not isinstance(last, dict) or last.get("state") != "completed" or not isinstance(response, str):
-        raise ValueError(
-            "Prior direction request is unresolved; preserve its receipt and do not send again"
+    state = last.get("state") if isinstance(last, dict) else None
+    if state == "quota_exhausted":
+        from youtube_automation.browser.gemini_utils import is_gemini_usage_limit_text
+
+        error = last.get("error")
+        quota_evidence = (
+            isinstance(response, str) and is_gemini_usage_limit_text(response)
+        ) or (
+            isinstance(error, str) and is_gemini_usage_limit_text(error)
         )
+        if not quota_evidence:
+            raise ValueError("Direction quota receipt lacks explicit terminal quota evidence")
+        raise GeminiUsageLimitError("Gemini App usage limit reached for the active profile")
+    if state != "completed" or not isinstance(response, str):
+        raise ValueError("Prior direction request is unresolved; preserve its receipt and do not send again")
     from youtube_automation.browser.gemini_utils import is_gemini_usage_limit_text
 
     from .briefs import _is_provider_soft_refusal
 
     if _is_provider_soft_refusal(response) or is_gemini_usage_limit_text(response):
-        raise ValueError(
-            "Prior direction response is a refusal or quota result; preserve it and do not retry"
-        )
-    return receipt_dir, prompt_sha256
+        raise ValueError("Prior direction response is a refusal or unclassified quota result; preserve it")
+    return receipt_dir, prompt_sha256, profile_index
 
 
 @contextmanager
@@ -126,6 +170,7 @@ def gemini_transport(
     receipt_dir: Path | None = None,
     timeout_seconds: int = 180,
     model_name: str | None = None,
+    profile_index: int | None = None,
 ) -> Iterator[Callable[[str], str]]:
     model = model_name or get_config_value("IMAGE_PLANNER_MODEL", "Pro").strip()
     if not model or len(model) > 100 or any(ord(char) < 32 for char in model):
@@ -148,6 +193,7 @@ def gemini_transport(
                 receipt_dir=receipt_dir,
                 timeout_seconds=timeout_seconds,
                 attachment_mode=_planner_attachment_mode(persistent_chat=persistent_chat),
+                profile_index=profile_index,
             )
         finally:
             page.close()
@@ -176,6 +222,7 @@ def _stage_recipe(root: Path, args: argparse.Namespace) -> str:
         from .direction_stage import assert_direction_generation_allowed, direction_prompt
 
         generation_model = _direction_generation_model()
+        inputs["profile_index"] = active_profile_index()
         inputs["direction_inputs"] = assert_direction_generation_allowed(root)
         inputs["generation_model"] = generation_model
         inputs["prompt_sha256"] = hashlib.sha256(
@@ -458,6 +505,12 @@ def _stage_complete(root: Path, args: argparse.Namespace) -> bool:
     return False
 
 
+def _eligible_local_visual_policy_rebind(root: Path, channel: Channel) -> bool:
+    if requires_visual_strategy_migration(root, channel):
+        return False
+    return visual_policy_rebind_allowed(root, channel)
+
+
 def _execute_stage(args: argparse.Namespace, root: Path, database: Path) -> None:
     if args.stage == "adopt-polished-audio":
         from .audio_adoption import adopt_polished_audio
@@ -487,12 +540,13 @@ def _execute_stage(args: argparse.Namespace, root: Path, database: Path) -> None
                 )
         elif candidate is None:
             prompt = direction_prompt(root, generation_model=generation_model)
-            receipt_dir, prompt_sha256 = _direction_transport_receipt(
-                root, model=generation_model, prompt=prompt
+            profile_index = active_profile_index()
+            receipt_dir, prompt_sha256, transport_profile_index = _direction_transport_receipt(
+                root, model=generation_model, prompt=prompt, profile_index=profile_index
             )
             transport_receipt_path = receipt_dir / f"{prompt_sha256}.json"
             with leased_resource(database, "browser"), gemini_transport(
-                model_name=generation_model, receipt_dir=receipt_dir
+                model_name=generation_model, receipt_dir=receipt_dir, profile_index=transport_profile_index
             ) as ask:
                 candidate = ensure_direction_candidate(
                     root,
@@ -529,6 +583,9 @@ def _execute_stage(args: argparse.Namespace, root: Path, database: Path) -> None
             feedback = Path(args.strategy_feedback_file).read_text(encoding="utf-8-sig")
             if not feedback.strip():
                 raise ValueError("Strategy feedback file is empty")
+        if not feedback and _eligible_local_visual_policy_rebind(root, channel):
+            rebind_visual_policy(root, channel)
+            return
         with leased_resource(database, "browser"), gemini_transport() as ask:
             if requires_visual_strategy_migration(root, channel):
                 rebind_visual_policy(root, channel, ask=ask, strategy_feedback=feedback,
@@ -666,7 +723,7 @@ def _run_stage_attempt(args: argparse.Namespace, root: Path, database: Path) -> 
                     f"before retrying stage: {args.stage}"
                 )
             complete = _stage_complete(root, args)
-        elif (existing and existing["recipe"] != recipe and args.stage != "adopt-polished-audio"
+        elif (existing and existing["recipe"] != recipe and args.stage not in {"adopt-polished-audio", "generate-direction"}
               and not strategy_migration):
             preserve_paths: set[str] | None = None
             if args.stage == "plan":
@@ -816,9 +873,16 @@ def main(argv: list[str] | None = None) -> None:
 
             brief, plan, _ = _validated_plan(root)
             require_visual_audit(root, plan, brief)
-        failover_stages = {"analyze", "write", "plan"}
+        failover_stages = {"analyze", "write", "plan", "generate-direction"}
         accepted_write = args.stage == "write" and (root / "script_acceptance.json").is_file()
-        if args.stage in failover_stages and not accepted_write and not _stage_complete(root, args):
+        local_rebind = bool(
+            args.stage == "analyze"
+            and not args.strategy_feedback_file
+            and (root / "episode_brief.json").is_file()
+            and args.channel_profile
+            and _eligible_local_visual_policy_rebind(root, load_channel(args.channel_profile))
+        )
+        if args.stage in failover_stages and not accepted_write and not local_rebind and not _stage_complete(root, args):
             from youtube_automation.browser import network_health
 
             network_health.require_healthy(network_health.GEMINI_URL)

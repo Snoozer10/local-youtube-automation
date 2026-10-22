@@ -375,12 +375,38 @@ def is_visual_policy_update(run_dir: str | Path, channel: Channel) -> bool:
         return False
     if existing.profile_sha256 == fingerprint(channel):
         return False
+    try:
+        raw = (root / "raw_transcript.txt").read_text(encoding="utf-8-sig")
+    except OSError:
+        return False
+    if existing.source_sha256 != fingerprint(raw):
+        return False
     old = existing.channel.model_dump(mode="json")
     new = channel.model_dump(mode="json")
     for profile_field in _VISUAL_ONLY_PROFILE_FIELDS:
         old.pop(profile_field, None)
         new.pop(profile_field, None)
     return old == new
+
+
+def visual_policy_rebind_allowed(run_dir: str | Path, channel: Channel) -> bool:
+    """Allow local rebind only for an existing current strategy and policy fields."""
+    try:
+        existing = load_brief(run_dir)
+    except (OSError, ValueError):
+        return False
+    old = existing.channel.model_dump(mode="json")
+    new = channel.model_dump(mode="json")
+    changed_fields = {
+        name for name in old.keys() | new.keys()
+        if old.get(name) != new.get(name)
+    }
+    return bool(
+        existing.visual_strategy is not None
+        and changed_fields
+        and changed_fields <= {"version", "visual_directives", "forbidden_motifs"}
+        and is_visual_policy_update(run_dir, channel)
+    )
 
 
 def rebind_visual_policy(
@@ -420,7 +446,7 @@ def rebind_visual_policy(
         visual_strategy=existing.visual_strategy,
     )
     with publication_guard():
-        if load_brief(root) != existing:
+        if load_brief(root) != existing or not is_visual_policy_update(root, channel):
             raise ValueError("Episode brief changed during visual-policy rebind")
         atomic_write_json(str(root / "episode_brief.json"), updated.model_dump(mode="json"))
 
@@ -464,6 +490,7 @@ class BrowserTransport:
     receipt_dir: Path | None = None
     timeout_seconds: int = 180
     attachment_mode: Literal["inline", "file"] = "inline"
+    profile_index: int | None = None
     _chat_ready: bool = field(default=False, init=False)
     _window: tuple[int, int] | None = field(default=None, init=False)
     _last_prompt_sha256: str | None = field(default=None, init=False)
@@ -498,6 +525,7 @@ class BrowserTransport:
                 "transport": self.attachment_mode,
                 "window": list(self._window) if self._window else None,
                 "attempts": [],
+                **({"profile_index": self.profile_index} if self.profile_index is not None else {}),
             }
         payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         if (
@@ -507,6 +535,7 @@ class BrowserTransport:
             or payload.get("transport", "inline") != self.attachment_mode
             or payload.get("window") != (list(self._window) if self._window else None)
             or not isinstance(payload.get("attempts"), list)
+            or (self.profile_index is not None and payload.get("profile_index") != self.profile_index)
         ):
             raise ValueError("Gemini response receipt does not match the current request")
         return payload
@@ -1149,6 +1178,7 @@ def browser_ask(
     receipt_dir: Path | None = None,
     timeout_seconds: int = 180,
     attachment_mode: Literal["inline", "file"] = "inline",
+    profile_index: int | None = None,
 ) -> BrowserTransport:
     return BrowserTransport(
         page,
@@ -1157,6 +1187,7 @@ def browser_ask(
         receipt_dir=receipt_dir,
         timeout_seconds=timeout_seconds,
         attachment_mode=attachment_mode,
+        profile_index=profile_index,
     )
 
 

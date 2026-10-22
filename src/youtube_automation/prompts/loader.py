@@ -14,7 +14,10 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
-PROMPTS_DIR: Path = ROOT / "prompts"
+PROMPTS_DIR: Path = Path(__file__).resolve().parent
+_SOURCE_LOADER_PATH = ROOT / "src" / "youtube_automation" / "prompts" / "loader.py"
+if _SOURCE_LOADER_PATH.resolve() == Path(__file__).resolve():
+    PROMPTS_DIR = ROOT / "prompts"
 FRAGMENTS_DIR: Path = PROMPTS_DIR / "fragments"
 TURNS_DIR: Path = PROMPTS_DIR / "turns"
 CONFIG_PATH: Path = ROOT / "daheeh_config.json"

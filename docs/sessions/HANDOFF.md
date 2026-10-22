@@ -1,21 +1,21 @@
 # Handoff
 
 ## Current Phase
-PR #21 published at ba0deca and ready for review. Codex review requested; CodeRabbit skipped the 363-file PR because its limit is 100. Initial exact-head CI passed lint but failed collection because psutil was undeclared. A development-dependency fix is verified locally; follow-up exact-head CI is required. No merge authorized.
+Four formal-review findings are repaired and verified offline for PR #21. User explicitly skips CodeRabbit because of its file limit; this is a disposition, not a passed review. Current exact-head publication, CI and Codex outcomes belong to the PR and review-fix receipts. No merge authorized.
 
 ## Current Goal
-Check the follow-up exact head on [PR #21](https://github.com/Snoozer10/local-youtube-automation/pull/21). [Publication record](PUBLICATION_20261022.md) owns CI/review outcomes.
+Publish/read back the reviewed fixes and current exact-head CI/Codex review. [Review-fix record](REVIEW_FIXES_20261023.md) and [master](../../tasks/BRANCH_COMPLETION_MASTER.md) own the cursor.
 
 ## Done
 - Strict typing: 699 errors to zero across 73 files; original checking scope preserved.
-- F1 engineering dispositions complete; 1,968 tests passed and 9 live tests skipped on the frozen source. All nine local gates passed; package byte checks passed.
-- Reviewed changes committed in implementation, guidance and evidence groups. The two local operational inputs are untouched and excluded.
+- Original F1 dispositions retained; four review fixes have focused coverage. Frozen final checks: 1975 passed, 9 live skipped; all nine software gates and actual installed-wheel resource checks pass.
+- Runtime psutil manifests, all 15 mirrored prompt assets, profile-bound direction quota recovery and provider-free local rebind are reviewed. The two local operational inputs remain untouched and excluded.
 
 ## Next
-Read the follow-up publication/CI receipts, confirm PR head, and resolve returned findings. CodeRabbit file-limit skip is an open formal-review limitation; do not count its success status as a completed review. Merge remains separate.
+Read current PR head, CI and Codex findings through the review-fix disposition receipt; resolve any returned source blockers. CodeRabbit is USER-SKIPPED for this PR, with no further request required. Merge remains separate.
 
 ## Failures & Fixes
-The staging path check initially saw rename destinations instead of separate archive deletions/additions. Comparison with rename detection disabled verified the explicit paths; staged content was preserved. Earlier typing/fixture failures remain in the prior closeout receipts.
+Preserved old wheel reproduces PromptError outside a checkout; repaired wheel passes the same offline probe. Ruff I001 required one blank-line removal. Mixed EOL bytes stay preserved; command-local CR-at-EOL handling retains all actual whitespace checks.
 
 ## Resume Context
-Engineering/evidence predecessor: `7ef4a4193ea2af408d1f23c43ed2dc6f6f04c96a`. Publication task: `.runtime/codex_typing_20261021/publication_20261022/`; original snapshot remains immutable. Final published head and remote outcomes belong to PUBLICATION_RESULT.json. Pilot spending, human approval provenance, render recipes and restart reconciliation remain excluded. No live production or merge is authorized. QMD lexical only; pending embeddings are reported by the refresh receipt.
+Starting head: 708adb2. Task: `.runtime/codex_review_fixes_20261023/`; frozen gates: `.runtime/codex_review_fixes_final2_20261023/`. Immutable prior receipts remain historical. Pilot spending, human provenance, render recipes and restart reconciliation remain excluded. No live production or merge authorized. QMD lexical only; embedding backlog is reported separately.

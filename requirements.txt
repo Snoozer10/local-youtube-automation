@@ -34,6 +34,7 @@ moviepy>=2.0.0                  # Secondary/fallback SRT-synced video compositor
 # 5. CLI, Monitoring & Progress Utilities
 # ------------------------------------------------------------------------------
 tqdm>=4.66.0                    # Progress bar rendering for batch loops
+psutil>=5.9.0                   # Process inspection used by runtime diagnostics
 pydantic>=2.0.0                 # Strict schema validation for storyboard frame contracts
 
 # ==============================================================================

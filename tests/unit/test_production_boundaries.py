@@ -641,3 +641,112 @@ def test_cli_missing_strategy_migration_owns_invalidation_and_compiles_once(tmp_
     assert len(asks) == 1
     assert not (root / "shot_plan.json").exists()
     assert len(list((root / ".adaptive_history").rglob("shot_plan.json"))) == 1
+
+
+def test_visual_policy_rebind_routes_locally_before_network_and_browser(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    from youtube_automation.browser import network_health
+    from youtube_automation.production import cli
+    from youtube_automation.production.contracts import (
+        Analysis,
+        Brief,
+        Channel,
+        EpisodeVisualStrategy,
+        fingerprint,
+        load_brief,
+    )
+    from youtube_automation.production.ledger import Ledger
+
+    root = tmp_path
+    database = root / "jobs.db"
+    raw = "A source-bound story about attention."
+    (root / "raw_transcript.txt").write_text(raw, encoding="utf-8")
+    channel = Channel(
+        version=3, channel_id="local-rebind", name="Local Rebind", audience="adults",
+        language="English", dialect="standard", voice="Charon", tone="calm",
+        style="illustration", allowed_treatments=["subject_scene"],
+        visual_directives=["Use warm scenes"], forbidden_motifs=["generic stock charts"],
+    )
+    strategy = EpisodeVisualStrategy(
+        source_sha256=fingerprint(raw), topic="Attention", viewer_question="Why does attention slip?",
+        central_promise="Recognize one attention pattern", evidence_mode="demonstrative",
+        emotional_arc=["recognition", "curiosity", "agency"], hook_archetype="cold_open_challenge",
+        hook_microbeats=[
+            {"beat_id": "problem", "function": "problem", "duration_seconds": 3,
+             "viewer_takeaway": "Attention slips", "visual_mode": "human_context"},
+            {"beat_id": "gap", "function": "curiosity", "duration_seconds": 3,
+             "viewer_takeaway": "There is a pattern", "visual_mode": "kinetic_type",
+             "local_ui": ["focus_sweep"]},
+            {"beat_id": "promise", "function": "promise", "duration_seconds": 3,
+             "viewer_takeaway": "Try a short challenge", "visual_mode": "challenge_ui",
+             "local_ui": ["timer", "highlight"]},
+        ],
+        visual_modes=["human_context", "kinetic_type", "challenge_ui"],
+        local_ui_kit=["focus_sweep", "timer", "highlight"], pacing="Fast opening",
+        motion_grammar=["Selective movement"],
+    )
+    brief = Brief(
+        version=3, source_sha256=fingerprint(raw), profile_sha256=fingerprint(channel),
+        channel=channel,
+        analysis=Analysis(
+            topics=["attention"], claim_basis="factual", form="explanation",
+            proposition="Attention shifts", narrative_strategy="Show familiar moments",
+            treatments=["subject_scene"], rationale="Concrete examples",
+        ),
+        visual_strategy=strategy,
+    )
+    profile = root / "channel.json"
+    profile.write_text(channel.model_dump_json(), encoding="utf-8")
+    (root / "episode_brief.json").write_text(brief.model_dump_json(), encoding="utf-8")
+    changed = channel.model_copy(update={
+        "visual_directives": ["Use close-up actions"],
+        "forbidden_motifs": ["glowing brain"],
+    })
+    profile.write_text(changed.model_dump_json(), encoding="utf-8")
+    invalidations = []
+    monkeypatch.setattr(cli, "resource_database", lambda: database)
+    monkeypatch.setattr(cli, "invalidate_stage", lambda _root, stage, *_args, **_kwargs: invalidations.append(stage) or [])
+    monkeypatch.setattr(network_health, "require_healthy", lambda *_args, **_kwargs: pytest.fail("local rebind ran network preflight"))
+    monkeypatch.setattr(cli, "leased_resource", lambda *_args, **_kwargs: pytest.fail("local rebind acquired browser lease"))
+
+    @contextmanager
+    def no_transport(**_kwargs):
+        pytest.fail("local rebind created Gemini transport")
+        yield lambda _prompt: "unused"
+
+    monkeypatch.setattr(cli, "gemini_transport", no_transport)
+    cli.main(["analyze", "--run-dir", str(root), "--channel-profile", str(profile)])
+
+    rebound = load_brief(root)
+    assert rebound.profile_sha256 == fingerprint(changed)
+    assert rebound.source_sha256 == fingerprint(raw)
+    assert rebound.visual_strategy == strategy
+    assert invalidations == ["plan"]
+    assert Ledger(database).get(cli._stage_key(root, "analyze"))["state"] == "SUCCEEDED"
+
+    # Source drift makes the same visual-policy edit take the normal analysis route.
+    from contextlib import nullcontext
+    network_calls = []
+    transport_calls = []
+    (root / "raw_transcript.txt").write_text(raw + " changed", encoding="utf-8")
+    changed_again = changed.model_copy(update={"visual_directives": ["Use a new visual system"]})
+    profile.write_text(changed_again.model_dump_json(), encoding="utf-8")
+    monkeypatch.setattr(network_health, "require_healthy", lambda *_args, **_kwargs: network_calls.append(True))
+    monkeypatch.setattr(cli, "leased_resource", lambda *_args, **_kwargs: nullcontext())
+
+    @contextmanager
+    def full_analysis_transport(**_kwargs):
+        transport_calls.append(True)
+        raise RuntimeError("full-analysis-route")
+        yield lambda _prompt: "unused"
+
+    monkeypatch.setattr(cli, "gemini_transport", full_analysis_transport)
+    with pytest.raises(RuntimeError, match="full-analysis-route"):
+        cli.main(["analyze", "--run-dir", str(root), "--channel-profile", str(profile)])
+    assert network_calls == [True]
+    assert transport_calls == [True]
+    import json
+    assert json.loads((root / "episode_brief.json").read_text(encoding="utf-8"))["profile_sha256"] == fingerprint(changed)
+
+    assert Ledger(database).get(cli._stage_key(root, "analyze"))["state"] == "FAILED"

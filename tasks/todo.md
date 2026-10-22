@@ -1,6 +1,6 @@
 # Historical adaptive visual engine hardening checklist
 
-Current execution/status: [master](BRANCH_COMPLETION_MASTER.md), [typing closeout](../docs/sessions/STRICT_TYPING_REVIEW_20261022.md) and [F1 dispositions](../docs/sessions/F1_REVIEW_DISPOSITIONS_20261022.md). Engineering review/gates are complete; formal exact-head review/CI/merge remain. The checklist below is historical.
+Current execution/status: [master](BRANCH_COMPLETION_MASTER.md) and [review fixes](../docs/sessions/REVIEW_FIXES_20261023.md). Current exact-head CI/Codex outcomes belong to PR #21 and its bound receipts; CodeRabbit is USER-SKIPPED by owner instruction for its file limit. The checklist below is historical.
 
 ---
 

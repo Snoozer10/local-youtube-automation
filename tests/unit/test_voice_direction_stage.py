@@ -76,7 +76,9 @@ def _candidate_hash(root):
 def _seed_completed_transport_receipt(root, model="Flash"):
     prompt = ds.direction_prompt(root, generation_model=model)
     prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-    receipt_dir = root / "direction_generation_receipts" / prompt_sha256
+    profile_index = cli.active_profile_index()
+    receipt_key = fingerprint({"prompt_sha256": prompt_sha256, "profile_index": profile_index})
+    receipt_dir = root / "direction_generation_receipts" / receipt_key
     receipt_dir.mkdir(parents=True, exist_ok=True)
     receipt_path = receipt_dir / f"{prompt_sha256}.json"
     response = _response(root)
@@ -88,6 +90,7 @@ def _seed_completed_transport_receipt(root, model="Flash"):
                 "model": model,
                 "transport": "inline",
                 "window": None,
+                "profile_index": profile_index,
                 "attempts": [{"state": "completed", "response": response}],
             }
         ),
@@ -387,7 +390,8 @@ def _install_browser_transport_mock(run, monkeypatch, *, response=None):
     monkeypatch.setattr(gemini_utils, "select_gemini_model", lambda _page, model: selected.append(model) or True)
     monkeypatch.setattr(gemini_utils, "get_gemini_usage_limit_text", lambda _page: None)
     response = _response(run) if response is None else response
-    monkeypatch.setattr(gemini_utils, "wait_for_gemini_response", lambda *_args, **_kw: response)
+    response_queue = list(response) if isinstance(response, (list, tuple)) else [response]
+    monkeypatch.setattr(gemini_utils, "wait_for_gemini_response", lambda *_args, **_kw: response_queue.pop(0))
     transports = []
     requests = []
 
@@ -395,7 +399,9 @@ def _install_browser_transport_mock(run, monkeypatch, *, response=None):
         requests.append(prompt)
         assert json.loads(prompt)["generation_model"] == "Flash"
         prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-        receipt_dir = run / "direction_generation_receipts" / prompt_sha256
+        profile_index = cli.active_profile_index()
+        receipt_key = fingerprint({"prompt_sha256": prompt_sha256, "profile_index": profile_index})
+        receipt_dir = run / "direction_generation_receipts" / receipt_key
         assert transports[-1] == ("Flash", receipt_dir)
         before_send = json.loads((receipt_dir / f"{prompt_sha256}.json").read_text())
         assert before_send["model"] == "Flash"
@@ -405,9 +411,12 @@ def _install_browser_transport_mock(run, monkeypatch, *, response=None):
     monkeypatch.setattr(gemini_utils.GeminiSessionClient, "dispatch_prompt", dispatch)
 
     @contextmanager
-    def fake_transport(*, model_name=None, receipt_dir=None, **_kwargs):
+    def fake_transport(*, model_name=None, receipt_dir=None, profile_index=None, **_kwargs):
         transports.append((model_name, receipt_dir))
-        yield BrowserTransport(SimpleNamespace(url=chat_url), model_name, receipt_dir=receipt_dir)
+        yield BrowserTransport(
+            SimpleNamespace(url=chat_url), model_name, receipt_dir=receipt_dir,
+            profile_index=profile_index,
+        )
 
     monkeypatch.setattr(cli, "gemini_transport", fake_transport)
     return response, selected, transports, requests
@@ -560,7 +569,9 @@ def test_generate_direction_blocks_unresolved_transport_receipt_before_browser(r
     monkeypatch.setenv("IMAGE_PLANNER_MODEL", "Flash")
     prompt = ds.direction_prompt(run, generation_model="Flash")
     prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-    receipt_dir = run / "direction_generation_receipts" / prompt_sha256
+    profile_index = cli.active_profile_index()
+    receipt_key = fingerprint({"prompt_sha256": prompt_sha256, "profile_index": profile_index})
+    receipt_dir = run / "direction_generation_receipts" / receipt_key
     receipt_dir.mkdir(parents=True, exist_ok=True)
     receipt_path = receipt_dir / f"{prompt_sha256}.json"
     receipt_path.write_text(
@@ -571,6 +582,7 @@ def test_generate_direction_blocks_unresolved_transport_receipt_before_browser(r
                 "model": "Flash",
                 "transport": "inline",
                 "window": None,
+                "profile_index": cli.active_profile_index(),
                 "attempts": [{"state": "submission_uncertain", "chat_url": "https://gemini.google.com/app/old"}],
             }
         ),
@@ -748,3 +760,123 @@ def test_accepted_generated_direction_requires_current_candidate_bytes(run, dama
 
     with pytest.raises(vd.VoiceDirectionError, match="candidate"):
         vd.load_voice_direction(run, SCRIPT, channel_id="history")
+
+
+def test_generate_direction_fails_over_only_after_terminal_profile_quota(run, monkeypatch):
+    from youtube_automation.browser import network_health
+
+    quota = "You've reached your limit Gemini Pro"
+    success = _response(run)
+    _response_value, selected, transports, requests = _install_browser_transport_mock(
+        run, monkeypatch, response=[quota, success]
+    )
+    active = [1]
+    monkeypatch.setattr(cli, "active_profile_index", lambda: active[0])
+    monkeypatch.setattr(cli, "next_profile_index", lambda current: 2 if current == 1 else 1)
+    monkeypatch.setattr(network_health, "require_healthy", lambda *_args, **_kwargs: None)
+
+    def activate_owned_profile():
+        assert active[0] == 1
+        active[0] = 2
+        return 2
+
+    monkeypatch.setattr(cli, "failover_owned_browser_profile", activate_owned_profile)
+    prompt = ds.direction_prompt(run, generation_model="Flash")
+    prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+    cli.main(["generate-direction", "--run-dir", str(run)])
+
+    assert len(requests) == 2
+    assert requests == [prompt, prompt]
+    assert [entry[0] for entry in transports] == ["Flash", "Flash"]
+    receipt_paths = []
+    for profile_index, expected_state in ((1, "quota_exhausted"), (2, "completed")):
+        key = fingerprint({"prompt_sha256": prompt_sha256, "profile_index": profile_index})
+        receipt_path = run / "direction_generation_receipts" / key / f"{prompt_sha256}.json"
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        assert receipt["profile_index"] == profile_index
+        assert receipt["attempts"][-1]["state"] == expected_state
+        receipt_paths.append(receipt_path)
+    quota_receipt = json.loads(receipt_paths[0].read_text(encoding="utf-8"))
+    assert quota_receipt["attempts"][-1]["response"] == quota
+    assert active == [2]
+    assert ds.verify_direction_candidate(run)["provenance"]["generation_model"] == "Flash"
+
+
+
+def test_generate_direction_resumes_terminal_quota_receipt_without_resending_old_profile(run, monkeypatch):
+    from youtube_automation.browser import network_health
+
+    _response_value, _selected, transports, requests = _install_browser_transport_mock(run, monkeypatch)
+    active = [1]
+    monkeypatch.setattr(cli, "active_profile_index", lambda: active[0])
+    monkeypatch.setattr(cli, "next_profile_index", lambda current: 2 if current == 1 else 1)
+    monkeypatch.setattr(network_health, "require_healthy", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli, "failover_owned_browser_profile", lambda: active.__setitem__(0, 2) or 2)
+    prompt = ds.direction_prompt(run, generation_model="Flash")
+    prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    receipt_key = fingerprint({"prompt_sha256": prompt_sha256, "profile_index": 1})
+    receipt_dir = run / "direction_generation_receipts" / receipt_key
+    receipt_dir.mkdir(parents=True)
+    receipt_path = receipt_dir / f"{prompt_sha256}.json"
+    receipt_path.write_text(json.dumps({
+        "version": 1, "prompt_sha256": prompt_sha256, "model": "Flash",
+        "transport": "inline", "window": None, "profile_index": 1,
+        "attempts": [{
+            "state": "quota_exhausted",
+            "response": "Partial response before the quota error",
+            "error": "You've reached your limit Gemini Pro",
+        }],
+    }), encoding="utf-8")
+    before = receipt_path.read_bytes()
+
+    cli.main(["generate-direction", "--run-dir", str(run)])
+
+    assert requests == [prompt]
+    assert transports == [("Flash", run / "direction_generation_receipts" / fingerprint({"prompt_sha256": prompt_sha256, "profile_index": 2}))]
+    assert receipt_path.read_bytes() == before
+    assert active == [2]
+
+
+def test_generate_direction_stops_at_existing_failover_cap(run, monkeypatch, capsys):
+    from youtube_automation.browser import network_health
+
+    quota = "You've reached your limit Gemini Pro"
+    _value, _selected, _transports, requests = _install_browser_transport_mock(
+        run, monkeypatch, response=[quota, quota]
+    )
+    active = [1]
+    monkeypatch.setattr(cli, "active_profile_index", lambda: active[0])
+    monkeypatch.setattr(cli, "next_profile_index", lambda current: 2 if current == 1 else 1)
+    monkeypatch.setattr(network_health, "require_healthy", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli, "failover_owned_browser_profile", lambda: active.__setitem__(0, 2) or 2)
+    original_config = cli.get_config_value
+    monkeypatch.setattr(cli, "get_config_value", lambda key, default: "1" if key == "FAILOVER_RETRY_LIMIT" else original_config(key, default))
+
+    with pytest.raises(RuntimeError, match="quota is exhausted across the bounded profile failover ring"):
+        cli.main(["generate-direction", "--run-dir", str(run)])
+    assert len(requests) == 2
+    assert active == [2]
+
+
+
+def test_generate_direction_recovers_exact_completed_legacy_receipt_without_send(run, monkeypatch):
+    response, _selected, transports, requests = _install_browser_transport_mock(run, monkeypatch)
+    prompt = ds.direction_prompt(run, generation_model="Flash")
+    prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    legacy_dir = run / "direction_generation_receipts" / prompt_sha256
+    legacy_dir.mkdir(parents=True)
+    receipt_path = legacy_dir / f"{prompt_sha256}.json"
+    receipt_path.write_text(json.dumps({
+        "version": 1, "prompt_sha256": prompt_sha256, "model": "Flash",
+        "transport": "inline", "window": None,
+        "attempts": [{"state": "completed", "response": response}],
+    }), encoding="utf-8")
+    before = receipt_path.read_bytes()
+
+    cli.main(["generate-direction", "--run-dir", str(run)])
+
+    assert requests == []
+    assert transports == [("Flash", legacy_dir)]
+    assert receipt_path.read_bytes() == before
+    assert ds.verify_direction_candidate(run)["provenance"]["generation_model"] == "Flash"

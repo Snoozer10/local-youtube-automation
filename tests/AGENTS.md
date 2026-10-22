@@ -27,6 +27,8 @@ Offline verification, regression evidence and deterministic test fixtures.
 
 - Direct production publication touches the shared ledger. Before any stage, guard, or publication call, every Python child that can publish must set `ledger.resource_database` to its own test-local temporary database. Spawned children do not inherit parent monkeypatches. Keep the preconnection guard enabled so an installation-database attempt is rejected with caller context before SQLite opens it; do not clean up or restore the installation database as part of a test.
 
+- Prompt resource regressions verify recursive source/package byte parity and isolated installed-layout load/render/turn/fragment behavior, including an unrelated prefix directory. Frozen build verification additionally checks actual wheel members, metadata and offline target installation.
+
 ## Work Guidance
 - Keep fixtures minimal, deterministic and free of secrets or machine-specific session identifiers.
 - When production behavior intentionally changes, add or update the smallest regression that proves the new contract and retain separate cases for distinct failure boundaries.

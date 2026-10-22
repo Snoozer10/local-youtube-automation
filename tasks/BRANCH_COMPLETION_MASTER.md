@@ -1,9 +1,9 @@
 # Branch Completion Master
 
-Current closeout: PR #21 published and ready for formal review. Initial head ba0deca failed CI collection on undeclared psutil; the dependency fix has passed local verification and requires fresh exact-head CI. Codex review requested; CodeRabbit skipped 363 files over its 100-file limit. Not merged.
+Current closeout: 23 October 2026 four formal-review findings repaired and verified offline. See [review-fix record](../docs/sessions/REVIEW_FIXES_20261023.md). Current exact-head CI/Codex outcomes are owned by the PR and its bound disposition receipts. CodeRabbit USER-SKIPPED by explicit owner instruction because of the file limit; not merged.
 
-> Status: PUBLISHED FOR FORMAL REVIEW / CI DEPENDENCY FIX FOLLOW-UP / NOT MERGED. Publication and follow-up receipts own exact observed heads.
-> Current authority: user explicitly authorized commit/push, updating PR #21, formal review and exact-head CI. Earlier production-reconciliation exclusions remain; no merge or live-provider action authorized.
+> Status: REVIEW FIXES VERIFIED OFFLINE / CURRENT EXTERNAL GATES OWNED BY PR / NOT MERGED.
+> Current authority: user authorized repairs, commit/push, PR #21 updates, fresh Codex review and exact-head CI; explicitly skipped CodeRabbit for its file limit. Production-reconciliation exclusions remain; no merge or live-provider action authorized.
 > This register owns current status. Dated prior receipts remain exact-scope historical evidence.
 
 ## Current dashboard
@@ -26,7 +26,7 @@ Current closeout: PR #21 published and ready for formal review. Initial head ba0
 | Pilots | C1-C7 | C1/C5/C6 retain prior exact scope; C2/C3/C4 partial; C7 OPEN. |
 | Complete Professor | D1-D7 | D1 approved script; narration/timing/executable planning/full production remain OPEN. |
 | Engineering | E1-E5 | Prior dispositions retained; new source findings tracked in F1. |
-| Release | F1-F9 | F1-F4 engineering/package/lexical scope complete. F6 published; F7 review open with CodeRabbit file-limit skip; F8 initial CI failure repaired locally, follow-up exact-head CI pending; F9 OPEN. |
+| Release | F1-F9 | F1-F4 prior scope retained; four subsequent source findings locally repaired. F6 published; F7 current-head Codex review/dispositions required, CodeRabbit USER-SKIPPED; F8 exact-head workflow results belong to PR/receipt; F9 not authorized. |
 
 ### Immediate resume steps
 
@@ -40,7 +40,7 @@ Current closeout: PR #21 published and ready for formal review. Initial head ba0
 
 - Current user authority includes publishing reviewed commits and requesting formal PR review/exact-head CI. No merge, new provider cap or live app action is inferred.
 - User excluded pilot spending, human approval provenance, current render recipes and restart-evidence reconciliation from this pass. Historical records remain unchanged and unverified at those scopes; they are not current engineering blockers.
-- QMD lexical refresh/readback is in `.runtime/codex_typing_20261021/QMD_CLOSEOUT.json`. Embeddings remain incomplete; no semantic retrieval, retry, download or collection broadening ran.
+- Current QMD lexical refresh/readback is in `.runtime/codex_review_fixes_20261023/QMD_SYNC_FINAL.json`; earlier refresh receipts remain historical. Embeddings remain incomplete (252 pending at this pass); no semantic retrieval was used.
 
 ### Current known gates
 
@@ -367,15 +367,16 @@ State: PUBLISHED: reviewed commits pushed to PR #21 and marked ready. Follow-up 
 
 
 
-- [ ] **F7 — Run formal PR and CodeRabbit reviews**  
-- **Task skill pack:** [F7](BRANCH_TASK_SKILLS.md#f7) — invoke the linked skills explicitly when tackling this task.
-State: OPEN - Codex review requested at ba0deca; CodeRabbit full review skipped because 363 files exceed 100. Current-head reviews and dispositions remain required; skip is not approval.
-- **Work:** Request the formal PR review and CodeRabbit pass; triage findings; fix valid blockers; preserve dissent with evidence.
-- **Acceptance:** every blocking finding resolved or explicitly accepted by owner; review targets exact PR head; attach/reconcile updated review after pushes.
+- **F7 — Formal PR review and finding dispositions**
+- **Task skill pack:** [F7](BRANCH_TASK_SKILLS.md#f7).
+State: Four prior formal findings repaired and independently reviewed offline; current exact-head Codex outcome is recorded on PR #21 and in the review-fix disposition receipts. CodeRabbit is USER-SKIPPED by the owner's 23 October instruction because the PR exceeds its file limit; this is neither approval nor a remaining required review.
+- **Work:** Publish the reviewed fixes, request current-head Codex review, triage returned findings and preserve exact receipts.
+- **Acceptance:** Every valid blocking finding must be fixed or explicitly accepted; required review must cover the exact current PR head. CodeRabbit is excluded from this PR's review gate by explicit user direction only.
+- **Evidence:** [Review-fix record](../docs/sessions/REVIEW_FIXES_20261023.md); original review receipts remain immutable.
 
-- [ ] **F8 — Verify CI on exact proposed merge commit**  
+- **F8 — Verify CI on exact proposed merge commit**
 - **Task skill pack:** [F8](BRANCH_TASK_SKILLS.md#f8) — invoke the linked skills explicitly when tackling this task.
-State: OPEN - ba0deca CI lint passed, unit collection failed for missing psutil. Explicit development dependency repair is locally verified; follow-up exact-head CI must pass.
+State: Exact-head CI remains an external release gate. Historical run 39854362302 passed for 708adb2; subsequent outcomes must be read from the current PR head and its bound review-fix receipts. Never count an earlier head as the current result.
 - **Work:** Check required workflow results for the exact final PR HEAD; ensure no stale earlier run is mistaken for the current commit.
 - **Acceptance:** every required check is green for the exact final PR head proposed for merge. A skipped, unstable or failed required gate stays OPEN/BLOCKED until resolved; this document supplies no waiver. Record any separately authorized release-policy change explicitly.
 
