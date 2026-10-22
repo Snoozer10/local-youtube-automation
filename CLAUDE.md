@@ -1,268 +1,91 @@
 <!-- AGENT-SYNC: GEMINI.md -->
-# AGENTS.md
+# CLAUDE.md
 
-Drop-in operating instructions for coding agents. Read this file before every task.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**Working code only. Finish the job. Plausibility is not correctness.**
+Project-specific workflow and DOX live in AGENTS.md; current guidance is in GEMINI.md; current session state is in docs/sessions/HANDOFF.md. Read these and the applicable task brief before work. Nested `AGENTS.md` files (e.g. `src/youtube_automation/production/AGENTS.md`, `tests/AGENTS.md`, `channels/AGENTS.md`) hold binding local contracts for their subtree.
 
-This file follows the [AGENTS.md](https://agents.md) open standard (Linux Foundation / Agentic AI Foundation). Claude Code, Codex, Cursor, Windsurf, Copilot, Aider, Devin, Amp read it natively. For tools that look elsewhere, symlink:
+For the user-authorized 2026-10-09 production delegation, the current test interpreter, pinned pytest redirect plugin, environment, scoped mypy command, and the specific exceptions to this file are defined in `docs/sessions/CLAUDE_FULL_COMPLETION_DELEGATION_20261009.md`; do not use stale test-count examples below to infer current branch status.
 
-```bash
-ln -s AGENTS.md CLAUDE.md
-ln -s AGENTS.md GEMINI.md
-```
+> Scope: `image_generation/` — `youtube-transcript-api` → Gemini CDP → AI Studio TTS → Audacity Named Pipes → Faster-Whisper → Google Flow → FFmpeg QSV/NVENC. Windows-only (`ctypes.windll`, `\\.\pipe\ToSrvPipe`, `CREATE_NEW_CONSOLE`). Python 3.10+, project `youtube-automation-pipeline`, setuptools, pip + `venv\` (no uv/poetry/Makefile). No cloud SDKs — all AI via Playwright CDP `127.0.0.1:9222`.
 
----
+- Before tackling a task or investigating a problem, follow [Research before execution](AGENTS.md#research-before-execution): targeted web research, version checks, alternatives and an evidence receipt; explicit offline restrictions take precedence.
 
-## 0. Non-negotiables
+## Forbidden
 
-These rules override everything else in this file when in conflict:
-
-1. **No flattery, no filler.** Skip openers like "Great question", "You're absolutely right", "Excellent idea", "I'd be happy to". Start with the answer or the action.
-2. **Disagree when you disagree.** If the user's premise is wrong, say so before doing the work. Agreeing with false premises to be polite is the single worst failure mode in coding agents.
-3. **Never fabricate.** Not file paths, not commit hashes, not API names, not test results, not library functions. If you don't know, read the file, run the command, or say "I don't know, let me check."
-4. **Stop when confused.** If the task has two plausible interpretations, ask. Do not pick silently and proceed.
-5. **Touch only what you must.** Every changed line must trace directly to the user's request. No drive-by refactors, reformatting, or "while I was in there" cleanups.
-
----
-
-## 1. Before writing code
-
-**Goal: understand the problem and the codebase before producing a diff.**
-
-- State your plan in one or two sentences before editing. For anything non-trivial, produce a numbered list of steps with a verification check for each.
-- Read the files you will touch. Read the files that call the files you will touch. Claude Code: use subagents for exploration so the main context stays clean.
-- Match existing patterns in the codebase. If the project uses pattern X, use pattern X, even if you'd do it differently in a greenfield repo.
-- Surface assumptions out loud: "I'm assuming you want X, Y, Z. If that's wrong, say so." Do not bury assumptions inside the implementation.
-- If two approaches exist, present both with tradeoffs. Do not pick one silently. Exception: trivial tasks (typo, rename, log line) where the diff fits in one sentence.
-
----
-
-## 2. Writing code: simplicity first
-
-**Goal: the minimum code that solves the stated problem. Nothing speculative.**
-
-- No features beyond what was asked.
-- No abstractions for single-use code. No configurability, flexibility, or hooks that were not requested.
-- No error handling for impossible scenarios. Handle the failures that can actually happen.
-- If the solution runs 200 lines and could be 50, rewrite it before showing it.
-- If you find yourself adding "for future extensibility", stop. Future extensibility is a future decision.
-- Bias toward deleting code over adding code. Shipping less is almost always better.
-
-The test: would a senior engineer reading the diff call this overcomplicated? If yes, simplify.
-
----
-
-## 3. Surgical changes
-
-**Goal: clean, reviewable diffs. Change only what the request requires.**
-
-- Do not "improve" adjacent code, comments, formatting, or imports that are not part of the task.
-- Do not refactor code that works just because you are in the file.
-- Do not delete pre-existing dead code unless asked. If you notice it, mention it in the summary.
-- Do clean up orphans created by your own changes (unused imports, variables, functions your edit made obsolete).
-- Match the project's existing style exactly: indentation, quotes, naming, file layout.
-
-The test: every changed line traces directly to the user's request. If a line fails that test, revert it.
-
----
-
-## 4. Goal-driven execution
-
-**Goal: define success as something you can verify, then loop until verified.**
-
-Rewrite vague asks into verifiable goals before starting:
-
-- "Add validation" becomes "Write tests for invalid inputs (empty, malformed, oversized), then make them pass."
-- "Fix the bug" becomes "Write a failing test that reproduces the reported symptom, then make it pass."
-- "Refactor X" becomes "Ensure the existing test suite passes before and after, and no public API changes."
-- "Make it faster" becomes "Benchmark the current hot path, identify the bottleneck with profiling, change it, show the benchmark is faster."
-
-For every task:
-
-1. State the success criteria before writing code.
-2. Write the verification (test, script, benchmark, screenshot diff) where practical.
-3. Run the verification. Read the output. Do not claim success without checking.
-4. If the verification fails, fix the cause, not the test.
-
----
-
-## 5. Tool use and verification
-
-- Prefer running the code to guessing about the code. If a test suite exists, run it. If a linter exists, run it. If a type checker exists, run it.
-- Never report "done" based on a plausible-looking diff alone. Plausibility is not correctness.
-- When debugging, address root causes, not symptoms. Suppressing the error is not fixing the error.
-- For UI changes, verify visually: screenshot before, screenshot after, describe the diff.
-- Use CLI tools (gh, aws, gcloud, kubectl) when they exist. They are more context-efficient than reading docs or hitting APIs unauthenticated.
-- When reading logs, errors, or stack traces, read the whole thing. Half-read traces produce wrong fixes.
-
----
-
-## 6. Session hygiene
-
-- Context is the constraint. Long sessions with accumulated failed attempts perform worse than fresh sessions with a better prompt.
-- After two failed corrections on the same issue, stop. Summarize what you learned and ask the user to reset the session with a sharper prompt.
-- Use subagents (Claude Code: "use subagents to investigate X") for exploration tasks that would otherwise pollute the main context with dozens of file reads.
-- When committing, write descriptive commit messages (subject under 72 chars, body explains the why). No "update file" or "fix bug" commits. No "Co-Authored-By: Claude" attribution unless the project explicitly wants it.
-
----
-
-## 7. Communication style
-
-- Direct, not diplomatic. "This won't scale because X" beats "That's an interesting approach, but have you considered...".
-- Concise by default. Two or three short paragraphs unless the user asks for depth. No padding, no restating the question, no ceremonial closings.
-- When a question has a clear answer, give it. When it does not, say so and give your best read on the tradeoffs.
-- Celebrate only what matters: shipping, solving genuinely hard problems, metrics that moved. Not feature ideas, not scope creep, not "wouldn't it be cool if".
-- No excessive bullet points, no unprompted headers, no emoji. Prose is usually clearer than structure for short answers.
-
----
-
-## 8. When to ask, when to proceed
-
-**Ask before proceeding when:**
-- The request has two plausible interpretations and the choice materially affects the output.
-- The change touches something you've been told is load-bearing, versioned, or has a migration path.
-- You need a credential, a secret, or a production resource you don't have access to.
-- The user's stated goal and the literal request appear to conflict.
-
-**Proceed without asking when:**
-- The task is trivial and reversible (typo, rename a local variable, add a log line).
-- The ambiguity can be resolved by reading the code or running a command.
-- The user has already answered the question once in this session.
-
----
-
-## 9. Self-improvement loop
-
-**This file is living. Keep it short by keeping it honest.**
-
-After every session where the agent did something wrong:
-
-1. Ask: was the mistake because this file lacks a rule, or because the agent ignored a rule?
-2. If lacking: add the rule under "Project Learnings" below, written as concretely as possible ("Always use X for Y" not "be careful with Y").
-3. If ignored: the rule may be too long, too vague, or buried. Tighten it or move it up.
-4. Every few weeks, prune. For each line, ask: "Would removing this cause the agent to make a mistake?" If no, delete. Bloated AGENTS.md files get ignored wholesale.
-
-Boris Cherny (creator of Claude Code) keeps his team's file around 100 lines. Under 300 is a good ceiling. Over 500 and you are fighting your own config.
-
----
-
-## 10. Project context
-
-**Fill this in per project. Keep it specific. Delete sections that don't apply.**
-
-### Stack
-- Language and version: Python >=3.10 (pyproject.toml:11) — project `youtube-automation-pipeline` 4.1.0, setuptools backend, Windows-only target.
-- Framework(s) / key deps: playwright>=1.40, youtube-transcript-api, python-docx, faster-whisper, openai-whisper, torch>=2.0, tqdm. Runtime deps in `venv\`; ruff/black/mypy/pytest global.
-- Package manager: pip + venv (no uv/poetry/Makefile/package.json — verified absent).
-- Runtime / deployment target: Windows-only desktop/browser-automation pipeline (CDP, named pipes, hardware FFmpeg).
-
-### Commands
-- Install: `python -m venv venv; .\venv\Scripts\Activate.ps1; pip install -r requirements.txt; pip install -r requirements-dev.txt; python -m playwright install --with-deps`. NOTE: requirements-dev.txt currently has TODO literal ``` fence lines (rows 1, 44) that break pip — flag but do not fix.
-- Build: none (no build step; setuptools package).
-- Test (all): `python -m pytest tests/ -v` (full) / `python -m pytest tests/unit -v` (CI scope); must run from repo root.
-- Test (drills): `python -m pytest exercises/ -v -m drill` (hardware & daemon pre-flight diagnostic drills).
-- Test (exercises): `python -m pytest exercises/ -v` (curriculum solution test suite).
-- Lint (exercises): `python tools/lint_exercises.py` (validate exercise scaffold).
-- Run drills (batch): `run.bat test-drills` (Windows wrapper for pre-flight diagnostic drills).
-- Test (single file): `python -m pytest tests/unit/test_timeline.py -v`
-- Lint: `ruff check src/ exercises/ tools/ --fix` ; `ruff format --check .`
-- Typecheck: `mypy src/` (strict + ignore_missing_imports)
-- Run locally: `python run_agency.py` (supervisor) or per-phase entrypoints.
-- Also: `pre-commit run --all-files`
-
-Prefer single-file or single-test runs during iteration. Full suites are for the final verification pass.
-
-### Layout
-- Source lives in: modular domain packages under `src/youtube_automation/` (`core/`, `audio/`, `speech/`, `timeline/`, `nlp/`, `prompts/`, `browser/`, `visuals/`, `video/`, `orchestrator/`), bridged transparently via root facade shims (`_FacadeProxy`) preserving 100% legacy CLI and monkeypatch compatibility (`run_agency.py`, `compile_video.py`, `flow_image_generator.py`, `generate_voice.py`, `automate_audacity.py`, `stitch_chapters.py`, `faster_whisper_transcribe_audio.py`, `correct_transcript_spelling.py`, `fix_timestamps.py`, `timeline_engine.py`, `validator.py`, `json_sanitizer.py`, `utils.py`, `gemini_utils.py`).
-- Curriculum & diagnostic drills live in: `exercises/` (`01-audio-dsp/`, `03-browser-cdp/`, `05-hardware-video-compositing/`).
-- Tools live in: `tools/lint_exercises.py` (pedagogy scaffold linter), `tools/extract_release_notes.py` (changelog slicer).
-- Tests live in: `tests/` (unit/, integration/, mocks/, conftest.py root).
-- Do not modify: youtube_runs/, venv/, .git, __pycache__, legacy_and_utilities/, .agents/, .gemini/, .opencode/, .specify/, .superpowers/, graphify-out/, docs/, .env, *.json checkpoints, *.log, browser profiles (gitignored / ruff-excluded).
-
-### Conventions specific to this repo
-- Naming: snake_case modules, single-package flat layout at root.
-- Import style: strict DAG — planning layer flow_image_generator → pipeline_manifest → json_sanitizer → validator → gemini_controller → roadmap_orchestrator → prompt_planner; never import upward.
-- Error handling pattern: subprocess list args + shell=False; all JSON/text encoding="utf-8" ensure_ascii=False; atomic config writes NamedTemporaryFile+os.replace+fsync; never bare pytest.
-- Testing pattern and framework: pytest, testpaths=tests, markers unit/integration, addopts -v --strict-markers --tb=short; conftest.py adds repo root to sys.path.
-
-### Forbidden
-- Never add cloud SDKs google-generativeai/openai/anthropic; all AI via Playwright CDP 127.0.0.1:9222.
-- Never taskkill /IM chrome.exe (kill only PID on port).
-- Never input_value() on contenteditable; follow Flow selector rules.
+- Never add cloud SDKs `google-generativeai`/`openai`/`anthropic`.
+- Never `taskkill /IM chrome.exe` or terminate a process solely because it owns the CDP port. Terminate only the exact PID registered as pipeline-owned after revalidating process creation time, profile directory, listener, and lease.
+- Never `input_value()` on contenteditable; follow Flow selector rules.
 - Never destructive-overwrite checkpoints; schema changes need backward-compatible migration.
-- QSV_LOOKAHEAD=0 mandatory.
-- Never commit .env, runtime_state.json, *_checkpoint.json, pipeline.json, video/WAVs.
-
-
-### This project: YouTube Al-Daheeh Automation Pipeline
-
-
-> Scope: `image_generation/` — `youtube-transcript-api` → Gemini CDP → AI Studio TTS → Audacity Named Pipes → Faster-Whisper → Google Flow → FFmpeg QSV/NVENC. Windows-only (`ctypes.windll`, `\\.\pipe\ToSrvPipe`, `CREATE_NEW_CONSOLE`). Python 3.10+ (`pyproject.toml:11`). No cloud SDKs — never add `google-generativeai`/`openai`/`anthropic`; all AI via Playwright CDP `127.0.0.1:9222`.
-
-## Stack & repo boundaries
-
-- **Modular PEP 517/518 domain package (`src/youtube_automation/`) with root facade shims.** Root entrypoints (`run_agency.py`, `automate_all.py`, `refine_script.py`, `generate_voice.py`, `stitch_chapters.py`, `automate_audacity.py`, `faster_whisper_transcribe_audio.py`, `correct_transcript_spelling.py`, `flow_image_generator.py`, `fix_timestamps.py`, `compile_video.py`, `generate_thumbnail.py`) wrap domain implementations in `src/youtube_automation/` via `_FacadeProxy` preserving legacy CLI syntax and monkeypatch transparency.
-- **State in `youtube_runs/<Title>/` (gitignored).** Never commit `.env`, `runtime_state.json`, `*.json` checkpoints (`pipeline.json`, `*_checkpoint.json`, `voice_generation_manifest.json`, `compile_checkpoint.json`, `planning_checkpoint.json`). Batch: `run_agency.py` scans for `final_output.txt` and drives `pipeline.json` (`translate, refine, voice, audacity, stitch, transcribe, images, fixtimes, video, thumbnail` in `run_agency.py:66`).
-- **Planning layer DAG (2026-08):** `flow_image_generator.py` → `pipeline_manifest.py` → `json_sanitizer.py` → `validator.py` → `gemini_controller.py` → `roadmap_orchestrator.py` → `prompt_planner.py`. Strictly acyclic — never import upward. `validator.py` owns pure utils `flatten_visual_prompt_to_diffusion_text`/`enforce_arabic_in_prompt`/`purge_subtitle_phrases`.
+- `QSV_LOOKAHEAD=0` mandatory.
+- Never commit `.env`, `runtime_state.json`, `*_checkpoint.json`, `pipeline.json`, video/WAVs.
+- Do not modify: `youtube_runs/`, `venv/`, `legacy_and_utilities/`, `.agents/`, `.gemini/`, `.opencode/`, `.specify/`, `.superpowers/`, `graphify-out/`, `docs/`, `.env`, `*.json` checkpoints, `*.log`, browser profiles. Exception: when the user explicitly invokes `docs/sessions/CLAUDE_FULL_COMPLETION_DELEGATION_20261009.md`, follow only its named durable-doc edits and its existing staged-production outputs under `youtube_runs/`; preserve protected archives/checkpoints, use supported journaled publication, and leave Git/GitHub mutations to Codex.
 
 ## Setup — Windows PowerShell, order matters
 
 ```powershell
 python -m venv venv; .\venv\Scripts\Activate.ps1   # repo uses venv\, not .venv
 pip install -r requirements.txt
-pip install -r requirements-dev.txt   # ruff, black, mypy, pytest-cov (pyproject.toml:34)
+pip install -r requirements-dev.txt   # NOTE: has literal ``` fence lines (rows 1, 44) that break pip — flag, don't fix
 python -m playwright install --with-deps
 # Externals: FFmpeg/FFprobe on PATH (winget install Gyan.FFmpeg), Audacity 3.x → Preferences→Modules mod-script-pipe=Enabled, Chrome/Opera --remote-debugging-port=9222 --user-data-dir=C:\ChromeDebugProfile
-copy .env.example .env   # fill TELEGRAM_*, CDP_PORT, model routing; ACTIVE_PROFILE_INDEX in runtime_state.json (utils.py:269)
+copy .env.example .env   # fill TELEGRAM_*, CDP_PORT, model routing; ACTIVE_PROFILE_INDEX in runtime_state.json
 ```
 
-- Runtime deps in `venv\`; `ruff/black/mypy/pytest` in global python. `pydantic>=2.0` required both places (2026-08).
+- Runtime deps in `venv\`; `ruff/black/mypy/pytest` in global python. `pydantic>=2.0` required in both.
 
-## Verify — run before concluding any refactor
+## Verify
 
 ```powershell
-python -m pytest tests/unit -v                         # CI scope; full = python -m pytest tests/ -v
-python -m pytest exercises/ -v -m drill                # hardware & daemon pre-flight diagnostic drills
+python -m pytest tests/unit -v                         # Historical generic example; active branch gate/plugin is in the current session brief
+python -m pytest tests/unit/test_timeline.py -v        # single file; add ::test_name for a single test
+python -m pytest exercises/ -v -m drill                # hardware & daemon pre-flight drills (run.bat test-drills)
 python tools/lint_exercises.py                         # validate exercise pedagogy scaffold
-python -m pytest tests/unit/test_timeline.py -v        # single-file example
-python -m pytest tests/ --cov=. --cov-report=term-missing
-ruff check src/ exercises/ tools/ --fix
-ruff format --check .                                  # pre-commit uses ruff-format, not black directly
-black --check --line-length 100 .                      # pyproject.toml:55 line-length 100, exclude youtube_runs/venv
-mypy src/                                              # strict + ignore_missing_imports (pyproject.toml:93)
+ruff check .                                           # Do not auto-fix unreviewed working-tree changes
+ruff format --check .                                  # pre-commit uses ruff-format
+black --check --line-length 100 .
+mypy src/youtube_automation/production --follow-imports=silent  # Scoped adaptive-production check; see current session brief
 pre-commit run --all-files
 ```
 
-- Always `python -m pytest` from repo root — bare `pytest` fails (`tests/conftest.py` needs cwd on `sys.path`). Baseline 2026-08-26: unit 170 / integration 17 passed; integration needs real `ffmpeg lavfi`.
+- `pytest.ini` is the effective pytest config (it overrides `[tool.pytest.ini_options]` in pyproject): `pythonpath = src . tests`, `--import-mode=importlib`, `--strict-markers`, markers `unit`/`integration`/`drill`. Run from repo root. Integration tests need real `ffmpeg lavfi`.
+- Prefer single-file runs while iterating; full suites for the final pass.
 
-## Pipeline execution & idempotency
+## Layout
 
-- **Supervisor:** skips completed `pipeline.json` flags, `clean_browser_tabs()` between phases, Telegram on crash/timeout. `compile_video.py` chunk 300s / final 3600s; `video`+`thumbnail` done → skip folder (`run_agency.py:154`).
-- **Never destructive-overwrite** checkpoints without confirmation; schema changes need backward-compatible migration (`CLAUDE.md:242`).
-- **Toggles (`.env`):** `ENABLE_REFINE_SCRIPT`, `FLIP_AUDACITY_ORDER`, `IMAGE_GENERATOR_TYPE=flow|script`, `WHISPER_ENGINE=faster_whisper|hard_whisper` (`run_agency.py:164`).
-- **Images state machine:** `pipeline_manifest.json` gates resume. `script_hash=SHA256(transcript+template+presets)` mismatch invalidates caches. Chunk `{PENDING, VERIFIED, REPAIRED, FAILED}` — `FAILED` dumps `debug/malformed_chunk_N.json` then `ChunkPlanningError`. `master_roadmap.jsonl` source of truth (migrates `master_roadmap.txt`); paging `ROADMAP_WINDOW_SIZE=25`, planning `FLOW_CHUNK_SIZE=15`.
+- **Root facade shims → `src/youtube_automation/`.** Root entrypoints (`run_agency.py`, `automate_all.py`, `refine_script.py`, `generate_voice.py`, `automate_audacity.py`, `stitch_chapters.py`, `faster_whisper_transcribe_audio.py`, `correct_transcript_spelling.py`, `flow_image_generator.py`, `fix_timestamps.py`, `compile_video.py`, `generate_thumbnail.py`, …) delegate via `_FacadeProxy`, preserving legacy CLI syntax and monkeypatch transparency. Domain packages: `core, audio, speech, timeline, nlp, prompts, browser, visuals, video, orchestrator, production`.
+- **Two pipelines coexist:**
+  - **Legacy batch** — `run_agency.py` scans `youtube_runs/<Title>/` for `final_output.txt` and drives `pipeline.json` phases `translate, refine, voice, audacity, stitch, transcribe, images, fixtimes, video, thumbnail`.
+  - **Adaptive multi-channel (opt-in, active development)** — `adaptive_production.py` → `src/youtube_automation/production/cli.py`. Explicit-run stages: `analyze → write | source-audio → plan → generate → report → preview → approve → render`, plus `status`. Example: `venv\Scripts\python.exe adaptive_production.py plan --run-dir "youtube_runs/<run>"` (`analyze` also takes `--channel-profile channels/<name>.json`). State and stage recipes live in a per-run SQLite ledger; channel profiles in `channels/*.json`. Contracts: `src/youtube_automation/production/AGENTS.md`; usage: `tasks/adaptive-visual-usage.md`; current revision: `tasks/professor-visual-playbook.md`.
+- `exercises/` = pedagogy scaffold + `@pytest.mark.drill` pre-flight drills. `tools/` = `lint_exercises.py`, `extract_release_notes.py`. Tests in `tests/{unit,integration,mocks}` with `tests/conftest.py`.
+- **Planning layer DAG (legacy):** `flow_image_generator.py` → `pipeline_manifest.py` → `json_sanitizer.py` → `validator.py` → `gemini_controller.py` → `roadmap_orchestrator.py` → `prompt_planner.py`. Strictly acyclic — never import upward. `validator.py` owns pure utils `flatten_visual_prompt_to_diffusion_text`/`enforce_arabic_in_prompt`/`purge_subtitle_phrases`.
+
+## Pipeline execution & idempotency (legacy)
+
+- **Supervisor:** skips completed `pipeline.json` flags, `clean_browser_tabs()` between phases, Telegram on crash/timeout. `compile_video.py` chunk 300s / final 3600s; `video`+`thumbnail` done → skip folder.
+- **Toggles (`.env`):** `ENABLE_REFINE_SCRIPT`, `FLIP_AUDACITY_ORDER`, `IMAGE_GENERATOR_TYPE=flow|script`, `WHISPER_ENGINE=faster_whisper|hard_whisper`.
+- **Images state machine:** `pipeline_manifest.json` gates resume. `script_hash=SHA256(transcript+template+presets)` mismatch invalidates caches. Chunk `{PENDING, VERIFIED, REPAIRED, FAILED}` — `FAILED` dumps `debug/malformed_chunk_N.json` then `ChunkPlanningError`. `master_roadmap.jsonl` is source of truth (migrates `master_roadmap.txt`); paging `ROADMAP_WINDOW_SIZE=25`, planning `FLOW_CHUNK_SIZE=15`.
 
 ## Config sources of truth (executable > prose)
 
-- **`.env` + `.env.example`:** `SCRIPT_BREAKER_MODEL=Flash` `SCRIPT_TRANSLATOR_MODEL=Pro` `VOICE_GENERATOR_MODEL=Flash` `IMAGE_PLANNER_MODEL=Flash` `REFINE_MODEL=Flash` `THUMBNAIL_MODEL=Pro`; `TTS_MODEL=gemini-2.5-pro-preview-tts` `TTS_VOICE_NAME=Achird` `TTS_TEMPERATURE=1.1` `TTS_PROACTIVE_RELOAD_INTERVAL=40`; Flow `FLOW_IMAGE_MODEL=Nano Banana 2 Lite` `FLOW_IMAGE_COUNT=1x` `FLOW_ASPECT_RATIO=16:9` `FLOW_DISABLE_AGENT=true` `FLOW_CHUNK_SIZE=15` `GEMINI_SESSION_RESET_THRESHOLD=100`; `CDP_PORT=9222` `BROWSER_TYPE=chrome` `FAILOVER_RETRY_LIMIT=3`; `ACTIVE_PROFILE_INDEX` in `runtime_state.json` via `utils.rotate_profile_index()` (`utils.py:303`).
-- **`video_config.txt`:** `2560x1440@30` `yuv420p` `high@5.1`, `CHUNK_SIZE=20`, `QSV_LOOKAHEAD=0`, Ken Burns `1.0-1.08 smoothstep upscale 1.12` VBV `35000k/70000k` `FFMPEG_THREADS=4` `AUDIO 320k/48k I-14 TP-1 LRA11`. CPU fallback `libx264 veryfast crf17 tune animation`.
-- **`transcribe_config.txt`:** `WHISPER_MODEL_SIZE=small` `WHISPER_LANGUAGE=ar` `VAD true`, `IMAGE 2.2s/3.5s/4.8s 5-12 words`, `SUB 4/2 words gap 0.35s`, `IMAGE_PAUSE_SPLIT 0.40s` (`transcribe_config.txt:26`), `image_timestamps.txt` is sync anchor.
-- **`daheeh_config.json:8` + `audit_rubric.md`:** 30/70 Fusha/Amiya, 1-3-1 Provost cadence, Tashkeel `كِدَه, بِيُقول, هُوبَّا, قِسط`, 10-point audit. `refine_script.py` strips `<thinking>`/`<slang_ledger>`.
+- **`.env` + `.env.example`:** model routing `SCRIPT_BREAKER_MODEL` `SCRIPT_TRANSLATOR_MODEL` `VOICE_GENERATOR_MODEL` `IMAGE_PLANNER_MODEL` `REFINE_MODEL` `THUMBNAIL_MODEL`; TTS `TTS_MODEL` `TTS_VOICE_NAME` `TTS_TEMPERATURE` `TTS_PROACTIVE_RELOAD_INTERVAL`; Flow `FLOW_IMAGE_MODEL` `FLOW_IMAGE_COUNT` `FLOW_ASPECT_RATIO` `FLOW_DISABLE_AGENT` `FLOW_CHUNK_SIZE` `GEMINI_SESSION_RESET_THRESHOLD`; `CDP_PORT=9222` `BROWSER_TYPE` `FAILOVER_RETRY_LIMIT`. `ACTIVE_PROFILE_INDEX` lives in `runtime_state.json` via `utils.rotate_profile_index()`.
+- **`video_config.txt`:** `2560x1440@30` `yuv420p` `high@5.1`, `CHUNK_SIZE=20`, `QSV_LOOKAHEAD=0`, Ken Burns `1.0-1.08 smoothstep upscale 1.12`, VBV `35000k/70000k`, `FFMPEG_THREADS=4`, audio `320k/48k I-14 TP-1 LRA11`. CPU fallback `libx264 veryfast crf17 tune animation`.
+- **`transcribe_config.txt`:** `WHISPER_MODEL_SIZE=small` `WHISPER_LANGUAGE=ar` VAD on, image 2.2s/3.5s/4.8s 5-12 words, subs 4/2 words gap 0.35s, `IMAGE_PAUSE_SPLIT 0.40s`; `image_timestamps.txt` is the sync anchor.
+- **`daheeh_config.json` + `docs/audit_rubric.md`:** 30/70 Fusha/Amiya, 1-3-1 Provost cadence, Tashkeel `كِدَه, بِيُقول, هُوبَّا, قِسط`, 10-point audit. `refine_script.py` strips `<thinking>`/`<slang_ledger>`.
 
 ## Gotchas — would miss without help
 
-- **QSV:** `QSV_LOOKAHEAD=0` mandatory (`compile_video.py:46`, `video_config.txt:41`) — `>0` starves pool on sw-decoded inputs. `format=nv12` for QSV else `yuv420p`; fallback `h264_qsv → h264_nvenc → libx264` via `ffmpeg -encoders` (`compile_video.py:227`).
-- **FFmpeg 32KB limit:** graphs >1K chars → `temp_clips/filter_chunk_*.txt` + `-filter_complex_script` (`compile_video.py:1000`). Zero-drift `frame_count=round(duration*30)`, clip 0 at frame 0, CFR `fps_mode cfr` (`compile_video.py:726`). WinGet FFmpeg via `%LOCALAPPDATA%\Microsoft\WinGet\Links` (`compile_video.py:15`).
-- **CDP:** `127.0.0.1:9222` not `localhost` (IPv6 fails). Kill only PID on port via `kill_cdp_chrome(port)` (`netstat -ano` + `taskkill /F /T /PID>100`, poll 4s) — never `taskkill /IM chrome.exe` (`utils.py:123`). `launch_browser_with_profile` wipes `SingletonLock` and verifies `http://127.0.0.1:{port}/json/version` (`utils.py:255`).
-- **Gemini injection/completion:** via `gemini_controller.inject_prompt_via_cdp` ladder (`insert_text`→clipboard Ctrl+V→`execCommand`→`fill()` only <500 chars) + ≥95% `inner_text()` gate before submit; never `input_value()` on contenteditable. Completion = tri-factor `wait_for_gemini_turn_completion`: stop-absent + 3× stability@500ms HARD, action-bar SOFT. Ephemeral chat per roadmap page + per chunk (+jitter 1.5-3s). Pages fixed 25 lines — never tail-merge. Validator WEAK `TS[i]≤TS[i+1]`; equal TS ⇒ strict `index`+`frame_index`.
-- **Gemini polling:** never `time.sleep`. `gemini_utils.wait_for_gemini_response` stop absent + 5× stable reads (~5-6s) + last `model-response` `len>=1`; fast-fail on error card (`gemini_utils.py:372`). Strip `Gemini said`/`قال Gemini`, handle `Analyzing/Thinking/Visualizing`.
-- **Audacity:** `\\.\pipe\ToSrvPipe`/`FromSrvPipe`, every cmd ends `\n`, read until empty line. Always `SelectAll:` before DSP. Sync presets `YouTube_Voice_Optimizer.txt`→`%APPDATA%\audacity\macros\`; wipe `SessionData`/`AutoSave` before open (`CLAUDE.md:105`).
-- **Flow selectors (validated 2026-08-20):** cascade only. `wait_for_flow_app_ready` 3s post-hydration. Submit `button:has(i.google-symbols:text-is('arrow_forward'))` (+ Enter fallback). `Describe your character` = `textarea[placeholder*='Describe your character']` or contenteditable `innerText`; `+ New Character` only empty-gallery. Body popup = LAST `contenteditable` floating card. Never fill workspace bar `What do you want to create?`. Mount verified via `/character/<id>` + `Done`. Assets memoized `flow_assets_profile_*.json` + `flow_workspace_url_profile_*.txt`; `SUMMON_ASSET` via `Search assets`→`Add to Prompt`.
-- **Images:** tiered `base64 data: → page.request.get() → blob fetch in-page → de-hovered screenshot` (`flow_image_generator.py:226`). Never `<canvas>` primary (CORS-tainted); use `img_locator.screenshot(type="png")` after `mouse.move(100,15)`. Validate `>20KB`, PIL verify, `>100px`, PNG `89 50 4E 47`/JPEG `FF D8`.
-- **Voice:** Bezier mouse, MD5 dedup across `Chapter_N.wav` (delete+reload if `N==N-1`), proactive reload every `TTS_PROACTIVE_RELOAD_INTERVAL=40` (`generate_voice.py`).
+- **QSV:** `QSV_LOOKAHEAD=0` — `>0` starves the pool on sw-decoded inputs. `format=nv12` for QSV else `yuv420p`; fallback `h264_qsv → h264_nvenc → libx264` via `ffmpeg -encoders`.
+- **FFmpeg filter graphs:** long graphs go to `temp_clips/filter_chunk_*.txt` and load via `-/filter_complex <file>` (both legacy `video/compiler.py` and adaptive `production/render.py`); the deprecated `-filter_complex_script` is absent in CI's FFmpeg. Zero-drift `frame_count=round(duration*30)`, clip 0 at frame 0, CFR `fps_mode cfr`. WinGet FFmpeg via `%LOCALAPPDATA%\Microsoft\WinGet\Links`.
+- **CDP:** `127.0.0.1:9222`, not `localhost` (IPv6 fails). Kill only the PID on the port via `kill_cdp_chrome(port)` (`netstat -ano` + `taskkill /F /T /PID`). `launch_browser_with_profile` wipes `SingletonLock` and verifies `http://127.0.0.1:{port}/json/version`.
+- **Gemini injection/completion:** `gemini_controller.inject_prompt_via_cdp` ladder (`insert_text`→clipboard Ctrl+V→`execCommand`→`fill()` only <500 chars) + ≥95% `inner_text()` gate before submit. Completion = `wait_for_gemini_turn_completion`: stop-absent + 3× stability@500ms HARD, action-bar SOFT. Ephemeral chat per roadmap page + per chunk (+jitter 1.5-3s). Pages fixed 25 lines — never tail-merge. Validator WEAK `TS[i]≤TS[i+1]`; equal TS ⇒ strict `index`+`frame_index`.
+- **Gemini polling:** never `time.sleep`. `gemini_utils.wait_for_gemini_response`: stop absent + 5× stable reads + last `model-response` `len>=1`; fast-fail on error card. Strip `Gemini said`/`قال Gemini`, handle `Analyzing/Thinking/Visualizing`.
+- **Audacity:** `\\.\pipe\ToSrvPipe`/`FromSrvPipe`, every cmd ends `\n`, read until empty line. Always `SelectAll:` before DSP. Sync `YouTube_Voice_Optimizer.txt` → `%APPDATA%\audacity\macros\`; wipe `SessionData`/`AutoSave` before open.
+- **Flow selectors (validated 2026-08-20):** cascade only. `wait_for_flow_app_ready` 3s post-hydration. Submit `button:has(i.google-symbols:text-is('arrow_forward'))` (+ Enter fallback). `Describe your character` = `textarea[placeholder*='Describe your character']` or contenteditable `innerText`; `+ New Character` only on empty gallery. Body popup = LAST `contenteditable` floating card. Never fill workspace bar `What do you want to create?`. Mount verified via `/character/<id>` + `Done`. Assets memoized `flow_assets_profile_*.json` + `flow_workspace_url_profile_*.txt`; `SUMMON_ASSET` via `Search assets`→`Add to Prompt`.
+- **Images:** tiered `base64 data: → page.request.get() → blob fetch in-page → de-hovered screenshot`. Never `<canvas>` primary (CORS-tainted); use `img_locator.screenshot(type="png")` after `mouse.move(100,15)`. Validate `>20KB`, PIL verify, `>100px`, PNG `89 50 4E 47`/JPEG `FF D8`.
+- **Voice:** Bezier mouse, MD5 dedup across `Chapter_N.wav` (delete+reload if `N==N-1`), proactive reload every `TTS_PROACTIVE_RELOAD_INTERVAL`.
 - **Subprocess & UTF-8:** list args + `shell=False`; all JSON/text `encoding="utf-8"` `ensure_ascii=False`; `sys.stdout.reconfigure(encoding='utf-8')` + `chcp 65001`.
-- **Config writes:** atomic `NamedTemporaryFile`+`os.replace`+`fsync` (`utils.py:282`).
+- **Config writes:** atomic `NamedTemporaryFile`+`os.replace`+`fsync`.
 
 ## Subagent task matrix
 
@@ -281,125 +104,36 @@ pre-commit run --all-files
 | JSON Planning | `prompt_planner.py` | `src/youtube_automation/nlp/json_sanitizer.py` | Slice ±1 buffer; ephemeral session; self-heal ≤2 same-session |
 | Visual Generation | `flow_image_generator.py` | `src/youtube_automation/visuals/flow_generator.py` | `@asset` chip injection; native screenshot; continuity |
 | Text Collision Gate | `text_gate.py` | `src/youtube_automation/visuals/text_gate.py` | Multi-layer OCR text filter before saving images |
-| Video Compositing | `compile_video.py` | `src/youtube_automation/video/compiler.py` | Zero-drift frames; `filter_complex_script`; QSV→NVENC→CPU |
+| Video Compositing | `compile_video.py` | `src/youtube_automation/video/compiler.py` | Zero-drift frames; `-/filter_complex`; QSV→NVENC→CPU |
 | Ken Burns Motion | `compile_video.py` | `src/youtube_automation/video/ken_burns.py` | Speech-paced dynamic smoothstep zoom & pan math |
 | Thumbnail | `generate_thumbnail.py` | `generate_thumbnail.py` | Self-critique scoring, 2 variants |
+| Adaptive Production | `adaptive_production.py` | `src/youtube_automation/production/` | Follow `production/AGENTS.md`; explicit `--run-dir`; preview approval before render |
 
-## Architecture & Ubiquitous Language Sync
+## Domain lexicon
 
-### Layered Architecture & Component Mapping
-```text
-Pipeline Execution Flow:
-[Phase 1: Transcreation] ──► [Phase 2: Script Polish] ──► [Phase 3: TTS Synthesis]
-                                                                  │
-[Phase 6: Whisper ASR]   ◄── [Phase 5: Audio Stitch]  ◄── [Phase 4: Audacity DSP]
-       │
-       ▼
-[Phase 7: Spellcheck]    ──► [Phase 8: Timeline Engine] ─► [Phase 9: Roadmap & Prompts]
-                                                                  │
-[Phase 12: FFmpeg Render] ◄── [Phase 11: Timestamp Fix] ◄── [Phase 10: Visual Harvesting]
-       │
-       ▼
-[Phase 13: Thumbnail Gen]
-
-Layered Modular Architecture:
-┌────────────────────────────────────────────────────────────────────────┐
-│ CLI Entrypoints & Root Facade Shims (_FacadeProxy Delegation Layer)    │
-├────────────────────────────────────────────────────────────────────────┤
-│ Modular Domain Packages (src/youtube_automation/)                      │
-│ ├── core         (utils, atomic writes, subprocess wrappers)           │
-│ ├── audio        (tts_generator, audacity_client, chapter_stitcher)    │
-│ ├── speech       (transcriber, spelling_corrector)                     │
-│ ├── timeline     (engine, fix_timestamps)                             │
-│ ├── nlp          (json_sanitizer)                                      │
-│ ├── prompts      (validator, 8-part diffusion schema)                  │
-│ ├── browser      (cdp_client, gemini_utils)                            │
-│ ├── visuals      (flow_generator, asset_studio, image_extractor, gate) │
-│ ├── video        (compiler, encoder, ken_burns, filter_graph, subs)    │
-│ └── orchestrator (pipeline batch scheduling)                           │
-├────────────────────────────────────────────────────────────────────────┤
-│ Pedagogy Scaffold & Pre-Flight Diagnostic Drills (exercises/)          │
-│ ├── 01-audio-dsp (chapter slicing, audacity pipe IPC drill)            │
-│ ├── 03-browser-cdp (CDP port loopback diagnostic, turn detector)       │
-│ └── 05-hardware-video-compositing (QSV encoder probe, smoothstep math) │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-### Domain Lexicon & Ubiquitous Language
-| Term | Canonical Meaning | Forbidden Synonyms / Overloaded Usage |
+| Term | Canonical Meaning | Forbidden Synonyms |
 | :--- | :--- | :--- |
-| `Timeline` | Authoritative single source of truth (`timeline.json`) managed by `timeline_engine.py` | "Word list", "Subtitle timing" |
-| `VisualPrompt` | Validated 8-part diffusion prompt schema strictly conforming to ADR 0004 | "Image description", "Prompt string" |
-| `Ken Burns` | Dynamic smoothstep pan-and-zoom transformation applied in FFmpeg filtergraph | "Zoom effect", "Slide animation" |
-| `CDP Session` | Chrome DevTools Protocol WebSocket connection bound strictly to 127.0.0.1:9222 | "Browser tab", "Selenium session" |
+| `Timeline` | Authoritative `timeline.json` managed by `timeline_engine.py` | "Word list", "Subtitle timing" |
+| `VisualPrompt` | Validated 8-part diffusion prompt schema (ADR 0004) | "Image description", "Prompt string" |
+| `Ken Burns` | Smoothstep pan-and-zoom applied in the FFmpeg filtergraph | "Zoom effect", "Slide animation" |
+| `CDP Session` | Chrome DevTools Protocol connection bound to 127.0.0.1:9222 | "Browser tab", "Selenium session" |
 | `Transcreation` | Fusha/Amiya educational Arabic rewrite emulating Al-Daheeh persona | "Direct translation", "Machine translation" |
-| `Facade Shim` | Transparent root module shim (`_FacadeProxy`) delegating calls and syncing monkeypatches with `src/` | "Wrapper hack", "Mock import" |
-| `Pre-flight Drill` | Pytest diagnostic test (`@pytest.mark.drill`) verifying live hardware (QSV) or daemons (Audacity, CDP) | "Smoke test", "Dummy test" |
-| `Pedagogy Scaffold` | Three-tier curriculum structure (`explainer`, `problem`, `solution`) under `exercises/` | "Sample code", "Sandbox" |
+| `Facade Shim` | Root module shim (`_FacadeProxy`) delegating to `src/` and syncing monkeypatches | "Wrapper hack", "Mock import" |
+| `Pre-flight Drill` | `@pytest.mark.drill` test verifying live hardware (QSV) or daemons (Audacity, CDP) | "Smoke test", "Dummy test" |
+| `Pedagogy Scaffold` | Three-tier `explainer`/`problem`/`solution` structure under `exercises/` | "Sample code", "Sandbox" |
 
-### Architectural Health & Deep Modules
-| Module / Subtree | Interface Count | Implementation LOC | Leverage | Classification |
-| :--- | :--- | :--- | :--- | :--- |
-| [src/youtube_automation/timeline/fix_timestamps.py](src/youtube_automation/timeline/fix_timestamps.py) | 1 | 129 | 129.0 | Deep Module |
-| [src/youtube_automation/nlp/json_sanitizer.py](src/youtube_automation/nlp/json_sanitizer.py) | 2 | 169 | 84.5 | Deep Module |
-| [src/youtube_automation/speech/spelling_corrector.py](src/youtube_automation/speech/spelling_corrector.py) | 6 | 282 | 47.0 | Deep Module |
-| [src/youtube_automation/video/ken_burns.py](src/youtube_automation/video/ken_burns.py) | 4 | 181 | 45.25 | Deep Module |
-| [src/youtube_automation/visuals/text_gate.py](src/youtube_automation/visuals/text_gate.py) | 6 | 236 | 39.33 | Deep Module |
-| [src/youtube_automation/audio/chapter_stitcher.py](src/youtube_automation/audio/chapter_stitcher.py) | 5 | 193 | 38.6 | Deep Module |
-| [src/youtube_automation/browser/cdp_client.py](src/youtube_automation/browser/cdp_client.py) | 6 | 228 | 38.0 | Deep Module |
-| [src/youtube_automation/video/encoder.py](src/youtube_automation/video/encoder.py) | 4 | 152 | 38.0 | Deep Module |
-| [src/youtube_automation/visuals/image_extractor.py](src/youtube_automation/visuals/image_extractor.py) | 6 | 236 | 39.33 | Deep Module |
-| [src/youtube_automation/core/utils.py](src/youtube_automation/core/utils.py) | 12 | 410 | 34.17 | Deep Module |
+Full glossary: `CONTEXT.md`; decisions: `docs/adr/`.
 
 ## Style & workflow
 
-- **Formatter/linter/type:** `black --line-length 100` (exclude `youtube_runs,venv,.git,__pycache__` — `pyproject.toml:54`), `ruff` `E,W,F,I,B,C4,UP` (`pyproject.toml:72`), `mypy --strict --ignore-missing-imports` (`pyproject.toml:93`). Fix `ruff check --fix` + `ruff format`.
-- **OpenCode:** `opencode.json` → `default_agent: AGENTS-PROJECT`; lean-ctx shadow mode; `AGENTS.md` via `instructions`. Caveman mode for agent comms; code/commits normal.
+- `black --line-length 100`, `ruff` `E,W,F,I,B,C4,UP`, `mypy --strict --ignore-missing-imports` (all in `pyproject.toml`). Fix with `ruff check --fix` + `ruff format`.
+- **OpenCode:** `opencode.json` → `default_agent: AGENTS-PROJECT`; `AGENTS.md` via `instructions`.
 - **Git:** `youtube_runs/`, `legacy_and_utilities/`, `.agents/`, `.opencode/`, `graphify-out/` gitignored. Never auto-commit video/WAVs.
+- **Issues:** GitHub Issues in Snoozer10/local-youtube-automation (`docs/agents/issue-tracker.md`); labels in `docs/agents/triage-labels.md`.
+- **References:** `README.md` (quickstart, pipeline flow), `docs/audit_rubric.md` (broadcast quality gate).
 
-## References
+## Project Learnings
 
-- `CLAUDE.md` — 425-line architecture, DOM recovery matrix, Ken Burns math, Audacity protocol
-- `README.md` — quickstart, pipeline flow, output hierarchy
-- `Project-workflow.md` — ADRs, IPC diagram, fault-tolerance table
-- `audit_rubric.md` — 10-point broadcast quality gate
-
----
-
-## Agent skills
-
-### Issue tracker
-
-GitHub Issues in Snoozer10/local-youtube-automation. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context (one `CONTEXT.md` + `docs/adr/` at repo root). See `docs/agents/domain.md`.
-
----
-
-## 11. Project Learnings
-
-**Accumulated corrections. This section is for the agent to maintain, not just the human.**
-
-When the user corrects your approach, append a one-line rule here before ending the session. Write it concretely ("Always use X for Y"), never abstractly ("be careful with Y"). If an existing line already covers the correction, tighten it instead of adding a new one. Remove lines when the underlying issue goes away (model upgrades, refactors, process changes).
+When the user corrects your approach, append a concrete one-line rule here ("Always use X for Y"). Tighten an existing line instead of duplicating; remove lines whose issue is gone.
 
 - (empty)
-
----
-
-## 12. How this file was built
-
-This boilerplate synthesizes:
-- Sean Donahoe's IJFW ("It Just F\*cking Works") principles: one install, working code, no ceremony.
-- Andrej Karpathy's observations on LLM coding pitfalls (the four principles: think-first, simplicity, surgical changes, goal-driven execution).
-- Boris Cherny's public Claude Code workflow (reactive pruning, keep it ~100 lines, only rules that fix real mistakes).
-- Anthropic's official Claude Code best practices (explore-plan-code-commit, verification loops, context as the scarce resource).
-- Community anti-sycophancy patterns (explicit banned phrases, direct-not-diplomatic).
-- The AGENTS.md open standard (cross-tool portability via symlinks).
-
-Read once. Edit sections 10 and 11 for your project. Prune the rest over time. This file gets better the more you use it.

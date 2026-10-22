@@ -2,7 +2,11 @@
 Implementation plans, progress checklists and verification records.
 
 ## Ownership
-- Adaptive visual plan/checklist own the current feature breakdown; adaptive-visual-usage.md owns supported staged commands and rollout limitations. Preserve historical plans.
+- BRANCH_COMPLETION_MASTER.md owns current branch-completion task status, dependencies, acceptance evidence and resume order. Update it with linked execution records; check a task only after its acceptance passes for current inputs. HANDOFF carries the short cursor.
+- Adaptive visual plan/checklist own feature scope and acceptance contracts; adaptive-visual-usage.md owns supported staged commands and rollout limitations. Preserve historical plans.
+- professor-visual-playbook.md owns timestamped reference-frame observations and the Professor visual repair/acceptance method; link it from the adaptive checklist. Distinguish sampled frames from complete viewing and design recommendations from observed creator workflows.
+
+- BRANCH_TASK_SKILLS.md maps each branch task and workflow finding to explicitly invoked project skills; root skill-lock.json owns source/hash/archive data. Skill bindings never close task acceptance.
 
 ## Local Contracts
 - Check tasks only after implementation and verification; distinguish live checks from offline evidence.
