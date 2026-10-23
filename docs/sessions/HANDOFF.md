@@ -1,21 +1,21 @@
 # Handoff
 
 ## Current Phase
-PR #21 merged into master at dadd3b5, with the reviewed 9a0c51f tree unchanged. Post-merge CI 39876182132 passed. This seven-document change records the merge closeout; Professor D1 production is deferred by the user.
+PR #21 and PR #22 merged. Only master remains locally and remotely, with one primary checkout. Version 4.5.0 release records and portable packaging are synchronized.
 
 ## Current Goal
-Review documentation-only [PR #22](https://github.com/Snoozer10/local-youtube-automation/pull/22). Local branch/worktree cleanup is complete; the [merge record](MERGE_PR21_20261023.md) and [master](../../tasks/BRANCH_COMPLETION_MASTER.md) own current records.
+Maintain the merged engineering baseline. Exact release commit, CI, tag, workflow and download results belong to `.runtime/codex_release_450_20261023/PUBLICATION_RESULT.json`; consult that receipt before treating publication as complete.
 
 ## Done
-- Strict typing: 699 errors to zero across 73 files; original checking scope preserved. Removed one redundant worktree and two retired local branches after archiving all 680 total files, including 186 ignored and restoring/verifying both branch histories.
-- Five findings resolved; Codex reported no major issues. Pre/post-merge CI passed. Prior frozen gates: 1976 passed / 9 live skipped; post-merge prompt smoke: 8 passed.
-- Installed no-channel defaults include only canonical dialect ratios and ordered pronunciation lexicon. Explicit CONFIG_PATH and channel/model overrides remain authoritative. The canonical root config and two excluded operational inputs are untouched.
+- PR #21 merge dadd3b5 preserves the reviewed tree; PR #22 merge 3b00acb carries the documentation closeout. Reviewed-head CI passed.
+- Local and remote retired branches are removed. The redundant checkout's 680 total files, including 186 ignored files, and both histories are preserved with independent hash/restore/fsck evidence.
+- CHANGELOG, package version and GEMINI frontmatter agree on 4.5.0. The Windows release ZIP includes required source, prompts and saved profiles; release checks bind the final artifacts.
 
 ## Next
-Professor D1 is DEFERRED BY USER: no near-term production; resume only on explicit future request. Complete PR #22 review; it remains open. Retain operational inputs, remote branches and excluded reconciliations. PR #21 CodeRabbit was USER-SKIPPED.
+Professor D1 remains DEFERRED BY USER until an explicit future request. Retain the approved script and downstream dependencies. No new live/provider grant. Operational inputs and excluded reconciliations remain untouched. QMD is intentionally not updated by user direction.
 
 ## Failures & Fixes
-Earlier installed-template smoke checks asserted nonempty text and missed the default lexicon. The old wheel reproduces the gap; the new wheel verifies exact semantic substitution and overrides. Init-order failure and raw-byte restoration receipts are retained. Disk-full interrupted a record preimage; the failed archive is retained. Removed only the temporary restore-check repository after bundle verification, then completed one corrected retry. Backup files, bundle and fsck receipts remain intact.
+The initial release-list query returned EOF; one retry succeeded. The old Windows ZIP omitted the modular package and runtime assets; the release workflow now includes and verifies them. Prior installed-default and disk-full failures remain in their original receipts.
 
 ## Resume Context
-Working branch: `codex/merge-closeout-records`, based on master dadd3b5. Cleanup, restoration guide and current publication receipts: `.runtime/codex_repo_cleanup_20261023/` (`archive/RESTORE.md`, `CLEANUP_RESULT.json`, `PUBLICATION_RESULT.json`). One worktree and two local branches remain. Initial docs publication: `.runtime/codex_docs_closeout_20261023/`; merge evidence: `.runtime/codex_merge_pr21_20261023/`. Source/config/operational inputs are unchanged. No new live grant. QMD lexical readback is refreshed; embeddings remain incomplete.
+Branch: master; no additional branches or worktrees. Release evidence: `.runtime/codex_release_450_20261023/`. Earlier merge/cleanup evidence: `.runtime/codex_merge_pr21_20261023/`, `.runtime/codex_repo_cleanup_20261023/`, `.runtime/codex_merge_pr22_20261023/`. Canonical configuration and both operational inputs retain their pinned bytes. Engineering verification does not replace live or human editorial acceptance.

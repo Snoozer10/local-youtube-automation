@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.5.0] - 2026-10-23
+
+### Added
+- Opt-in adaptive production with saved channel profiles, content-bound episode visual strategies, narration-aligned shot plans, local graphics, and selective motion.
+- Durable stage jobs, dependency-aware invalidation, resumable planning checkpoints, preserved asset receipts, and journaled publication recovery.
+- Modular multi-channel prompts with reusable fragments, isolated turns, channel aliases, and packaged runtime templates.
+- Studio viewer inspection with synchronized media, comparison controls, and narration-span alignment.
+
+### Changed
+- Bound visual planning to each episode's narration, semantic beats, character continuity, and channel policy; deterministic compilation owns timing and topology.
+- Hardened Gemini attachment transport, stable-conversation response tracking, bounded semantic repairs, and explicit quota-exhaustion profile failover.
+- Added source-bound visual audit, image-budget enforcement, local overlay validation, and explicit preview approval boundaries.
+
+### Fixed
+- Bounded Audacity pipe exchanges and owned-process/window checks; reject ambiguous browser, audio, and TTS state before sending work.
+- Preserve canonical narration and timing across visual-policy changes, aspect crops, and interrupted stage publication.
+- Restore prompt templates, dialect ratios, and ordered pronunciation defaults in installed packages while preserving explicit configuration overrides.
+- Declare the process-inspection dependency for runtime and CI; repair strict source typing without exclusions or reduced checking scope.
+- Include the modular source package, root prompt templates, and saved channel profiles in the Windows ZIP, and verify required archive contents before release publication.
+
+### Verified
+- The merged engineering baseline passed 1,976 tests with 9 live tests skipped, full strict typing across 73 source files, lint, replay, and installed-package checks. Exact-head CI passed for the reviewed changes.
+- Adaptive production remains opt-in. Offline checks and successful builds do not establish live-provider readiness or editorial acceptance.
+
 ## [4.4.0] - 2026-09-18
 
 ### Added

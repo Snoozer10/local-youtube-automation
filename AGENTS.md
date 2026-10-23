@@ -144,6 +144,7 @@ When the user requests a durable behavior change, record it here or in the relev
   - `tools/extract_release_notes.py`: Deterministic changelog slicer.
   - `tools/audit_adaptive_artifact_receipt.py`: Explicit read-only verifier for a caller-selected v1 JSON receipt; checks exact artifact-byte pins and named pilot/Professor/Snoozer semantic profiles; does not activate production state.
 - Root configuration & orchestration: `run_agency.py` (supervisor batch runner), `run.bat` (wrapper with `test-drills` support), `setup.ps1`, `setup.bat`, `pyproject.toml`, `pytest.ini`.
+- `.github/workflows/release.yml` owns tag-triggered wheel/sdist and Windows ZIP publication. Keep `pyproject.toml`, GEMINI frontmatter and CHANGELOG release versions aligned. The ZIP must include `src/youtube_automation/`, complete root `prompts/` and saved `channels/*.json`; validate required archive contents before publishing. Exclude local operational state, credentials, generated media and caches.
 
 ## Child DOX Index
 

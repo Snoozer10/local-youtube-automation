@@ -37,7 +37,10 @@ jobs:
           $archiveName = "youtube-automation-pipeline-$ref-windows-x64.zip"
           $distDir = "dist"
           $archivePath = Join-Path $distDir $archiveName
-          $stagingDir = Join-Path $env:RUNNER_TEMP "bundle_staging"
+          $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          $stagingDir = Join-Path $runnerTemp "bundle_staging"
+          $resolvedStagingDir = [IO.Path]::GetFullPath($stagingDir)
+          if ([IO.Path]::GetDirectoryName($resolvedStagingDir).TrimEnd('\') -ne $runnerTemp.TrimEnd('\') -or [IO.Path]::GetFileName($resolvedStagingDir) -ne "bundle_staging") { throw "Refusing to use a staging path outside RUNNER_TEMP." }
 
           if (Test-Path $stagingDir) { Remove-Item -Recurse -Force $stagingDir }
           New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
@@ -51,6 +54,20 @@ jobs:
           if (Test-Path "tools") {
               Copy-Item -Path "tools" -Destination $stagingDir -Recurse
           }
+
+          # Copy the importable runtime package while preserving its src/ layout
+          New-Item -ItemType Directory -Path (Join-Path $stagingDir "src") -Force | Out-Null
+          Copy-Item -Path "src/youtube_automation" -Destination (Join-Path $stagingDir "src") -Recurse -Force
+
+          # Copy all prompt templates recursively, including fragments and turns
+          Copy-Item -Path "prompts" -Destination $stagingDir -Recurse -Force
+
+          # Copy saved channel profiles only
+          $channelFiles = @(Get-ChildItem -Path "channels" -Filter "*.json" -File)
+          if ($channelFiles.Count -lt 3) { throw "Expected at least three saved channel JSON profiles; found $($channelFiles.Count)." }
+          $channelsStage = Join-Path $stagingDir "channels"
+          New-Item -ItemType Directory -Path $channelsStage -Force | Out-Null
+          Copy-Item -Path $channelFiles.FullName -Destination $channelsStage -Force
 
           # Copy configuration files, setup/runner scripts, documentation, and dependencies
           $requiredFiles = @(
@@ -85,6 +102,23 @@ jobs:
 
           # Create zip archive
           Compress-Archive -Path "$stagingDir\*" -DestinationPath $archivePath -Force
+
+          # Verify every runtime package, prompt, and saved profile file is in the ZIP
+          $repoRoot = (Resolve-Path ".").Path
+          $packageFiles = @(Get-ChildItem -Path "src/youtube_automation" -Recurse -File | Where-Object { $_.Extension -ne ".pyc" -and $_.FullName -notmatch '[/\\]__pycache__[/\\]' })
+          $promptFiles = @(Get-ChildItem -Path "prompts" -Recurse -File)
+          if ($packageFiles.Count -eq 0 -or $promptFiles.Count -eq 0) { throw "Runtime package or prompt templates are missing from the source checkout." }
+          $requiredZipPaths = @($packageFiles + $promptFiles + $channelFiles | ForEach-Object { [IO.Path]::GetRelativePath($repoRoot, $_.FullName).Replace("\", "/") })
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $archivePath).Path)
+          try {
+              $entryNames = @($zip.Entries | ForEach-Object { $_.FullName.Replace("\", "/") })
+              $missingEntries = @($requiredZipPaths | Where-Object { $entryNames -notcontains $_ })
+              if ($missingEntries.Count -gt 0) { throw "Portable ZIP is missing required entries: $($missingEntries -join ', ')" }
+          } finally {
+              $zip.Dispose()
+          }
+          Write-Host "[SUCCESS] ZIP contains $($requiredZipPaths.Count) runtime package, prompt, and saved profile files."
           Write-Host "[SUCCESS] Assembled portable bundle: $archivePath"
           Remove-Item -Recurse -Force $stagingDir
 

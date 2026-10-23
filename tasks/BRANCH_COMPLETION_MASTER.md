@@ -3,7 +3,7 @@
 Current closeout: PR #21 MERGED at `dadd3b5f9c10761689abff1e273d62e78dc70128` with exact reviewed head `9a0c51f15ed509c770d062cac0e92b06bf303ea4` preserved as a parent and an identical file tree. Post-merge CI39876182132 passed. See [merge record](../docs/sessions/MERGE_PR21_20261023.md). CodeRabbit USER-SKIPPED by owner direction.
 
 > Status: PR #21 MERGED / POST-MERGE MASTER VERIFIED / ENGINEERING CLOSEOUT COMPLETE.
-> Current authority: user authorized the seven-document PR and local cleanup. One redundant worktree and two retired local branches were removed after verified backups; remote branches remain. PR #22 remains open for review. Professor D1 production is deferred until a future explicit resumption. Existing provider/reconciliation exclusions remain.
+> Current authority: user authorized updating CHANGELOG and GitHub releases after PR #22 merged at 3b00acb and all retired local/remote branches were removed. Version 4.5.0 release commit, CI, tag, build and asset outcomes belong to `.runtime/codex_release_450_20261023/PUBLICATION_RESULT.json`. Professor D1 remains deferred until an explicit future request; provider/reconciliation exclusions remain.
 > This register owns current status. Dated prior receipts remain exact-scope historical evidence.
 
 ## Current dashboard
@@ -30,17 +30,17 @@ Current closeout: PR #21 MERGED at `dadd3b5f9c10761689abff1e273d62e78dc70128` wi
 
 ### Immediate resume steps
 
-1. Review documentation-only PR #22; exact branch, head, push and CI readback belong to `.runtime/codex_repo_cleanup_20261023/PUBLICATION_RESULT.json`. Initial publication at fdf0fba is retained in `.runtime/codex_docs_closeout_20261023/PUBLICATION_RESULT.json`.
+1. PR #22 is merged at 3b00acb. Consult `.runtime/codex_release_450_20261023/PUBLICATION_RESULT.json` for the exact 4.5.0 release/tag/build/CI result. Only master remains locally and remotely; do not recreate retired branches.
 2. Retain the reviewed source, immutable receipts and excluded operational inputs; new defects reopen only the affected checks.
 3. Professor D1 production is DEFERRED BY USER until a future explicit request. Preserve the approved script; downstream D2-D7 retain their existing dependencies.
 4. After any further implementation changes, run affected focused checks and the required final-tree gates; preserve failures and verify shared-resource isolation.
-5. Local cleanup is complete: one worktree and two local branches (`master`, `codex/merge-closeout-records`) remain. All 680 removed-checkout files, including 186 ignored files, and both retired branch histories are preserved; independent hash/restore/fsck checks passed. See `.runtime/codex_repo_cleanup_20261023/CLEANUP_RESULT.json` and `archive/RESTORE.md`. Remote branches are unchanged. PR #22 remains open; cleanup does not authorize its merge.
+5. Cleanup is complete: only master remains locally and remotely, with one primary checkout and no additional worktrees. All 680 removed-checkout files, including 186 ignored files, and both retired branch histories are preserved with independent verification. Recovery: `.runtime/codex_repo_cleanup_20261023/archive/RESTORE.md`; final branch/merge evidence: `.runtime/codex_merge_pr22_20261023/`.
 
 ### Decision / authorization queue
 
-- Current user authority covers the documentation PR and completed local cleanup. Professor D1 is deferred. PR #21 merge/master CI remain verified; PR #22 awaits review. No new provider cap or live app action is inferred.
+- Current user authority covers the changelog and GitHub release update. PR #21/#22 merges and local/remote branch cleanup are complete. Professor D1 remains deferred; no new provider cap or live app action is inferred.
 - User excluded pilot spending, human approval provenance, current render recipes and restart-evidence reconciliation from this pass. Historical records remain unchanged and unverified at those scopes; they are not current engineering blockers.
-- Current QMD lexical refresh/readback is in `.runtime/codex_repo_cleanup_20261023/QMD_SYNC.json`; prior receipts remain historical. Embeddings remain incomplete; semantic retrieval is unused.
+- QMD is intentionally not updated under the user instruction. `.runtime/codex_repo_cleanup_20261023/QMD_SYNC.json` is the prior lexical snapshot, not verification of these release edits. Embeddings remain incomplete; semantic retrieval is unused.
 
 ### Current known gates
 
