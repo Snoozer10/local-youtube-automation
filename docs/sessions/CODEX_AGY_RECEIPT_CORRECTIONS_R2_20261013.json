@@ -1,0 +1,69 @@
+{
+  "record": "R2 additive receipt correction annex",
+  "createdUtc": "2026-10-13T17:54:30.917Z",
+  "basis": ".runtime/antigravity_offline_queue_20261013/codex_review_20261013T173446Z/REVIEW.md F01,F04",
+  "corrections": [
+    {
+      "id": "R2-01",
+      "finding": "F01",
+      "package": "AGY06",
+      "declaration": ".runtime/antigravity_offline_queue_20261013/AGY06_attempt01/OUTPUT_MANIFEST.json#files[path=logs/seal.stdout.log]",
+      "artifact": ".runtime/antigravity_offline_queue_20261013/AGY06_attempt01/logs/seal.stdout.log",
+      "declared": {
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "current": {
+        "size": 1228,
+        "sha256": "59aaeec7a1da047ec764b1a11e1856459baf2199e7a5c970d8f317a55540082c"
+      },
+      "status": "CONTRADICTED_ORIGINAL_DECLARATION_CURRENT_BYTES_REBOUND_ADDITIVELY",
+      "provenanceLimit": "Current hash cannot repair original post-close sealing order or establish historical execution bytes."
+    },
+    {
+      "id": "R2-02",
+      "finding": "F04",
+      "package": "AGY08",
+      "declaration": ".runtime/antigravity_offline_queue_20261013/AGY08_attempt01/RETURN.md#External Owner Media & Script Source Verification",
+      "artifact": "C:/Users/Snoozer/Downloads/YouTube Stuff/Channels/Snoozer Anime/Video 2/best 2 Arabic Hokkaido Gals are Super Adorable Anime Recap.pdf",
+      "declared": {
+        "size": 45713,
+        "sha256": "ea76bc3b19a8110bcdca360a5673d2c727573b0ec3ab7a608174c231512e33ce"
+      },
+      "current": {
+        "size": 350203,
+        "sha256": "ea76bc3b19a8110bcdca360a5673d2c727573b0ec3ab7a608174c231512e33ce"
+      },
+      "status": "CONTRADICTED_SIZE_EXPECTED_DIGEST_VERIFIED"
+    }
+  ],
+  "sourceArchives": [
+    {
+      "path": "C:/Users/Snoozer/Downloads/Antigravity/Youtube Automation 2/buckup/Version 4 before deepseek implementation plan/image_generation/.runtime/antigravity_offline_queue_20261013/AGY06_attempt01/OUTPUT_MANIFEST.json",
+      "archive": ".runtime/codex_r2_agy09_preparation_20261013T175324Z/0.bin",
+      "size": 6086,
+      "sha256": "2b5b3c71a2dc4ef37ab46bf538a82b0e7d925c3b11b6baf9639aed1094d50e9d"
+    },
+    {
+      "path": "C:/Users/Snoozer/Downloads/Antigravity/Youtube Automation 2/buckup/Version 4 before deepseek implementation plan/image_generation/.runtime/antigravity_offline_queue_20261013/AGY06_attempt01/logs/seal.stdout.log",
+      "archive": ".runtime/codex_r2_agy09_preparation_20261013T175324Z/1.bin",
+      "size": 1228,
+      "sha256": "59aaeec7a1da047ec764b1a11e1856459baf2199e7a5c970d8f317a55540082c"
+    },
+    {
+      "path": "C:/Users/Snoozer/Downloads/Antigravity/Youtube Automation 2/buckup/Version 4 before deepseek implementation plan/image_generation/.runtime/antigravity_offline_queue_20261013/AGY08_attempt01/RETURN.md",
+      "archive": ".runtime/codex_r2_agy09_preparation_20261013T175324Z/2.bin",
+      "size": 13206,
+      "sha256": "c6a393a9d6809cb3748568797bdc099e3a1bf8e5c0a91360322ada5d71882774"
+    },
+    {
+      "path": "C:/Users/Snoozer/Downloads/YouTube Stuff/Channels/Snoozer Anime/Video 2/best 2 Arabic Hokkaido Gals are Super Adorable Anime Recap.pdf",
+      "archive": ".runtime/codex_r2_agy09_preparation_20261013T175324Z/3.bin",
+      "size": 350203,
+      "sha256": "ea76bc3b19a8110bcdca360a5673d2c727573b0ec3ab7a608174c231512e33ce"
+    }
+  ],
+  "all106OriginalPackagePins": ".runtime/codex_r2_agy09_preparation_20261013T175324Z/BASELINE.json",
+  "preservation": "Original packages and R1 annex unchanged. B2 verified raw-derived WAV status preserved;other task acceptances not waived.",
+  "provenance": "Additive final-byte mapping,not retrospective sealing/production acceptance."
+}

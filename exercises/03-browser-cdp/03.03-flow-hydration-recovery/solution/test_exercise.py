@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 import threading
 from collections.abc import Generator
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -176,12 +176,18 @@ def fixture_server() -> Generator[str, None, None]:
         "no-error": NO_ERROR_HTML,
         "card-spawn": CARD_SPAWN_HTML,
     }
-    server = HTTPServer(("127.0.0.1", 0), _FixtureHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _FixtureHandler)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    yield f"http://127.0.0.1:{port}"
-    server.shutdown()
+    try:
+        thread.start()
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        if thread.ident is not None:
+            server.shutdown()
+        server.server_close()
+        if thread.ident is not None:
+            thread.join(timeout=5)
 
 
 # ---------------------------------------------------------------------------

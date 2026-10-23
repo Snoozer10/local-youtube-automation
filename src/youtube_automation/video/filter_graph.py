@@ -3,24 +3,46 @@ from __future__ import annotations
 import inspect
 import os
 import re
+from collections.abc import Mapping, Sequence
+from typing import Any, TypedDict
 
+from .encoder import EncoderConfig
 from .ken_burns import build_ken_burns_filter
 
 
-def get_sorted_images(images_dir):
+class _TimelineBlockRequired(TypedDict):
+    name: str
+    sec: float
+    end_sec: float
+    start_frame: int
+    end_frame: int
+    frame_count: int
+    duration: float
+    occurrence: int
+
+
+class TimelineBlock(_TimelineBlockRequired, total=False):
+    span: dict[str, Any]
+    text: str
+    camera_action: str
+    words_per_second: float
+
+
+
+def get_sorted_images(images_dir: str) -> list[str]:
     if not os.path.exists(images_dir):
         return []
     images = [f for f in os.listdir(images_dir) if f.endswith(".png")]
 
-    def natural_sort_key(s):
+    def natural_sort_key(s: str) -> list[str | int]:
         return [int(text) if text.isdigit() else text.lower() for text in re.split(r"(\d+)", s)]
 
     return sorted(images, key=natural_sort_key)
 
 
 def _resolve_image_path(
-    block_name, idx, images_dir, available_images, last_valid_image, occurrence=1
-):
+    block_name: str, idx: int, images_dir: str, available_images: Sequence[str], last_valid_image: str | None, occurrence: int = 1
+) -> tuple[str | None, str | None]:
     """
     Searches both primary 'generated_images' and 'generated_images_duplicates' folders
     to resolve standalone images and multi-frame set duplicates.
@@ -72,7 +94,7 @@ def _resolve_image_path(
                 return candidate_path, candidate
 
     # Helper for natural sorting (e.g. 00_15_2.png before 00_15_10.png)
-    def natural_sort_key(s):
+    def natural_sort_key(s: str) -> list[str | int]:
         return [int(text) if text.isdigit() else text.lower() for text in re.split(r"(\d+)", s)]
 
     # 2. Prefix match inside search directories with natural numeric ordering
@@ -102,15 +124,15 @@ def _resolve_image_path(
 
 
 def build_chunk_filter_graph(
-    config: dict,
-    encoder_config: dict,
-    chunk_timeline: list,
+    config: Mapping[str, Any],
+    encoder_config: EncoderConfig,
+    chunk_timeline: Sequence[TimelineBlock],
     images_dir: str,
-    ai_cameras: dict,
-    manual_cameras: dict,
+    ai_cameras: Mapping[str, str],
+    manual_cameras: Mapping[str, str],
     anim_enabled: bool,
     global_offset_idx: int = 0,
-) -> tuple:
+) -> tuple[list[str], str, str]:
     available_images = get_sorted_images(images_dir)
     last_valid_image = None
 
@@ -135,7 +157,7 @@ def build_chunk_filter_graph(
 
         frame_count = block["frame_count"]
 
-        camera_action = block.get("camera_action") or "static"
+        camera_action = (block.get("camera_action") or "static") if anim_enabled else "static_hold"
         if anim_enabled and camera_action == "static":
             ai_action = ai_cameras.get(block["name"], "")
             if ai_action:

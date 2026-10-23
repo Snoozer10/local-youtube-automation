@@ -1,0 +1,5 @@
+# Project skill policy: explicit task invocation, no dynamic toggling.
+# Canonical bindings and hashes: ../skill-lock.json and ../tasks/BRANCH_TASK_SKILLS.md.
+# Unrelated project skills are preserved in ../.agents/skill-archive/20261016/.
+# No project skills.config rules: local Codex 0.160 did not enforce that layer.
+# Global user settings and skills remain unchanged.

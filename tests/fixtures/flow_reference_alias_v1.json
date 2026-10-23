@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "failure_code": "FLOW_REFERENCE_ALIAS_MISSING",
+  "responsible_layer": "flow_reference_adapter",
+  "canonical_dimensions": [1376, 768],
+  "preview_dimensions": [512, 286],
+  "canonical_source": "https://flow-content.google/image/sanitized-portrait",
+  "verified_editor_alias": "https://flow.google.com/asb/sanitized-preview=s1600-rw",
+  "attached_preview": "https://lh3.googleusercontent.com/asb/sanitized-preview",
+  "wrong_preview": "https://lh3.googleusercontent.com/asb/another-person",
+  "expected": "Reject the unbound preview; accept only its proven editor alias; reject another character."
+}

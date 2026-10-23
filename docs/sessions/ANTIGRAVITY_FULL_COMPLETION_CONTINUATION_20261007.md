@@ -1,0 +1,33 @@
+# Controlled full-completion continuation — active cursor 2026-10-09
+
+## Status
+Controlled continuation brief, not an active delegation or provider-send authorization. A75 quota: 55%+15+5, ceiling75%, reserve72%; last usage71% receipt `7196c2badb424d09afe854bfd51157a688317efa4908f9bc6e396def872636b3`; reserved closeout stage, no newer usage assumed. Stay within reserve; no fresh TTS/Flow cap. User starts/stops Antigravity and returns work for independent Codex review.
+
+## Goal and acceptance
+Task ID: `AGY-FULL-COMPLETION-LOCAL-READINESS-20261007`. Public `approve_review` passed only for A75 `professor_acceptance/proposal_run`; all current21 critic/audit/scorecard/actual-recipe/physical/encoder/rejection checks passed. Accepted exact preview `15ec1c7dfc01764665e84a5941c076fb8e3cc980b3e6b2e9874ea370f4b1b782` (76.5s, all seven human scores4/5); acceptance `a327bd3c2f83b9123bc932299ed981988dd4ebb530c161783a158596785f71a2`, scores `e93176c46369024ddf5052de7c6dd2029b447d142ed622257909ea600dc1c323b`, public approval `f35862082e1fbef15b6d130f9b75540982a0066b4b274874adab5376281c49ac`. Pixels unchanged; no canonical run/master mutation or re-encode. Earlier1.5/5 rejection remains bound to older hash; A70 aesthetic assessment superseded only for this preview. Remaining: BrowserMCP registration/check, H10, Soldier/Snoozer, full-original G6/restart reuse, diff, same-HEAD CI and release.
+
+## Current evidence
+
+## Browser status correction
+The user-designated PID108264 is now registered and owned under lease for exact Profile2. Registration receipt `dfaec50f50cd98639ed95bf14dac543bcb59afdb80bb29d1653379e1144f2893`; archived old registry SHA `a5fff5aee9cf460ceb521e17a075c28912515351c079f02bbd5ad9f942b5c8a8`, new registry SHA `c2e822ad8fb7c68e43dbc11d2308c769664a021f66671127327f667b88f2bbc4`. One CDP connect passed in 5s; client detached, lease succeeded, Chrome remains alive. No Gemini page, UI readiness, typing, navigation, or send is proven. Next authorized UI work must verify the exact Soldier Flash model before the two already-approved requests; no fresh TTS/Flow/planning cap. BrowserMCP remains unavailable to Codex. Root actors are stopped. Do not repeat browser restart/connection diagnostics.
+- Renderer14 remains under `.runtime/codex_allowance_20261008_45_to55/professor_r14/`; binding/physical03 passed. The wrapper exited1 on `manifest.inputs` vs `render_inputs`; never claim full runner PASS. A75 review approval passed for this preview only; do not activate canonical output.
+- Hook review found no confirmed caption defect. The A70 sampled review confirms four missing cues against the proposed map (SHA `024b0b944a3ade4d3899698ab29c292168600b5bd16744511020cb7d07d523d5`); preserve as evidence. User deferred all teaching/visual improvements until after merge; teaching agent stopped. Earlier 1.5/5 rejection remains bound to the older preview hash; the A70 aesthetic assessment is superseded only for the accepted preview.
+- Current H10 narration is the 171-word, 1,796-byte, three-paragraph corrected script in `(see the Codex full resume and CONTINUITY for the verified current script path and count)`. No WAV or new TTS grant.
+- A70 offline adapter repair passed four tests/0.046s; root verified it, project source unchanged and private proposal unapplied. No live authorization.
+- User confirmed reopening Profile2 for BrowserMCP and authorized intended-pipeline registration/check. PID108264 listens9222 unowned; root's read-only 14-line psutil helper verified executable/Profile2 debug flags, parent explorer PID30944, creation time1791499816.1798935. Registration/check is in progress. BrowserMCP search has no callable tools; SDK has not succeeded; the existing single no-send SDK check remains unused. No provider send. PID52128 was stopped once under approval; launcher NameError blocked its registration. Never repeat that stop or touch other Chrome.
+
+## Work boundaries
+
+The user starts Antigravity; this brief alone does not authorize a run. Once started, use bounded, non-overlapping capsules for offline source/adapter repair, focused tests, and documentation continuity, with explicit file ownership; then independently review the final working tree. Preserve accepted canonical media. The existing Soldier Flash grant may be used only within its same scope, cap ledger, current model, and owned-UI guards; it does not reset or increase the closed provider counter. No fresh TTS, Flow, or planning cap is granted. Browser registration and one no-send SDK check require verified ownership of the intended pipeline browser. No provider send. Canonical activation, publication, commit, push, and merge remain review-gated. Do not change tool configuration.
+- Authorized scope: registration/check for the intended Profile2 pipeline browser; after ownership is proven, use only the existing one no-send SDK check. Do not adopt/terminate unowned PID108264, stop other Chrome, send to a provider, activate canonical output/master, re-encode, commit/push/merge, or change tool configuration.
+- Preserve all failures: plug-in click timeout/detachment, SDK 5s connection timeout, launcher NameError, and helper literal-hash/equality/import-path/unresolved `same_live`/string-validator bugs plus oversized shell wrappers. These are orchestration failures, not provider failures. Preserve all Claude feedback dispositions, failed receipts, older rejection evidence, accepted Snoozer bytes and published Soldier narration.
+- Before registration/SDK lease, preflight explicit repository path and source imports. Use a small helper; derive baselines from verified receipts, never manual hash constants. Run DB-hash-guard tests serialized against production browser-lease actions. Use background shell and persist raw logs to avoid foreground timeout. Make no tool-config changes.
+
+## Evidence index
+- A70 review/browser receipts: `.runtime/codex_allowance_20261008_55_to70/reviews/`, `.runtime/codex_allowance_20261008_55_to70/browser_readiness/`.
+- Renderer wrapper failure, physical01/02 verifier failures and physical03: `.runtime/codex_allowance_20261008_45_to55/professor_r14/`.
+- Current H10 path is above; old 1,159-word raw and 156-word curated sources are historical inputs, not current narration.
+- A75 code-gate receipts: full run `b24d95ce809c7ac8ad21c046206f8d913b186b0552f675199b357b65bc309e3a` (DB-guard failure/inconclusive isolation); targeted isolation `69dda96daa20b27b940f88258bf19abbb73dc1b2136c2efe1f8aec5eb0ebbe050` (9 tests, DB unchanged). Browser ownership receipt `c45f65eb3c353e008e8d627fc7febac7af0cea86a09b5012f96938032c343e72`.
+
+## Resume
+Read `docs/sessions/HANDOFF.md`, `docs/sessions/CODEX_FULL_COMPLETION_RESUME_20261007.md`, root AGENTS/GEMINI and applicable child DOX.

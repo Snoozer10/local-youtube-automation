@@ -26,28 +26,11 @@ def base_video_config():
     }
 
 
-def test_zero_safe_clamped_drift_expression(base_video_config):
-    """Verifies that holds >= 3.5s receive continuous linear drift with zero-safe clamped evaluation."""
-    frames = 120  # 4.0s at 30 fps
-    flt = build_ken_burns_filter(base_video_config, frame_count=frames, camera_action="static")
-
-    # Audit §6.4 & User Directive: Zero-safe clamped evaluation
-    expected_z = f"min(1.03,1.0+0.03*(clip(on,0,{frames})/max(1,{frames})))"
-    assert expected_z in flt
-
-    # Verify mathematical evaluation at boundaries:
-    # 1. on=0 (first frame): clip(0, 0, 120) = 0 -> 1.0 + 0.03 * 0 = 1.0 (NO negative pop to -1!)
-    on_0_val = min(1.03, 1.0 + 0.03 * (min(max(0, 0), frames) / max(1, frames)))
-    assert on_0_val == 1.0
-
-    # 2. on=120 (terminal frame): clip(120, 0, 120) = 120 -> 1.0 + 0.03 * 1.0 = 1.03
-    on_end_val = min(1.03, 1.0 + 0.03 * (min(max(120, 0), frames) / max(1, frames)))
-    assert abs(on_end_val - 1.03) < 1e-6
-
-    # 3. Single frame hold (frames=1): max(1, 1) eliminates division by zero
-    flt_single = build_ken_burns_filter(base_video_config, frame_count=1, camera_action="static")
-    # For 1 frame (duration 1/30s < 3.5s), static filter produces z='1.0'
-    assert "z='1.0'" in flt_single
+@pytest.mark.parametrize("frames", [1, 120, 900])
+def test_explicit_hold_never_invents_movement(base_video_config, frames):
+    flt = build_ken_burns_filter(base_video_config, frame_count=frames, camera_action="static_hold")
+    assert "z='1.0'" in flt
+    assert "clip(on" not in flt
 
 
 def test_static_hold_under_threshold(base_video_config):

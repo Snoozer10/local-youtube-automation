@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "case_id": "professor_lineage10_schulte_intro",
+  "title": "Schulte introduction escaped the addressable repair boundary",
+  "failure_code": "NARRATION_EVENT_TOPOLOGY",
+  "root_cause_class": "deterministic_timing",
+  "responsible_layer": "python_compiler",
+  "stage": "plan",
+  "window_index": 2,
+  "raw_evidence_sha256s": [
+    "d83300f54c6826f54a732243cf8f2ca0447434faf5385c88ad71cab30db8ed7a",
+    "f4bd48374c1f6d9787cc97c08502f16c3702f84adff902464e776af8d6dedde1",
+    "5f284cee759b459b3ddad902c8979841126cfa9048b9b210a2167df15df6764e"
+  ],
+  "input_sha256": "3e2a508d928072331e4e6dc38ee68379048af98f8b2ba0337e1c6ff29630c320",
+  "candidate_sha256": "335e3671ce2eecb0f9c6bfed3fb515f25936bdbe09ba13835a162f9928bef386",
+  "brief": {
+    "version": 3,
+    "source_sha256": "e20cd3343fdc8405b4bb87530122275f2556af8d7fa75022f3fc411f76a55b2f",
+    "profile_sha256": "2042b2c301cf9f6130273d5fb18cec2b185cd6b17e99db7f9d5874e2567c4fdf",
+    "channel": {
+      "version": 3,
+      "channel_id": "professor_failure_fixture",
+      "name": "Sanitized Professor Fixture",
+      "audience": "Arabic-speaking adults",
+      "language": "Arabic",
+      "dialect": "MSA",
+      "voice": "achird",
+      "tone": "clear evidence-conscious",
+      "style": "restrained editorial illustration",
+      "visual_directives": ["Use narration-specific scenes"],
+      "forbidden_motifs": ["Avoid generic focus portraits"],
+      "allowed_treatments": ["subject_scene", "detail", "comparison"],
+      "humor": "none"
+    },
+    "analysis": {
+      "topics": ["attention exercise"],
+      "claim_basis": "factual",
+      "form": "tutorial",
+      "proposition": "A narrated exercise requires a synchronized local visual",
+      "narrative_strategy": "Introduce the exercise before showing its deterministic interface",
+      "treatments": ["subject_scene", "detail", "comparison"],
+      "rationale": "The visual event must follow the source narration"
+    },
+    "visual_strategy": {
+      "version": 1,
+      "source_sha256": "e20cd3343fdc8405b4bb87530122275f2556af8d7fa75022f3fc411f76a55b2f",
+      "topic": "Attention exercise",
+      "viewer_question": "When does the interactive exercise begin?",
+      "central_promise": "The local visual follows the spoken introduction",
+      "evidence_mode": "demonstrative",
+      "emotional_arc": ["curiosity", "readiness", "participation"],
+      "hook_archetype": "cold_open_challenge",
+      "hook_microbeats": [
+        {
+          "beat_id": "beat_1_problem",
+          "function": "problem",
+          "duration_seconds": 5,
+          "viewer_takeaway": "A concrete attention problem matters",
+          "visual_mode": "human_context"
+        },
+        {
+          "beat_id": "beat_2_curiosity",
+          "function": "curiosity",
+          "duration_seconds": 5,
+          "viewer_takeaway": "A hidden gap can be exposed",
+          "visual_mode": "comparison",
+          "local_ui": ["cards"]
+        },
+        {
+          "beat_id": "beat_3_promise",
+          "function": "promise",
+          "duration_seconds": 4,
+          "viewer_takeaway": "A designed challenge will reveal it",
+          "visual_mode": "kinetic_type"
+        }
+      ],
+      "visual_modes": ["human_context", "comparison", "kinetic_type", "challenge_ui"],
+      "local_ui_kit": ["cards", "focus_sweep", "timer"],
+      "pacing": "Use concise semantic beats around the exercise introduction",
+      "motion_grammar": ["Animate only meaningful state changes"]
+    }
+  },
+  "timeline": {
+    "fps": 30,
+    "total_frames": 2296,
+    "spans": [
+      {"index": 0, "start_frame": 0, "end_frame": 575, "text": "Sanitized opening hook narration"},
+      {"index": 1, "start_frame": 575, "end_frame": 1156, "text": "Sanitized setup narration"},
+      {"index": 2, "start_frame": 1156, "end_frame": 1219, "text": "Transition into the first exercise"},
+      {"index": 3, "start_frame": 1219, "end_frame": 1659, "text": "The Schulte exercise is introduced and explained"},
+      {"index": 4, "start_frame": 1659, "end_frame": 2296, "text": "Sanitized exercise instructions continue"}
+    ]
+  },
+  "checkpoint": {
+    "planner_version": 10,
+    "compiler_version": 2,
+    "windows": [[0, 575], [575, 1156], [1156, 1734], [1734, 2296]],
+    "next_window": 2,
+    "units_by_window": [
+      [
+        {"unit_id": "u0_87", "start_frame": 0, "end_frame": 87, "text": "Opening problem"},
+        {"unit_id": "u87_179", "start_frame": 87, "end_frame": 179, "text": "Opening problem detail"},
+        {"unit_id": "u179_263", "start_frame": 179, "end_frame": 263, "text": "Curiosity contrast"},
+        {"unit_id": "u263_355", "start_frame": 263, "end_frame": 355, "text": "Promise begins"},
+        {"unit_id": "u355_444", "start_frame": 355, "end_frame": 444, "text": "Promise completes"},
+        {"unit_id": "u444_575", "start_frame": 444, "end_frame": 575, "text": "Hook continuation"}
+      ],
+      [
+        {"unit_id": "u575_669", "start_frame": 575, "end_frame": 669, "text": "Context one"},
+        {"unit_id": "u669_763", "start_frame": 669, "end_frame": 763, "text": "Context two"},
+        {"unit_id": "u763_853", "start_frame": 763, "end_frame": 853, "text": "Contrast one"},
+        {"unit_id": "u853_944", "start_frame": 853, "end_frame": 944, "text": "Contrast two"},
+        {"unit_id": "u944_1029", "start_frame": 944, "end_frame": 1029, "text": "Promise reminder"},
+        {"unit_id": "u1029_1156", "start_frame": 1029, "end_frame": 1156, "text": "Readiness transition"}
+      ]
+    ],
+    "batches": [
+      {
+        "shots": [
+          {"beat_id": "beat_1_problem", "first_unit_id": "u0_87", "last_unit_id": "u87_179", "visual_mode": "human_context", "beat_kind": "claim", "framing": "medium"},
+          {"beat_id": "beat_2_curiosity", "first_unit_id": "u179_263", "visual_mode": "comparison", "beat_kind": "contrast", "framing": "wide", "graphic_template": "comparison"},
+          {"beat_id": "beat_3_promise", "first_unit_id": "u263_355", "last_unit_id": "u355_444", "visual_mode": "kinetic_type", "beat_kind": "reveal", "framing": "insert", "graphic_template": "kinetic_type"},
+          {"beat_id": "beat_3_promise__continuation", "first_unit_id": "u444_575", "visual_mode": "kinetic_type", "beat_kind": "transition", "framing": "medium", "graphic_template": "focus_sweep"}
+        ]
+      },
+      {
+        "shots": [
+          {"beat_id": "context_problem", "first_unit_id": "u575_669", "last_unit_id": "u669_763", "visual_mode": "human_context", "beat_kind": "example", "framing": "close_up"},
+          {"beat_id": "context_contrast", "first_unit_id": "u763_853", "last_unit_id": "u853_944", "visual_mode": "comparison", "beat_kind": "contrast", "framing": "wide", "graphic_template": "comparison"},
+          {"beat_id": "context_promise", "first_unit_id": "u944_1029", "last_unit_id": "u1029_1156", "visual_mode": "kinetic_type", "beat_kind": "claim", "framing": "insert", "graphic_template": "kinetic_type"}
+        ]
+      }
+    ]
+  },
+  "failed_units": [
+    {"unit_id": "u1156_1252", "start_frame": 1156, "end_frame": 1252, "text": "Transition and exercise introduction"},
+    {"unit_id": "u1252_1340", "start_frame": 1252, "end_frame": 1340, "text": "Schulte name and setup"},
+    {"unit_id": "u1340_1426", "start_frame": 1340, "end_frame": 1426, "text": "Exercise purpose"},
+    {"unit_id": "u1426_1515", "start_frame": 1426, "end_frame": 1515, "text": "Exercise origin"},
+    {"unit_id": "u1515_1595", "start_frame": 1515, "end_frame": 1595, "text": "Attention explanation"},
+    {"unit_id": "u1595_1689", "start_frame": 1595, "end_frame": 1689, "text": "Prepare the challenge"},
+    {"unit_id": "u1689_1734", "start_frame": 1689, "end_frame": 1734, "text": "Challenge handoff"}
+  ],
+  "failed_candidate": {
+    "shots": [
+      {"beat_id": "beat_1_problem", "first_unit_id": "u1156_1252", "visual_mode": "human_context", "beat_kind": "claim", "framing": "medium"},
+      {"beat_id": "beat_2_curiosity", "first_unit_id": "u1252_1340", "visual_mode": "comparison", "beat_kind": "contrast", "framing": "wide", "graphic_template": "comparison"},
+      {"beat_id": "beat_3_promise", "first_unit_id": "u1340_1426", "visual_mode": "kinetic_type", "beat_kind": "reveal", "framing": "insert", "graphic_template": "kinetic_type"},
+      {"beat_id": "beat_schulte_intro", "first_unit_id": "u1426_1515", "last_unit_id": "u1515_1595", "visual_mode": "kinetic_type", "beat_kind": "mechanism", "framing": "medium", "graphic_template": "focus_sweep"},
+      {"beat_id": "beat_schulte_prepare", "first_unit_id": "u1595_1689", "last_unit_id": "u1689_1734", "visual_mode": "challenge_ui", "beat_kind": "instruction", "framing": "diagram", "graphic_template": "schulte_challenge"}
+    ]
+  },
+  "expected_boundary": "semantic_compiler",
+  "expected_issue": {
+    "beat_ids": ["beat_1_problem"],
+    "code": "NARRATION_EVENT_TOPOLOGY",
+    "requirement": "Split the overlapping record so the Schulte event begins within its one-second introduction tolerance"
+  },
+  "expected_corrected_behavior": "Split the overlapping record at the compiler-supplied frame-1219 narration-unit boundary and begin the local schulte_challenge there."
+}

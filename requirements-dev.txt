@@ -13,6 +13,7 @@ pytest-mock>=3.12.0             # Mocking library for subprocess, pipes, and API
 pytest-playwright>=0.4.4        # Playwright fixtures for browser and CDP integration tests
 pytest-timeout>=2.3.0           # Prevents hanging subprocess/pipe tests with hard timeouts
 pytest-asyncio>=0.23.0          # Async testing support for Playwright coroutines
+psutil>=5.9.0                # Process inspection used by unit and integration tests
 
 # ------------------------------------------------------------------------------
 # 2. Code Formatting, Linting & Modernization

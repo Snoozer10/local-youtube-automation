@@ -12,7 +12,8 @@ import json
 import os
 import sys
 from dataclasses import asdict, dataclass
-from typing import Any
+from pathlib import Path
+from typing import Any, TypedDict
 
 from PIL import Image
 
@@ -23,9 +24,9 @@ try:
         from youtube_automation.core.utils import get_config_value
 except Exception:
 
-    def get_config_value(k: str, d: str = "") -> str:
-        v = os.getenv(k)
-        return v if v is not None else d
+    def get_config_value(target_key: str, default_val: str = "") -> str:
+        v = os.getenv(target_key)
+        return v if v is not None else default_val
 
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -45,6 +46,15 @@ STRENGTHENED_NEGATIVE_PROMPT = (
 )
 
 
+class TextGateConfig(TypedDict, total=False):
+    OCR_CONFIDENCE: float | str
+    MIN_TEXT_LEN: int | str
+    MIN_BBOX: float | str
+    OCR_LANG: str
+    ENABLE_TEXT_GATE: bool
+    ENABLE_MSER_FALLBACK: bool
+
+
 @dataclass
 class OCRBox:
     text: str
@@ -53,7 +63,7 @@ class OCRBox:
     area_ratio: float
 
 
-def get_ocr_confidence_threshold(config: dict | None = None) -> float:
+def get_ocr_confidence_threshold(config: TextGateConfig | None = None) -> float:
     if config and "OCR_CONFIDENCE" in config:
         try:
             return float(config["OCR_CONFIDENCE"])
@@ -66,7 +76,7 @@ def get_ocr_confidence_threshold(config: dict | None = None) -> float:
         return OCR_CONFIDENCE_THRESHOLD
 
 
-def get_ocr_min_text_len(config: dict | None = None) -> int:
+def get_ocr_min_text_len(config: TextGateConfig | None = None) -> int:
     if config and "MIN_TEXT_LEN" in config:
         try:
             return int(config["MIN_TEXT_LEN"])
@@ -79,7 +89,7 @@ def get_ocr_min_text_len(config: dict | None = None) -> int:
         return OCR_MIN_TEXT_LEN
 
 
-def get_ocr_min_bbox_area_ratio(config: dict | None = None) -> float:
+def get_ocr_min_bbox_area_ratio(config: TextGateConfig | None = None) -> float:
     if config and "MIN_BBOX" in config:
         try:
             return float(config["MIN_BBOX"])
@@ -92,23 +102,37 @@ def get_ocr_min_bbox_area_ratio(config: dict | None = None) -> float:
         return OCR_MIN_BBOX_AREA_RATIO
 
 
-def _run_pytesseract_dict(image: Any, output_type: Any = None) -> dict[str, Any]:
+def _run_pytesseract_dict(
+    image: Any, output_type: Any = None, *, language: str | None = None
+) -> dict[str, Any]:
     """Helper wrapper around pytesseract.image_to_data for easy mocking in unit tests."""
     import pytesseract
 
     if output_type is None:
         output_type = pytesseract.Output.DICT
-    return pytesseract.image_to_data(image, output_type=output_type)
+    command = os.getenv("TESSERACT_CMD")
+    if not command:
+        local_command = Path(__file__).resolve().parents[3] / ".runtime" / "tesseract" / "tesseract.exe"
+        if local_command.is_file():
+            command = str(local_command)
+    if command:
+        pytesseract.pytesseract.tesseract_cmd = command
+    options: dict[str, Any] = {"output_type": output_type, "timeout": 30}
+    if language:
+        options["lang"] = language
+    result: dict[str, Any] = pytesseract.image_to_data(image, **options)
+    return result
 
 
-def _detect_via_pytesseract(image_path: str, config: dict | None = None) -> list[OCRBox] | None:
+def _detect_via_pytesseract(image_path: str, config: TextGateConfig | None = None) -> list[OCRBox] | None:
     """Attempts OCR using local pytesseract. Returns None if pytesseract is unavailable."""
     try:
         with Image.open(image_path) as img:
             img_w, img_h = img.size
             if img_w <= 0 or img_h <= 0:
                 return []
-            data = _run_pytesseract_dict(img)
+            language = config.get("OCR_LANG") if config else None
+            data = _run_pytesseract_dict(img, language=language) if language else _run_pytesseract_dict(img)
     except Exception:
         return None
 
@@ -154,7 +178,7 @@ def _detect_via_pytesseract(image_path: str, config: dict | None = None) -> list
     return boxes
 
 
-def _detect_via_mser_fallback(image_path: str, config: dict | None = None) -> list[OCRBox]:
+def _detect_via_mser_fallback(image_path: str, config: TextGateConfig | None = None) -> list[OCRBox]:
     """Fallback text candidate detection using OpenCV MSER / high-contrast edge bounding boxes."""
     min_ratio = get_ocr_min_bbox_area_ratio(config)
     boxes: list[OCRBox] = []
@@ -194,7 +218,7 @@ def _detect_via_mser_fallback(image_path: str, config: dict | None = None) -> li
 
 
 def check_text_collision(
-    image_path: str, config: dict | None = None, sequence_type: str | None = None, is_explainer: bool = False
+    image_path: str, config: TextGateConfig | None = None, sequence_type: str | None = None, is_explainer: bool = False
 ) -> tuple[bool, list[dict[str, Any]]]:
     """Checks an image on disk for burned-in text / subtitle collisions.
 

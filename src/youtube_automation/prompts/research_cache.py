@@ -47,7 +47,7 @@ class ResearchCache:
 
         try:
             with open(entry_path, encoding="utf-8") as f:
-                data = json.load(f)
+                data: dict[str, Any] = json.load(f)
             return data
         except Exception:
             return None

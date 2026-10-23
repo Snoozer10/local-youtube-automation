@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "failure_code": "GRAPHIC_COPY_LOSS",
+  "responsible_layer": "semantic_compiler",
+  "templates": ["kinetic_type", "focus_sweep"],
+  "graphic": {
+    "template": "focus_sweep",
+    "primary_text": "Ready to test your confidence?",
+    "secondary_text": "Try an attention challenge",
+    "timer_text": ""
+  },
+  "expected_behavior": "Preserve both supplied copy fields in compiled overlays and rendered ASS. A semantic focus sweep without primary copy is schema-invalid.",
+  "schulte_render_failures": ["FULL_FRAME_START_OCCLUSION", "WRONG_TARGET_CELL", "TIMER_GRID_COLLISION", "INVISIBLE_GRID_DIVIDERS"],
+  "schulte_expected_behavior": "Start badges and timers stay above an unobscured grid, the target cell contains1, and all cell dividers render as visible thin strips."
+}

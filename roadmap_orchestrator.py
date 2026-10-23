@@ -591,7 +591,7 @@ def build_scene_graph_from_roadmap(
     video_title: str = "Video Storyboard",
 ) -> Any:
     """Build a Pydantic SceneGraph from roadmap rows and timeline spans with bijective sync."""
-    from src.youtube_automation.timeline.scene_graph import MacroScene, SceneBeat, SceneGraph
+    from youtube_automation.timeline.scene_graph import MacroScene, SceneBeat, SceneGraph
 
     if isinstance(timeline_path_or_dict, (str, Path)):
         timeline_data = json.loads(Path(timeline_path_or_dict).read_text(encoding="utf-8"))

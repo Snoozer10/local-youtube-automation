@@ -1,3 +1,9 @@
+# Historical adaptive visual engine hardening checklist
+
+Current execution/status: [master](BRANCH_COMPLETION_MASTER.md) and [review fixes](../docs/sessions/REVIEW_FIXES_20261023.md). Current exact-head CI/Codex outcomes belong to PR #21 and its bound receipts; CodeRabbit is USER-SKIPPED by owner instruction for its file limit. The checklist below is historical.
+
+---
+
 # Todo: flow_image_generator.py hardening (Tiers 1-3)
 
 ## Tier 1 — silent TargetClosedError death

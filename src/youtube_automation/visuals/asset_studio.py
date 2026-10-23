@@ -11,7 +11,8 @@ import json
 import os
 import re
 import time
-from typing import Any
+from typing import Any, TypedDict
+from urllib.parse import urlsplit
 
 try:
     from utils import get_config_value
@@ -19,6 +20,308 @@ except ImportError:
     from youtube_automation.core.utils import get_config_value
 
 from youtube_automation.browser.cdp_client import capture_debug_state
+
+
+def _exact_visible(locator: Any, label: str) -> Any:
+    visible = [element for element in locator.all() if element.is_visible()]
+    if len(visible) != 1:
+        raise RuntimeError(f"Expected exactly one visible {label}; found {len(visible)}")
+    return visible[0]
+
+
+def flow_image_identity(url: str) -> str:
+    """Normalize only observed Flow image IDs and trusted ASB resize aliases."""
+    parts = urlsplit(url)
+    if parts.hostname == "flow-content.google" and parts.path.startswith("/image/"):
+        identity = parts.path.split("/image/", 1)[1].split("/", 1)[0]
+        return identity if re.fullmatch(r"[a-zA-Z0-9_-]+", identity) else ""
+    if parts.hostname in {"flow.google.com", "lh3.googleusercontent.com"} and parts.path.startswith("/asb/"):
+        identity = parts.path.split("/asb/", 1)[1].split("=", 1)[0]
+        return "asb:" + identity if re.fullmatch(r"[a-zA-Z0-9_-]+", identity) else ""
+    return ""
+
+
+def capture_episode_character_alias(
+    page: Any, name: str, provider_id: str, canonical_source_url: str,
+    canonical_pixel_sha256: str, output: Any,
+) -> str:
+    """Bind an editor ASB alias only after exact provider/name and original pixels prove it."""
+    from pathlib import Path
+
+    from playwright.sync_api import expect
+
+    from youtube_automation.production.assets import pixel_digest
+    from youtube_automation.visuals.image_extractor import extract_high_res_image
+
+    project = page.url
+    if not re.fullmatch(r"https://flow\.google\.com/project/[a-zA-Z0-9_-]+", project) or not re.fullmatch(r"[a-zA-Z0-9_-]+", provider_id):
+        raise RuntimeError("Character alias has no exact project/provider identity")
+    target = project + "/character/" + provider_id
+    page.goto(target, wait_until="domcontentloaded", timeout=45000)
+    editor = page.get_by_role("textbox", name="Character name", exact=True)
+    editor.wait_for(state="visible", timeout=15000)
+    expect(_exact_visible(editor, "character name")).to_have_value(name, timeout=15000)
+    if page.url != target:
+        raise RuntimeError("Character alias editor identity changed")
+    page.wait_for_function(
+        "() => Array.from(document.images).some(e => e.complete && e.naturalWidth >= 256 && e.naturalHeight >= 256 && e.getClientRects().length)",
+        timeout=15000,
+    )
+    sources = {image.get_attribute("src") for image in page.locator("img").all()
+               if image.is_visible() and image.evaluate("e => e.complete && e.naturalWidth >= 256 && e.naturalHeight >= 256")}
+    sources.discard(None)
+    if len(sources) != 1:
+        raise RuntimeError("Character alias requires one unambiguous appearance")
+    source = str(next(iter(sources)))
+    if not flow_image_identity(source):
+        raise RuntimeError("Unrecognized character appearance alias")
+    _exact_visible(page.get_by_role("button", name="Done", exact=True), "Done control").click()
+    page.wait_for_url(re.compile(rf"^{re.escape(project)}(?:/characters)?$"), timeout=15000)
+    tile = _exact_visible(page.locator("flow-character-tile").filter(has=page.get_by_text(name, exact=True)), "canonical character tile")
+    image = _exact_visible(tile.locator("img.character-tile-thumbnail"), "canonical tile image")
+    if not flow_image_identity(canonical_source_url) or flow_image_identity(image.get_attribute("src") or "") != flow_image_identity(canonical_source_url):
+        raise RuntimeError("Character alias tile is not the canonical appearance")
+    path = Path(output) / "alias_canonical_proof.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not extract_high_res_image(page, image, str(path), min_size_kb=1) or pixel_digest(path) != canonical_pixel_sha256:
+        raise RuntimeError("Character alias original pixels changed")
+    # ASB tokens rotate on reattachment. Freeze the exact named character's
+    # composer preview after proving its provider and original appearance.
+    from youtube_automation.visuals.flow_generator import clear_attached_prompt_chips
+
+    if page.url != project:
+        page.goto(project, wait_until="domcontentloaded", timeout=45000)
+    clear_attached_prompt_chips(page)
+    attach_episode_character(page, name)
+    chips = visible_episode_ingredients(page)
+    if len(chips) != 1 or chips[0].locator("flow-character-ingredient-chip").count() != 1:
+        raise RuntimeError("Character preview requires one typed character ingredient")
+    preview = _exact_visible(chips[0].locator("img"), "character ingredient preview")
+    if not extract_high_res_image(page, preview, str(Path(output) / "alias_ingredient_preview.png"), min_size_kb=1):
+        raise RuntimeError("Character preview pixels could not be preserved")
+    return source
+
+
+def visible_episode_ingredients(page: Any) -> list[Any]:
+    """Only active-composer ingredients count toward the adaptive exact-set contract."""
+    return [chip for chip in page.locator(
+        "flow-base-prompt-box flow-ingredient-chip, flow-base-prompt-box flow-image-ingredient-chip, "
+        "form:has([contenteditable='true']) flow-ingredient-chip, form:has([contenteditable='true']) flow-image-ingredient-chip, "
+        "flow-base-prompt-box button.chip-container"
+    ).all() if chip.is_visible() and chip.evaluate(
+        "el => !el.parentElement.closest('flow-ingredient-chip, flow-image-ingredient-chip, button.chip-container')"
+    )]
+
+
+def attach_episode_character(page: Any, name: str) -> None:
+    """No generic Character match, first-image fallback or optimistic click success."""
+    overlays = [element for element in page.locator("div.cdk-overlay-container").all() if element.is_visible()]
+    if not overlays:
+        _exact_visible(page.locator("button[aria-label*='Add ingredient' i], button[aria-label*='إضافة المكوّنات' i]"), "ingredient button").click()
+    overlay = _exact_visible(page.locator("div.cdk-overlay-container"), "ingredient overlay")
+    _exact_visible(overlay.get_by_role("tab", name=re.compile(r"(?:^|\s)(Characters|الشخصيات)$")), "Characters tab").click()
+    search = _exact_visible(overlay.get_by_role("textbox", name="Search assets", exact=True), "asset search")
+    search.fill("")
+    search.fill(name)
+    cards = overlay.locator("[role='listitem'], [role='option'], button.asset-item").filter(has_text=re.compile(rf"^\s*{re.escape(name)}\s*$"))
+    cards.first.wait_for(state="visible", timeout=10000)
+    card = _exact_visible(cards, "exact character card")
+    card.click()
+    # Some Flow versions attach directly; verify the whole ingredient set in the caller.
+    if len(visible_episode_ingredients(page)) == 0 or overlay.is_visible():
+        _exact_visible(overlay.get_by_role("button", name=re.compile(r"^(Add to prompt|Add to Prompt|الإضافة إلى الطلب)$")), "Add to prompt button").click()
+    overlay.wait_for(state="hidden", timeout=5000)
+    page.wait_for_function(
+        "() => { const images = Array.from(document.querySelectorAll('flow-base-prompt-box flow-character-ingredient-chip img')); return images.length > 0 && images.every(e => e.complete && e.naturalWidth > 0); }",
+        timeout=10000,
+    )
+
+
+def preflight_episode_character(page: Any) -> None:
+    if not page.url.endswith("/character") and "/character/" not in page.url:
+        if "project/" in page.url:
+            base_url = page.url.split("/character")[0].rstrip("/")
+            page.goto(f"{base_url}/character", wait_until="domcontentloaded", timeout=15000)
+        else:
+            try:
+                _exact_visible(page.get_by_text(re.compile(r"^(Characters|الشخصيات)$")), "Characters navigation").click()
+            except Exception:
+                char_nav = page.locator("button, a, div[role='button']").filter(has_text=re.compile(r"Characters|الشخصيات", re.I))
+                if char_nav.count() > 0 and char_nav.first.is_visible():
+                    char_nav.first.click()
+    composer_locator = page.locator(
+        "textarea[placeholder*='Describe your character' i], input[placeholder*='Describe your character' i], div.ProseMirror[role='textbox'], div[role='textbox'][aria-label*='Describe your character' i]"
+    )
+    composer_locator.first.wait_for(state="visible", timeout=15000)
+    _exact_visible(composer_locator, "character portrait composer")
+    try:
+        _exact_visible(page.get_by_role("button", name="1x", exact=True), "1x image count")
+        submit_locator = page.locator(
+            "button[aria-label*='Generate' i], button[aria-label*='Submit' i], button[aria-label*='Create' i], button[aria-label*='Start generation' i], button:has-text('arrow_forward')"
+        )
+        submit_locator.first.wait_for(state="visible", timeout=15000)
+        _exact_visible(submit_locator, "portrait submit button")
+    except RuntimeError as error:
+        raise RuntimeError("Episode character studio unsupported: exact 1x and semantic submit controls require live verification") from error
+
+
+class CreatedEpisodeCharacter(TypedDict):
+    provider_id: str
+    portrait_path: str
+    portrait_url: str
+    body_path: str | None
+    body_url: str | None
+
+
+def create_episode_character(
+    page: Any, name: str, description: str, style: str, output: Any, reserve: Any,
+) -> CreatedEpisodeCharacter:
+    """Strict portrait→named Character→body flow; each actual send spends once."""
+    from pathlib import Path
+
+    from youtube_automation.visuals.image_extractor import extract_high_res_image
+
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    if not page.url.endswith("/character") and "/character/" not in page.url:
+        if "project/" in page.url:
+            base_url = page.url.split("/character")[0].rstrip("/")
+            page.goto(f"{base_url}/character", wait_until="domcontentloaded", timeout=15000)
+    portrait_input_locator = page.locator(
+        "textarea[placeholder*='Describe your character' i], input[placeholder*='Describe your character' i], div.ProseMirror[role='textbox'], div[role='textbox'][aria-label*='Describe your character' i]"
+    )
+    portrait_input_locator.first.wait_for(state="visible", timeout=15000)
+    portrait_input = _exact_visible(portrait_input_locator, "character portrait composer")
+    portrait_input.fill(f"Character portrait. {description}. {style}. Plain background, no text or labels.")
+
+    def send(scope: Any, stage: str) -> None:
+        _exact_visible(page.get_by_role("button", name="1x", exact=True), "1x image count")
+        button = _exact_visible(
+            scope.locator(
+                "button[aria-label*='Generate' i], button[aria-label*='Submit' i], button[aria-label*='Create' i], button[aria-label*='Start generation' i], button:has-text('arrow_forward')"
+            ),
+            f"{stage} submit button",
+        )
+        if button.is_disabled():
+            raise RuntimeError(f"{stage} submit is disabled")
+        reserve(stage)
+        button.click()
+
+    def capture(stage: str, excluded: set[str]) -> tuple[str, str]:
+        stable = 0
+        previous = ""
+        for _ in range(120):
+            candidates = [image for image in page.locator("main img").all() if image.is_visible()
+                          and (image.get_attribute("src") or "") not in excluded
+                          and image.evaluate("el => el.complete && el.naturalWidth >= 256 && el.naturalHeight >= 256")]
+            candidate_identities = [flow_image_identity(image.get_attribute("src") or "") for image in candidates]
+            if candidates and any(not identity for identity in candidate_identities):
+                raise RuntimeError(f"{stage} contains an unrecognized image identity")
+            identities = set(candidate_identities)
+            if len(identities) == 1:
+                identity = next(iter(identities))
+                identity_candidates = [
+                    image for image, candidate_identity in zip(candidates, candidate_identities, strict=True)
+                    if candidate_identity == identity
+                ]
+                best_candidate = max(
+                    identity_candidates,
+                    key=lambda el: (el.bounding_box() or {}).get("width", 0),
+                )
+                url = best_candidate.get_attribute("src") or ""
+                stable = stable + 1 if identity == previous else 1
+                previous = identity
+                if stable >= 3:
+                    path = output / f"{stage}.png"
+                    if extract_high_res_image(page, best_candidate, str(path), min_size_kb=1):
+                        return str(path), url
+                    raise RuntimeError(f"Could not preserve exact {stage} image")
+            else:
+                stable = 0
+            page.wait_for_timeout(500)
+        raise RuntimeError(f"{stage} did not produce exactly one stable complete image")
+
+    before = {image.get_attribute("src") or "" for image in page.locator("main img").all()}
+    send(page, "portrait")
+    page.wait_for_url(re.compile(r"/character/[a-zA-Z0-9_-]+"), timeout=60000)
+    match = re.search(r"/character/([a-zA-Z0-9_-]+)", page.url)
+    if match is None:
+        raise RuntimeError("Character editor has no exact provider identity")
+    provider_id = match.group(1)
+    name_input = _exact_visible(page.locator("input[placeholder*='Character Name' i], h1[contenteditable='true']"), "character name")
+    name_input.fill(name)
+    name_input.evaluate("el => el.blur()")
+    saved_name = (
+        name_input.inner_text()
+        if name_input.evaluate("el => el.isContentEditable")
+        else name_input.input_value()
+    )
+    if saved_name != name:
+        raise RuntimeError("Character name did not persist")
+    info = _exact_visible(page.locator("textarea[placeholder*='Describe how your character acts' i], textarea[placeholder*='Character Info' i]"), "character description")
+    info.fill(description)
+    portrait_path, portrait_url = capture("portrait", before)
+    body_path = None
+    body_url = None
+    body_controls = page.get_by_role("button", name="Create Body", exact=True, include_hidden=True).all()
+    if body_controls:
+        if len(body_controls) != 1 or not body_controls[0].is_visible():
+            raise RuntimeError("Create Body control is ambiguous or unreadable")
+        create_body_btn = body_controls[0]
+        if create_body_btn.is_disabled():
+            raise RuntimeError("Create Body control is disabled")
+        create_body_btn.click()
+        page.wait_for_timeout(1000)
+        dialogs = page.locator("mat-dialog-container, [role='dialog']").all()
+        if len(dialogs) > 1:
+            raise RuntimeError("Body dialog is ambiguous")
+        if dialogs:
+            dialog = dialogs[0]
+            if not dialog.is_visible():
+                raise RuntimeError("Body dialog is not visible")
+            body_scope = dialog
+            body_input = _exact_visible(dialog.locator("textarea, [contenteditable='true']"), "body composer")
+        else:
+            body_scope = page
+            body_input = _exact_visible(page.locator("div.ProseMirror[role='textbox'], div[contenteditable='true'], textarea"), "body composer")
+        body_input.fill(f"Full-body character model sheet, front, side and back. Preserve the portrait identity exactly. {description}. {style}. Plain background, no text or labels.")
+        send(body_scope, "body")
+        body_path, body_url = capture("body", before | {portrait_url})
+    _exact_visible(page.get_by_role("button", name="Done", exact=True), "Done control").click()
+    return {"provider_id": provider_id, "portrait_path": portrait_path, "portrait_url": portrait_url, "body_path": body_path, "body_url": body_url}
+
+
+def save_episode_character(page: Any, name: str, description: str, output: Any) -> dict[str, str]:
+    """Save the observed named editor with one appearance; never generate or create a body."""
+    from pathlib import Path
+
+    from youtube_automation.visuals.image_extractor import extract_high_res_image
+
+    match = re.fullmatch(r"(https://flow\.google\.com/project/[a-zA-Z0-9_-]+)/character/([a-zA-Z0-9_-]+)", page.url)
+    if match is None:
+        raise RuntimeError("Character editor has no exact project/provider identity")
+    name_input = _exact_visible(page.get_by_role("textbox", name="Character name", exact=True), "character name")
+    name_input.fill(name)
+    name_input.press("Tab")
+    info = _exact_visible(page.get_by_role("textbox", name="Character personality", exact=True), "character info")
+    info.fill(description)
+    info.press("Tab")
+    if name_input.input_value() != name or info.input_value() != description:
+        raise RuntimeError("Character name/info did not persist")
+    sources = {image.get_attribute("src"): image for image in page.locator("img").all()
+               if image.is_visible() and image.evaluate("e => e.complete && e.naturalWidth >= 256 && e.naturalHeight >= 256")}
+    sources.pop(None, None)
+    if len(sources) != 1:
+        raise RuntimeError(f"Expected one complete canonical appearance; found {len(sources)}")
+    source = str(next(iter(sources)))
+    path = Path(output) / "portrait.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not extract_high_res_image(page, sources[source], str(path), min_size_kb=1):
+        raise RuntimeError("Could not preserve exact canonical appearance")
+    _exact_visible(page.get_by_role("button", name="Done", exact=True), "Done control").click()
+    page.wait_for_url(re.compile(rf"^{re.escape(match.group(1))}(?:/characters)?$"), timeout=15000)
+    _exact_visible(page.get_by_text(name, exact=True), "saved character name")
+    return {"provider_id": match.group(2), "portrait_path": str(path), "portrait_url": source}
 
 
 def log(msg: str) -> None:
@@ -41,7 +344,7 @@ ACCENT_SPRING_GREEN: str = "#00E676"
 STYLE_DNA_TEXT: str = (
     "2D graphic vector animation explainer style, uniform 3px deep charcoal (#2D3444) contour linework, "
     "flat 2-step cel-shading with razor-sharp shadow edges, zero gradients, 1-2-3 shape hierarchy, "
-    "clean 16:9 widescreen composition strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980, "
+    "clean 16:9 widescreen composition with the subject clear of the frame edges, "
     "leaving 10% peripheral bleed padding, "
     "Palette: 60% base ground (#F8F8FA), 30% charcoal lines (#2D3444), 10% kinetic accents (Cyan #00E5FF, Amber #FFB300, Spring Green #00E676, Codec-Safe Red #EB191E)"
 )
@@ -128,7 +431,7 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
                 "2D graphic vector animation explainer studio substrate plate. "
                 "Neutral studio table ground (#F8F8FA) with aluminum diagnostic clipboard, clean uniform illumination, zero gradients. "
                 "Uniform 3px deep charcoal (#2D3444) contour outlines, flat 2-step cel-shading, 1-2-3 shape hierarchy, "
-                "clean 16:9 widescreen composition strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980, leaving 10% peripheral bleed padding. "
+                "clean 16:9 widescreen composition with the subject clear of the frame edges, leaving 10% peripheral bleed padding. "
                 "Visual rule: Studio substrate plate only. Zero human figures, zero 3D CGI, zero text."
             ),
         },
@@ -138,7 +441,7 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
                 "2D graphic vector animation explainer studio presenter desk plate. "
                 "Clean educational studio presenter desk resting on neutral studio limbo ground (#F8F8FA), "
                 "uniform 3px deep charcoal (#2D3444) contour linework, flat 2-step cel-shading, zero gradients, "
-                "clean 16:9 widescreen composition bounded inside coordinates X: 180 to 1740, Y: 90 to 980, "
+                "clean 16:9 widescreen composition with essential subjects clear of frame edges, "
                 "leaving 10% peripheral bleed padding. Visual rule: Empty studio desk plate only. Zero text, zero 3D CGI."
             ),
         },
@@ -147,7 +450,7 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
             "scene_prompt": (
                 "2D animation layout background plate of a cozy Cairo studio. "
                 "Warm dark mahogany desk (#2A2420), stacked encyclopedias, retro CRT monitor, Egyptian glass teacup with mint, warm 3200K tungsten lighting with razor-sharp shadow falloff. "
-                "Uniform 3px deep charcoal (#2D3444) vector outlines, flat 2-step cel-shading, 1-2-3 shape hierarchy, open central staging area strictly bounded inside coordinates X: 180 to 1740, Y: 90 to 980 with 10% bleed padding, 16:9 widescreen. "
+                "Uniform 3px deep charcoal (#2D3444) vector outlines, flat 2-step cel-shading, 1-2-3 shape hierarchy, open central staging area with the subject clear of the frame edges with 10% bleed padding, 16:9 widescreen. "
                 "Visual rule: Empty background plate only. Zero characters, zero 3D CGI."
             ),
         },
@@ -176,7 +479,7 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
             "scene_prompt": (
                 "2D animation layout plate of a scientific drafting desk setup. "
                 "Orthographic cyan drafting placard resting flat on the studio workbench (#F8F8FA), vector HUD schematics, coordinate grid lines. "
-                "High-contrast vector illumination, uniform 3px deep charcoal (#2D3444) outlines, clean 16:9 widescreen composition bounded within coordinates X: 180 to 1740, Y: 90 to 980. "
+                "High-contrast vector illumination, uniform 3px deep charcoal (#2D3444) outlines, clean 16:9 widescreen composition with essential subjects clear of frame edges. "
                 "Visual rule: Drafting placard setup only. Zero full-screen dark navy void, zero text, zero human characters."
             ),
         },
@@ -185,7 +488,7 @@ FLOW_ASSET_PRESETS: dict[str, dict[str, Any]] = {
             "scene_prompt": (
                 "2D animation layout plate of a historical archival desk setup. "
                 "Framed archival document and miniature portrait resting flat on the studio workbench (#F8F8FA), clean studio illumination. "
-                "Uniform 3px deep charcoal (#2D3444) contour linework, flat 2-step cel-shading, clean 16:9 widescreen composition bounded within coordinates X: 180 to 1740, Y: 90 to 980. "
+                "Uniform 3px deep charcoal (#2D3444) contour linework, flat 2-step cel-shading, clean 16:9 widescreen composition with essential subjects clear of frame edges. "
                 "Visual rule: Archival desk placard plate only. Zero full-screen crimson wallpaper, zero characters, zero 3D CGI."
             ),
         },

@@ -125,3 +125,7 @@ apm_modules/
 *.orig
 .cursorrules
 .graphifyignore
+
+# Local adaptive resource leases and journals
+.runtime/
+.playwright-mcp/

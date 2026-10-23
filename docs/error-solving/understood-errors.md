@@ -2,6 +2,11 @@
 
 ## Error Patterns
 
+### Windows Explorer Long Path Video Playback Failure (File System Error -2147219196)
+- **Cause**: In Windows 10/11, deep nesting of output directories (e.g., repository path + youtube_runs + run folder + daptive_renders + generation hash + preview filename) can result in absolute paths exceeding 300-350 characters. Double-clicking such files in Windows File Explorer triggers an attempt to launch the default UWP media player (Films & TV / Windows Media Player), which fails to handle paths beyond MAX_PATH (260 characters), producing dialogs: Explorer.EXE: The app didn't start and Explorer.EXE: File system error (-2147219196).
+- **Solution**: (1) Copy or symlink preview/master artifacts to shorter paths (e.g., Desktop or workspace root) for direct OS double-click inspection. (2) Open directly with browsers (Chrome, Edge) or Win32 players (VLC, mpv, MPC-HC) that support long Unicode paths.
+- **Prevention**: Always expose convenient, short-path copies of preview MP4s on user-accessible directories (such as the user Desktop) during production review milestones.
+
 ### QSV Lookahead Stream Corruption
 - **Cause**: Setting `-look_ahead 1` with a non-zero `-look_ahead_depth` on Intel QSV (`h264_qsv`) hardware encoder when feeding software-decoded frames causes frame pool exhaustion in the hardware memory driver. This leads to silent corruption of the output video bitstream (missing pictures in access units, invalid NAL unit sizes) despite FFmpeg exiting with return code 0.
 - **Solution**: Disable lookahead by setting `QSV_LOOKAHEAD=0` in the configuration.
@@ -44,14 +49,16 @@
 - **Solution**: Consume lines continuously until the explicit status token `BatchCommand finished:` is observed, followed by the trailing terminating empty line. If running against mock pipes in unit tests, verify whether the pipe has pending data before breaking on raw blank lines.
 - **Prevention**: Always design IPC parsers around the server's authoritative completion sentinel rather than assuming an arbitrary leading blank line signifies termination.
 
-### Windows CRT Named Pipe File-Lock Deadlock
-- **Cause**: Calling `.close()` on a Python file object wrapping a Windows Named Pipe from a control thread while a reader thread is actively blocked inside `readline()` / `ReadFile()` causes a permanent deadlock. The C runtime `_lock_file(f)` mutex is held by `readline()` while waiting for pipe data; calling `fclose()` / `close()` from another thread tries to acquire the same mutex, freezing both threads.
-- **Solution**: On Windows named pipes, always terminate or kill the server process (`taskkill /F /IM Audacity.exe`) first. Severing the server pipe handle causes the client's `ReadFile()` to immediately fail with `ERROR_BROKEN_PIPE` (EOF), allowing the reading thread to release `_lock_file(f)` and exit naturally before closing file handles.
-- **Prevention**: Never close active blocking pipe streams from a separate thread without first terminating the pipe server or using overlapped non-blocking I/O.
+### Audacity Named-Pipe Timeout and Process Ownership
+- **Cause**: A stalled pipe response can leave a command incomplete; an image-wide process kill can terminate an unrelated user Audacity session.
+- **Correct approach**: Treat timeout or missing completion status as failure, preserve the pipe/process receipt, and clean up only the exact Audacity PID recorded as pipeline-owned. Never terminate by executable image name.
+- **Prevention**: Record ownership before launch and verify the PID at cleanup. If ownership is absent or ambiguous, stop without terminating a process.
 
-### Audacity GUI Event Loop Initialization Handshake
-- **Cause**: When Audacity is launched on Windows, `mod-script-pipe` named pipes become connectable before wxWidgets has finished creating the main project window and pumping the event loop. Sending heavyweight disk commands like `Import2:` immediately can stall waiting for project canvas initialization.
-- **Solution**: Execute a fast lightweight handshake (`Help: Command=Help` followed by `SelectAll:`) immediately after connecting named pipes. This forces the message loop to synchronize and guarantees the canvas is ready for audio processing.
+### Audacity GUI Event Loop Readiness Check
+- **Possible condition**: On Windows, `mod-script-pipe` pipes may become connectable before wxWidgets is pumping the project window's event loop; an early heavyweight command such as `Import2:` can stall. This is a possible startup condition, not an established cause of a Help timeout.
+- **Correct approach**: Treat `Help: Command=Help` as a bounded readiness check, not a guaranteed GUI-initialization fix. Require its explicit completion status and terminal blank boundary before continuing; timeout or incomplete response fails closed.
+- **Diagnostic limit**: A timeout after pipe connection does not distinguish command-delivery failure, server-side nonresponse or buffering, a modal state, or a missing/nonresponsive module. Preserve raw bounded wire, process, module and UI evidence before forming a root-cause claim.
+
 ### Whisper Spoken Manifest Fallback and Ghost Word Extrapolation Drift
 - **Cause**: In `src/youtube_automation/speech/transcriber.py`, `read_initial_prompt()` attempted to deserialize `audio_manifest.json` via `json.load(f)`, but `import json` was omitted from module imports. The resulting `NameError` was caught by a generic `except Exception`, triggering silent fallback to `refined_script.txt` (which contained 3,798 words from an earlier full-length draft instead of the 832 spoken words synthesized into audio). When `align_script_words_with_audio` executed, the 832 spoken words aligned up to 290.14s, but the remaining 2,966 unspoken words were linearly extrapolated into 122 spans out to 455.95s, desynchronizing the downstream timeline by over 165 seconds.
 - **Solution**: Explicitly import `json` at the top of `transcriber.py` and ensure `audio_manifest.json` serves as the authoritative single source of truth for spoken text.
@@ -302,10 +309,26 @@
 - **Why it's wrong**: Omitting `tests/unit/`, tools, and root facade shims allows syntax, style, and import bugs to slip through into CI and release packaging.
 - **Correct approach**: Always execute `ruff check .` across the entire workspace before committing.
 
-### Assuming Import Success Guarantees Type Annotation Correctness
-- **What looks correct**: Relying on `python -c "import module"` or standard test runs to catch missing types when `from __future__ import annotations` is imported.
-- **Why it's wrong**: Python PEP 563 converts annotations into strings without evaluating them at runtime, completely masking missing imports until external tools or reflection inspect the types.
-- **Correct approach**: Run static linters (`ruff check .`) or type checkers (`mypy`) that evaluate the AST and detect undefined symbols regardless of PEP 563 stringification.
+### Monolithic Prompt Hand-Coded Slang Corruption
+- **Cause**: Hardcoded slang dictionaries in consumer scripts (e.g., `refine_script.py`) contained corrupted Hangul string `"야 닥تر"` instead of Arabic `"يا دكتور"` due to accidental keyboard IME switching during legacy editing.
+- **Solution**: Single-source slang terms into modular fragment files (`prompts/fragments/slang_categories.txt`), parse via `loader.slang_terms()`, and enforce AST contract tests asserting clean Arabic tokens and banning non-Arabic glyphs.
+- **Prevention**: Never hardcode vocabulary lists inside orchestration scripts; isolate them in external UTF-8 text fragments and gate them with contract tests.
+
+### Conversation Turn Template Metadata Leakage
+- **Cause**: Generating turn templates containing system-level `<<<PROMPT_META_START>>>` headers and extraneous acknowledgement tokens (e.g., German `bereit`). When dispatched during live chat turns, unstripped metadata headers leak directly into the LLM context, degrading reasoning and dialect naturalness.
+- **Solution**: Strip metadata blocks from all turn templates in `prompts/turns/`; ensure `loader.turn()` defensively detects and strips residual `<<<PROMPT_META_*>>>` blocks; restrict metadata headers strictly to root system prompts (`phase1`, `phase3`, `refine`, `tts`).
+- **Prevention**: Distinguish system prompt initialization from active user conversation turns; user turns must never contain system metadata blocks.
+
+### Studio Viewer Empty Frames & 0-Based Span Index Misalignment
+- **Cause**: In `tools/viewer_generator.py`, iterating strictly over `socratic_map.keys()` caused production runs without Socratic prompts (e.g. `What Do Animals Think Of Humans`) to generate empty viewers (`const frames = [];`). Naively unioning `timeline.json` 0-based span indices (`0..N-1`) with 1-based prompt indices (`1..N`) introduced a phantom frame 0, desynchronizing all downstream frames.
+- **Solution**: Implement a 5-Tier Priority Cascade with Index Unioning and Two-Pass Timestamp-Validated Span Alignment: chronometric matching via `start_time <= ts < end_time` followed by uniform index offset mapping (`span_idx = frame_idx - 1`).
+- **Prevention**: In multi-source media metadata ingestion, never iterate over a single optional source; union all candidate indices and normalize 0-based timeline spans to 1-based prompt arrays.
+
+### Dual-Audio Phase Echo in Browser Media Synchronization
+- **Cause**: Embedding both uncompressed master audio (`<audio id="master-audio">`) and video preview proxy (`<video id="video-proxy">`) in web inspection suites without muting the video element causes simultaneous playback of AAC and WAV audio streams, creating phase-delayed acoustic echo and flange artifacts.
+- **Solution**: Strictly enforce single-source audio: set `videoProxy.muted = true` as an immutable DOM property and drive audio exclusively through the master WAV element.
+- **Prevention**: In video/audio paired HTML5 web tools, always mute the video element when playing external high-fidelity audio stems.
+
 
 
 

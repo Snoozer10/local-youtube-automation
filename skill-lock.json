@@ -1,0 +1,3865 @@
+{
+  "version": 1,
+  "created_utc": "2026-10-15T23:20:39.245Z",
+  "policy": {
+    "scope": "project_only",
+    "invocation": "explicit_per_task",
+    "automatic_enable_disable_controller": false,
+    "archive_root": ".agents/skill-archive/20261016",
+    "global_skill_files_and_user_config": "unchanged",
+    "current_chat_catalog": "not hot-reloaded; archived/global copies may remain advertised in an existing session",
+    "precedence": "Current user instructions and project DOX override generic skill examples; skills do not authorize side effects or satisfy acceptance"
+  },
+  "documents": [
+    "tasks/BRANCH_COMPLETION_MASTER.md",
+    "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md",
+    "tasks/BRANCH_TASK_SKILLS.md"
+  ],
+  "task_bindings": {
+    "A1": {
+      "skills": [
+        "systematic-debugging",
+        "windows-desktop-e2e",
+        "verification-before-completion"
+      ],
+      "reason": "Diagnose owned-window failure from evidence before a bounded live handshake.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "A2": {
+      "skills": [
+        "windows-desktop-e2e",
+        "test-driven-development",
+        "test-guard"
+      ],
+      "reason": "Implement owned-window safety with isolated native API fixtures.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "A3": {
+      "skills": [
+        "test-guard",
+        "code-review-and-quality",
+        "verification-before-completion"
+      ],
+      "reason": "Review readiness guard and focused regressions independently.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "A4": {
+      "skills": [
+        "windows-desktop-e2e",
+        "systematic-debugging",
+        "verification-before-completion"
+      ],
+      "reason": "Bound one-Help readiness and diagnose unsafe startup without spending blindly.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "A5": {
+      "skills": [
+        "windows-desktop-e2e",
+        "documentation-and-adrs"
+      ],
+      "reason": "Document owned recovery evidence and the human data choice.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "B1": {
+      "skills": [
+        "audio-mixing-mastering",
+        "audio-dsp",
+        "verification-before-completion"
+      ],
+      "reason": "Polish the accepted Soldier take without changing spoken content.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "B2": {
+      "skills": [
+        "audio-dsp",
+        "ffmpeg",
+        "verification-before-completion"
+      ],
+      "reason": "Check PCM headers, frame offsets and lossless chapter stitching.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "B3": {
+      "skills": [
+        "faster-whisper",
+        "audio-dsp",
+        "verification-before-completion"
+      ],
+      "reason": "Review local transcription and monotonic audio-bound timing.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "B4": {
+      "skills": [
+        "audio-mixing-mastering",
+        "audio-dsp",
+        "verification-before-completion"
+      ],
+      "reason": "Polish preserved H10 narration with the bounded audio workflow.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "B5": {
+      "skills": [
+        "faster-whisper",
+        "ffmpeg",
+        "verification-before-completion"
+      ],
+      "reason": "Validate H10 stitching, transcription fidelity and timing.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "C1": {
+      "skills": [
+        "source-driven-development",
+        "documentation-and-adrs",
+        "verification-before-completion"
+      ],
+      "reason": "Bind exact accepted Professor preview and seven-score bookkeeping.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "C2": {
+      "skills": [
+        "source-driven-development",
+        "ffmpeg",
+        "verification-before-completion"
+      ],
+      "reason": "Validate current Professor pilot delivery and restart reuse.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "C3": {
+      "skills": [
+        "source-driven-development",
+        "planning-and-task-breakdown",
+        "research"
+      ],
+      "reason": "Build the naval Samar pilot with source-grounded progression.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "C4": {
+      "skills": [
+        "source-driven-development",
+        "research",
+        "verification-before-completion"
+      ],
+      "reason": "Review dog-cue narration relevance and pilot visual gates.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "C5": {
+      "skills": [
+        "source-driven-development",
+        "code-review-and-quality",
+        "verification-before-completion"
+      ],
+      "reason": "Audit Snoozer historical assets against current recipes.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "C6": {
+      "skills": [
+        "source-driven-development",
+        "systematic-debugging",
+        "verification-before-completion"
+      ],
+      "reason": "Repair only failed current-recipe Snoozer dependencies.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "C7": {
+      "skills": [
+        "documentation-and-adrs",
+        "source-driven-development",
+        "verification-before-completion"
+      ],
+      "reason": "Reconcile three-channel pilot acceptance without transferring approvals.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "D1": {
+      "skills": [
+        "research",
+        "faster-whisper",
+        "arabic-copywriting-dialects"
+      ],
+      "reason": "Review full Arabic source, claims and spoken-text coverage.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "D2": {
+      "skills": [
+        "audio-dsp",
+        "ffmpeg",
+        "verification-before-completion"
+      ],
+      "reason": "Assemble a source-bound full-episode timeline and verify offsets.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "D3": {
+      "skills": [
+        "planning-and-task-breakdown",
+        "source-driven-development",
+        "research"
+      ],
+      "reason": "Shape full-episode narrative beats, pacing and factual visual choices.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "D4": {
+      "skills": [
+        "source-driven-development",
+        "arabic-copywriting-dialects",
+        "verification-before-completion"
+      ],
+      "reason": "Audit exact visual references, bilingual text and every rendered shot.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "D5": {
+      "skills": [
+        "ffmpeg",
+        "source-driven-development",
+        "verification-before-completion"
+      ],
+      "reason": "Verify full-duration rendering, frames, sync and coverage.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "D6": {
+      "skills": [
+        "source-driven-development",
+        "documentation-and-adrs",
+        "verification-before-completion"
+      ],
+      "reason": "Prepare exact-preview human review; a skill cannot grant editorial acceptance.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "D7": {
+      "skills": [
+        "source-driven-development",
+        "ffmpeg",
+        "verification-before-completion"
+      ],
+      "reason": "Validate accepted master, thumbnail and restart activation lineage.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "E1": {
+      "skills": [
+        "api-and-interface-design",
+        "documentation-and-adrs"
+      ],
+      "reason": "Preserve the settled narrow-diagnostics scope decision.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "E2": {
+      "skills": [
+        "security-and-hardening",
+        "observability-and-instrumentation",
+        "test-guard"
+      ],
+      "reason": "Implement redacted failure records while preserving original exceptions.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "E3": {
+      "skills": [
+        "systematic-debugging",
+        "observability-and-instrumentation",
+        "test-guard"
+      ],
+      "reason": "Prove issue signatures and responsible failure layers.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "E4": {
+      "skills": [
+        "api-and-interface-design",
+        "test-guard",
+        "verification-before-completion"
+      ],
+      "reason": "Validate automated direction contracts, approval and source-audio bypass guards.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "E5": {
+      "skills": [
+        "systematic-debugging",
+        "test-guard",
+        "code-review-and-quality"
+      ],
+      "reason": "Reconcile nine resilience promises with implementation and replay evidence.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "F1": {
+      "skills": [
+        "code-review-and-quality",
+        "security-and-hardening",
+        "verification-before-completion"
+      ],
+      "reason": "Review the exact full branch diff and outstanding privacy/correctness findings.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "F2": {
+      "skills": [
+        "systematic-debugging",
+        "test-guard",
+        "verification-before-completion"
+      ],
+      "reason": "Resolve checkpoint reliability, then run required exact-tree software gates.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "F3": {
+      "skills": [
+        "ci-cd-and-automation",
+        "verification-before-completion"
+      ],
+      "reason": "Verify packaging/build requirements and actual artifact receipts.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "F4": {
+      "skills": [
+        "documentation-and-adrs",
+        "docs-guard",
+        "verification-before-completion"
+      ],
+      "reason": "Reconcile DOX, task evidence and fresh lexical documentation retrieval.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "F5": {
+      "skills": [
+        "research",
+        "docs-guard",
+        "verification-before-completion"
+      ],
+      "reason": "Close audit limitations through direct evidence or an explicit owner disposition.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "F6": {
+      "skills": [
+        "git-workflow-and-versioning",
+        "verification-before-completion"
+      ],
+      "reason": "Prepare coherent atomic commits and an evidence-backed PR.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "F7": {
+      "skills": [
+        "code-review-and-quality",
+        "git-workflow-and-versioning",
+        "verification-before-completion"
+      ],
+      "reason": "Triage formal PR/CodeRabbit findings against the exact PR head.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "F8": {
+      "skills": [
+        "ci-cd-and-automation",
+        "git-workflow-and-versioning",
+        "verification-before-completion"
+      ],
+      "reason": "Check required CI against the exact proposed head.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "F9": {
+      "skills": [
+        "shipping-and-launch",
+        "git-workflow-and-versioning",
+        "verification-before-completion"
+      ],
+      "reason": "Present the merge decision and verify authorized post-merge state.",
+      "source": "tasks/BRANCH_COMPLETION_MASTER.md"
+    },
+    "WF01": {
+      "skills": [
+        "docs-guard",
+        "verification-before-completion"
+      ],
+      "reason": "Reconcile completed returns and stale resume instructions.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    },
+    "WF02": {
+      "skills": [
+        "context-engineering",
+        "serena",
+        "code-review-and-quality"
+      ],
+      "reason": "Inspect routing, ownership and supported tool paths.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    },
+    "WF03": {
+      "skills": [
+        "api-and-interface-design",
+        "security-and-hardening"
+      ],
+      "reason": "Separate readiness evidence from action authorization.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    },
+    "WF04": {
+      "skills": [
+        "ffmpeg",
+        "verification-before-completion"
+      ],
+      "reason": "Verify supported FFmpeg command contracts.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    },
+    "WF05": {
+      "skills": [
+        "audio-mixing-mastering",
+        "documentation-and-adrs"
+      ],
+      "reason": "Reconcile saved voice policy without replacing accepted narration.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    },
+    "WF06": {
+      "skills": [
+        "docs-guard",
+        "verification-before-completion"
+      ],
+      "reason": "Catch literal code fragments and malformed documentation indexes.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    },
+    "WF07": {
+      "skills": [
+        "documentation-and-adrs",
+        "docs-guard"
+      ],
+      "reason": "Archive superseded cursors and preserve one active master/ledger.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    },
+    "WF08": {
+      "skills": [
+        "audio-dsp",
+        "verification-before-completion"
+      ],
+      "reason": "Check scorecard and additive audio-receipt status against bytes.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    },
+    "WF09": {
+      "skills": [
+        "windows-desktop-e2e",
+        "documentation-and-adrs"
+      ],
+      "reason": "Keep historical GUI decisions distinct from present window observations.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    },
+    "WF10": {
+      "skills": [
+        "documentation-and-adrs",
+        "api-and-interface-design"
+      ],
+      "reason": "Keep completion, blocked handoff and authorization terminology precise.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    },
+    "WF11": {
+      "skills": [
+        "verification-before-completion",
+        "test-guard"
+      ],
+      "reason": "Require output existence, hashes and readback before accepting worker claims.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    },
+    "WF12": {
+      "skills": [
+        "context-engineering",
+        "test-guard",
+        "systematic-debugging"
+      ],
+      "reason": "Prevent repeated retrievals, role mismatches and unreviewed fixture mistakes.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    },
+    "WF13": {
+      "skills": [
+        "docs-guard",
+        "verification-before-completion"
+      ],
+      "reason": "Verify exact runtime paths and report missing directories accurately.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    },
+    "WF14": {
+      "skills": [
+        "code-review-and-quality",
+        "verification-before-completion"
+      ],
+      "reason": "Verify candidate/root before-after pins before promotion.",
+      "source": "docs/sessions/CODEX_WORKFLOW_RECONCILIATION_20261016.md"
+    }
+  },
+  "dependencies": {
+    "systematic-debugging": [
+      "verification-before-completion",
+      "test-driven-development"
+    ]
+  },
+  "bound_skills": {
+    "api-and-interface-design": {
+      "path": ".agents/skills/api-and-interface-design/SKILL.md",
+      "sha256": "293db2903b41316a5109a1e0ce3e1740eeafae31735bc1f9143dafbfd1187363",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "arabic-copywriting-dialects": {
+      "path": ".agents/skills/arabic-copywriting-dialects/SKILL.md",
+      "sha256": "ece88b671d8e713e94e725832d30e2392e37b7b3bb0436ea0ac4d5f1825c916c",
+      "source": {
+        "repository": "arabagentskills/skills",
+        "type": "github",
+        "skill_path": "skills/arabic-copywriting-dialects/SKILL.md",
+        "installer_content_hash": "c0b77622455eed3f15ab4b098f8ea78b7d5571ad343a124a0066fe023ed846ce"
+      },
+      "installation": "reused"
+    },
+    "audio-dsp": {
+      "path": ".agents/skills/audio-dsp/SKILL.md",
+      "sha256": "0255b895624d2fbeecffc2898cc9f5add8958fe63b2138359cc806d500d38dc6",
+      "source": {
+        "repository": "alemusica/golden-helix-studio",
+        "type": "github",
+        "skill_path": ".github/skills/audio-dsp/SKILL.md",
+        "installer_content_hash": "62c1f0427ff324a64ec8e61e1fc54be7f4b9b45711b32ddc08b534835088f787"
+      },
+      "installation": "reused"
+    },
+    "audio-mixing-mastering": {
+      "path": ".agents/skills/audio-mixing-mastering/SKILL.md",
+      "sha256": "19e8d97bef7c2f0035022e6f2d4f1aee6d2ab6656c2510d3845d043e1120102b",
+      "source": {
+        "repository": "calesthio/generative-media-skills",
+        "type": "github",
+        "skill_path": "skills/production/audio-craft/audio-mixing-mastering/SKILL.md",
+        "installer_content_hash": "1ad04f46da3ec543efbe20987401d79a351652038e37db19eb6ef420c7d77cc7"
+      },
+      "installation": "reused"
+    },
+    "ci-cd-and-automation": {
+      "path": ".agents/skills/ci-cd-and-automation/SKILL.md",
+      "sha256": "a6ed8ed56456b01ff8314c44eefc69897d9905ae4e06bb2b7036286efb79b5f0",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "code-review-and-quality": {
+      "path": ".agents/skills/code-review-and-quality/SKILL.md",
+      "sha256": "bec431b759ff389e47b8d2c9d74e1981ff93cf5f3c36b4a3b6a71a75c250be2c",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "context-engineering": {
+      "path": ".agents/skills/context-engineering/SKILL.md",
+      "sha256": "ff9d4e5706bdd2eb7de1bfed569f1f42d28e478979ce6fcc32e617e7861b491d",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "docs-guard": {
+      "path": ".agents/skills/docs-guard/SKILL.md",
+      "sha256": "07f81cf931dcd43fb6bcf4cd1c196d823589ce974cd972749103e14bb83acab1",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "documentation-and-adrs": {
+      "path": ".agents/skills/documentation-and-adrs/SKILL.md",
+      "sha256": "7fed35f9c5b95d8e3623ad24d78d209c3267ab62d7157fc03954c76a7e58adf4",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "faster-whisper": {
+      "path": ".agents/skills/openclaw-skills-faster-whisper/SKILL.md",
+      "sha256": "7b5e823c59bb10b18274313034c071cda9351fa245e9ad477d3cd0e9a47dd1aa",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "ffmpeg": {
+      "path": ".agents/skills/ffmpeg/SKILL.md",
+      "sha256": "0231fe03eaacc01a8db12426c8e394aa4c0fc51369fa9352681a5d51ceaa7d11",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "git-workflow-and-versioning": {
+      "path": ".agents/skills/git-workflow-and-versioning/SKILL.md",
+      "sha256": "51677cf03845dd29d08ea4d3125665057b720aea3dccc572f25d8b172409ece6",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "observability-and-instrumentation": {
+      "path": ".agents/skills/observability-and-instrumentation/SKILL.md",
+      "sha256": "40c59a0c3ba28f5697600add521e38f81f880f986317628cdc0df9bdb8acf126",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "research": {
+      "path": ".agents/skills/research/SKILL.md",
+      "sha256": "524b404b1ca373a8b00f63a64667ec4b0a61c3c9cf4e8f246e639be859bb6979",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "security-and-hardening": {
+      "path": ".agents/skills/security-and-hardening/SKILL.md",
+      "sha256": "8fed058a520281384ed1bbfddbfb3d2b12479459231c67ae0d1f0d765bb52f95",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "serena": {
+      "path": ".agents/skills/serena/SKILL.md",
+      "sha256": "53f95e724c578089c68030df4cd91518014f60a6f8bb7b7a93e0f7b2e31f1fbc",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "shipping-and-launch": {
+      "path": ".agents/skills/shipping-and-launch/SKILL.md",
+      "sha256": "efc70a45ad6435d93f2b3cef16c125ff6d75a2383e49f30056fcba04b27d6e4a",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "systematic-debugging": {
+      "path": ".agents/skills/systematic-debugging/SKILL.md",
+      "sha256": "51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202",
+      "source": {
+        "repository": "obra/superpowers",
+        "type": "github",
+        "skill_path": "skills/systematic-debugging/SKILL.md",
+        "installer_content_hash": "276fb0aadb002ab930cc2a56de89e16995a2e3e70b33587652bf0a5fb123148d"
+      },
+      "installation": "fetched_this_task"
+    },
+    "test-driven-development": {
+      "path": ".agents/skills/test-driven-development/SKILL.md",
+      "sha256": "6c60e193d77a6c52eb3d9a7ca774f1801b9f798ec34f075720e0425a8094f50e",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "test-guard": {
+      "path": ".agents/skills/test-guard/SKILL.md",
+      "sha256": "bba577c469fe3c01f6a64b97c71f6cf2e6f2ee8a5aabd9c7a73319d16339fca6",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "verification-before-completion": {
+      "path": ".agents/skills/verification-before-completion/SKILL.md",
+      "sha256": "2befe7fc55bcadaa3d97dd9e8efeb633d2561c0ebe74c5a8b17c4d9e7e4520b3",
+      "source": {
+        "repository": "obra/superpowers",
+        "type": "github",
+        "skill_path": "skills/verification-before-completion/SKILL.md",
+        "installer_content_hash": "b529822bdac4b197b180fe12225cff86b930b65910435103c10622df7f041651"
+      },
+      "installation": "fetched_this_task"
+    },
+    "windows-desktop-e2e": {
+      "path": ".agents/skills/windows-desktop-e2e/SKILL.md",
+      "sha256": "cbc93a1e2514ecdcee30da744aa13eb6c0ebe4948ca3dfff52b287df4f9f0814",
+      "source": {
+        "repository": "affaan-m/ecc",
+        "type": "github",
+        "skill_path": "skills/windows-desktop-e2e/SKILL.md",
+        "installer_content_hash": "9a7dad552c7ddcc29e43b65f1c05516a1905f6962fdca56ed6b14f80dad974d9"
+      },
+      "installation": "reused"
+    },
+    "source-driven-development": {
+      "path": ".agents/skills/source-driven-development/SKILL.md",
+      "sha256": "b979e7531ea601ed14a090f32a5b135db517c48ab9821c5e8b09efd80f4ff4d8",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    },
+    "planning-and-task-breakdown": {
+      "path": ".agents/skills/planning-and-task-breakdown/SKILL.md",
+      "sha256": "d87ff6bb23aa791f78a504d784e903bb13602975923f884af5d13d5b66b1651a",
+      "source": {
+        "type": "pre_existing_project_copy",
+        "repository": "UNRECORDED"
+      },
+      "installation": "reused"
+    }
+  },
+  "active_project_skills": [
+    {
+      "name": "agent-browser",
+      "path": ".agents/skills/agent-browser/SKILL.md",
+      "bytes": 3263,
+      "sha256": "bb6b4c5aae49ff88addb31312437f94242a3e5aae950503ab4f332e28186c261"
+    },
+    {
+      "name": "agy-delegate",
+      "path": ".agents/skills/agy-delegate/SKILL.md",
+      "bytes": 8639,
+      "sha256": "13cddd3fd5194fe602540b7cc6fac18beeec3dae7f98136c78fdd9bc8ca8f45f"
+    },
+    {
+      "name": "aider-delegate",
+      "path": ".agents/skills/aider-delegate/SKILL.md",
+      "bytes": 12336,
+      "sha256": "6a8b3d55e3c3e49297e0be01deb817c955a84ab23dd591e3207e0ee69a41f791"
+    },
+    {
+      "name": "antigravity-multiagent",
+      "path": ".agents/skills/antigravity-multiagent/SKILL.md",
+      "bytes": 6898,
+      "sha256": "a99e2863ca1d887ee1d75f7fcd4068640c251bed2af808750e568ade1dec4118"
+    },
+    {
+      "name": "api-and-interface-design",
+      "path": ".agents/skills/api-and-interface-design/SKILL.md",
+      "bytes": 10307,
+      "sha256": "293db2903b41316a5109a1e0ce3e1740eeafae31735bc1f9143dafbfd1187363"
+    },
+    {
+      "name": "arabic-copywriting-dialects",
+      "path": ".agents/skills/arabic-copywriting-dialects/SKILL.md",
+      "bytes": 6174,
+      "sha256": "ece88b671d8e713e94e725832d30e2392e37b7b3bb0436ea0ac4d5f1825c916c"
+    },
+    {
+      "name": "ask-matt",
+      "path": ".agents/skills/ask-matt/SKILL.md",
+      "bytes": 11507,
+      "sha256": "d8934db5ccf28b8c6e43d44d88801936d3831ab5666280b26d6f0852a312dc63"
+    },
+    {
+      "name": "audio-dsp",
+      "path": ".agents/skills/audio-dsp/SKILL.md",
+      "bytes": 2408,
+      "sha256": "0255b895624d2fbeecffc2898cc9f5add8958fe63b2138359cc806d500d38dc6"
+    },
+    {
+      "name": "audio-mixing-mastering",
+      "path": ".agents/skills/audio-mixing-mastering/SKILL.md",
+      "bytes": 28117,
+      "sha256": "19e8d97bef7c2f0035022e6f2d4f1aee6d2ab6656c2510d3845d043e1120102b"
+    },
+    {
+      "name": "audio-transcription",
+      "path": ".agents/skills/audio-transcription/SKILL.md",
+      "bytes": 4506,
+      "sha256": "adaf00702969f8144385cc53fdc318b5ea07496508ed3a8b9ee2d604442a3fe8"
+    },
+    {
+      "name": "browser-automation",
+      "path": ".agents/skills/browser-automation/SKILL.md",
+      "bytes": 24790,
+      "sha256": "41764ce9a7569e706c3d0b6bf9f32ef9fcf4dfd576e4b9ff3519a1e2bfaa8c66"
+    },
+    {
+      "name": "browser-testing-with-devtools",
+      "path": ".agents/skills/browser-testing-with-devtools/SKILL.md",
+      "bytes": 14539,
+      "sha256": "4e3aacd6a380cd25bc6c2d67fdd1c926a9b22535b8a62109ecd33cefd909e3d9"
+    },
+    {
+      "name": "browser-trace",
+      "path": ".agents/skills/browser-trace/SKILL.md",
+      "bytes": 15275,
+      "sha256": "de58ac8e38787ea61c560d678cc731d944863d405c2b703d5d80d0570676442c"
+    },
+    {
+      "name": "canvas-design",
+      "path": ".agents/skills/canvas-design/SKILL.md",
+      "bytes": 11939,
+      "sha256": "a1f288079624402f30682753c1d43920b6664785698d21d3e7aa197450a6448b"
+    },
+    {
+      "name": "cavecrew",
+      "path": ".agents/skills/cavecrew/SKILL.md",
+      "bytes": 3936,
+      "sha256": "b74f374f6aae6e9a31e78e7d876860406fe5833378e9298536edf176c12f379b"
+    },
+    {
+      "name": "caveman-commit",
+      "path": ".agents/skills/caveman-commit/SKILL.md",
+      "bytes": 2588,
+      "sha256": "58db7b8efab911a629c26e7132517d9076e4e3645009eb604cb8c25663477841"
+    },
+    {
+      "name": "caveman-compress",
+      "path": ".agents/skills/caveman-compress/SKILL.md",
+      "bytes": 4535,
+      "sha256": "8b0d64c622d8a70411bbd86e736ac23cc0465fca1943a37f081e58e9d3afd210"
+    },
+    {
+      "name": "caveman-help",
+      "path": ".agents/skills/caveman-help/SKILL.md",
+      "bytes": 2300,
+      "sha256": "590d6c6c17254bda56d18da7cc9d0bf252aeec5d1c78b77dd7ae4cabb8404f89"
+    },
+    {
+      "name": "caveman-review",
+      "path": ".agents/skills/caveman-review/SKILL.md",
+      "bytes": 2739,
+      "sha256": "9ef09065f26b9781275b5a4775e14870e331fab833efb2a2aa33f3205a2b83c3"
+    },
+    {
+      "name": "caveman-stats",
+      "path": ".agents/skills/caveman-stats/SKILL.md",
+      "bytes": 607,
+      "sha256": "b9e49e46ede956e0c1633eae82a695c996f728bc48f3903f001d301068a2b0ea"
+    },
+    {
+      "name": "caveman",
+      "path": ".agents/skills/caveman/SKILL.md",
+      "bytes": 5227,
+      "sha256": "5e30bb56afbd0b01bd736f2da84180e76f18db4a64de8e124525d5c8dc2e8605"
+    },
+    {
+      "name": "ci-cd-and-automation",
+      "path": ".agents/skills/ci-cd-and-automation/SKILL.md",
+      "bytes": 11332,
+      "sha256": "a6ed8ed56456b01ff8314c44eefc69897d9905ae4e06bb2b7036286efb79b5f0"
+    },
+    {
+      "name": "claude-delegate",
+      "path": ".agents/skills/claude-delegate/SKILL.md",
+      "bytes": 9144,
+      "sha256": "ffc638c5db02edf0f53633e32642accf602b553d0ab61575beeb5948b5978dc8"
+    },
+    {
+      "name": "claude-handoff",
+      "path": ".agents/skills/claude-handoff/SKILL.md",
+      "bytes": 1319,
+      "sha256": "7f99b9c489c8d55374d261c31e2dcf7e75c2ee103dbb64e87b18971a05449f21"
+    },
+    {
+      "name": "clean-code-guard",
+      "path": ".agents/skills/clean-code-guard/SKILL.md",
+      "bytes": 17609,
+      "sha256": "bfef65f69fb2d04cf79c9bed8843b724809ac056dd6187769cf26147343fbc73"
+    },
+    {
+      "name": "code-review-and-quality",
+      "path": ".agents/skills/code-review-and-quality/SKILL.md",
+      "bytes": 20543,
+      "sha256": "bec431b759ff389e47b8d2c9d74e1981ff93cf5f3c36b4a3b6a71a75c250be2c"
+    },
+    {
+      "name": "code-review",
+      "path": ".agents/skills/code-review/SKILL.md",
+      "bytes": 6676,
+      "sha256": "3abbdfe52540f9242e16589fae2cc423b3d98994c37683944462b29bab89495c"
+    },
+    {
+      "name": "code-simplification",
+      "path": ".agents/skills/code-simplification/SKILL.md",
+      "bytes": 13545,
+      "sha256": "f0c5ed754057eb0c1e027e2587f59de816651feb5e837242296c43ea21cf621d"
+    },
+    {
+      "name": "codebase-design",
+      "path": ".agents/skills/codebase-design/SKILL.md",
+      "bytes": 6560,
+      "sha256": "362b0bec828219d9f4b08ca7c466164e67253bdd817359258e60d2e9c5692a8f"
+    },
+    {
+      "name": "codebase-memory",
+      "path": ".agents/skills/codebase-memory/SKILL.md",
+      "bytes": 3223,
+      "sha256": "99371d29af21e23079fd6cc2213e5e7add270304b3812da55d5dfdbe67176684"
+    },
+    {
+      "name": "codex-delegate",
+      "path": ".agents/skills/codex-delegate/SKILL.md",
+      "bytes": 10289,
+      "sha256": "8e4bd1f093ce6a8747bd4ca0861e655d51ad2d3491487f95cfc9f9545c706ccd"
+    },
+    {
+      "name": "commandcode-delegate",
+      "path": ".agents/skills/commandcode-delegate/SKILL.md",
+      "bytes": 10837,
+      "sha256": "493769b994c32753f361164210dfb4710c54198f83b62d1713c1d3ea1b80f161"
+    },
+    {
+      "name": "context-engineering",
+      "path": ".agents/skills/context-engineering/SKILL.md",
+      "bytes": 11070,
+      "sha256": "ff9d4e5706bdd2eb7de1bfed569f1f42d28e478979ce6fcc32e617e7861b491d"
+    },
+    {
+      "name": "copilot-delegate",
+      "path": ".agents/skills/copilot-delegate/SKILL.md",
+      "bytes": 7328,
+      "sha256": "1797584042cd76506aae1bbc06e98a67fdf787a0ff416049a6a1fe79da1e73ec"
+    },
+    {
+      "name": "cursor-delegate",
+      "path": ".agents/skills/cursor-delegate/SKILL.md",
+      "bytes": 8738,
+      "sha256": "1708c8443638e2d3531d105a0453975e78144cb4bd09cda631d46cc6b5381ecf"
+    },
+    {
+      "name": "debugging-and-error-recovery",
+      "path": ".agents/skills/debugging-and-error-recovery/SKILL.md",
+      "bytes": 10603,
+      "sha256": "927ad6917fa2891827351cfa3470cd715423faaa5c5f27fe74534d9324c35eea"
+    },
+    {
+      "name": "delegate-setup",
+      "path": ".agents/skills/delegate-setup/SKILL.md",
+      "bytes": 11128,
+      "sha256": "d3c0d6acd46ed16a425d4e524d348acab6ed150907dd455ae68768c9409a881e"
+    },
+    {
+      "name": "deprecation-and-migration",
+      "path": ".agents/skills/deprecation-and-migration/SKILL.md",
+      "bytes": 12516,
+      "sha256": "92d9846321fab624eded7ac55d19a7738cfd2321c2be2e35eb153dcacf7359de"
+    },
+    {
+      "name": "diagnosing-bugs",
+      "path": ".agents/skills/diagnosing-bugs/SKILL.md",
+      "bytes": 8667,
+      "sha256": "bca66b7141da7d225b7dfd1abf6f2bee657b8044d3897604055e760749c71724"
+    },
+    {
+      "name": "doc-coauthoring",
+      "path": ".agents/skills/doc-coauthoring/SKILL.md",
+      "bytes": 15815,
+      "sha256": "2e47d78846faeea4a56e9809c52700087a15a2155a3f293a3efbaded81398ef4"
+    },
+    {
+      "name": "docs-guard",
+      "path": ".agents/skills/docs-guard/SKILL.md",
+      "bytes": 8429,
+      "sha256": "07f81cf931dcd43fb6bcf4cd1c196d823589ce974cd972749103e14bb83acab1"
+    },
+    {
+      "name": "documentation-and-adrs",
+      "path": ".agents/skills/documentation-and-adrs/SKILL.md",
+      "bytes": 8734,
+      "sha256": "7fed35f9c5b95d8e3623ad24d78d209c3267ab62d7157fc03954c76a7e58adf4"
+    },
+    {
+      "name": "domain-modeling",
+      "path": ".agents/skills/domain-modeling/SKILL.md",
+      "bytes": 3405,
+      "sha256": "dd4c753a617bd7db97c34fd3e049581c4bc0c0590e8a8b1f97d3b9d6013131dc"
+    },
+    {
+      "name": "doubt-driven-development",
+      "path": ".agents/skills/doubt-driven-development/SKILL.md",
+      "bytes": 16487,
+      "sha256": "59aef769adeae40aad67a1d54474aaf914ea7ecdfc2a4752a54840a8d29f80de"
+    },
+    {
+      "name": "ffmpeg-opencv-integration",
+      "path": ".agents/skills/ffmpeg-opencv-integration/SKILL.md",
+      "bytes": 4175,
+      "sha256": "ca5e2f350036061d9a77d4fb7c1b191b9efe03d5879e3cbffa226621e0055aa8"
+    },
+    {
+      "name": "ffmpeg-video-editor",
+      "path": ".agents/skills/ffmpeg-video-editor/SKILL.md",
+      "bytes": 10574,
+      "sha256": "b7e2e4f0e78c6b58a11cd432d3ee2f6a7494d006aae3c3fb5d14eaa459d7f483"
+    },
+    {
+      "name": "ffmpeg",
+      "path": ".agents/skills/ffmpeg/SKILL.md",
+      "bytes": 13679,
+      "sha256": "0231fe03eaacc01a8db12426c8e394aa4c0fc51369fa9352681a5d51ceaa7d11"
+    },
+    {
+      "name": "find-skills",
+      "path": ".agents/skills/find-skills/SKILL.md",
+      "bytes": 5519,
+      "sha256": "deddc03b4b5f50755b97fcdb737a786676992ef7e9be614d2cd2c71e0320bebf"
+    },
+    {
+      "name": "git-guardrails-claude-code",
+      "path": ".agents/skills/git-guardrails-claude-code/SKILL.md",
+      "bytes": 2408,
+      "sha256": "12d335b84bcf984b213b527014262233f27ffa1eb807db466832ff711b96f41f"
+    },
+    {
+      "name": "git-workflow-and-versioning",
+      "path": ".agents/skills/git-workflow-and-versioning/SKILL.md",
+      "bytes": 14000,
+      "sha256": "51677cf03845dd29d08ea4d3125665057b720aea3dccc572f25d8b172409ece6"
+    },
+    {
+      "name": "graphify",
+      "path": ".agents/skills/graphify/SKILL.md",
+      "bytes": 37511,
+      "sha256": "527fcad52c716e98241967c44ac0d69dbf7366db633cf35011ba0d1b55fbe23e"
+    },
+    {
+      "name": "grill-me",
+      "path": ".agents/skills/grill-me/SKILL.md",
+      "bytes": 164,
+      "sha256": "19e660207b447acf6ee0d600471c02e549c7aca8fb3ab38fdc2c7056aa442fc8"
+    },
+    {
+      "name": "grill-with-docs",
+      "path": ".agents/skills/grill-with-docs/SKILL.md",
+      "bytes": 254,
+      "sha256": "abc0fa7948db18b5fb0e1cc1c522ac5ff47d874e2da1e5df60619d79be11f38b"
+    },
+    {
+      "name": "grilling",
+      "path": ".agents/skills/grilling/SKILL.md",
+      "bytes": 2015,
+      "sha256": "d806733216b16e51adad834e724bfec5540a436d06395bfc75b843cda9f7404b"
+    },
+    {
+      "name": "handoff",
+      "path": ".agents/skills/handoff/SKILL.md",
+      "bytes": 910,
+      "sha256": "96f8045f01f569daa3737150d918b7201ccd090905fb10cefedd326e4001f551"
+    },
+    {
+      "name": "idea-refine",
+      "path": ".agents/skills/idea-refine/SKILL.md",
+      "bytes": 8111,
+      "sha256": "79e773058963adc7646b0115b4f8a4afc974c5ff95843e4ef1cafff3cb51899e"
+    },
+    {
+      "name": "implement-spec",
+      "path": ".agents/skills/implement-spec/SKILL.md",
+      "bytes": 2078,
+      "sha256": "986c0becc03a5b72d1c8b04c8e7c0830b8b9baae109acba404d0f1a8831966a5"
+    },
+    {
+      "name": "implement",
+      "path": ".agents/skills/implement/SKILL.md",
+      "bytes": 448,
+      "sha256": "30cd7bc1ebfb3891e85a1eed3b3b81aea0fa4ad4553a784de7f8e421b2d223e0"
+    },
+    {
+      "name": "improve-codebase-architecture",
+      "path": ".agents/skills/improve-codebase-architecture/SKILL.md",
+      "bytes": 6064,
+      "sha256": "ab67dc77f7fb0e82ac2ce45e3680c4f90bd68f638c86522996cdf03426084ac7"
+    },
+    {
+      "name": "incremental-implementation",
+      "path": ".agents/skills/incremental-implementation/SKILL.md",
+      "bytes": 9249,
+      "sha256": "960f2ed08ccdd51527c347d29d2d00c80edb9992e95d67030d8a289ba04eed4e"
+    },
+    {
+      "name": "internal-comms",
+      "path": ".agents/skills/internal-comms/SKILL.md",
+      "bytes": 1511,
+      "sha256": "067b7587a344a928fc6534ef66b1bcd591fc7c26d207ea7ca3334aeb678d6475"
+    },
+    {
+      "name": "interview-me",
+      "path": ".agents/skills/interview-me/SKILL.md",
+      "bytes": 14359,
+      "sha256": "1d94741d10d2c826cd0c191aea3981ee94c8abb27ef2a166f6a372117d06448f"
+    },
+    {
+      "name": "kimi-delegate",
+      "path": ".agents/skills/kimi-delegate/SKILL.md",
+      "bytes": 6320,
+      "sha256": "911b74baf3176e1bcb2d957da0c7cf4335bd818c2f539571ac1b00750c9d90a1"
+    },
+    {
+      "name": "loop-me",
+      "path": ".agents/skills/loop-me/SKILL.md",
+      "bytes": 2554,
+      "sha256": "38ac316635d244abfdc1526edec49596f9284b36595f5a212fc5983894b6094a"
+    },
+    {
+      "name": "nlp-natural-language-processing",
+      "path": ".agents/skills/nlp-natural-language-processing/SKILL.md",
+      "bytes": 4252,
+      "sha256": "a53ecc0bc6dc5e1889174e12dc01d43039947e646d0dcdc3cf244e839209ff29"
+    },
+    {
+      "name": "observability-and-instrumentation",
+      "path": ".agents/skills/observability-and-instrumentation/SKILL.md",
+      "bytes": 11047,
+      "sha256": "40c59a0c3ba28f5697600add521e38f81f880f986317628cdc0df9bdb8acf126"
+    },
+    {
+      "name": "omp-delegate",
+      "path": ".agents/skills/omp-delegate/SKILL.md",
+      "bytes": 9276,
+      "sha256": "8abe921b6ec1550196b5972e7bea0f64bc14cd805c810beedb96a89c70c3a504"
+    },
+    {
+      "name": "faster-whisper",
+      "path": ".agents/skills/openclaw-skills-faster-whisper/SKILL.md",
+      "bytes": 19063,
+      "sha256": "7b5e823c59bb10b18274313034c071cda9351fa245e9ad477d3cd0e9a47dd1aa"
+    },
+    {
+      "name": "opencode-delegate",
+      "path": ".agents/skills/opencode-delegate/SKILL.md",
+      "bytes": 10848,
+      "sha256": "35399368a957960951262e347a5b55f01e3c628d058d314f2df5321141664909"
+    },
+    {
+      "name": "pdf",
+      "path": ".agents/skills/pdf/SKILL.md",
+      "bytes": 8072,
+      "sha256": "9f78b8359fbd4943ad260a7a1e436e5a96503406d6c34e99f69223d647d85b9c"
+    },
+    {
+      "name": "performance-optimization",
+      "path": ".agents/skills/performance-optimization/SKILL.md",
+      "bytes": 11658,
+      "sha256": "c56f6059fed0b77c50c946e38275f04c8b297657f3742d5782ee564514ecc4dc"
+    },
+    {
+      "name": "pi-delegate",
+      "path": ".agents/skills/pi-delegate/SKILL.md",
+      "bytes": 6889,
+      "sha256": "8e9689a88168b978c34200e9491bf7c947786992b69e4ee1f6820f43000a326b"
+    },
+    {
+      "name": "planning-and-task-breakdown",
+      "path": ".agents/skills/planning-and-task-breakdown/SKILL.md",
+      "bytes": 7632,
+      "sha256": "d87ff6bb23aa791f78a504d784e903bb13602975923f884af5d13d5b66b1651a"
+    },
+    {
+      "name": "prototype",
+      "path": ".agents/skills/prototype/SKILL.md",
+      "bytes": 2957,
+      "sha256": "f74ae01f4fc454d3a4ef21271920f1706e626271e715dda0559e489f45c792c3"
+    },
+    {
+      "name": "pytest-skill",
+      "path": ".agents/skills/pytest-skill/SKILL.md",
+      "bytes": 5146,
+      "sha256": "9eab1da96c3f545a20e86ed6e48022eae2cf9f16406d101c49d5eeedc13bfc00"
+    },
+    {
+      "name": "python-ffmpeg",
+      "path": ".agents/skills/python-ffmpeg/SKILL.md",
+      "bytes": 3989,
+      "sha256": "cab81b0e89832328865439ac091b672f03c0ed984271fc7b92648e33373ae1bb"
+    },
+    {
+      "name": "qoder-delegate",
+      "path": ".agents/skills/qoder-delegate/SKILL.md",
+      "bytes": 6359,
+      "sha256": "62e9211333b796fdb8dbd7ce8ac1ab9fbbe22a5ad51e574c5b111a9c66d79154"
+    },
+    {
+      "name": "research",
+      "path": ".agents/skills/research/SKILL.md",
+      "bytes": 806,
+      "sha256": "524b404b1ca373a8b00f63a64667ec4b0a61c3c9cf4e8f246e639be859bb6979"
+    },
+    {
+      "name": "resolving-merge-conflicts",
+      "path": ".agents/skills/resolving-merge-conflicts/SKILL.md",
+      "bytes": 932,
+      "sha256": "d97e7320010bbe7d32313c574acd47cec830d64edd59c956bd0ce2cba84e6ad7"
+    },
+    {
+      "name": "retro",
+      "path": ".agents/skills/retro/SKILL.md",
+      "bytes": 3432,
+      "sha256": "27213192896e3efa8f0a5dd316bfcfd072e7ae794658523cf1bfe0908b819f1c"
+    },
+    {
+      "name": "scaffold-exercises",
+      "path": ".agents/skills/scaffold-exercises/SKILL.md",
+      "bytes": 3695,
+      "sha256": "de28db7a0954db55c11ba1e3cc0fd4c037bf0f5cb8313cb292e319bcce47f424"
+    },
+    {
+      "name": "security-and-hardening",
+      "path": ".agents/skills/security-and-hardening/SKILL.md",
+      "bytes": 18878,
+      "sha256": "8fed058a520281384ed1bbfddbfb3d2b12479459231c67ae0d1f0d765bb52f95"
+    },
+    {
+      "name": "serena",
+      "path": ".agents/skills/serena/SKILL.md",
+      "bytes": 7349,
+      "sha256": "53f95e724c578089c68030df4cd91518014f60a6f8bb7b7a93e0f7b2e31f1fbc"
+    },
+    {
+      "name": "setup-pre-commit",
+      "path": ".agents/skills/setup-pre-commit/SKILL.md",
+      "bytes": 2349,
+      "sha256": "e069e6a23069ebdba946d4dea11e5d663c10640c6b14b55c4585c81b1a256ac9"
+    },
+    {
+      "name": "shipping-and-launch",
+      "path": ".agents/skills/shipping-and-launch/SKILL.md",
+      "bytes": 10045,
+      "sha256": "efc70a45ad6435d93f2b3cef16c125ff6d75a2383e49f30056fcba04b27d6e4a"
+    },
+    {
+      "name": "source-driven-development",
+      "path": ".agents/skills/source-driven-development/SKILL.md",
+      "bytes": 8204,
+      "sha256": "b979e7531ea601ed14a090f32a5b135db517c48ab9821c5e8b09efd80f4ff4d8"
+    },
+    {
+      "name": "spec-driven-development",
+      "path": ".agents/skills/spec-driven-development/SKILL.md",
+      "bytes": 8527,
+      "sha256": "af5b873414a8b45b96b0d30d5297400f55eb3a56425161a088e470c14260a1e5"
+    },
+    {
+      "name": "systematic-debugging",
+      "path": ".agents/skills/systematic-debugging/SKILL.md",
+      "bytes": 9530,
+      "sha256": "51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202"
+    },
+    {
+      "name": "tdd",
+      "path": ".agents/skills/tdd/SKILL.md",
+      "bytes": 3587,
+      "sha256": "193b791c489d1640ccfb58d7cbd60fc9e059ef44632b3c92f208784cfe45ab78"
+    },
+    {
+      "name": "teach",
+      "path": ".agents/skills/teach/SKILL.md",
+      "bytes": 9646,
+      "sha256": "3377485cbb1d62782122c1cc8cab4ceb37d5457c0543889784f3d7d9ca359e04"
+    },
+    {
+      "name": "test-driven-development",
+      "path": ".agents/skills/test-driven-development/SKILL.md",
+      "bytes": 14976,
+      "sha256": "6c60e193d77a6c52eb3d9a7ca774f1801b9f798ec34f075720e0425a8094f50e"
+    },
+    {
+      "name": "test-guard",
+      "path": ".agents/skills/test-guard/SKILL.md",
+      "bytes": 8680,
+      "sha256": "bba577c469fe3c01f6a64b97c71f6cf2e6f2ee8a5aabd9c7a73319d16339fca6"
+    },
+    {
+      "name": "theme-factory",
+      "path": ".agents/skills/theme-factory/SKILL.md",
+      "bytes": 3124,
+      "sha256": "c35893e221e28895c52143cc11bf30e41a44817796b39d4b15727dadc9796552"
+    },
+    {
+      "name": "to-questionnaire",
+      "path": ".agents/skills/to-questionnaire/SKILL.md",
+      "bytes": 2958,
+      "sha256": "77825120815c21400f82e2794faf342d1d1a4ab1493be3fe061857885d26b768"
+    },
+    {
+      "name": "to-spec",
+      "path": ".agents/skills/to-spec/SKILL.md",
+      "bytes": 3118,
+      "sha256": "c73a2250beac0479e384f5466e834bb54ce6e30b7f8705e9999ba840d9d59b36"
+    },
+    {
+      "name": "to-tickets",
+      "path": ".agents/skills/to-tickets/SKILL.md",
+      "bytes": 5776,
+      "sha256": "8082bc6ef165027c5df3215763055f4a9668878bf27f25f582db78a14c3ed3c1"
+    },
+    {
+      "name": "triage",
+      "path": ".agents/skills/triage/SKILL.md",
+      "bytes": 6669,
+      "sha256": "652c815971c2df925cee0f250ae2596f50fde19328305f3c55afd157a7f06fe6"
+    },
+    {
+      "name": "using-agent-skills",
+      "path": ".agents/skills/using-agent-skills/SKILL.md",
+      "bytes": 10337,
+      "sha256": "a5bf05293cfb67af9c5e21e14023d723d2ac8ca42912cef4cee29fbb07e67d64"
+    },
+    {
+      "name": "verification-before-completion",
+      "path": ".agents/skills/verification-before-completion/SKILL.md",
+      "bytes": 3646,
+      "sha256": "2befe7fc55bcadaa3d97dd9e8efeb633d2561c0ebe74c5a8b17c4d9e7e4520b3"
+    },
+    {
+      "name": "vibe-delegate",
+      "path": ".agents/skills/vibe-delegate/SKILL.md",
+      "bytes": 6700,
+      "sha256": "3f9c7ccb39ac610a4c5c30d7e6ef1190ca760c25cc3094df78951912d4b170d2"
+    },
+    {
+      "name": "wait-what",
+      "path": ".agents/skills/wait-what/SKILL.md",
+      "bytes": 401,
+      "sha256": "dcaa44ef972d5a3f9bda65a69442fb11e36eb41b7e9bb0dc8b63031ba0582fdb"
+    },
+    {
+      "name": "warp-delegate",
+      "path": ".agents/skills/warp-delegate/SKILL.md",
+      "bytes": 10484,
+      "sha256": "15da816f3825311d73e165a66d11852d3c7beddf4cdb180d55de50af7e28d361"
+    },
+    {
+      "name": "wayfinder",
+      "path": ".agents/skills/wayfinder/SKILL.md",
+      "bytes": 12036,
+      "sha256": "3362fa360948f8526e88ebe8184f5402f9b5f4d9dced2ba0ed2721f64ae3de5a"
+    },
+    {
+      "name": "windows-desktop-e2e",
+      "path": ".agents/skills/windows-desktop-e2e/SKILL.md",
+      "bytes": 30577,
+      "sha256": "cbc93a1e2514ecdcee30da744aa13eb6c0ebe4948ca3dfff52b287df4f9f0814"
+    },
+    {
+      "name": "wizard",
+      "path": ".agents/skills/wizard/SKILL.md",
+      "bytes": 4167,
+      "sha256": "dbefb750eae07d9f8b05ab1084f6acfdda2752df2a6b577c46a505e2bc790164"
+    },
+    {
+      "name": "writing-for-agents",
+      "path": ".agents/skills/writing-for-agents/SKILL.md",
+      "bytes": 10967,
+      "sha256": "1c0c4ebf2d221917591144f0ced4fe46dae13301cb3d6d93fc88ecf0dda6aed2"
+    },
+    {
+      "name": "writing-fragments",
+      "path": ".agents/skills/writing-fragments/SKILL.md",
+      "bytes": 3637,
+      "sha256": "3be6ffe9386ddd6de8b320c331295953995792fd65d0972aa2a28524ead73e90"
+    },
+    {
+      "name": "writing-shape",
+      "path": ".agents/skills/writing-shape/SKILL.md",
+      "bytes": 6001,
+      "sha256": "c13cbc364fbceefce654d9a4b0331113ff47efe90ce2523c2de23ecef63fefbd"
+    },
+    {
+      "name": "zcode-delegate",
+      "path": ".agents/skills/zcode-delegate/SKILL.md",
+      "bytes": 9802,
+      "sha256": "eb3b3143f0556a9c23cab6dc604cba0fb9d16f93e159daf916b30ded77a5b579"
+    }
+  ],
+  "archived_skills": [
+    {
+      "skill": "algorithmic-art",
+      "source": ".agents/skills/algorithmic-art",
+      "archive": ".agents/skill-archive/20261016/algorithmic-art",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "brand-guidelines",
+      "source": ".agents/skills/brand-guidelines",
+      "archive": ".agents/skill-archive/20261016/brand-guidelines",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "docx",
+      "source": ".agents/skills/docx",
+      "archive": ".agents/skill-archive/20261016/docx",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "pptx",
+      "source": ".agents/skills/pptx",
+      "archive": ".agents/skill-archive/20261016/pptx",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "xlsx",
+      "source": ".agents/skills/xlsx",
+      "archive": ".agents/skill-archive/20261016/xlsx",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "frontend-design",
+      "source": ".agents/skills/frontend-design",
+      "archive": ".agents/skill-archive/20261016/frontend-design",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "frontend-ui-engineering",
+      "source": ".agents/skills/frontend-ui-engineering",
+      "archive": ".agents/skill-archive/20261016/frontend-ui-engineering",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "slack-gif-creator",
+      "source": ".agents/skills/slack-gif-creator",
+      "archive": ".agents/skill-archive/20261016/slack-gif-creator",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "web-artifacts-builder",
+      "source": ".agents/skills/web-artifacts-builder",
+      "archive": ".agents/skill-archive/20261016/web-artifacts-builder",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "webapp-testing",
+      "source": ".agents/skills/webapp-testing",
+      "archive": ".agents/skill-archive/20261016/webapp-testing",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "playwright-automation-fill-in-form",
+      "source": ".agents/skills/playwright-automation-fill-in-form",
+      "archive": ".agents/skill-archive/20261016/playwright-automation-fill-in-form",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "ai-file-organizer",
+      "source": ".agents/skills/ai-file-organizer",
+      "archive": ".agents/skill-archive/20261016/ai-file-organizer",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "file-organizer",
+      "source": ".agents/skills/file-organizer",
+      "archive": ".agents/skill-archive/20261016/file-organizer",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "photo-slideshow",
+      "source": ".agents/skills/photo-slideshow",
+      "archive": ".agents/skill-archive/20261016/photo-slideshow",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "skill-creator",
+      "source": ".agents/skills/skill-creator",
+      "archive": ".agents/skill-archive/20261016/skill-creator",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "setup-matt-pocock-skills",
+      "source": ".agents/skills/setup-matt-pocock-skills",
+      "archive": ".agents/skill-archive/20261016/setup-matt-pocock-skills",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "setup-ts-deep-modules",
+      "source": ".agents/skills/setup-ts-deep-modules",
+      "archive": ".agents/skill-archive/20261016/setup-ts-deep-modules",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "obsidian-skills",
+      "source": ".agents/skills/obsidian-skills",
+      "archive": ".agents/skill-archive/20261016/obsidian-skills",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "hyperframes-video-composition",
+      "source": ".agents/skills/hyperframes-video-composition",
+      "archive": ".agents/skill-archive/20261016/hyperframes-video-composition",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "writing-beats",
+      "source": ".agents/skills/writing-beats",
+      "archive": ".agents/skill-archive/20261016/writing-beats",
+      "status": "archived",
+      "verified_utc": "2026-10-15T23:28:30.545Z"
+    },
+    {
+      "skill": "gemini-context-engineer",
+      "source": ".agents/skills/gemini-context-engineer",
+      "archive": ".agents/skill-archive/20261017/gemini-context-engineer",
+      "status": "archived",
+      "verified_utc": "2026-10-21T16:26:28.099595+00:00"
+    }
+  ],
+  "archive_integrity": {
+    "files": [
+      {
+        "skill": "algorithmic-art",
+        "relative": "LICENSE.txt",
+        "type": "file",
+        "bytes": 11345,
+        "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362"
+      },
+      {
+        "skill": "algorithmic-art",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 19769,
+        "sha256": "3bc4092c09804853186524c826bc0621b940bb6122c05b84496dff95388e6eef"
+      },
+      {
+        "skill": "algorithmic-art",
+        "relative": "templates/generator_template.js",
+        "type": "file",
+        "bytes": 7826,
+        "sha256": "9ee0f1da52ef8f7bbfde1917123654880890d43f2d388642d71eab6dd78f94c4"
+      },
+      {
+        "skill": "algorithmic-art",
+        "relative": "templates/viewer.html",
+        "type": "file",
+        "bytes": 20844,
+        "sha256": "86c79d7ce97d2599ebe4bd9b97fdeb7295c9d3ed61ceeb513cbe1b2bb5d1ce29"
+      },
+      {
+        "skill": "brand-guidelines",
+        "relative": "LICENSE.txt",
+        "type": "file",
+        "bytes": 11345,
+        "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362"
+      },
+      {
+        "skill": "brand-guidelines",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 2235,
+        "sha256": "1120b3769e2985cefb3d25be981b1f914abeba57ae079b83c20c666c164fa9fe"
+      },
+      {
+        "skill": "docx",
+        "relative": "LICENSE.txt",
+        "type": "file",
+        "bytes": 1467,
+        "sha256": "79f6d8f5b427252fa3b1c11ecdbdb6bf610b944f7530b4de78f770f38741cfaa"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/accept_changes.py",
+        "type": "file",
+        "bytes": 4051,
+        "sha256": "0c991d2bc7304a1248e9f3bf9b1498f0b6e76641fc457e7cbd73c99b4eef3a74"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/comment.py",
+        "type": "file",
+        "bytes": 10694,
+        "sha256": "e86e4e17ec5805780325206d20d3ed5a8f7024f1e4641ac8f46ef5df0b564f63"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/helpers/merge_runs.py",
+        "type": "file",
+        "bytes": 5567,
+        "sha256": "7c40ed838b88639c51f9ffdcfd564b568f26832b78fe44008c0e01b742669ca7"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/helpers/simplify_redlines.py",
+        "type": "file",
+        "bytes": 5754,
+        "sha256": "560cb55978a834c505406eb18e2c61f62f998fc7a2d8e9721b9c563b42597896"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/helpers/__init__.py",
+        "type": "file",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/pack.py",
+        "type": "file",
+        "bytes": 4991,
+        "sha256": "b1800987e568261a31f462df8e1303d386e9e6ccc11a75ef46e60cc528c20683"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ecma/fouth-edition/opc-contentTypes.xsd",
+        "type": "file",
+        "bytes": 1963,
+        "sha256": "9e0b7209fc69ab11987900404540969976000c5ebe4d4f58c43dc3842886bf3a"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ecma/fouth-edition/opc-coreProperties.xsd",
+        "type": "file",
+        "bytes": 2515,
+        "sha256": "451958454e8588dfc7cd945981ada142ca06ff3307937f5700df059c2b307fa8"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ecma/fouth-edition/opc-digSig.xsd",
+        "type": "file",
+        "bytes": 2856,
+        "sha256": "6de111e11403f7cd49027400755bae0ea1cabef2815f09bd40a24f0017613b24"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ecma/fouth-edition/opc-relationships.xsd",
+        "type": "file",
+        "bytes": 1344,
+        "sha256": "f565adfef5a502044abc3a9153e157edc25af78304d335994afb958874b15e26"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-chart.xsd",
+        "type": "file",
+        "bytes": 74984,
+        "sha256": "41b93bd8857cc68b1e43be2806a872d736a9bdd6566900062d8fdb57d7bbb354"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-chartDrawing.xsd",
+        "type": "file",
+        "bytes": 6956,
+        "sha256": "3fd0586f2637b98bb9886f0e0b67d89e1cc987c2d158cc7deb5f5b9890ced412"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-diagram.xsd",
+        "type": "file",
+        "bytes": 51302,
+        "sha256": "29b254ee0d10414a8504b5a08149c7baec35a60d5ff607d6b3f492aa36815f40"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-lockedCanvas.xsd",
+        "type": "file",
+        "bytes": 624,
+        "sha256": "5cb76dabd8b97d1e9308a1700b90c20139be4d50792d21a7f09789f5cccd6026"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-main.xsd",
+        "type": "file",
+        "bytes": 152039,
+        "sha256": "5375417f0f5394b8dd1a7035b9679151f19a6b65df309dec10cfb4a420cb00e9"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-picture.xsd",
+        "type": "file",
+        "bytes": 1231,
+        "sha256": "5d389d42befbebd91945d620242347caecd3367f9a3a7cf8d97949507ae1f53c"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-spreadsheetDrawing.xsd",
+        "type": "file",
+        "bytes": 8862,
+        "sha256": "b4532b6d258832953fbb3ee4c711f4fe25d3faf46a10644b2505f17010d01e88"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-wordprocessingDrawing.xsd",
+        "type": "file",
+        "bytes": 14795,
+        "sha256": "bdad416b096b61d37b71603b2c949484f9070c830bdaeba93bf35e15c8900614"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/pml.xsd",
+        "type": "file",
+        "bytes": 83612,
+        "sha256": "d173c3e5d61e42e2e3a97226c632fd2ab7cc481fc4e492365b87024ab546daff"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-additionalCharacteristics.xsd",
+        "type": "file",
+        "bytes": 1269,
+        "sha256": "3c6709101c6aaa82888df5d8795c33f9e857196790eb320d9194e64be2b6bdd8"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-bibliography.xsd",
+        "type": "file",
+        "bytes": 7328,
+        "sha256": "0b364451dc36a48dd6dae0f3b6ada05fd9b71e5208211f8ee5537d7e51a587e2"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-commonSimpleTypes.xsd",
+        "type": "file",
+        "bytes": 6382,
+        "sha256": "e2abacbb9a55ce1365f8961bc1b1395bbc811e512b111000d8c333f98458dece"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-customXmlDataProperties.xsd",
+        "type": "file",
+        "bytes": 1248,
+        "sha256": "0ef4bb354ff44b923564c4ddbdda5987919d220225129ec94614a618ceafc281"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-customXmlSchemaProperties.xsd",
+        "type": "file",
+        "bytes": 880,
+        "sha256": "0d103b99a4a8652f8871552a69d42d2a3760ac6a5e3ef02d979c4273257ff6a4"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesCustom.xsd",
+        "type": "file",
+        "bytes": 2608,
+        "sha256": "9c085407751b9061c1f996f6c39ce58451be22a8d334f09175f0e89e42736285"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesExtended.xsd",
+        "type": "file",
+        "bytes": 3507,
+        "sha256": "bc92e36ccd233722d4c5869bec71ddc7b12e2df56059942cce5a39065cc9c368"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesVariantTypes.xsd",
+        "type": "file",
+        "bytes": 7507,
+        "sha256": "7b5b7413e2c895b1e148e82e292a117d53c7ec65b0696c992edca57b61b4a74b"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-math.xsd",
+        "type": "file",
+        "bytes": 23313,
+        "sha256": "3213ef1631606250f5010b42cad7ef716f7c59426367798e33c374c0ec391d3a"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-relationshipReference.xsd",
+        "type": "file",
+        "bytes": 1367,
+        "sha256": "12264f3c03d738311cd9237d212f1c07479e70f0cbe1ae725d29b36539aef637"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/sml.xsd",
+        "type": "file",
+        "bytes": 242277,
+        "sha256": "beffeed56945c22a77440122c8bdc426f3fcbe7f3b12ea0976c770d1f8d54578"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-main.xsd",
+        "type": "file",
+        "bytes": 26148,
+        "sha256": "f5ee623b08b6a66935e5aced2f5d8ad0fc71bf9e8e833cd490150c0fa94b8763"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-officeDrawing.xsd",
+        "type": "file",
+        "bytes": 25279,
+        "sha256": "585bedc1313b40888dcc544cb74cd939a105ee674f3b1d3aa1cc6d34f70ff155"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-presentationDrawing.xsd",
+        "type": "file",
+        "bytes": 535,
+        "sha256": "133c9f64a5c5d573b78d0a474122b22506d8eadb5e063f67cdbbb8fa2f161d0e"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-spreadsheetDrawing.xsd",
+        "type": "file",
+        "bytes": 5712,
+        "sha256": "6bdeb169c3717eb01108853bd9fc5a3750fb1fa5b82abbdd854d49855a40f519"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-wordprocessingDrawing.xsd",
+        "type": "file",
+        "bytes": 4010,
+        "sha256": "475dcae1e7d1ea46232db6f8481040c15e53a52a3c256831d3df204212b0e831"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/wml.xsd",
+        "type": "file",
+        "bytes": 171367,
+        "sha256": "c2dd9f61f892deae6acd8d20771ea79b12018af25f3bf8d06639c8542d218cfd"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/xml.xsd",
+        "type": "file",
+        "bytes": 4646,
+        "sha256": "a539aa2fb154fa50e0f5cc97e6ad7cbc66f8ec3e3746f61ec6a8b0d5d15ecdf2"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/mce/mc.xsd",
+        "type": "file",
+        "bytes": 3127,
+        "sha256": "3a37e461ecf5a8670fdec34029703401f8728ab9c96ec1739a6ae58d55212413"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/microsoft/wml-2010.xsd",
+        "type": "file",
+        "bytes": 26549,
+        "sha256": "568b26ee156cb9549aa439ca2158965f77b7c1602b7e0316f40ac6cf586e35f2"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/microsoft/wml-2012.xsd",
+        "type": "file",
+        "bytes": 3745,
+        "sha256": "0fa75578a000439a7988ba0c59fdc69f774bbd416cbacc14d07125b3f686cb74"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/microsoft/wml-2018.xsd",
+        "type": "file",
+        "bytes": 901,
+        "sha256": "be0ff793a22dd31384650c3a4da14c2fa8062751c2e97b0e5ee852bda13c60ad"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/microsoft/wml-cex-2018.xsd",
+        "type": "file",
+        "bytes": 1778,
+        "sha256": "fddc2b880cabb9005aebbc7e783e53c19fec1c03df7d0e2f2076a33a0fdfd081"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/microsoft/wml-cid-2016.xsd",
+        "type": "file",
+        "bytes": 1002,
+        "sha256": "127ca209fa73d7cb708449cb355c871867948a96e4a74f7bf5811ef62d17991d"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/microsoft/wml-sdtdatahash-2020.xsd",
+        "type": "file",
+        "bytes": 600,
+        "sha256": "842e7163409c8d74f4d7088a8bc99500d80bc75332681a0980055b08f374a604"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/schemas/microsoft/wml-symex-2015.xsd",
+        "type": "file",
+        "bytes": 745,
+        "sha256": "16f6f8072249f431370723c2cd8974672e0d9c897e00e97dd918079df934871b"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/soffice.py",
+        "type": "file",
+        "bytes": 5301,
+        "sha256": "a3e21840e29e32f947d5286028931b96eaf2dee63f75d883b8eb19c943c80aa0"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/unpack.py",
+        "type": "file",
+        "bytes": 4052,
+        "sha256": "83f69cecc87910183654c06345837244402e8a99edbf3bdddc1cf72f11304b62"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/validate.py",
+        "type": "file",
+        "bytes": 3668,
+        "sha256": "1aef24f8e316965a0584c30859776bd2c82a9fb69f72d79cfed041119cf95514"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/validators/base.py",
+        "type": "file",
+        "bytes": 32651,
+        "sha256": "d6358b67252df4dbfe4fa6647423a765960c949346ef6a8c4eb8722bb1108d25"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/validators/docx.py",
+        "type": "file",
+        "bytes": 16376,
+        "sha256": "0ef04ce86b2e6b6a1cb088c0276fd0bd5b770d96fdfe7a6cc73d005feb3f0345"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/validators/pptx.py",
+        "type": "file",
+        "bytes": 9824,
+        "sha256": "f937961e62a5fa0d002b8dc51a4c4e2cd8fcd59fe65853fa54edaca3fe99eccc"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/validators/redlining.py",
+        "type": "file",
+        "bytes": 8918,
+        "sha256": "f4c33fdb9da0651d1d9aa76f0d5294cc9955869339ae131b2f75f3b2e366cb40"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/office/validators/__init__.py",
+        "type": "file",
+        "bytes": 336,
+        "sha256": "83e0f035c5abea238d3f2c3968afbd511ed022b527b7c9cb60a9434cc34ff987"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/templates/comments.xml",
+        "type": "file",
+        "bytes": 2603,
+        "sha256": "a08ba83ee8790ac9e3dc61921f4988f19edd7e06ac09d6f1897a877c1581818d"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/templates/commentsExtended.xml",
+        "type": "file",
+        "bytes": 2611,
+        "sha256": "544eeecfeceed4b468fff163cd9c366d33641c8b8ab691ce002576197846afe8"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/templates/commentsExtensible.xml",
+        "type": "file",
+        "bytes": 2707,
+        "sha256": "bad10b3283e6ad6e7ef6d1ca5169683721ed690ee331282c65df04017e080631"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/templates/commentsIds.xml",
+        "type": "file",
+        "bytes": 2619,
+        "sha256": "db20f9616e004ec42ef736e80c2384e45db0f8d1194d31dc8b37c7d6ecdd6420"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/templates/people.xml",
+        "type": "file",
+        "bytes": 115,
+        "sha256": "056f63aa1197fd8c9dda980c9f1b9ff016fd5fa4a462df8aec5f384f39d23e37"
+      },
+      {
+        "skill": "docx",
+        "relative": "scripts/__init__.py",
+        "type": "file",
+        "bytes": 1,
+        "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+      },
+      {
+        "skill": "docx",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 20084,
+        "sha256": "cfbabd72b1aec7dfaad988fb6e5e16b27dc744b9a00cae15db9045e95f53903e"
+      },
+      {
+        "skill": "pptx",
+        "relative": "editing.md",
+        "type": "file",
+        "bytes": 6885,
+        "sha256": "6cb47c3ab17e60b7de37e83131c409ef5a90a01bfb54e999905a9c9f7dd88e68"
+      },
+      {
+        "skill": "pptx",
+        "relative": "LICENSE.txt",
+        "type": "file",
+        "bytes": 1467,
+        "sha256": "79f6d8f5b427252fa3b1c11ecdbdb6bf610b944f7530b4de78f770f38741cfaa"
+      },
+      {
+        "skill": "pptx",
+        "relative": "pptxgenjs.md",
+        "type": "file",
+        "bytes": 12819,
+        "sha256": "9539534d92b7170813b735a448750df3580390da2da6c52a02b687ed53ecba86"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/add_slide.py",
+        "type": "file",
+        "bytes": 6872,
+        "sha256": "04233ba3932c6b8611677347891616456e243cc09b7f9769408b8c83d9acfe64"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/clean.py",
+        "type": "file",
+        "bytes": 9583,
+        "sha256": "3e3966a17f488a1ddc7145f0b7ec9f25595afa1f3a427ab05e610f1a328feea9"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/helpers/merge_runs.py",
+        "type": "file",
+        "bytes": 5567,
+        "sha256": "7c40ed838b88639c51f9ffdcfd564b568f26832b78fe44008c0e01b742669ca7"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/helpers/simplify_redlines.py",
+        "type": "file",
+        "bytes": 5754,
+        "sha256": "560cb55978a834c505406eb18e2c61f62f998fc7a2d8e9721b9c563b42597896"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/helpers/__init__.py",
+        "type": "file",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/pack.py",
+        "type": "file",
+        "bytes": 4991,
+        "sha256": "b1800987e568261a31f462df8e1303d386e9e6ccc11a75ef46e60cc528c20683"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ecma/fouth-edition/opc-contentTypes.xsd",
+        "type": "file",
+        "bytes": 1963,
+        "sha256": "9e0b7209fc69ab11987900404540969976000c5ebe4d4f58c43dc3842886bf3a"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ecma/fouth-edition/opc-coreProperties.xsd",
+        "type": "file",
+        "bytes": 2515,
+        "sha256": "451958454e8588dfc7cd945981ada142ca06ff3307937f5700df059c2b307fa8"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ecma/fouth-edition/opc-digSig.xsd",
+        "type": "file",
+        "bytes": 2856,
+        "sha256": "6de111e11403f7cd49027400755bae0ea1cabef2815f09bd40a24f0017613b24"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ecma/fouth-edition/opc-relationships.xsd",
+        "type": "file",
+        "bytes": 1344,
+        "sha256": "f565adfef5a502044abc3a9153e157edc25af78304d335994afb958874b15e26"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-chart.xsd",
+        "type": "file",
+        "bytes": 74984,
+        "sha256": "41b93bd8857cc68b1e43be2806a872d736a9bdd6566900062d8fdb57d7bbb354"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-chartDrawing.xsd",
+        "type": "file",
+        "bytes": 6956,
+        "sha256": "3fd0586f2637b98bb9886f0e0b67d89e1cc987c2d158cc7deb5f5b9890ced412"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-diagram.xsd",
+        "type": "file",
+        "bytes": 51302,
+        "sha256": "29b254ee0d10414a8504b5a08149c7baec35a60d5ff607d6b3f492aa36815f40"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-lockedCanvas.xsd",
+        "type": "file",
+        "bytes": 624,
+        "sha256": "5cb76dabd8b97d1e9308a1700b90c20139be4d50792d21a7f09789f5cccd6026"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-main.xsd",
+        "type": "file",
+        "bytes": 152039,
+        "sha256": "5375417f0f5394b8dd1a7035b9679151f19a6b65df309dec10cfb4a420cb00e9"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-picture.xsd",
+        "type": "file",
+        "bytes": 1231,
+        "sha256": "5d389d42befbebd91945d620242347caecd3367f9a3a7cf8d97949507ae1f53c"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-spreadsheetDrawing.xsd",
+        "type": "file",
+        "bytes": 8862,
+        "sha256": "b4532b6d258832953fbb3ee4c711f4fe25d3faf46a10644b2505f17010d01e88"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-wordprocessingDrawing.xsd",
+        "type": "file",
+        "bytes": 14795,
+        "sha256": "bdad416b096b61d37b71603b2c949484f9070c830bdaeba93bf35e15c8900614"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/pml.xsd",
+        "type": "file",
+        "bytes": 83612,
+        "sha256": "d173c3e5d61e42e2e3a97226c632fd2ab7cc481fc4e492365b87024ab546daff"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-additionalCharacteristics.xsd",
+        "type": "file",
+        "bytes": 1269,
+        "sha256": "3c6709101c6aaa82888df5d8795c33f9e857196790eb320d9194e64be2b6bdd8"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-bibliography.xsd",
+        "type": "file",
+        "bytes": 7328,
+        "sha256": "0b364451dc36a48dd6dae0f3b6ada05fd9b71e5208211f8ee5537d7e51a587e2"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-commonSimpleTypes.xsd",
+        "type": "file",
+        "bytes": 6382,
+        "sha256": "e2abacbb9a55ce1365f8961bc1b1395bbc811e512b111000d8c333f98458dece"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-customXmlDataProperties.xsd",
+        "type": "file",
+        "bytes": 1248,
+        "sha256": "0ef4bb354ff44b923564c4ddbdda5987919d220225129ec94614a618ceafc281"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-customXmlSchemaProperties.xsd",
+        "type": "file",
+        "bytes": 880,
+        "sha256": "0d103b99a4a8652f8871552a69d42d2a3760ac6a5e3ef02d979c4273257ff6a4"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesCustom.xsd",
+        "type": "file",
+        "bytes": 2608,
+        "sha256": "9c085407751b9061c1f996f6c39ce58451be22a8d334f09175f0e89e42736285"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesExtended.xsd",
+        "type": "file",
+        "bytes": 3507,
+        "sha256": "bc92e36ccd233722d4c5869bec71ddc7b12e2df56059942cce5a39065cc9c368"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesVariantTypes.xsd",
+        "type": "file",
+        "bytes": 7507,
+        "sha256": "7b5b7413e2c895b1e148e82e292a117d53c7ec65b0696c992edca57b61b4a74b"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-math.xsd",
+        "type": "file",
+        "bytes": 23313,
+        "sha256": "3213ef1631606250f5010b42cad7ef716f7c59426367798e33c374c0ec391d3a"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-relationshipReference.xsd",
+        "type": "file",
+        "bytes": 1367,
+        "sha256": "12264f3c03d738311cd9237d212f1c07479e70f0cbe1ae725d29b36539aef637"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/sml.xsd",
+        "type": "file",
+        "bytes": 242277,
+        "sha256": "beffeed56945c22a77440122c8bdc426f3fcbe7f3b12ea0976c770d1f8d54578"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-main.xsd",
+        "type": "file",
+        "bytes": 26148,
+        "sha256": "f5ee623b08b6a66935e5aced2f5d8ad0fc71bf9e8e833cd490150c0fa94b8763"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-officeDrawing.xsd",
+        "type": "file",
+        "bytes": 25279,
+        "sha256": "585bedc1313b40888dcc544cb74cd939a105ee674f3b1d3aa1cc6d34f70ff155"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-presentationDrawing.xsd",
+        "type": "file",
+        "bytes": 535,
+        "sha256": "133c9f64a5c5d573b78d0a474122b22506d8eadb5e063f67cdbbb8fa2f161d0e"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-spreadsheetDrawing.xsd",
+        "type": "file",
+        "bytes": 5712,
+        "sha256": "6bdeb169c3717eb01108853bd9fc5a3750fb1fa5b82abbdd854d49855a40f519"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-wordprocessingDrawing.xsd",
+        "type": "file",
+        "bytes": 4010,
+        "sha256": "475dcae1e7d1ea46232db6f8481040c15e53a52a3c256831d3df204212b0e831"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/wml.xsd",
+        "type": "file",
+        "bytes": 171367,
+        "sha256": "c2dd9f61f892deae6acd8d20771ea79b12018af25f3bf8d06639c8542d218cfd"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/xml.xsd",
+        "type": "file",
+        "bytes": 4646,
+        "sha256": "a539aa2fb154fa50e0f5cc97e6ad7cbc66f8ec3e3746f61ec6a8b0d5d15ecdf2"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/mce/mc.xsd",
+        "type": "file",
+        "bytes": 3127,
+        "sha256": "3a37e461ecf5a8670fdec34029703401f8728ab9c96ec1739a6ae58d55212413"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/microsoft/wml-2010.xsd",
+        "type": "file",
+        "bytes": 26549,
+        "sha256": "568b26ee156cb9549aa439ca2158965f77b7c1602b7e0316f40ac6cf586e35f2"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/microsoft/wml-2012.xsd",
+        "type": "file",
+        "bytes": 3745,
+        "sha256": "0fa75578a000439a7988ba0c59fdc69f774bbd416cbacc14d07125b3f686cb74"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/microsoft/wml-2018.xsd",
+        "type": "file",
+        "bytes": 901,
+        "sha256": "be0ff793a22dd31384650c3a4da14c2fa8062751c2e97b0e5ee852bda13c60ad"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/microsoft/wml-cex-2018.xsd",
+        "type": "file",
+        "bytes": 1778,
+        "sha256": "fddc2b880cabb9005aebbc7e783e53c19fec1c03df7d0e2f2076a33a0fdfd081"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/microsoft/wml-cid-2016.xsd",
+        "type": "file",
+        "bytes": 1002,
+        "sha256": "127ca209fa73d7cb708449cb355c871867948a96e4a74f7bf5811ef62d17991d"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/microsoft/wml-sdtdatahash-2020.xsd",
+        "type": "file",
+        "bytes": 600,
+        "sha256": "842e7163409c8d74f4d7088a8bc99500d80bc75332681a0980055b08f374a604"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/schemas/microsoft/wml-symex-2015.xsd",
+        "type": "file",
+        "bytes": 745,
+        "sha256": "16f6f8072249f431370723c2cd8974672e0d9c897e00e97dd918079df934871b"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/soffice.py",
+        "type": "file",
+        "bytes": 5301,
+        "sha256": "a3e21840e29e32f947d5286028931b96eaf2dee63f75d883b8eb19c943c80aa0"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/unpack.py",
+        "type": "file",
+        "bytes": 4052,
+        "sha256": "83f69cecc87910183654c06345837244402e8a99edbf3bdddc1cf72f11304b62"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/validate.py",
+        "type": "file",
+        "bytes": 3668,
+        "sha256": "1aef24f8e316965a0584c30859776bd2c82a9fb69f72d79cfed041119cf95514"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/validators/base.py",
+        "type": "file",
+        "bytes": 32651,
+        "sha256": "d6358b67252df4dbfe4fa6647423a765960c949346ef6a8c4eb8722bb1108d25"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/validators/docx.py",
+        "type": "file",
+        "bytes": 16376,
+        "sha256": "0ef04ce86b2e6b6a1cb088c0276fd0bd5b770d96fdfe7a6cc73d005feb3f0345"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/validators/pptx.py",
+        "type": "file",
+        "bytes": 9824,
+        "sha256": "f937961e62a5fa0d002b8dc51a4c4e2cd8fcd59fe65853fa54edaca3fe99eccc"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/validators/redlining.py",
+        "type": "file",
+        "bytes": 8918,
+        "sha256": "f4c33fdb9da0651d1d9aa76f0d5294cc9955869339ae131b2f75f3b2e366cb40"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/office/validators/__init__.py",
+        "type": "file",
+        "bytes": 336,
+        "sha256": "83e0f035c5abea238d3f2c3968afbd511ed022b527b7c9cb60a9434cc34ff987"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/thumbnail.py",
+        "type": "file",
+        "bytes": 8785,
+        "sha256": "e959ecd4f19735161218bc44d0648a46da17874323fb3e19c2e9cb50cefe6ce7"
+      },
+      {
+        "skill": "pptx",
+        "relative": "scripts/__init__.py",
+        "type": "file",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "skill": "pptx",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 9182,
+        "sha256": "e5b0df918cbe9d62508b3cf808d73899633f82fc19f6258a25ef9f0de7e62125"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "LICENSE.txt",
+        "type": "file",
+        "bytes": 1467,
+        "sha256": "79f6d8f5b427252fa3b1c11ecdbdb6bf610b944f7530b4de78f770f38741cfaa"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/helpers/merge_runs.py",
+        "type": "file",
+        "bytes": 5567,
+        "sha256": "7c40ed838b88639c51f9ffdcfd564b568f26832b78fe44008c0e01b742669ca7"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/helpers/simplify_redlines.py",
+        "type": "file",
+        "bytes": 5754,
+        "sha256": "560cb55978a834c505406eb18e2c61f62f998fc7a2d8e9721b9c563b42597896"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/helpers/__init__.py",
+        "type": "file",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/pack.py",
+        "type": "file",
+        "bytes": 4991,
+        "sha256": "b1800987e568261a31f462df8e1303d386e9e6ccc11a75ef46e60cc528c20683"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ecma/fouth-edition/opc-contentTypes.xsd",
+        "type": "file",
+        "bytes": 1963,
+        "sha256": "9e0b7209fc69ab11987900404540969976000c5ebe4d4f58c43dc3842886bf3a"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ecma/fouth-edition/opc-coreProperties.xsd",
+        "type": "file",
+        "bytes": 2515,
+        "sha256": "451958454e8588dfc7cd945981ada142ca06ff3307937f5700df059c2b307fa8"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ecma/fouth-edition/opc-digSig.xsd",
+        "type": "file",
+        "bytes": 2856,
+        "sha256": "6de111e11403f7cd49027400755bae0ea1cabef2815f09bd40a24f0017613b24"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ecma/fouth-edition/opc-relationships.xsd",
+        "type": "file",
+        "bytes": 1344,
+        "sha256": "f565adfef5a502044abc3a9153e157edc25af78304d335994afb958874b15e26"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-chart.xsd",
+        "type": "file",
+        "bytes": 74984,
+        "sha256": "41b93bd8857cc68b1e43be2806a872d736a9bdd6566900062d8fdb57d7bbb354"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-chartDrawing.xsd",
+        "type": "file",
+        "bytes": 6956,
+        "sha256": "3fd0586f2637b98bb9886f0e0b67d89e1cc987c2d158cc7deb5f5b9890ced412"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-diagram.xsd",
+        "type": "file",
+        "bytes": 51302,
+        "sha256": "29b254ee0d10414a8504b5a08149c7baec35a60d5ff607d6b3f492aa36815f40"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-lockedCanvas.xsd",
+        "type": "file",
+        "bytes": 624,
+        "sha256": "5cb76dabd8b97d1e9308a1700b90c20139be4d50792d21a7f09789f5cccd6026"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-main.xsd",
+        "type": "file",
+        "bytes": 152039,
+        "sha256": "5375417f0f5394b8dd1a7035b9679151f19a6b65df309dec10cfb4a420cb00e9"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-picture.xsd",
+        "type": "file",
+        "bytes": 1231,
+        "sha256": "5d389d42befbebd91945d620242347caecd3367f9a3a7cf8d97949507ae1f53c"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-spreadsheetDrawing.xsd",
+        "type": "file",
+        "bytes": 8862,
+        "sha256": "b4532b6d258832953fbb3ee4c711f4fe25d3faf46a10644b2505f17010d01e88"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-wordprocessingDrawing.xsd",
+        "type": "file",
+        "bytes": 14795,
+        "sha256": "bdad416b096b61d37b71603b2c949484f9070c830bdaeba93bf35e15c8900614"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/pml.xsd",
+        "type": "file",
+        "bytes": 83612,
+        "sha256": "d173c3e5d61e42e2e3a97226c632fd2ab7cc481fc4e492365b87024ab546daff"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-additionalCharacteristics.xsd",
+        "type": "file",
+        "bytes": 1269,
+        "sha256": "3c6709101c6aaa82888df5d8795c33f9e857196790eb320d9194e64be2b6bdd8"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-bibliography.xsd",
+        "type": "file",
+        "bytes": 7328,
+        "sha256": "0b364451dc36a48dd6dae0f3b6ada05fd9b71e5208211f8ee5537d7e51a587e2"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-commonSimpleTypes.xsd",
+        "type": "file",
+        "bytes": 6382,
+        "sha256": "e2abacbb9a55ce1365f8961bc1b1395bbc811e512b111000d8c333f98458dece"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-customXmlDataProperties.xsd",
+        "type": "file",
+        "bytes": 1248,
+        "sha256": "0ef4bb354ff44b923564c4ddbdda5987919d220225129ec94614a618ceafc281"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-customXmlSchemaProperties.xsd",
+        "type": "file",
+        "bytes": 880,
+        "sha256": "0d103b99a4a8652f8871552a69d42d2a3760ac6a5e3ef02d979c4273257ff6a4"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesCustom.xsd",
+        "type": "file",
+        "bytes": 2608,
+        "sha256": "9c085407751b9061c1f996f6c39ce58451be22a8d334f09175f0e89e42736285"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesExtended.xsd",
+        "type": "file",
+        "bytes": 3507,
+        "sha256": "bc92e36ccd233722d4c5869bec71ddc7b12e2df56059942cce5a39065cc9c368"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesVariantTypes.xsd",
+        "type": "file",
+        "bytes": 7507,
+        "sha256": "7b5b7413e2c895b1e148e82e292a117d53c7ec65b0696c992edca57b61b4a74b"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-math.xsd",
+        "type": "file",
+        "bytes": 23313,
+        "sha256": "3213ef1631606250f5010b42cad7ef716f7c59426367798e33c374c0ec391d3a"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-relationshipReference.xsd",
+        "type": "file",
+        "bytes": 1367,
+        "sha256": "12264f3c03d738311cd9237d212f1c07479e70f0cbe1ae725d29b36539aef637"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/sml.xsd",
+        "type": "file",
+        "bytes": 242277,
+        "sha256": "beffeed56945c22a77440122c8bdc426f3fcbe7f3b12ea0976c770d1f8d54578"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-main.xsd",
+        "type": "file",
+        "bytes": 26148,
+        "sha256": "f5ee623b08b6a66935e5aced2f5d8ad0fc71bf9e8e833cd490150c0fa94b8763"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-officeDrawing.xsd",
+        "type": "file",
+        "bytes": 25279,
+        "sha256": "585bedc1313b40888dcc544cb74cd939a105ee674f3b1d3aa1cc6d34f70ff155"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-presentationDrawing.xsd",
+        "type": "file",
+        "bytes": 535,
+        "sha256": "133c9f64a5c5d573b78d0a474122b22506d8eadb5e063f67cdbbb8fa2f161d0e"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-spreadsheetDrawing.xsd",
+        "type": "file",
+        "bytes": 5712,
+        "sha256": "6bdeb169c3717eb01108853bd9fc5a3750fb1fa5b82abbdd854d49855a40f519"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-wordprocessingDrawing.xsd",
+        "type": "file",
+        "bytes": 4010,
+        "sha256": "475dcae1e7d1ea46232db6f8481040c15e53a52a3c256831d3df204212b0e831"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/wml.xsd",
+        "type": "file",
+        "bytes": 171367,
+        "sha256": "c2dd9f61f892deae6acd8d20771ea79b12018af25f3bf8d06639c8542d218cfd"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/ISO-IEC29500-4_2016/xml.xsd",
+        "type": "file",
+        "bytes": 4646,
+        "sha256": "a539aa2fb154fa50e0f5cc97e6ad7cbc66f8ec3e3746f61ec6a8b0d5d15ecdf2"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/mce/mc.xsd",
+        "type": "file",
+        "bytes": 3127,
+        "sha256": "3a37e461ecf5a8670fdec34029703401f8728ab9c96ec1739a6ae58d55212413"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/microsoft/wml-2010.xsd",
+        "type": "file",
+        "bytes": 26549,
+        "sha256": "568b26ee156cb9549aa439ca2158965f77b7c1602b7e0316f40ac6cf586e35f2"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/microsoft/wml-2012.xsd",
+        "type": "file",
+        "bytes": 3745,
+        "sha256": "0fa75578a000439a7988ba0c59fdc69f774bbd416cbacc14d07125b3f686cb74"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/microsoft/wml-2018.xsd",
+        "type": "file",
+        "bytes": 901,
+        "sha256": "be0ff793a22dd31384650c3a4da14c2fa8062751c2e97b0e5ee852bda13c60ad"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/microsoft/wml-cex-2018.xsd",
+        "type": "file",
+        "bytes": 1778,
+        "sha256": "fddc2b880cabb9005aebbc7e783e53c19fec1c03df7d0e2f2076a33a0fdfd081"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/microsoft/wml-cid-2016.xsd",
+        "type": "file",
+        "bytes": 1002,
+        "sha256": "127ca209fa73d7cb708449cb355c871867948a96e4a74f7bf5811ef62d17991d"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/microsoft/wml-sdtdatahash-2020.xsd",
+        "type": "file",
+        "bytes": 600,
+        "sha256": "842e7163409c8d74f4d7088a8bc99500d80bc75332681a0980055b08f374a604"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/schemas/microsoft/wml-symex-2015.xsd",
+        "type": "file",
+        "bytes": 745,
+        "sha256": "16f6f8072249f431370723c2cd8974672e0d9c897e00e97dd918079df934871b"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/soffice.py",
+        "type": "file",
+        "bytes": 5301,
+        "sha256": "a3e21840e29e32f947d5286028931b96eaf2dee63f75d883b8eb19c943c80aa0"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/unpack.py",
+        "type": "file",
+        "bytes": 4052,
+        "sha256": "83f69cecc87910183654c06345837244402e8a99edbf3bdddc1cf72f11304b62"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/validate.py",
+        "type": "file",
+        "bytes": 3668,
+        "sha256": "1aef24f8e316965a0584c30859776bd2c82a9fb69f72d79cfed041119cf95514"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/validators/base.py",
+        "type": "file",
+        "bytes": 32651,
+        "sha256": "d6358b67252df4dbfe4fa6647423a765960c949346ef6a8c4eb8722bb1108d25"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/validators/docx.py",
+        "type": "file",
+        "bytes": 16376,
+        "sha256": "0ef04ce86b2e6b6a1cb088c0276fd0bd5b770d96fdfe7a6cc73d005feb3f0345"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/validators/pptx.py",
+        "type": "file",
+        "bytes": 9824,
+        "sha256": "f937961e62a5fa0d002b8dc51a4c4e2cd8fcd59fe65853fa54edaca3fe99eccc"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/validators/redlining.py",
+        "type": "file",
+        "bytes": 8918,
+        "sha256": "f4c33fdb9da0651d1d9aa76f0d5294cc9955869339ae131b2f75f3b2e366cb40"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/office/validators/__init__.py",
+        "type": "file",
+        "bytes": 336,
+        "sha256": "83e0f035c5abea238d3f2c3968afbd511ed022b527b7c9cb60a9434cc34ff987"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "scripts/recalc.py",
+        "type": "file",
+        "bytes": 5782,
+        "sha256": "cf419d15e02965aeaec17773c05b61303f7f520f67fa2696547e7da07502eac7"
+      },
+      {
+        "skill": "xlsx",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 11463,
+        "sha256": "dd316db7785a6be12966c2a2d848931fbf5f518b3cdb0a66fa62ee835ead1cfc"
+      },
+      {
+        "skill": "frontend-design",
+        "relative": "LICENSE.txt",
+        "type": "file",
+        "bytes": 10174,
+        "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+      },
+      {
+        "skill": "frontend-design",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 8260,
+        "sha256": "1608ea77fbb6fc30d13a97d12cfa8ebf31358d40f0dd97beed24829d6b3f45dd"
+      },
+      {
+        "skill": "frontend-ui-engineering",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 10705,
+        "sha256": "9c284b1f06d617b289c0d250004af5cbaedd5135071e1b17c0211a0aa03a73a4"
+      },
+      {
+        "skill": "slack-gif-creator",
+        "relative": "core/easing.py",
+        "type": "file",
+        "bytes": 6265,
+        "sha256": "60bc943449802541f0f0881a874faa7ef408aaaf0b758fde756664ada7740452"
+      },
+      {
+        "skill": "slack-gif-creator",
+        "relative": "core/frame_composer.py",
+        "type": "file",
+        "bytes": 4548,
+        "sha256": "a127ea8f2a58893ea10a5c7b5cab4e2010af6515adc538676eb0cc14f5a03985"
+      },
+      {
+        "skill": "slack-gif-creator",
+        "relative": "core/gif_builder.py",
+        "type": "file",
+        "bytes": 9847,
+        "sha256": "b6f50d738c491ee0438a2e86e897f71cdab9792494ba4605f140befb0bddbf89"
+      },
+      {
+        "skill": "slack-gif-creator",
+        "relative": "core/validators.py",
+        "type": "file",
+        "bytes": 3785,
+        "sha256": "56bd19e3aae05f8387d78ec8185d6098b3dc909d1fa041211753da37212528a3"
+      },
+      {
+        "skill": "slack-gif-creator",
+        "relative": "LICENSE.txt",
+        "type": "file",
+        "bytes": 11345,
+        "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362"
+      },
+      {
+        "skill": "slack-gif-creator",
+        "relative": "requirements.txt",
+        "type": "file",
+        "bytes": 66,
+        "sha256": "edc7108a0c6b56183566c71ee96830f6dc791e3b41952112d9cb56b33a6bd757"
+      },
+      {
+        "skill": "slack-gif-creator",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 7841,
+        "sha256": "2efca615ce55a3edd8fc05c779068a8085816617991987e446606403cd3abb22"
+      },
+      {
+        "skill": "web-artifacts-builder",
+        "relative": "LICENSE.txt",
+        "type": "file",
+        "bytes": 11345,
+        "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362"
+      },
+      {
+        "skill": "web-artifacts-builder",
+        "relative": "scripts/bundle-artifact.sh",
+        "type": "file",
+        "bytes": 1517,
+        "sha256": "abf0e480bf6585b56fab8526a407dfb7dc740812bddd70c636e1e8f3df5f9618"
+      },
+      {
+        "skill": "web-artifacts-builder",
+        "relative": "scripts/init-artifact.sh",
+        "type": "file",
+        "bytes": 9924,
+        "sha256": "355e5dd4382aaaee91f01f1627eaeab30b2676ffa8d9b3ec328a1ae450ebccaa"
+      },
+      {
+        "skill": "web-artifacts-builder",
+        "relative": "scripts/shadcn-components.tar.gz",
+        "type": "file",
+        "bytes": 19967,
+        "sha256": "1296f069e825de7933de7e8ac63672495cacce3f88f2dc45554dbcddbcbca60f"
+      },
+      {
+        "skill": "web-artifacts-builder",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 3087,
+        "sha256": "81c5002c6643b0de7b8710b00e7a9038daa6fb9b68d59870ee6adb12da8d10f8"
+      },
+      {
+        "skill": "webapp-testing",
+        "relative": "examples/console_logging.py",
+        "type": "file",
+        "bytes": 1027,
+        "sha256": "ea46877289acb82da7e7ce59d0bc37c8977cd57e2a006d0c88d7a1c625bf95da"
+      },
+      {
+        "skill": "webapp-testing",
+        "relative": "examples/element_discovery.py",
+        "type": "file",
+        "bytes": 1463,
+        "sha256": "d63c89604a22f8845d724e95dda45db49b1bf57c25ce0a83afbb7b8da3d402f0"
+      },
+      {
+        "skill": "webapp-testing",
+        "relative": "examples/static_html_automation.py",
+        "type": "file",
+        "bytes": 953,
+        "sha256": "9d533aafb875ee3ab8b8ebf8f5b9003ac8d999da3d09b285cce252e623140064"
+      },
+      {
+        "skill": "webapp-testing",
+        "relative": "LICENSE.txt",
+        "type": "file",
+        "bytes": 11345,
+        "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362"
+      },
+      {
+        "skill": "webapp-testing",
+        "relative": "scripts/with_server.py",
+        "type": "file",
+        "bytes": 3693,
+        "sha256": "b0dcf4918935b795f4eda9821579b9902119235ff4447f687a30286e7d0925fd"
+      },
+      {
+        "skill": "webapp-testing",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 3913,
+        "sha256": "51b7349e77ec63b7744a6f63647e7566a0b4d2e301121cc10e8c2113af6556a2"
+      },
+      {
+        "skill": "playwright-automation-fill-in-form",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 650,
+        "sha256": "ed10ea649ed942b29707738ceb78de7f1a5bfddafe348d23b2ef81e8e3a4b80b"
+      },
+      {
+        "skill": "ai-file-organizer",
+        "relative": "README.md",
+        "type": "file",
+        "bytes": 1405,
+        "sha256": "04ae67d34e24adf721b8ef6b41ffe406939a435ebb689c064a0d330230cb771b"
+      },
+      {
+        "skill": "ai-file-organizer",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 8477,
+        "sha256": "d3154d546d7c564f8769ac5794590afc33bcc09510d84f176662b11fbb01f282"
+      },
+      {
+        "skill": "file-organizer",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 11312,
+        "sha256": "a8b91952bab7f73511db68149c4a54672b40699903a8e35ed5044c3e3039ded5"
+      },
+      {
+        "skill": "photo-slideshow",
+        "relative": "README.md",
+        "type": "file",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "skill": "photo-slideshow",
+        "relative": "references/aspect-and-layout.md",
+        "type": "file",
+        "bytes": 3883,
+        "sha256": "516c7eedddb86063a86a580adb1a3cb73a75d6e0e1ce34ff35d32d8993385627"
+      },
+      {
+        "skill": "photo-slideshow",
+        "relative": "references/ken-burns.md",
+        "type": "file",
+        "bytes": 5152,
+        "sha256": "2daef53d55371052467784f7ebdf491b07a68e42afca74248472588470c6ff0a"
+      },
+      {
+        "skill": "photo-slideshow",
+        "relative": "references/templating-folder.md",
+        "type": "file",
+        "bytes": 7101,
+        "sha256": "1b2ad0c3fe98addd96f8f77bc0c0d3af8919a56a9703bdef41af09f3954c7b2e"
+      },
+      {
+        "skill": "photo-slideshow",
+        "relative": "references/timing-and-audio.md",
+        "type": "file",
+        "bytes": 4057,
+        "sha256": "a0c5bcfc3c99759220fd2576f8a5b79df3d0cc9b73f19e347718320fa510e486"
+      },
+      {
+        "skill": "photo-slideshow",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 11504,
+        "sha256": "40f71893a4c530e1767a1dcd62d95f7f152f0926b78f887ccbb6d4efb7ab4f86"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "agents/analyzer.md",
+        "type": "file",
+        "bytes": 10376,
+        "sha256": "bf68f4cac5a56c673a928c2e6d619586c5b93ea364026ab37547772cb45a663a"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "agents/comparator.md",
+        "type": "file",
+        "bytes": 7287,
+        "sha256": "fe1fc9787c495d864c5d6eada47396478572325fde1b33a96d78bf4b849b7a3e"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "agents/grader.md",
+        "type": "file",
+        "bytes": 9049,
+        "sha256": "57134da0c1a4eea33fbd74a1c9c44aa814f07d6bc64de303edb586f941e5d21a"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "assets/eval_review.html",
+        "type": "file",
+        "bytes": 7058,
+        "sha256": "ce477dcc74dc1c0d1d3352646a79167b5a63634e936b1019160025065974e452"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "eval-viewer/generate_review.py",
+        "type": "file",
+        "bytes": 16365,
+        "sha256": "fc9d1b9243fe5ab6012ebd579bd76d0035de1b79fd3b969de114defab26478fb"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "eval-viewer/viewer.html",
+        "type": "file",
+        "bytes": 44998,
+        "sha256": "a53213426ee1100441d701a3a0d49cda7a842f992d2c36463f4d3cc0258575fa"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "LICENSE.txt",
+        "type": "file",
+        "bytes": 11345,
+        "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "references/schemas.md",
+        "type": "file",
+        "bytes": 12061,
+        "sha256": "8e8876180a8989b406a4d3edddf875b04cdfd5805cc8616686d552b11ce4455f"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "scripts/aggregate_benchmark.py",
+        "type": "file",
+        "bytes": 14386,
+        "sha256": "123ef128ea5ccc01a4b1ac212ef5567f21e9c13d3d240609780beeb3200c49aa"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "scripts/generate_report.py",
+        "type": "file",
+        "bytes": 12847,
+        "sha256": "13df7118a3c50c83c4c3250a606d5f2b20b25a3d44cbc392b3d669ec75281453"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "scripts/improve_description.py",
+        "type": "file",
+        "bytes": 11116,
+        "sha256": "87d864570220b699fac52da309d2d6efdb060647bfebc74f768128e646accf80"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "scripts/package_skill.py",
+        "type": "file",
+        "bytes": 4234,
+        "sha256": "1a33059b0db1ef73375d46d513e5ea81369d2e8838c970597b0d52ddef8d1c0f"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "scripts/quick_validate.py",
+        "type": "file",
+        "bytes": 3972,
+        "sha256": "67cf5703402013936c8fb75ad6a1afecd8841d45cc5e606b634eb05825fde365"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "scripts/run_eval.py",
+        "type": "file",
+        "bytes": 11464,
+        "sha256": "43e3b8f80dbf69c343967ba77e268fae991d9fa3ed68b32a0ff02532cd48657f"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "scripts/run_loop.py",
+        "type": "file",
+        "bytes": 13605,
+        "sha256": "7bd6f674203168520517eec94c55f493c0d154339b061b4d7c0f0dad187d0f21"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "scripts/utils.py",
+        "type": "file",
+        "bytes": 1661,
+        "sha256": "3af8ae62c40c73ab712207436a0d9a981e845f25c5a7040229eb189cc8e45bb1"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "scripts/__init__.py",
+        "type": "file",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "skill": "skill-creator",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 33168,
+        "sha256": "dcd4803e61e913e6fc27294184cd3a71f09f5e924ff20c8a9a20173e7b3c2bcf"
+      },
+      {
+        "skill": "setup-matt-pocock-skills",
+        "relative": "agents/openai.yaml",
+        "type": "file",
+        "bytes": 157,
+        "sha256": "53d0bf3786862a1cb5013ca78f12013b166d0819823dae0d3f9eb13eee2acdf2"
+      },
+      {
+        "skill": "setup-matt-pocock-skills",
+        "relative": "domain.md",
+        "type": "file",
+        "bytes": 2084,
+        "sha256": "19f59c9e72afd05199a79f82500baae05f0c445528636282dcd4400da3facd54"
+      },
+      {
+        "skill": "setup-matt-pocock-skills",
+        "relative": "issue-tracker-github.md",
+        "type": "file",
+        "bytes": 3776,
+        "sha256": "0809582ea8cf5f91fd72ae2b59aa62a07c1236ad194ef7dd40d9e2f01c3e753b"
+      },
+      {
+        "skill": "setup-matt-pocock-skills",
+        "relative": "issue-tracker-gitlab.md",
+        "type": "file",
+        "bytes": 3855,
+        "sha256": "6fe462c8dbffdf90e66d2ee62f6fa74666d777d0933c244e2a22a295848cb3ab"
+      },
+      {
+        "skill": "setup-matt-pocock-skills",
+        "relative": "issue-tracker-local.md",
+        "type": "file",
+        "bytes": 1840,
+        "sha256": "a604b658f0730eae3107671b09323ed8382bd546e82dc3bedc265bccbeb35021"
+      },
+      {
+        "skill": "setup-matt-pocock-skills",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 6957,
+        "sha256": "86c0dee483fb69f7f5ecfcd010f6d7cbb30df2c47a9b059ac95f98380f383d86"
+      },
+      {
+        "skill": "setup-matt-pocock-skills",
+        "relative": "triage-labels.md",
+        "type": "file",
+        "bytes": 1060,
+        "sha256": "493d08d7a8007d3604cdf64d45717045034a5037c9e9917bae1ad9340fad75b8"
+      },
+      {
+        "skill": "setup-ts-deep-modules",
+        "relative": "agents/openai.yaml",
+        "type": "file",
+        "bytes": 154,
+        "sha256": "bf3d58c59b0e68ef3b0287ac3ab3d165b066dfd31e146ecf278e56e4df664610"
+      },
+      {
+        "skill": "setup-ts-deep-modules",
+        "relative": "dependency-cruiser.config.cjs",
+        "type": "file",
+        "bytes": 3807,
+        "sha256": "d80c982bc496ff6fb65c91bfa5b3ffccd64396cd488f556779ce3f1bd770f376"
+      },
+      {
+        "skill": "setup-ts-deep-modules",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 7648,
+        "sha256": "3709fc7d62ea75cd7da1d6f21e33d58d758766fb8f5247a859687d7ed63c213e"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".claude-plugin/marketplace.json",
+        "type": "file",
+        "bytes": 283,
+        "sha256": "11898398364d6234e58f06224f621ffa1ed8e3e832be793688757abe2645370f"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".claude-plugin/plugin.json",
+        "type": "file",
+        "bytes": 500,
+        "sha256": "ea281295e5c23f263c7dc386081bcc74598edcfa8ec2a2371d47d19767d1204e"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/config",
+        "type": "file",
+        "bytes": 304,
+        "sha256": "20e5bb1dc6ecc586c579425a11487cb12eb2cc241a6451fda7718df749773d2f"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/description",
+        "type": "file",
+        "bytes": 73,
+        "sha256": "85ab6c163d43a17ea9cf7788308bca1466f1b0a8d1cc92e26e9bf63da4062aee"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/HEAD",
+        "type": "file",
+        "bytes": 21,
+        "sha256": "28d25bf82af4c0e2b72f50959b2beb859e3e60b9630a5e8c603dad4ddb2b6e80"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/applypatch-msg.sample",
+        "type": "file",
+        "bytes": 478,
+        "sha256": "0223497a0b8b033aa58a3a521b8629869386cf7ab0e2f101963d328aa62193f7"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/commit-msg.sample",
+        "type": "file",
+        "bytes": 1972,
+        "sha256": "efc1401b0e99d1ff51494d154d98b46c1e99059bcd8bf9f73cecde19fd3eb23b"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/fsmonitor-watchman.sample",
+        "type": "file",
+        "bytes": 4611,
+        "sha256": "9159720099ad5595b8e66645cbfd47763c1e920f46e0b50ae75e642bbec57ef0"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/post-update.sample",
+        "type": "file",
+        "bytes": 189,
+        "sha256": "81765af2daef323061dcbc5e61fc16481cb74b3bac9ad8a174b186523586f6c5"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/pre-applypatch.sample",
+        "type": "file",
+        "bytes": 424,
+        "sha256": "e15c5b469ea3e0a695bea6f2c82bcf8e62821074939ddd85b77e0007ff165475"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/pre-commit.sample",
+        "type": "file",
+        "bytes": 1649,
+        "sha256": "57185b7b9f05239d7ab52db045f5b89eb31348d7b2177eab214f5eb872e1971b"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/pre-merge-commit.sample",
+        "type": "file",
+        "bytes": 416,
+        "sha256": "d3825a70337940ebbd0a5c072984e13245920cdf8898bd225c8d27a6dfc9cb53"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/pre-push.sample",
+        "type": "file",
+        "bytes": 1374,
+        "sha256": "ecce9c7e04d3f5dd9d8ada81753dd1d549a9634b26770042b58dda00217d086a"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/pre-rebase.sample",
+        "type": "file",
+        "bytes": 4898,
+        "sha256": "4febce867790052338076f4e66cc47efb14879d18097d1d61c8261859eaaa7b3"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/pre-receive.sample",
+        "type": "file",
+        "bytes": 544,
+        "sha256": "a4c3d2b9c7bb3fd8d1441c31bd4ee71a595d66b44fcf49ddb310252320169989"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/prepare-commit-msg.sample",
+        "type": "file",
+        "bytes": 1492,
+        "sha256": "e9ddcaa4189fddd25ed97fc8c789eca7b6ca16390b2392ae3276f0c8e1aa4619"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/push-to-checkout.sample",
+        "type": "file",
+        "bytes": 2783,
+        "sha256": "a53d0741798b287c6dd7afa64aee473f305e65d3f49463bb9d7408ec3b12bf5f"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/sendemail-validate.sample",
+        "type": "file",
+        "bytes": 2308,
+        "sha256": "44ebfc923dc5466bc009602f0ecf067b9c65459abfe8868ddc49b78e6ced7a92"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/hooks/update.sample",
+        "type": "file",
+        "bytes": 3650,
+        "sha256": "8d5f2fa83e103cf08b57eaa67521df9194f45cbdbcb37da52ad586097a14d106"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/index",
+        "type": "file",
+        "bytes": 1797,
+        "sha256": "301a2e976c8d7973cf104888d0f2078e76395054e84df8b5e5cefb0da0dd8bf0"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/info/exclude",
+        "type": "file",
+        "bytes": 240,
+        "sha256": "6671fe83b7a07c8932ee89164d1f2793b2318058eb8b98dc5c06ee0a5a3b0ec1"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/logs/HEAD",
+        "type": "file",
+        "bytes": 204,
+        "sha256": "efbedb19638a5ad71405f167b7f36620977c20aebc881479964f7340e43f9ca5"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/logs/refs/heads/main",
+        "type": "file",
+        "bytes": 204,
+        "sha256": "efbedb19638a5ad71405f167b7f36620977c20aebc881479964f7340e43f9ca5"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/logs/refs/remotes/origin/HEAD",
+        "type": "file",
+        "bytes": 204,
+        "sha256": "efbedb19638a5ad71405f167b7f36620977c20aebc881479964f7340e43f9ca5"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/objects/pack/pack-cbcb82fb5ac116ea52318a4e41cc9b62eb72fd6c.idx",
+        "type": "file",
+        "bytes": 6000,
+        "sha256": "9c1d2592f3f290296f0f80ac0fd7f5dd1663790f83e576a7a86437c8ce2b3b39"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/objects/pack/pack-cbcb82fb5ac116ea52318a4e41cc9b62eb72fd6c.pack",
+        "type": "file",
+        "bytes": 61979,
+        "sha256": "90832f4fb8e533f79247f15bf418fe5dd6b79eab98d8b37fd47458e5f0dc8153"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/objects/pack/pack-cbcb82fb5ac116ea52318a4e41cc9b62eb72fd6c.rev",
+        "type": "file",
+        "bytes": 756,
+        "sha256": "34acafaf9016282844a1db6a7b3d7ad815ccd73a5c40452533811bfd228f3e05"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/packed-refs",
+        "type": "file",
+        "bytes": 112,
+        "sha256": "26d16fbdff6ad4b1d3dee2f6f233f674d3a7deab593174b405110ab62afc264b"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/refs/heads/main",
+        "type": "file",
+        "bytes": 41,
+        "sha256": "3325b50e636209fd3721a7c3b3980c12b7ced301c5fbb6a4f0e470aa2c68cb96"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": ".git/refs/remotes/origin/HEAD",
+        "type": "file",
+        "bytes": 30,
+        "sha256": "2bb6a24aa0fc6c484100f5d51a29bbad841cd2c755f5d93faa204e5dbb4eb2b4"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": "LICENSE",
+        "type": "file",
+        "bytes": 1098,
+        "sha256": "247619161a610ee98dbaa2337da2d2d64e84ff33d946e79a7c93ab9335cdebb1"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": "README.md",
+        "type": "file",
+        "bytes": 2621,
+        "sha256": "08907a5ab4800e7e80b8e0b9021514543b8fe46554ca04fa53e9d28f8500915b"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": "skills/defuddle/SKILL.md",
+        "type": "file",
+        "bytes": 1164,
+        "sha256": "a4f046b1830f0b3f6b5b344d7595437fbd1f8d70ad79447ae393fde48043d460"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": "skills/json-canvas/references/EXAMPLES.md",
+        "type": "file",
+        "bytes": 6805,
+        "sha256": "c6fce2e043f98d5bf3c52662a0261aa3e12d5eabbb37585e3c4c52a968b109a1"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": "skills/json-canvas/SKILL.md",
+        "type": "file",
+        "bytes": 7868,
+        "sha256": "788535277bc5f460bec97d467615a2ce97e2957dad1b1fc961e645f64c827128"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": "skills/obsidian-bases/references/FUNCTIONS_REFERENCE.md",
+        "type": "file",
+        "bytes": 7711,
+        "sha256": "0d0cd128bc5070ef1aba2baef41bd55b31b3f56961975934d7a5172396ca0006"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": "skills/obsidian-bases/SKILL.md",
+        "type": "file",
+        "bytes": 13526,
+        "sha256": "83bc04a2c306a61c216c0cfecbb4d032cc763896623d229cd2a6dab811083032"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": "skills/obsidian-cli/SKILL.md",
+        "type": "file",
+        "bytes": 3289,
+        "sha256": "b4d398c64e086d84cfd51bed896b9bdc243a5fd8a9ea2815a261cd9cb4da3155"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": "skills/obsidian-markdown/references/CALLOUTS.md",
+        "type": "file",
+        "bytes": 1296,
+        "sha256": "3b8f63c90f692ac40e6989fda2ab2fed3bb482ff515176b40d18dac8402e516b"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": "skills/obsidian-markdown/references/EMBEDS.md",
+        "type": "file",
+        "bytes": 931,
+        "sha256": "d9f9f485ded6a32b4d76e59eaddc442bd09faf851d755f052759fc9ab1a25b2c"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": "skills/obsidian-markdown/references/PROPERTIES.md",
+        "type": "file",
+        "bytes": 1210,
+        "sha256": "28da58935ca3296f30b7e9aa25f2a695963dc0a3e4062638428d3bcb2094562a"
+      },
+      {
+        "skill": "obsidian-skills",
+        "relative": "skills/obsidian-markdown/SKILL.md",
+        "type": "file",
+        "bytes": 5563,
+        "sha256": "ef409b7eeda59e2e0c5cdead334dcc997dc9459d689859b3a610ffa9af5cabc5"
+      },
+      {
+        "skill": "hyperframes-video-composition",
+        "relative": "EVAL.md",
+        "type": "file",
+        "bytes": 12507,
+        "sha256": "67d202b2519e0db7b9e04e8c4c9bb5d91b4f77ad8cb137720e02d93f5e1b97cb"
+      },
+      {
+        "skill": "hyperframes-video-composition",
+        "relative": "scripts/audit_timeline.py",
+        "type": "file",
+        "bytes": 15206,
+        "sha256": "b0e1258a8e511c9f95977fec2a602f5e9a935adab32938fcd106a2ce7013c17e"
+      },
+      {
+        "skill": "hyperframes-video-composition",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 28238,
+        "sha256": "b4eaf8a2829bf58b475e98b4c7aa4dd813247ac6d53870304aecc30506c65517"
+      },
+      {
+        "skill": "hyperframes-video-composition",
+        "relative": "tests/fixtures/invalid_composition.html",
+        "type": "file",
+        "bytes": 1070,
+        "sha256": "f0482d6ac889594820acfa932b3c543e0294bd45baef0dc2c014817b633e8a01"
+      },
+      {
+        "skill": "hyperframes-video-composition",
+        "relative": "tests/fixtures/valid_composition.html",
+        "type": "file",
+        "bytes": 759,
+        "sha256": "7418095a89083b4f29ce570ef4a9e768eca8c37b86058ea2be1d39e5b66acd57"
+      },
+      {
+        "skill": "hyperframes-video-composition",
+        "relative": "tests/test_audit_timeline.py",
+        "type": "file",
+        "bytes": 3705,
+        "sha256": "c9bf74547f2980b67155cab6afe97c72348244b8e32a45e838a3de00257310e4"
+      },
+      {
+        "skill": "writing-beats",
+        "relative": "agents/openai.yaml",
+        "type": "file",
+        "bytes": 147,
+        "sha256": "30ad45c6d16b7e3e58d656c8d2619c68916d14b96e218de3c042cac89ef85a84"
+      },
+      {
+        "skill": "writing-beats",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 4922,
+        "sha256": "b23f7851987dab7828c83d42df98090ccebff586b64908ce6a5e772440214621"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "assets/gemini_template.md",
+        "type": "file",
+        "bytes": 6260,
+        "sha256": "b95dd24969b235f5b1d4ba580591f43272c9deb7126f5231891a19bc763b0b99"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "docs/benchmarks/benchmark.json",
+        "type": "file",
+        "bytes": 3205,
+        "sha256": "d6fb5d08b1245eadf9399ecfcc2d27b2760a3fb6bc9c43a23b1dcc9626b9e29b"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "docs/benchmarks/PERFORMANCE.md",
+        "type": "file",
+        "bytes": 1499,
+        "sha256": "c54b79d61b2731ddbaa9440821b5de32006cb68e968693e002ae523fdac566db"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "evals/evals.json",
+        "type": "file",
+        "bytes": 2074,
+        "sha256": "3327040ba8ff8ac9e984f47793c417d0d4beedddf24161428aa10a4db5e67375"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "GEMINI.md",
+        "type": "file",
+        "bytes": 9964,
+        "sha256": "aeb56653d6cbf6c5755ab45fa2b2ca1958e071b602d2d5bd4fc90e3135e0881a"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "references/cross_ecosystem_federation.md",
+        "type": "file",
+        "bytes": 5948,
+        "sha256": "e13b0329e63459874666a5453e82fc2c822a1da501fe9de73ec75ef5433045c2"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "references/executable_proofs_guide.md",
+        "type": "file",
+        "bytes": 14583,
+        "sha256": "b5917f404ce92e2bf86079019955e7f6ea0c93d615e344a65ec95cefaf8c2303"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "references/hierarchical_context_guide.md",
+        "type": "file",
+        "bytes": 6393,
+        "sha256": "deab4ab18bcf2c04d4e77db757e14aa9130b35c7657724c914bb5286cb1fe89f"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "references/jit_compiler_guide.md",
+        "type": "file",
+        "bytes": 14101,
+        "sha256": "8e564845e20223d5935509ed6d11add838bc76198e152d5b8b3939c79cb046e4"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "references/migration_guide.md",
+        "type": "file",
+        "bytes": 8258,
+        "sha256": "6d87a0ee9517f1796c68f897485ac2681edc03efdf57ec3d989e5ac70f0b788d"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "references/pocock_deep_modules_and_grilling.md",
+        "type": "file",
+        "bytes": 11395,
+        "sha256": "ca29b97ca3fc25076d68d5f37d20a64b06c668bb812de8bb249b3ed1bec82336"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "references/token_budget_heuristics.md",
+        "type": "file",
+        "bytes": 7039,
+        "sha256": "000412e5a96c6f36ebf80dff6137986521c33adc9980ca6f167c6bf1f096047e"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "references/vcs_daemon_guide.md",
+        "type": "file",
+        "bytes": 19571,
+        "sha256": "bcb2018981a78564dd782dd7410ebdb31e72704d6a81af2bb1d1541c12faff63"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "scripts/__pycache__/__version__.cpython-311.pyc",
+        "type": "file",
+        "bytes": 360,
+        "sha256": "5953373350fc9d06984d70fbde71b3a5ecae4b90c1fe75ad0e9bfd9e33340a26"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "scripts/__pycache__/context_compiler.cpython-311.pyc",
+        "type": "file",
+        "bytes": 21333,
+        "sha256": "7a60d9730f866e3b18e0ddd35f36378a83f0148d7df81a471b6b6dd7a47828f8"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "scripts/__pycache__/context_daemon.cpython-311.pyc",
+        "type": "file",
+        "bytes": 16249,
+        "sha256": "6ffbe490b1fb01263870bb704b3346ad5b6d88e8b9607047710e7c7bb5187d0a"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "scripts/__pycache__/repo_indexer.cpython-311.pyc",
+        "type": "file",
+        "bytes": 21721,
+        "sha256": "5cee8d63ed51cc3a4a1a7dc6870fac71813e928675104dcffdb827b30581a200"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "scripts/__pycache__/validate_gemini_md.cpython-311.pyc",
+        "type": "file",
+        "bytes": 26166,
+        "sha256": "b1a0a96004dfd906362f1b45d8d0811a6878e7757c6f90bd7ffe11ee883252f2"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "scripts/__pycache__/verify_proofs.cpython-311.pyc",
+        "type": "file",
+        "bytes": 7996,
+        "sha256": "8176a8fe1dae514f75f3ec672efbed62f23cf1b507116ff8e29860a414c1db11"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "scripts/__version__.py",
+        "type": "file",
+        "bytes": 47,
+        "sha256": "39431d6256d8e495f26dd01b1bad6c1d830fedec331f7945c6643f681d80ef32"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "scripts/context_compiler.py",
+        "type": "file",
+        "bytes": 11772,
+        "sha256": "ace657a3159c126baf06763a6a33fd50925297385e47f7e7a0c7768cfd9b23f4"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "scripts/context_daemon.py",
+        "type": "file",
+        "bytes": 10421,
+        "sha256": "69cb79ea269224f8a3314bb532f750d8881c617e6371043b0935c34ea26db7ee"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "scripts/repo_indexer.py",
+        "type": "file",
+        "bytes": 12333,
+        "sha256": "f8eb05ed923f8773f34489c82c703c8e292d5f8737cd94438c569faf613c9935"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "scripts/run_evals.py",
+        "type": "file",
+        "bytes": 12679,
+        "sha256": "dc6a0158656998a95d3a6f0f0cf94f30555291380710f43513c3b25359e6a552"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "scripts/validate_gemini_md.py",
+        "type": "file",
+        "bytes": 17923,
+        "sha256": "2bf66771c657f3d0de653a9ac68ebabf50fed688f35363c028d28181bb753255"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "scripts/verify_proofs.py",
+        "type": "file",
+        "bytes": 4496,
+        "sha256": "ae23aab2e9d9df0877041383f05f143546b9c5ffc0cde9488ad747bca7869659"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "SKILL.md",
+        "type": "file",
+        "bytes": 29068,
+        "sha256": "0f13f619e6b484bdc836ee0c9bef271606607af9f1a48c29777be7a0192cc046"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/__init__.py",
+        "type": "file",
+        "bytes": 18,
+        "sha256": "25bc3dd3768fa95285f80692a01fa618cc6d852be6f3c3bfcaa1a81a67ff4bf5"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/__pycache__/__init__.cpython-311.pyc",
+        "type": "file",
+        "bytes": 295,
+        "sha256": "d175f2de8c1d8ac5d22843b9065660c6e334c9b35452b606d7290f9b57458b43"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/__pycache__/test_context_compiler.cpython-311-pytest-9.1.1.pyc",
+        "type": "file",
+        "bytes": 12026,
+        "sha256": "dc500192acc7efdba4b6732e75165e874ae83447693a68e865708157933fa693"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/__pycache__/test_context_compiler.cpython-311.pyc",
+        "type": "file",
+        "bytes": 11891,
+        "sha256": "02b6384fc7fa98caafc9dab1b7cc7c718239727cce7107e1cfc5be995a357c50"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/__pycache__/test_context_daemon.cpython-311-pytest-9.1.1.pyc",
+        "type": "file",
+        "bytes": 10743,
+        "sha256": "703b8e3ae57bfa7cff577503d7f0987904f1f68a2b580be83acf293a69bf7681"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/__pycache__/test_context_daemon.cpython-311.pyc",
+        "type": "file",
+        "bytes": 10608,
+        "sha256": "e439ab1439bf156988053f5cf873e5f1449d0a4d01fbcfea1f723a3a7017d1a8"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/__pycache__/test_indexer.cpython-311-pytest-9.1.1.pyc",
+        "type": "file",
+        "bytes": 17185,
+        "sha256": "81c8269fca981aea9cafe9a7a43a44018e67852b361a1c11294d89e133cfcd45"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/__pycache__/test_indexer.cpython-311.pyc",
+        "type": "file",
+        "bytes": 17050,
+        "sha256": "7a2e48f043852ad07edc757534b65524af1c5aa6a2118ed72beb0dbe049e7956"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/__pycache__/test_validator.cpython-311-pytest-9.1.1.pyc",
+        "type": "file",
+        "bytes": 23978,
+        "sha256": "2530e330e2f320872ad59a542d14114eb08b7a8fe36390a080598616c599b2f0"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/__pycache__/test_validator.cpython-311.pyc",
+        "type": "file",
+        "bytes": 23842,
+        "sha256": "3649a8a9a61be4d98584e635522255b79a6b226f1834261c51b530bb0444aec6"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/__pycache__/test_verify_proofs.cpython-311-pytest-9.1.1.pyc",
+        "type": "file",
+        "bytes": 9937,
+        "sha256": "27b49c22594b3a04caacaff7acd182295bc61324a3d2ac4ba96b40561b882bce"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/__pycache__/test_verify_proofs.cpython-311.pyc",
+        "type": "file",
+        "bytes": 9802,
+        "sha256": "f20a6ce47f8fe7965e94d2062c770c349f60d915795f2aed13525ae044c401ca"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/test_context_compiler.py",
+        "type": "file",
+        "bytes": 6829,
+        "sha256": "9e852c88365c8f63700c14c2d1fc2720939604b0b1d0052cf787a2339e81896a"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/test_context_daemon.py",
+        "type": "file",
+        "bytes": 7020,
+        "sha256": "2580eb051e6947c71e73285d1540d751b86f4186b60bbe62a5278bd6bb5a9da9"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/test_indexer.py",
+        "type": "file",
+        "bytes": 8982,
+        "sha256": "bdb29b401a47af09e2f327d9020c71c9bfb74a0d5d964aed196dfc802ff2e796"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/test_validator.py",
+        "type": "file",
+        "bytes": 13537,
+        "sha256": "379dee8be9dd68869517aa3add67ac4b6fca7de7b62fcb92f861f74d512ee3cb"
+      },
+      {
+        "skill": "gemini-context-engineer",
+        "relative": "tests/test_verify_proofs.py",
+        "type": "file",
+        "bytes": 5624,
+        "sha256": "4c9587240cdbe4e7591e5b4a0723152c9ddbe3561c73f2220bb6cc89fe8d680c"
+      }
+    ],
+    "regular_bytes": 4580008,
+    "verification_receipt": ".runtime/codex_task_skills_20261015T225441Z/ARCHIVE_RECEIPT.json",
+    "additional_verification_receipts": [
+      ".runtime/codex_release_cleanup_20261021/SKILL_INTEGRITY.json"
+    ]
+  },
+  "integrity_scope": "SHA-256 of each active SKILL.md; archived file bytes fully hashed. Supporting active scripts/assets require separate review/pinning before execution.",
+  "package_manager_lock": "skills-lock.json (upstream installer format; retained separately)",
+  "discovery_and_installation": {
+    "cli": "skills@1.7.2",
+    "lifecycle_scripts": false,
+    "new_skills": 2,
+    "reused_bound_skills": 22,
+    "remote_sources": [
+      "https://github.com/obra/superpowers"
+    ],
+    "receipt": ".runtime/codex_task_skills_20261015T225441Z/INSTALLATION_RECEIPT.json"
+  }
+}

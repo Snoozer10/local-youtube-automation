@@ -1,0 +1,217 @@
+{
+    "version": 1,
+    "case_id": "professor_lineage14_episode_visual_mode",
+    "title": "Global visual-mode schema accepted a mode outside the episode palette",
+    "failure_code": "SCHEMA_EPISODE_VISUAL_MODE",
+    "root_cause_class": "schema",
+    "responsible_layer": "request_contract",
+    "stage": "plan",
+    "window_index": 0,
+    "raw_evidence_sha256s": [
+        "9a942cba5c4f1aff61e7f342ac18e3db2386d16ec89cd4ae9284f46e27db97ff"
+    ],
+    "input_sha256": "7de47fa70a015bd1871d1e8acc9f2f0f6a338995153c4826d66efd16d983fe98",
+    "candidate_sha256": "c94c157ad0104b054e232bb2e481a3882a073331a577d4f7a0cca10db8c6498b",
+    "brief": {
+        "version": 3,
+        "source_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "profile_sha256": "2042b2c301cf9f6130273d5fb18cec2b185cd6b17e99db7f9d5874e2567c4fdf",
+        "channel": {
+            "version": 3,
+            "channel_id": "professor_failure_fixture",
+            "name": "Sanitized Professor Fixture",
+            "audience": "Arabic-speaking adults",
+            "language": "Arabic",
+            "dialect": "MSA",
+            "voice": "achird",
+            "tone": "clear evidence-conscious",
+            "style": "restrained editorial illustration",
+            "visual_directives": [
+                "Use narration-specific scenes"
+            ],
+            "forbidden_motifs": [
+                "Avoid generic focus portraits"
+            ],
+            "forbidden_visual_families": [],
+            "repetition_limited_visual_families": [],
+            "max_visual_family_repetitions": 3,
+            "host_mode": "NONE",
+            "host_description": "",
+            "allowed_treatments": [
+                "subject_scene",
+                "detail",
+                "comparison"
+            ],
+            "humor": "none",
+            "max_zoom": 1.06
+        },
+        "analysis": {
+            "topics": [
+                "attention exercise"
+            ],
+            "claim_basis": "factual",
+            "form": "tutorial",
+            "proposition": "Repair cardinality is compiler-owned",
+            "narrative_strategy": "Repair one rejected slot",
+            "evidence_needs": [],
+            "continuity_anchors": [],
+            "figurative_phrases": [],
+            "treatments": [
+                "subject_scene",
+                "detail",
+                "comparison"
+            ],
+            "rationale": "The response contract must reject missing records"
+        },
+        "visual_strategy": {
+            "version": 1,
+            "source_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "topic": "Attention exercise",
+            "viewer_question": "How many repair records are required?",
+            "central_promise": "The schema matches compiler-owned slots",
+            "evidence_mode": "demonstrative",
+            "emotional_arc": [
+                "concern",
+                "clarity",
+                "confidence"
+            ],
+            "hook_archetype": "mystery_gap",
+            "hook_microbeats": [
+                {
+                    "beat_id": "beat_1_problem",
+                    "function": "problem",
+                    "duration_seconds": 3.0,
+                    "viewer_takeaway": "The problem is concrete",
+                    "visual_mode": "human_context",
+                    "local_ui": []
+                },
+                {
+                    "beat_id": "beat_2_curiosity",
+                    "function": "curiosity",
+                    "duration_seconds": 3.0,
+                    "viewer_takeaway": "The gap is visible",
+                    "visual_mode": "comparison",
+                    "local_ui": []
+                },
+                {
+                    "beat_id": "beat_3_promise",
+                    "function": "promise",
+                    "duration_seconds": 3.0,
+                    "viewer_takeaway": "The promise is specific",
+                    "visual_mode": "kinetic_type",
+                    "local_ui": []
+                }
+            ],
+            "visual_modes": [
+                "human_context",
+                "comparison",
+                "kinetic_type"
+            ],
+            "local_ui_kit": [
+                "cards",
+                "focus_sweep",
+                "timer"
+            ],
+            "pacing": "Three equal opening beats",
+            "motion_grammar": [
+                "Hold unless meaning changes"
+            ],
+            "max_consecutive_visual_mode": 2,
+            "max_repeated_composition": 2
+        }
+    },
+    "timeline": {
+        "fps": 30,
+        "total_frames": 270,
+        "spans": [
+            {
+                "index": 0,
+                "start_frame": 0,
+                "end_frame": 90,
+                "text": "Sanitized problem narration"
+            },
+            {
+                "index": 1,
+                "start_frame": 90,
+                "end_frame": 180,
+                "text": "Sanitized curiosity narration"
+            },
+            {
+                "index": 2,
+                "start_frame": 180,
+                "end_frame": 270,
+                "text": "Sanitized promise narration"
+            }
+        ]
+    },
+    "checkpoint": {
+        "planner_version": 14,
+        "compiler_version": 6,
+        "windows": [
+            [
+                0,
+                270
+            ]
+        ],
+        "next_window": 0,
+        "units_by_window": [],
+        "batches": []
+    },
+    "failed_units": [
+        {
+            "unit_id": "u0_90",
+            "start_frame": 0,
+            "end_frame": 90,
+            "text": "Sanitized problem narration"
+        }
+    ],
+    "replay_kind": "repair_contract",
+    "repair_contract": {
+        "required_count": 1,
+        "candidate_contents": [
+            {
+                "beat_id": "beat_schulte_purpose",
+                "first_unit_id": "u0_90",
+                "visual_mode": "editorial_metaphor",
+                "beat_kind": "question",
+                "framing": "close_up",
+                "semantic_link": "direct",
+                "subject": "A visible repair card",
+                "visible_state": "The card shows one corrected state",
+                "setting": "A clean studio",
+                "composition": "Card centered with open margins",
+                "entity_ids": [
+                    "distinct_repair_card"
+                ],
+                "continuity": "new"
+            }
+        ],
+        "corrected_contents": [
+            {
+                "beat_id": "beat_schulte_purpose",
+                "first_unit_id": "u0_90",
+                "visual_mode": "comparison",
+                "beat_kind": "question",
+                "framing": "close_up",
+                "semantic_link": "direct",
+                "subject": "A visible repair card",
+                "visible_state": "The card shows one corrected state",
+                "setting": "A clean studio",
+                "composition": "Card centered with open margins",
+                "entity_ids": [
+                    "distinct_repair_card"
+                ],
+                "continuity": "new"
+            }
+        ]
+    },
+    "expected_boundary": "request_contract",
+    "expected_issue": {
+        "beat_ids": [
+            "beat_schulte_purpose"
+        ],
+        "code": "SCHEMA_EPISODE_VISUAL_MODE",
+        "requirement": "Reject modes outside the episode visual palette before semantic compilation"
+    },
+    "expected_corrected_behavior": "A record using an episode-approved visual mode validates with the same immutable slot count"
+}

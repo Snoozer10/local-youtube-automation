@@ -57,7 +57,7 @@ def verify_cdp_port(
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "CDPClient"})
         with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
-            return response.status == 200
+            return bool(response.status == 200)
     except Exception:
         return False
 

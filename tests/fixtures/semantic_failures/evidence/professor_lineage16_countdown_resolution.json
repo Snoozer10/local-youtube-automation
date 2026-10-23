@@ -1,0 +1,13 @@
+{
+    "version": 1,
+    "case_id": "professor_lineage16_countdown_coverage",
+    "failure_code": "NARRATION_EVENT_COUNTDOWN_COVERAGE",
+    "planner_version": 17,
+    "compiler_version": 8,
+    "corrected_boundary": "accepted",
+    "raw_evidence_sha256s": [
+        "3b960f6d419bd3a08ffbc91796f99d2a72c04a6a430ee7b76274ea994e40ce4d"
+    ],
+    "input_sha256": "3788d3130c760a3520ead9082e0d681e988aa74d1457f292576810d09748e7fd",
+    "candidate_sha256": "af149fa7ca1070e7803c12b9c32d2efb535843b8ea20462abe94ffd6db7acd3b"
+}

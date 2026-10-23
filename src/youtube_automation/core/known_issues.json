@@ -1,0 +1,95 @@
+[
+  {
+    "id": "CDP-ATTACH-HANG",
+    "layer": "browser.cdp",
+    "pattern": "connect_over_cdp|cdp.*timeout|timeout.*cdp",
+    "observed_signature": "BrowserType.connect_over_cdp timed out after the websocket connected.",
+    "cause_status": "hypothesis",
+    "confidence": "low",
+    "cause": "A foreign debugger-controlled tab or frozen target may have blocked Playwright attach; the receipt does not isolate which cause occurred.",
+    "fix": "Inspect the owned browser profile and current target state; retain the bounded attach timeout and do not terminate an unowned process.",
+    "false_positive_boundaries": ["Do not match ordinary page.goto timeouts without a CDP attach signature."],
+    "evidence": [
+      ".runtime/claude_full_completion_20261009/attempt_13_tts_h10_send/voice_run_2.log",
+      ".runtime/codex_full_completion_20261007/cdp_bounded_diagnostic/"
+    ]
+  },
+  {
+    "id": "VOICE-RECIPE-NEWLINES",
+    "pattern": "no matching adaptive recipe",
+    "observed_signature": "Existing voice chapters had no matching adaptive recipe.",
+    "cause_status": "hypothesis",
+    "confidence": "medium",
+    "cause": "The cited receipt attributes this incident to CRLF recipe bytes being read in text mode; verify the exact input bytes before generalizing.",
+    "fix": "Use the supported recipe rebuild path after confirming the current narration bytes and recipe inputs.",
+    "false_positive_boundaries": ["A missing recipe can have causes other than newline normalization."],
+    "evidence": [
+      ".runtime/claude_full_completion_20261009/attempt_13_tts_h10_send/manifest_fix_receipt.json"
+    ]
+  },
+  {
+    "id": "AISTUDIO-OVERLAY",
+    "layer": "browser.ui",
+    "pattern": "intercepts pointer events|cdk-overlay-backdrop",
+    "observed_signature": "The logged AI Studio click was intercepted by a CDK overlay subtree.",
+    "cause_status": "observed",
+    "confidence": "high",
+    "cause": "An overlay intercepted the target click in this recorded attempt; the receipt does not establish that every overlay is transient or safe to dismiss.",
+    "fix": "Classify the visible overlay through the existing UI guard; only retry when the prior action is known not to have sent.",
+    "false_positive_boundaries": ["Do not treat unrelated locator timeouts or historical overlays as a current visible blocker."],
+    "evidence": [
+      ".runtime/claude_full_completion_20261009/attempt_13_tts_h10_send/voice_run_3.log"
+    ]
+  },
+  {
+    "id": "AISTUDIO-STATUS-0",
+    "layer": "provider",
+    "pattern": "http status code:?\\s*0",
+    "observed_signature": "AI Studio returned HTTP status code 0 after one recorded Run click; the receipt says no audio was downloaded.",
+    "cause_status": "hypothesis",
+    "confidence": "low",
+    "cause": "The receipt records a failed provider response but does not establish whether the cause was network, browser, or provider-side.",
+    "fix": "Preserve the spent-attempt receipt and inspect current evidence; retry only under a fresh explicit provider grant.",
+    "false_positive_boundaries": ["Do not classify other HTTP status codes or infer that a request was unsent from status 0."],
+    "evidence": [
+      ".runtime/claude_full_completion_20261009/attempt_13_tts_h10_send/b_outcome_receipt.json",
+      ".runtime/claude_full_completion_20261009/attempt_16_soldier_a/network_diag_receipt.json"
+    ]
+  },
+  {
+    "id": "NETWORK-DEGRADED",
+    "pattern": "NetworkDegradedError",
+    "observed_signature": "The diagnostic receipt records analyze navigation timeouts and slow local proxy/VPN probes with zero provider sends in that diagnostic.",
+    "cause_status": "hypothesis",
+    "confidence": "medium",
+    "cause": "The local proxy/VPN path was degraded during the diagnostic; this does not prove it caused a separate provider failure.",
+    "fix": "Run the approved local network health check before a separately authorized request; preserve provider-send accounting independently.",
+    "false_positive_boundaries": ["A navigation timeout alone does not prove proxy failure or establish whether a separate request was sent."],
+    "evidence": [
+      ".runtime/claude_full_completion_20261009/attempt_16_soldier_a/network_diag_receipt.json"
+    ]
+  },
+  {
+    "id": "TTS-CEILING",
+    "pattern": "TTS attempt ceiling reached",
+    "observed_signature": "The local TTS send guard refused a further attempt after the attempt ceiling was reached.",
+    "cause_status": "observed",
+    "confidence": "high",
+    "cause": "The local attempt budget was spent; this does not report provider quota state.",
+    "fix": "Keep the journal spent; a new attempt requires a separate user grant and a fresh journal.",
+    "false_positive_boundaries": ["Do not infer that a provider request was sent solely from this guard refusal."],
+    "evidence": []
+  },
+  {
+    "id": "IMPORT-DURING-EDIT",
+    "pattern": "^(SyntaxError|IndentationError|ImportError|ModuleNotFoundError)\\b",
+    "frame_pattern": "(?:^|/)production/writing\\.py$",
+    "observed_signature": "The cited attempt stopped on a SyntaxError in production/writing.py while edits were in progress; its receipt reports zero sends.",
+    "cause_status": "observed",
+    "confidence": "high",
+    "cause": "The receipt attributes this specific import failure to an edit in progress; other import errors need independent diagnosis.",
+    "fix": "Repair the syntax error and verify the exact attempt's send receipt before making any send-status claim.",
+    "false_positive_boundaries": ["Only match import/syntax failures whose recorded frame is production/writing.py; never infer send status from the exception type."],
+    "evidence": [".runtime/claude_full_completion_20261009/attempt_16_soldier_a/network_diag_receipt.json"]
+  }
+]

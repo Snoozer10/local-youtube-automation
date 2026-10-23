@@ -402,7 +402,7 @@ class TestBuildChunkFilterGraph:
     def test_animations_disabled_all_static(
         self, config, sync_timeline, test_images_dir, monkeypatch
     ):
-        """anim_enabled=False forces static camera for every clip."""
+        """anim_enabled=False forces the canonical static_hold action for every clip."""
         encoder_config = compile_video.detect_hardware_encoder(config)
         ai_cameras = {"00_00": "zoom_in", "00_08": "zoom_out", "00_15": "pan_left"}
 
@@ -417,7 +417,7 @@ class TestBuildChunkFilterGraph:
             config, encoder_config, sync_timeline, test_images_dir, ai_cameras, {}, False
         )
 
-        assert captured == ["static", "static", "static"]
+        assert captured == ["static_hold", "static_hold", "static_hold"]
 
     def test_input_args_count_matches_images(self, config, sync_timeline, test_images_dir):
         """Input args contain one -i per resolved image clip (no audio in chunk)."""

@@ -153,3 +153,242 @@ def test_orthographic_feature_detection(tmp_path: Path):
     assert "24mm Wide-Angle" in records[1]["features"]
 
 
+def test_universal_ingestion_without_socratic_prompts(tmp_path: Path):
+    """Verifies that runs with only flow_prompts.json (no socratic prompts) are ingested properly."""
+    run_dir = tmp_path / "baseline_only_run"
+    run_dir.mkdir()
+    gen_dir = run_dir / "generated_images"
+    gen_dir.mkdir()
+
+    # Create dummy images
+    (gen_dir / "00_00.png").write_bytes(b"dummy_image_1")
+    (gen_dir / "00_05.png").write_bytes(b"dummy_image_2")
+
+    # Structured dict prompts (like What Do Animals Think Of Humans)
+    baseline_prompts = [
+        {
+            "index": 1,
+            "timestamp": "[00:00]",
+            "subject": "Golden retriever looking at human",
+            "action": "tilting head curiously",
+            "setting": "cozy living room",
+            "style": "clean 2D animation style",
+        },
+        {
+            "index": 2,
+            "timestamp": "[00:05]",
+            "subject": "Tabby cat perching on bookshelf",
+            "action": "observing human activity",
+            "setting": "warm study",
+            "style": "clean 2D vector style",
+        },
+    ]
+    (run_dir / "flow_prompts.json").write_text(json.dumps(baseline_prompts), encoding="utf-8")
+
+    # Timeline spans
+    timeline_data = {
+        "spans": [
+            {"index": 0, "start_time": 0.0, "end_time": 4.5, "duration": 4.5, "text": "Sentence 1", "camera_action": "linear_push"},
+            {"index": 1, "start_time": 4.5, "end_time": 9.2, "duration": 4.7, "text": "Sentence 2", "punch_frame": 12},
+        ]
+    }
+    (run_dir / "timeline.json").write_text(json.dumps(timeline_data), encoding="utf-8")
+
+    records = build_frame_records(str(run_dir))
+    # CRITICAL: Must NOT be empty!
+    assert len(records) == 2
+    assert records[0]["index"] == 1
+    assert records[1]["index"] == 2
+    assert "Subject: Golden retriever" in records[0]["baseline_prompt"]
+    assert "Action: tilting head" in records[0]["baseline_prompt"]
+    assert records[0]["baseline_exists"] is True
+    assert records[0]["start_time"] == 0.0
+    assert records[0]["duration"] == 4.5
+    assert "🎥 Linear Push (103%)" in records[0]["features"]
+    assert "⚡ Scale Punch (125% @ frame +12)" in records[1]["features"]
+
+
+def test_two_pass_timestamp_span_alignment(tmp_path: Path):
+    """Verifies that Two-Pass Timestamp-Validated Span Alignment protects against index mismatches."""
+    run_dir = tmp_path / "alignment_run"
+    run_dir.mkdir()
+    gen_dir = run_dir / "generated_images"
+    gen_dir.mkdir()
+
+    (gen_dir / "00_12.png").write_bytes(b"image_content")
+
+    # Non-contiguous prompt index 5 at timestamp 12.0s
+    baseline_prompts = [
+        {"index": 5, "timestamp": "[00:12]", "prompt": "Special scene after cut"}
+    ]
+    (run_dir / "flow_prompts.json").write_text(json.dumps(baseline_prompts), encoding="utf-8")
+
+    # Timeline spans have contiguous spans 0, 1, 2, 3
+    timeline_data = {
+        "spans": [
+            {"index": 0, "start_time": 0.0, "end_time": 4.0, "duration": 4.0},
+            {"index": 1, "start_time": 4.0, "end_time": 8.0, "duration": 4.0},
+            {"index": 2, "start_time": 8.0, "end_time": 11.5, "duration": 3.5},
+            {"index": 3, "start_time": 11.5, "end_time": 16.0, "duration": 4.5, "punch_frame": 15},
+        ]
+    }
+    (run_dir / "timeline.json").write_text(json.dumps(timeline_data), encoding="utf-8")
+
+    records = build_frame_records(str(run_dir))
+    # Index 5 has timestamp 12.0s, which falls in span 3 (11.5s to 16.0s)
+    rec_5 = next(r for r in records if r["index"] == 5)
+    assert rec_5["start_time"] == 11.5
+    assert rec_5["duration"] == 4.5
+    assert rec_5["punch_frame"] == 15
+
+
+def test_media_assets_resolution(tmp_path: Path):
+    """Verifies that resolve_media_assets locates master audio and video proxy."""
+    from tools.viewer_generator import resolve_media_assets
+
+    run_dir = tmp_path / "media_run"
+    run_dir.mkdir()
+    html_dir = run_dir / "canary_images"
+    html_dir.mkdir()
+
+    # Create dummy media files
+    wav_file = run_dir / "full_episode_voice.wav"
+    wav_file.write_bytes(b"RIFFdummywavbytes")
+    mp4_file = run_dir / "youtube_ready_video_720p.mp4"
+    mp4_file.write_bytes(b"ftypmp4dummybytes")
+
+    media = resolve_media_assets(str(run_dir), str(html_dir))
+    assert media["has_audio"] is True
+    assert media["has_video"] is True
+    assert media["audio_path"] == "../full_episode_voice.wav"
+    assert media["video_path"] == "../youtube_ready_video_720p.mp4"
+
+
+def test_resolution_mismatch_detection(tmp_path: Path):
+    """Verifies that differing image resolutions trigger resolution mismatch warnings."""
+    import struct
+    import zlib
+
+    def make_png(width: int, height: int) -> bytes:
+        sig = b"\x89PNG\r\n\x1a\n"
+        ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)
+        ihdr_crc = struct.pack(">I", zlib.crc32(b"IHDR" + ihdr_data))
+        ihdr = struct.pack(">I", 13) + b"IHDR" + ihdr_data + ihdr_crc
+        raw_data = b"\x00" * (height * (width + 1))
+        comp_data = zlib.compress(raw_data)
+        idat_crc = struct.pack(">I", zlib.crc32(b"IDAT" + comp_data))
+        idat = struct.pack(">I", len(comp_data)) + b"IDAT" + comp_data + idat_crc
+        iend_crc = struct.pack(">I", zlib.crc32(b"IEND"))
+        iend = struct.pack(">I", 0) + b"IEND" + iend_crc
+        return sig + ihdr + idat + iend
+
+    run_dir = tmp_path / "res_run"
+    run_dir.mkdir()
+    gen_dir = run_dir / "generated_images"
+    gen_dir.mkdir()
+    canary_dir = run_dir / "canary_images"
+    canary_dir.mkdir()
+
+    # Baseline: 1920x1080 (16:9)
+    (gen_dir / "00_00.png").write_bytes(make_png(1920, 1080))
+    # Canary: 1792x1024 (7:4 != 16:9)
+    (canary_dir / "00_00.png").write_bytes(make_png(1792, 1024))
+
+    (run_dir / "flow_prompts_socratic.json").write_text(
+        json.dumps([{"index": 1, "timestamp": "[00:00]", "enhanced_prompt": "Canary"}]), encoding="utf-8"
+    )
+
+    records = build_frame_records(str(run_dir), str(canary_dir))
+    assert len(records) == 1
+    assert records[0]["resolution_mismatch"] is not None
+    assert "1920x1080 vs 1792x1024" in records[0]["resolution_mismatch"]
+
+
+def test_dynamic_scaffolding_in_generated_html(tmp_path: Path):
+    """Verifies that generated HTML includes the payload script, media elements, wipe viewport, and zero hardcoded '293'."""
+    run_dir = tmp_path / "dynamic_scaffold_run"
+    run_dir.mkdir()
+    gen_dir = run_dir / "generated_images"
+    gen_dir.mkdir()
+
+    # Create dummy audio and video
+    (run_dir / "full_episode_voice.wav").write_bytes(b"RIFF dummy wav")
+    (run_dir / "youtube_ready_video_720p.mp4").write_bytes(b"dummy mp4")
+
+    # Create 3 frames
+    prompts = [
+        {"index": i, "timestamp": f"[00:{i*5:02d}]", "enhanced_prompt": f"Frame {i} prompt"}
+        for i in range(1, 4)
+    ]
+    (run_dir / "flow_prompts_socratic.json").write_text(json.dumps(prompts), encoding="utf-8")
+
+    for i in range(1, 4):
+        (gen_dir / f"00_{i*5:02d}.png").write_bytes(b"fake image")
+
+    out_file = run_dir / "studio_viewer.html"
+    generate_comparison_viewer_html(str(run_dir), output_html=str(out_file))
+
+    assert out_file.exists()
+    html_text = out_file.read_text(encoding="utf-8")
+
+    # 1. Payload Script & JSON
+    assert '<script id="studio-data" type="application/json">' in html_text
+    assert '"media":' in html_text
+    assert '"frames":' in html_text
+
+    # 2. Single-source audio invariant
+    assert 'videoProxy.muted = true' in html_text
+    assert '<video id="video-proxy" preload="metadata" muted' in html_text
+    assert '<audio id="master-audio"' in html_text
+
+    # 3. Split Curtain Wipe & Diff Viewports
+    assert 'id="wipe-viewport"' in html_text
+    assert 'id="wipe-handle"' in html_text
+    assert 'id="diff-viewport"' in html_text
+
+    # 4. Safe Zones
+    assert 'id="safe-zones-overlay"' in html_text or 'safe-zones-svg' in html_text
+    assert 'ACTION SAFE (90%)' in html_text
+    assert 'TITLE SAFE (80%)' in html_text
+
+    # 5. Range Compressor & Scrubbing
+    assert 'compressRanges' in html_text
+    assert 'id="scrubber-track"' in html_text
+
+    # 6. ZERO hardcoded "293" in select options
+    assert 'Show All Frames (293)' not in html_text
+    assert 'Frames 251–293' not in html_text
+
+
+def test_relative_path_disk_audit(tmp_path: Path):
+    """Verifies that nested chunk viewer HTML correctly resolves parent baseline and master frames."""
+    run_dir = tmp_path / "chunk_audit_run"
+    run_dir.mkdir()
+    baseline_dir = run_dir / "generated_images_baseline"
+    baseline_dir.mkdir()
+    chunk_dir = run_dir / "chunk_1_images"
+    chunk_dir.mkdir()
+
+    (baseline_dir / "00_00.png").write_bytes(b"baseline_0")
+    (chunk_dir / "00_00.png").write_bytes(b"chunk_0")
+
+    (run_dir / "flow_prompts.json").write_text(
+        json.dumps([{"index": 1, "timestamp": "[00:00]", "prompt": "Baseline prompt"}]), encoding="utf-8"
+    )
+
+    records = build_frame_records(str(run_dir), str(chunk_dir), html_dir=str(chunk_dir))
+    assert len(records) == 1
+    assert records[0]["baseline_image"] == "../generated_images_baseline/00_00.png"
+    assert records[0]["canary_image"] == "00_00.png"
+
+    # Generate HTML inside chunk directory
+    chunk_html = chunk_dir / "studio_viewer.html"
+    generate_comparison_viewer_html(str(run_dir), str(chunk_dir), output_html=str(chunk_html))
+
+    assert chunk_html.exists()
+    content = chunk_html.read_text(encoding="utf-8")
+    assert '../generated_images_baseline/00_00.png' in content
+
+
+
+

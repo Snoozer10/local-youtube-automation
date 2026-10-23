@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import os
 import time
+from collections.abc import Callable
 from typing import Any
 from urllib.parse import urljoin
 
@@ -41,10 +42,11 @@ def validate_image_file(file_path: str, min_size_kb: int = 20) -> bool:
             w, h = img.size  # Read dimensions BEFORE verify() (verify() consumes the stream)
             # Guard against completely blank/empty or zero-content images (e.g. tainted canvas artifacts)
             try:
-                extrema = img.getextrema()
+                get_extrema: Callable[[], tuple[float, float] | tuple[tuple[float, float], ...]] = img.getextrema
+                extrema = get_extrema()
                 if extrema:
                     if isinstance(extrema[0], tuple):
-                        if all(b_min == 0 and b_max == 0 for b_min, b_max in extrema):
+                        if all(channel == (0, 0) for channel in extrema):
                             return False
                     elif isinstance(extrema, tuple) and len(extrema) == 2:
                         if extrema[0] == 0 and extrema[1] == 0:

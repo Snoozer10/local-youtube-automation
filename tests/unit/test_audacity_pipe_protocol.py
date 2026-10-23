@@ -1,5 +1,8 @@
 """Unit tests for Audacity named-pipe protocol semantics against a fake pipe pair."""
 
+import io
+import sys
+
 import pytest
 from mocks.mock_named_pipe import NamedPipePair, consume_until_empty_line
 
@@ -12,16 +15,42 @@ def pair() -> NamedPipePair:
 
 
 class TestCommandFraming:
-    def test_command_is_framed_with_trailing_newline_and_flushed(self, pair):
+    @pytest.mark.parametrize(
+        ("platform", "frame"),
+        [("win32", "SelectAll:\r\n\0"), ("linux", "SelectAll:\n")],
+    )
+    def test_command_is_framed_with_trailing_newline_and_flushed(
+        self, pair, monkeypatch, platform, frame
+    ):
+        monkeypatch.setattr(sys, "platform", platform)
         automate_audacity.send_audacity_command(pair.write_pipe, pair.read_pipe, "SelectAll:")
-        assert pair.sent_text == "SelectAll:\n"
+        assert pair.sent_text == frame
         assert pair.flushes >= 1
 
-    def test_sequential_commands_preserve_order(self, pair):
+    @pytest.mark.parametrize(
+        ("platform", "frames"),
+        [("win32", ["SelectAll:\r\n\0", "Export2:\r\n\0"]),
+         ("linux", ["SelectAll:\n", "Export2:\n"])],
+    )
+    def test_sequential_commands_preserve_order(
+        self, pair, monkeypatch, platform, frames
+    ):
+        monkeypatch.setattr(sys, "platform", platform)
         pair.enqueue_response("ok\n", "\n")
         automate_audacity.send_audacity_command(pair.write_pipe, pair.read_pipe, "SelectAll:")
         automate_audacity.send_audacity_command(pair.write_pipe, pair.read_pipe, "Export2:")
+        assert pair.sent_text == "".join(frames)
         assert pair.sent_commands == ["SelectAll:", "Export2:"]
+        assert pair.flushes == 2
+
+    def test_sent_commands_removes_only_recognized_frame_suffixes(self, pair):
+        pair.sent_chunks.extend(["windows:\r\n\0", "posix:\n", "malformed:\r\n", "malformed:\0"])
+        assert pair.sent_commands == [
+            "windows:",
+            "posix:",
+            "malformed:\r\n",
+            "malformed:\0",
+        ]
 
     def test_function_returns_raw_accumulated_response(self, pair):
         pair.enqueue_response("BatchCommand finished.\n", "\n")
@@ -30,6 +59,55 @@ class TestCommandFraming:
         )
         assert response == "BatchCommand finished.\n\n"
 
+
+class TestStrictExchangeBoundary:
+    def test_strict_rejects_eof_after_success_status_without_blank_boundary(self):
+        read_pipe = io.StringIO('BatchCommand finished: OK\n')
+        with pytest.raises(RuntimeError, match='did not confirm success.*terminal blank boundary'):
+            automate_audacity.send_audacity_command(
+                io.StringIO(), read_pipe, 'Help:', strict=True
+            )
+
+    def test_strict_accepts_success_status_and_terminal_blank_line(self):
+        response = 'BatchCommand finished: OK\r\n\r\n'
+        actual = automate_audacity.send_audacity_command(
+            io.StringIO(), io.StringIO(response), 'Help:', strict=True
+        )
+        assert actual == response
+
+    def test_strict_rejects_blank_boundary_before_success_status(self):
+        with pytest.raises(RuntimeError, match='did not confirm success.*BatchCommand finished status'):
+            automate_audacity.send_audacity_command(
+                io.StringIO(), io.StringIO('partial\n\n'), 'Help:', strict=True
+            )
+
+    def test_strict_rejects_eof_before_success_status(self):
+        with pytest.raises(RuntimeError, match='did not confirm success.*BatchCommand finished status'):
+            automate_audacity.send_audacity_command(
+                io.StringIO(), io.StringIO('partial\n'), 'Help:', strict=True
+            )
+
+    def test_strict_preserves_response_size_limit_error(self):
+        oversized = 'x' * (1024 * 1024 + 1)
+        with pytest.raises(ValueError, match='exceeded 1 MiB'):
+            automate_audacity.send_audacity_command(
+                io.StringIO(), io.StringIO(oversized), 'Help:', strict=True
+            )
+
+    @pytest.mark.parametrize("eol", ["\n", "\r\n"])
+    def test_strict_accepts_leading_empty_line_before_completion_status(self, eol):
+        response = f"{eol}BatchCommand finished: OK{eol}{eol}"
+        actual = automate_audacity.send_audacity_command(
+            io.StringIO(), io.StringIO(response), "Help:", strict=True
+        )
+        assert actual == response
+
+    @pytest.mark.parametrize("eol", ["\n", "\r\n"])
+    def test_strict_rejects_leading_empty_lines_followed_by_eof(self, eol):
+        with pytest.raises(RuntimeError, match="did not confirm success.*BatchCommand finished status"):
+            automate_audacity.send_audacity_command(
+                io.StringIO(), io.StringIO(eol), "Help:", strict=True
+            )
 
 class TestEmptyLineTerminator:
     def test_consumer_stops_at_first_empty_line(self, pair):

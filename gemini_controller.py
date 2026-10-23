@@ -28,9 +28,9 @@ try:
     from utils import get_config_value
 except Exception:
     import os as _os
-    def get_config_value(k, d=""):
-        v = _os.getenv(k)
-        return v if v is not None else d
+    def get_config_value(target_key: str, default_val: str = "") -> str:
+        v = _os.getenv(target_key)
+        return v if v is not None else default_val
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -84,7 +84,7 @@ def _should_reset_session(current_start_idx: int, planner_model: str) -> bool:
         return True
     return False
 
-def ensure_persistent_gemini_session(page, current_start_idx: int, planner_model: str) -> bool:
+def ensure_persistent_gemini_session(page: Page, current_start_idx: int, planner_model: str) -> bool:
     """Reuse chat within threshold; only Control+Shift+O when threshold exceeded.
     Preserves Gemini context and avoids duplicate chats in sidebar.
     Handles dummy page objects used in unit tests.
@@ -133,7 +133,7 @@ def ensure_persistent_gemini_session(page, current_start_idx: int, planner_model
         return True
 
 
-def reset_session_tracker():
+def reset_session_tracker() -> None:
     global _last_session_start_index, _last_session_model
     _last_session_start_index = None
     _last_session_model = None

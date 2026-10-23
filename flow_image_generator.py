@@ -1,6 +1,7 @@
 import os
 import sys
 import types
+from typing import Any
 
 _src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
 if _src_dir not in sys.path:
@@ -15,14 +16,15 @@ class _FacadeProxy(types.ModuleType):
     monkeypatching synchronization across youtube_automation.visuals and browser packages.
     """
 
-    def __init__(self, target):
+    def __init__(self, target: types.ModuleType) -> None:
         super().__init__(target.__name__, getattr(target, "__doc__", None))
         self._target = target
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
+        # This facade forwards arbitrary dynamically exported module attributes.
         return getattr(self._target, name)
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name: str, value: object) -> None:
         if name == "_target":
             super().__setattr__(name, value)
             return
@@ -41,7 +43,7 @@ class _FacadeProxy(types.ModuleType):
             if mod and hasattr(mod, name):
                 setattr(mod, name, value)
 
-    def __dir__(self):
+    def __dir__(self) -> list[str]:
         return dir(self._target)
 
 

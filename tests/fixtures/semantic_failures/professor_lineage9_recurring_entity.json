@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "case_id": "professor_lineage9_recurring_entity",
+  "title": "Established entity was repeated under new continuity",
+  "failure_code": "SEMANTIC_RECORD_INVALID",
+  "root_cause_class": "deterministic_entity",
+  "responsible_layer": "python_compiler",
+  "stage": "plan",
+  "window_index": 0,
+  "raw_evidence_sha256s": ["188ff28b2d2426a8a41d83e300f7778e2ab02f99aadeaa809c8402e945ebef01", "455729da03e191f3f21574864cec664ac39a36cfcb25c9332a65af71f810fd9e"],
+  "input_sha256": "feee2d374830211cb0bd92ca6b64749061e2620816229d3c6f79457be8145157",
+  "candidate_sha256": "be43295c4faf79307d63f5f6ab201feeb032f40f5f4bb00d562a5c9e26b1e388",
+  "brief": {
+    "version": 3,
+    "source_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "profile_sha256": "2042b2c301cf9f6130273d5fb18cec2b185cd6b17e99db7f9d5874e2567c4fdf",
+    "channel": {"version": 3, "channel_id": "professor_failure_fixture", "name": "Sanitized Professor Fixture", "audience": "Arabic-speaking adults", "language": "Arabic", "dialect": "MSA", "voice": "achird", "tone": "clear evidence-conscious", "style": "restrained editorial illustration", "visual_directives": ["Use narration-specific scenes"], "forbidden_motifs": ["Avoid generic focus portraits"], "allowed_treatments": ["subject_scene", "detail", "comparison"], "humor": "none"},
+    "analysis": {"topics": ["attention exercise"], "claim_basis": "factual", "form": "tutorial", "proposition": "Entity continuity must remain stable", "narrative_strategy": "Use three concise opening beats", "treatments": ["subject_scene", "detail", "comparison"], "rationale": "Repeated identities require reuse or edit"},
+    "visual_strategy": {"version": 1, "source_sha256": "1111111111111111111111111111111111111111111111111111111111111111", "topic": "Attention exercise", "viewer_question": "How does one entity continue?", "central_promise": "Continuity is explicit and repairable", "evidence_mode": "demonstrative", "emotional_arc": ["concern", "curiosity", "clarity"], "hook_archetype": "mystery_gap", "hook_microbeats": [{"beat_id": "beat_1_problem", "function": "problem", "duration_seconds": 3, "viewer_takeaway": "The problem is concrete", "visual_mode": "human_context"}, {"beat_id": "beat_2_curiosity", "function": "curiosity", "duration_seconds": 3, "viewer_takeaway": "The gap is visible", "visual_mode": "comparison"}, {"beat_id": "beat_3_promise", "function": "promise", "duration_seconds": 3, "viewer_takeaway": "The promise is specific", "visual_mode": "kinetic_type"}], "visual_modes": ["human_context", "comparison", "kinetic_type"], "local_ui_kit": ["cards", "focus_sweep", "timer"], "pacing": "Three equal opening beats", "motion_grammar": ["Hold unless meaning changes"]}
+  },
+  "timeline": {"fps": 30, "total_frames": 270, "spans": [{"index": 0, "start_frame": 0, "end_frame": 90, "text": "Sanitized problem narration"}, {"index": 1, "start_frame": 90, "end_frame": 180, "text": "Sanitized curiosity narration"}, {"index": 2, "start_frame": 180, "end_frame": 270, "text": "Sanitized promise narration"}]},
+  "checkpoint": {"planner_version": 9, "compiler_version": 2, "windows": [[0, 270]], "next_window": 0, "units_by_window": [], "batches": []},
+  "failed_units": [{"unit_id": "u0_90", "start_frame": 0, "end_frame": 90, "text": "Sanitized problem narration"}, {"unit_id": "u90_180", "start_frame": 90, "end_frame": 180, "text": "Sanitized curiosity narration"}, {"unit_id": "u180_270", "start_frame": 180, "end_frame": 270, "text": "Sanitized promise narration"}],
+  "failed_candidate": {"shots": [
+    {"beat_id": "beat_1_problem", "first_unit_id": "u0_90", "visual_mode": "human_context", "beat_kind": "claim", "framing": "wide", "entity_ids": ["office_worker_canvas_01"], "subject": "A visible office worker on a studio canvas", "visible_state": "The worker notices a difficult task", "setting": "A grounded workspace", "composition": "Worker on the left"},
+    {"beat_id": "beat_2_curiosity", "first_unit_id": "u90_180", "visual_mode": "comparison", "beat_kind": "question", "framing": "close_up", "entity_ids": ["office_worker_canvas_01"], "subject": "The visible office worker on the same canvas", "visible_state": "The worker compares two options", "setting": "A grounded workspace", "composition": "Worker on the right"},
+    {"beat_id": "beat_3_promise", "first_unit_id": "u180_270", "visual_mode": "kinetic_type", "beat_kind": "reveal", "framing": "medium", "entity_ids": ["promise_marker"], "subject": "A visible promise marker", "visible_state": "The marker resolves the question", "setting": "A clean studio", "composition": "Marker centered"}
+  ]},
+  "corrected_candidate": {"shots": [
+    {"beat_id": "beat_1_problem", "first_unit_id": "u0_90", "visual_mode": "human_context", "beat_kind": "claim", "framing": "wide", "entity_ids": ["office_worker_canvas_01"], "subject": "A visible office worker on a studio canvas", "visible_state": "The worker notices a difficult task", "setting": "A grounded workspace", "composition": "Worker on the left"},
+    {"beat_id": "beat_2_curiosity", "first_unit_id": "u90_180", "visual_mode": "comparison", "beat_kind": "question", "framing": "close_up", "entity_ids": ["comparison_canvas_02"], "subject": "A visible comparison canvas", "visible_state": "Two options are compared", "setting": "A grounded workspace", "composition": "Comparison on the right"},
+    {"beat_id": "beat_3_promise", "first_unit_id": "u180_270", "visual_mode": "kinetic_type", "beat_kind": "reveal", "framing": "medium", "entity_ids": ["promise_marker"], "subject": "A visible promise marker", "visible_state": "The marker resolves the question", "setting": "A clean studio", "composition": "Marker centered"}
+  ]},
+  "expected_boundary": "semantic_compiler",
+  "expected_issue": {"beat_ids": ["beat_2_curiosity"], "code": "SEMANTIC_RECORD_INVALID", "requirement": "Recurring entity IDs cannot use new continuity"},
+  "expected_corrected_behavior": "Repair only beat_2_curiosity to reuse or edit the established reference or choose a distinct entity ID."
+}
