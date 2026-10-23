@@ -1,21 +1,21 @@
 # Handoff
 
 ## Current Phase
-The four original PR #21 findings and the installed prompt-default follow-up are repaired and verified offline. Current exact-head publication, CI and Codex outcomes belong to the PR and bound disposition receipts. CodeRabbit is USER-SKIPPED at owner direction; no merge authorized.
+PR #21 merged into master at dadd3b5, with the reviewed 9a0c51f tree unchanged. Post-merge CI 39876182132 passed. This seven-document change records the merge closeout; Professor D1 production is deferred by the user.
 
 ## Current Goal
-Publish/read back the prompt-default follow-up and exact-head CI/Codex review. [Review-fix record](REVIEW_FIXES_20261023.md) and [master](../../tasks/BRANCH_COMPLETION_MASTER.md) own the cursor.
+Review documentation-only [PR #22](https://github.com/Snoozer10/local-youtube-automation/pull/22). Local branch/worktree cleanup is complete; the [merge record](MERGE_PR21_20261023.md) and [master](../../tasks/BRANCH_COMPLETION_MASTER.md) own current records.
 
 ## Done
-- Strict typing: 699 errors to zero across 73 files; original checking scope preserved.
-- Original F1 dispositions and four resolved findings retained. Final follow-up checks: 1976 passed, 9 live skipped; all nine gates and real installed-wheel configuration/resource probes pass.
+- Strict typing: 699 errors to zero across 73 files; original checking scope preserved. Removed one redundant worktree and two retired local branches after archiving all 680 total files, including 186 ignored and restoring/verifying both branch histories.
+- Five findings resolved; Codex reported no major issues. Pre/post-merge CI passed. Prior frozen gates: 1976 passed / 9 live skipped; post-merge prompt smoke: 8 passed.
 - Installed no-channel defaults include only canonical dialect ratios and ordered pronunciation lexicon. Explicit CONFIG_PATH and channel/model overrides remain authoritative. The canonical root config and two excluded operational inputs are untouched.
 
 ## Next
-Read current PR head, CI and Codex findings through the review-fix disposition receipt; resolve any returned source blockers. CodeRabbit is USER-SKIPPED for this PR, with no further request required. Merge remains separate.
+Professor D1 is DEFERRED BY USER: no near-term production; resume only on explicit future request. Complete PR #22 review; it remains open. Retain operational inputs, remote branches and excluded reconciliations. PR #21 CodeRabbit was USER-SKIPPED.
 
 ## Failures & Fixes
-Earlier installed-template smoke checks asserted nonempty text and missed the default lexicon. The old wheel reproduces the gap; the new wheel verifies exact semantic substitution and overrides. Init-order failure and raw-byte restoration receipts are retained.
+Earlier installed-template smoke checks asserted nonempty text and missed the default lexicon. The old wheel reproduces the gap; the new wheel verifies exact semantic substitution and overrides. Init-order failure and raw-byte restoration receipts are retained. Disk-full interrupted a record preimage; the failed archive is retained. Removed only the temporary restore-check repository after bundle verification, then completed one corrected retry. Backup files, bundle and fsck receipts remain intact.
 
 ## Resume Context
-Follow-up start: 738ee77; CI 39868018871 passed. Task: `.runtime/codex_prompt_config_fix_20261023/`; gates: `.runtime/codex_prompt_config_final_20261023/`. Combined current external index: `.runtime/codex_review_fixes_20261023/CURRENT_DISPOSITION.json`. Pilot spending, human provenance, render recipes and restart reconciliation remain excluded. No live production or merge. QMD lexical only; vector backlog is reported separately.
+Working branch: `codex/merge-closeout-records`, based on master dadd3b5. Cleanup, restoration guide and current publication receipts: `.runtime/codex_repo_cleanup_20261023/` (`archive/RESTORE.md`, `CLEANUP_RESULT.json`, `PUBLICATION_RESULT.json`). One worktree and two local branches remain. Initial docs publication: `.runtime/codex_docs_closeout_20261023/`; merge evidence: `.runtime/codex_merge_pr21_20261023/`. Source/config/operational inputs are unchanged. No new live grant. QMD lexical readback is refreshed; embeddings remain incomplete.
