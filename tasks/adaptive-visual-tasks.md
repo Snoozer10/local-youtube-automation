@@ -1,4 +1,4 @@
-> Current publication cursor: four original findings plus the installed prompt-default follow-up are repaired and verified offline. [Review-fix record](../docs/sessions/REVIEW_FIXES_20261023.md) owns this pass; PR #21 and bound receipts own current exact-head review/CI outcomes. CodeRabbit is USER-SKIPPED at owner direction for the file limit. Earlier snapshots below are historical; no merge/live action authorized.
+> Current publication cursor: PR #21 merged into master at `dadd3b5f9c10761689abff1e273d62e78dc70128`, with the reviewed tree unchanged and post-merge CI 39876182132 passed. This seven-document changeset records the [merge closeout](../docs/sessions/MERGE_PR21_20261023.md). Professor D1 production is DEFERRED BY USER until a future explicit request. The master owns current scope; PR #21 CodeRabbit was USER-SKIPPED; dated snapshots below are historical.
 
 # Adaptive visual engine - implementation checklist
 

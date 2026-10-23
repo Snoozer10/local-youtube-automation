@@ -1,4 +1,4 @@
-> Current cursor: the installed no-channel default-configuration follow-up is locally verified. PR #21 and `.runtime/codex_review_fixes_20261023/CURRENT_DISPOSITION.json` own latest exact-head external outcomes. CodeRabbit remains USER-SKIPPED by owner instruction. The initial four-finding pass below is preserved as historical evidence.
+> Current cursor: PR #21 merged at `dadd3b5f9c10761689abff1e273d62e78dc70128` after five finding repairs and exact-head CI/Codex review. Post-merge CI 39876182132 passed. This documentation-only changeset records the [merge closeout](MERGE_PR21_20261023.md); exact publication outcomes belong to `.runtime/codex_docs_closeout_20261023/PUBLICATION_RESULT.json`. Professor D1 is deferred by the user. The original review-fix evidence below is historical and preserved.
 
 # Installed prompt-default follow-up - 23 October 2026
 

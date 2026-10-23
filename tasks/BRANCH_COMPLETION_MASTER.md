@@ -1,20 +1,20 @@
 # Branch Completion Master
 
-Current closeout: original four findings plus installed prompt-default follow-up repaired and verified offline. See [review-fix record](../docs/sessions/REVIEW_FIXES_20261023.md). PR #21 and bound disposition receipts own current exact-head review/CI outcomes. CodeRabbit USER-SKIPPED by explicit owner direction; not merged.
+Current closeout: PR #21 MERGED at `dadd3b5f9c10761689abff1e273d62e78dc70128` with exact reviewed head `9a0c51f15ed509c770d062cac0e92b06bf303ea4` preserved as a parent and an identical file tree. Post-merge CI39876182132 passed. See [merge record](../docs/sessions/MERGE_PR21_20261023.md). CodeRabbit USER-SKIPPED by owner direction.
 
-> Status: INSTALLED DEFAULT FOLLOW-UP VERIFIED / CURRENT EXTERNAL GATES OWNED BY PR / NOT MERGED.
-> Current authority: user authorized repairs, commit/push, PR #21 updates, fresh Codex review and exact-head CI; explicitly skipped CodeRabbit for its file limit. Production-reconciliation exclusions remain; no merge or live-provider action authorized.
+> Status: PR #21 MERGED / POST-MERGE MASTER VERIFIED / ENGINEERING CLOSEOUT COMPLETE.
+> Current authority: user authorized this seven-document PR and branch/worktree audit, and deferred Professor D1 production until a future explicit resumption. PR #21 merge is complete. Existing provider/reconciliation exclusions remain.
 > This register owns current status. Dated prior receipts remain exact-scope historical evidence.
 
 ## Current dashboard
 
 - Accepted Soldier/H10 canonical audio adoption remains completed at its recorded scope; do not repeat it. This audit did not redo listening or narration.
 - Original source safety repairs and all current typing/test findings are independently reviewed. F1 engineering dispositions are complete within the user-selected scope; live/production artifacts are not newly approved.
-- Final review-ready tree: 1,968 passed / 9 live skipped; workspace/unit Ruff, production mypy 24 and full strict mypy 73 pass. Replay14, exercise lint, isolated builds, package/root-module/data byte checks pass. No new type exclusions or suppressions; checking config unchanged.
+- Final repaired reviewed tree:1976 passed/9 live skipped; all nine frozen local gates passed, including full strict mypy73 with unchanged scope. Post-merge smoke:8 passed. Merge tree is identical; pre-merge CI39874231061 and merge CI39876182132 passed.
 - Both H10 and Samar current validated-model fingerprints match their downstream plan pins. Initial H10 stale-lineage finding is RETRACTED: a raw-dictionary digest was compared against validated-model production pins; failed comparison/correction preserved.
 - H10: 15 assets/proofs; Samar: 18 assets/proofs match named receipt hashes. Master/preview pairs exist, match bytes and probe at 1080p/30 fps (2590/2716 frames). Thumbnail bytes match receipts; full visual/editorial review, human approval provenance and actual restart execution are separate.
 - Approval records label Owner, but independent human provenance is not established. Saved spending H10=17/Samar=18; reported reset/retry history needs reconciliation. Exact cumulative spend/provider quota is unknown.
-- Professor C1 exact ca8 preview acceptance remains artifact-bound. C2 delivery remains partial. Full Professor D1 script is approved; D2-D7 remain open. No new scope deferral is implied.
+- Professor C1 exact ca8 preview acceptance remains artifact-bound. C2 delivery remains partial. D1 script is approved; D1 production is DEFERRED BY USER, with no near-term execution. D2-D7 remain open under their existing dependencies.
 - A5 recovery discard and E4 post-merge live-direction disposition remain at their prior verified scope. F5's nonblocking historical limitation disposition remains; no historical missing pins are newly verified.
 
 ### Execution order and visual progress
@@ -24,27 +24,27 @@ Current closeout: original four findings plus installed prompt-default follow-up
 | Audacity safety | A1-A5 | Prior bounded A4/A5 evidence retained; no new live readiness run. |
 | Accepted audio | B1-B5 | Recorded accepted-byte adoption retained; no repeat processing. |
 | Pilots | C1-C7 | C1/C5/C6 retain prior exact scope; C2/C3/C4 partial; C7 OPEN. |
-| Complete Professor | D1-D7 | D1 approved script; narration/timing/executable planning/full production remain OPEN. |
+| Complete Professor | D1-D7 | D1 script approved; D1 production DEFERRED BY USER. Downstream D2-D7 remain open under existing dependencies. |
 | Engineering | E1-E5 | Prior dispositions retained; new source findings tracked in F1. |
-| Release | F1-F9 | F1-F4 prior scope retained; four initial review fixes plus installed default configuration repaired. F6 published; F7 current-head Codex dispositions and F8 exact-head CI outcomes belong to PR/receipts; CodeRabbit USER-SKIPPED; F9 not authorized. |
+| Release | F1-F9 | F1-F8 current engineering scope verified; all five findings resolved; CodeRabbit USER-SKIPPED. F9 user-authorized merge and post-merge master/CI closeout verified. Production exclusions remain. |
 
 ### Immediate resume steps
 
-1. Follow [PR #21](https://github.com/Snoozer10/local-youtube-automation/pull/21) and the [publication record](../docs/sessions/PUBLICATION_20261022.md); verify every review/check against its current exact head.
-2. Resolve returned formal-review and exact-head CI findings; local frozen-tree passes remain distinct from remote CI.
-3. Preserve the selected full Professor episode; continue D2-D7 only under applicable bounded production authority.
+1. Publish/review this seven-document merge-closeout PR; exact branch, head, PR and CI readback belong to `.runtime/codex_docs_closeout_20261023/PUBLICATION_RESULT.json`.
+2. Retain the reviewed source, immutable receipts and excluded operational inputs; new defects reopen only the affected checks.
+3. Professor D1 production is DEFERRED BY USER until a future explicit request. Preserve the approved script; downstream D2-D7 retain their existing dependencies.
 4. After any further implementation changes, run affected focused checks and the required final-tree gates; preserve failures and verify shared-resource isolation.
-5. Publication and review requests are authorized. Merge remains separately gated; retain excluded operational inputs locally.
+5. Review branch/worktree ownership, dirty state and unique commits before cleanup. The current work is documentation-only; no additional merge or live-provider action is authorized by publication.
 
 ### Decision / authorization queue
 
-- Current user authority includes publishing reviewed commits and requesting formal PR review/exact-head CI. No merge, new provider cap or live app action is inferred.
+- Current user authority covers publishing the seven merge-closeout documents and checking branches/worktrees. Professor D1 is deferred. PR #21 merge/master CI remain verified; no new provider cap or live app action is inferred.
 - User excluded pilot spending, human approval provenance, current render recipes and restart-evidence reconciliation from this pass. Historical records remain unchanged and unverified at those scopes; they are not current engineering blockers.
-- Current QMD lexical refresh/readback is in `.runtime/codex_prompt_config_fix_20261023/QMD_SYNC.json`; earlier refresh receipts remain historical. Embeddings remain incomplete; no semantic retrieval was used.
+- Current QMD lexical refresh/readback is in `.runtime/codex_docs_closeout_20261023/QMD_SYNC.json`; prior receipts remain historical. Embeddings remain incomplete; semantic retrieval is unused.
 
 ### Current known gates
 
-Gate commands and frozen hashes: `.runtime/codex_typing_review_ready_20261022/GATES.json`; archive/root-module/data inspection: PACKAGE_CONTENTS_VERIFICATION.json. Every required local command exits0 on the recorded tree. Earlier candidates remain historical/superseded.
+Gate commands and frozen hashes: `.runtime/codex_prompt_config_final_20261023/GATES.json`; installed artifact probe: `.runtime/codex_prompt_config_fix_20261023/AFTER_WHEEL_VERIFICATION_FINAL.json`. Merge lineage/tree, smoke and CI evidence: `.runtime/codex_merge_pr21_20261023/`. Prior candidates remain historical.
 
 ## Output-by-output progress (receipt-backed starting view)
 
@@ -56,9 +56,9 @@ This matrix is a receipt-backed progress view; the current dashboard and task-sp
 | Soldier Samar | Accepted audio retained | Canonical timing retained | Current model plan aligns |18 assets/proofs hash-match; full review not independently established | Preview bytes/probe pass; human provenance unresolved | Bytes match receipt; concept/OCR not independently reviewed | Bytes/probe pass; historical stage checks True; current render recipe/restart not revalidated |
 | H10 Dog-Cues | Accepted audio retained | Canonical timing retained | Current model5f000dce aligns; raw JSON comparison retracted |15 assets/proofs hash-match; full review unresolved | Preview bytes/probe pass; human provenance unresolved | Bytes match receipt; concept/OCR not independently reviewed | Bytes/probe pass; historical stage checks True; current render recipe/restart not revalidated |
 | Snoozer Anime pilot | ✅ 71.47 s canonical audio | ✅ 2,144 frames @ 30 fps CFR | ✅ Plan b1d07fdb... | ✅ 8/8 assets verified | ✅ Scorecard & editorial approval v2 sealed | ⬜ Deferred | 🟡 Offline qualification verified (C5, C6) |
-| Professor full episode G6 | D1 script approved; fresh narration OPEN | Revised-script timing OPEN | D3 hand roadmap not executable | D4 OPEN | D5/D6 OPEN | D7 OPEN | D7 OPEN |
+| Professor full episode G6 | D1 script approved; narration DEFERRED BY USER | OPEN; awaits D1 | D3 draft not executable; awaits D1 | D4 OPEN | D5/D6 OPEN | D7 OPEN | D7 OPEN |
 | Adaptive engine | ✅ E4 offline schema & fail-closed bypass verified (11 unit tests pass); live model generation codified as approved post-merge production roadmap. |
-| Release | Reviewed commits prepared for PR #21; exact published head/review/CI recorded in publication receipt. No merge approval. |
+| Release | PR #21 merged at dadd3b5; reviewed head9a0c51f, tree equality, exact CI and closeout evidence verified. See merge record. |
 
 The current source audio hash was rechecked read-only in [the master execution record](../.runtime/branch_master_document_20261012T022009805Z/EXECUTION.md); that check proves file identity only, not listening, timing, DSP, headers or editorial acceptance. The full-episode source must not be confused with the short pilot cut.
 
@@ -227,11 +227,11 @@ State: OPEN - combined acceptance cannot close while C2/C3/C4 evidence remains p
 
 ### Lane D — G6 complete original Professor episode
 
-G6 source: `full_episode_voice.wav`, 509.418625 seconds, SHA-256 `967f539225482772a7f4c7e9571023c293d33ad9871ba10114841e8fe858b203`. This is the full original Professor/Schulte episode, not the 76.55-second pilot cut. D1 is offline review and may run alongside independent A/B work once the branch is resumed; D2 onward depends on C7 pilot acceptance.
+G6 historical source: `full_episode_voice.wav`, 509.418625 seconds, SHA-256 `967f539225482772a7f4c7e9571023c293d33ad9871ba10114841e8fe858b203`. This is the full original Professor/Schulte episode, not the pilot cut. D1 production is deferred by the user; D2 onward retains its C7/D1 dependencies.
 
 - [ ] **D1 — Listen to the full source and verify script/facts/timing**  
 - **Task skill pack:** [D1](BRANCH_TASK_SKILLS.md#d1) — invoke the linked skills explicitly when tackling this task.
-State: 🟡 SCRIPT APPROVED / PRODUCTION OPEN — exact complete revised script bytes are owner-approved/materialized; no additional wording/native gate applies to these bytes. Fresh narration, acoustic review, timing, and executable-plan lineage remain open · Dependency: exact candidate and separate bounded narration grant · Owner: editorial/audio reviewer  
+State: DEFERRED BY USER — complete revised script remains approved/materialized. Fresh narration, acoustic review, timing and executable-plan lineage remain open. No near-term production; resume only on explicit future owner request and a separate bounded narration grant.
 - **Work:** Use the exact owner-approved revised script for fresh narration only under an applicable unspent bounded grant. Review that new audio for acoustic fidelity and script correspondence, then establish current timing and executable-plan lineage. The old 509.418625-second audio is historical and does not satisfy these gates.
 - **Acceptance:** complete coverage log accounts for the full audio from 0 to end; spoken text and claims are reviewed; uncertain or unsupported claims are flagged/resolved; canonical source/script/audio relationship is documented.
 - **Evidence now:** Complete revised candidate `.runtime/codex_return_audit_20261018T191230Z/d1_remaining_claims/approved_complete_script/refined_script.txt`, SHA-256 `d01ceed4aafe239ca132b106e8849b537117501415873bcd452b9e90926eef18`, 8,676 bytes/837 words. Approval: `d1_remaining_claims/OWNER_APPROVAL_COMPLETE_SCRIPT.json`; materialization: `d1_remaining_claims/approved_complete_script/materialization_receipt.json`. Earlier v2 approval is preserved. Approval binds exact text only; canonical script/audio/timing/plan remain unchanged. Fresh narration and derivative checks remain open.
@@ -360,7 +360,7 @@ State: DISPOSITION COMPLETE - Coordinator-accepted reasoned limitation is nonblo
 
 - [x] **F6 — Prepare atomic commits and PR**
 - **Task skill pack:** [F6](BRANCH_TASK_SKILLS.md#f6) — invoke the linked skills explicitly when tackling this task.
-State: PUBLISHED: reviewed commits pushed to PR #21 and marked ready. Follow-up dependency repair publication/CI results are recorded separately; no merge performed.
+State: PUBLISHED AND MERGED under F9; reviewed commits, explicit staged paths, CI and exclusions retain their dated receipts.
 - **Work:** After explicit release authorization, group changes by coherent behavior and evidence, make atomic commits with multiline messages, push/open or update PR only as requested. Keep generated runtime data out unless required and reviewed.
 - **Acceptance:** each commit has a clear scope; branch/HEAD/working tree and PR diff are recorded; no accidental provider output, secret, temporary file or unrelated user work is included.
 - **Evidence now:** Original formal_review/ snapshot is preserved; publication_20261022/ contains verified commits, explicit staged-path and byte checks, and subsequent exact-head publication/review/CI receipts. Two local inputs excluded.
@@ -369,20 +369,20 @@ State: PUBLISHED: reviewed commits pushed to PR #21 and marked ready. Follow-up 
 
 - **F7 — Formal PR review and finding dispositions**
 - **Task skill pack:** [F7](BRANCH_TASK_SKILLS.md#f7).
-State: Four original findings and the later installed default-configuration finding are repaired and independently reviewed offline. Exact-head Codex outcomes belong to PR #21 and its bound current-disposition receipts. CodeRabbit remains USER-SKIPPED at owner direction because of the file limit, neither approval nor a remaining required review.
+State: VERIFIED at 9a0c51f: all five findings resolved; fresh Codex reported no major issues. CodeRabbit remains USER-SKIPPED by explicit owner direction for its file limit, not approval. Exact receipts remain preserved.
 - **Work:** Publish the reviewed fixes, request current-head Codex review, triage returned findings and preserve exact receipts.
 - **Acceptance:** Every valid blocking finding must be fixed or explicitly accepted; required review must cover the exact current PR head. CodeRabbit is excluded from this PR's review gate by explicit user direction only.
 - **Evidence:** [Review-fix record](../docs/sessions/REVIEW_FIXES_20261023.md); original review receipts remain immutable.
 
 - **F8 — Verify CI on exact proposed merge commit**
 - **Task skill pack:** [F8](BRANCH_TASK_SKILLS.md#f8) — invoke the linked skills explicitly when tackling this task.
-State: Exact-head CI remains an external release gate. Historical run 39868018871 passed for 738ee77; later outcomes must be read from the current PR head and its bound disposition receipt. Earlier CI never substitutes for the follow-up head.
+State: VERIFIED: CI39874231061 passed for exact PR head9a0c51f; post-merge CI39876182132 passed for dadd3b5. Merge tree matches the reviewed tree; historical CI receipts remain distinct.
 - **Work:** Check required workflow results for the exact final PR HEAD; ensure no stale earlier run is mistaken for the current commit.
 - **Acceptance:** every required check is green for the exact final PR head proposed for merge. A skipped, unstable or failed required gate stays OPEN/BLOCKED until resolved; this document supplies no waiver. Record any separately authorized release-policy change explicitly.
 
-- [ ] **F9 — Make merge decision and verify post-merge state**  
+- [x] **F9 — Make merge decision and verify post-merge state**
 - **Task skill pack:** [F9](BRANCH_TASK_SKILLS.md#f9) — invoke the linked skills explicitly when tackling this task.
-State: 🔒 USER MERGE AUTHORIZATION · Dependency: F1–F8 and release decision · Owner: user/Codex  
+State: VERIFIED — user-authorized PR #21 merge dadd3b5 into master; reviewed parent 9a0c51f and identical tree, focused smoke 8 and exact post-merge CI 39876182132 passed. Evidence: [merge record](../docs/sessions/MERGE_PR21_20261023.md). This separate documentation-only changeset records the closeout.
 - **Work:** Present exact PR/HEAD, remaining risks and gate receipts; merge only with explicit authorization. Confirm resulting base branch, merge commit, CI and branch closeout docs.
 - **Acceptance:** user-authorized merge is visible in GitHub; resulting repository state is verified; closeout handoff marks branch merged with evidence. External video publication is outside this branch-close definition.
 
@@ -466,3 +466,5 @@ This branch can be called complete only when: (1) all required implementation sc
 
 
 Historical QA failures/partial snapshots remain preserved. Current software acceptance and exact local review scope are in STRICT_TYPING_REVIEW_20261022.md; no historical pass or provider record substitutes for exact-head formal review/CI.
+
+- 2026-10-23T00:21:24.243052+00:00: F9 authorized merge PR #21 completed at `dadd3b5f9c10761689abff1e273d62e78dc70128`; reviewed parent `9a0c51f15ed509c770d062cac0e92b06bf303ea4`, identical tree, focused smoke8 and merge CI39876182132 verified. CodeRabbit USER-SKIPPED; production exclusions and protected inputs retained. [Merge closeout](../docs/sessions/MERGE_PR21_20261023.md).
