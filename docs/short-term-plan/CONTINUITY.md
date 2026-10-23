@@ -1,4 +1,4 @@
-> Current publication cursor: PR #21 merged into master at `dadd3b5f9c10761689abff1e273d62e78dc70128`, with the reviewed tree unchanged and post-merge CI 39876182132 passed. This seven-document changeset records the [merge closeout](../sessions/MERGE_PR21_20261023.md). Professor D1 production is DEFERRED BY USER until a future explicit request. The master owns current scope; PR #21 CodeRabbit was USER-SKIPPED; dated snapshots below are historical.
+> Current publication cursor: PR #21 merged into master at `dadd3b5f9c10761689abff1e273d62e78dc70128`, with the reviewed tree unchanged and post-merge CI 39876182132 passed. This seven-document changeset records the [merge closeout](../sessions/MERGE_PR21_20261023.md). Professor D1 production is DEFERRED BY USER until a future explicit request. The master owns current scope; PR #21 CodeRabbit was USER-SKIPPED; dated snapshots below are historical. Documentation PR #22 is open for review; local cleanup is complete (one worktree/two local branches remain). Current publication and cleanup receipts: `.runtime/codex_repo_cleanup_20261023/`.
 
 # Current cursor - 22 October 2026
 
