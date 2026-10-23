@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.5.1] - 2026-10-23
+
+This is the downloadable release of the changes prepared under the v4.5.0 tag. That earlier tag is retained, but its automated build failed before any release assets were published.
+
+### Fixed
+- Bootstrap Windows release tools with `python -m pip` so pip can upgrade itself and install the build frontend successfully.
+
+### Included
+- Opt-in adaptive production with saved channels, episode-bound visual strategies, narration-aligned semantic planning, local graphics, and selective motion.
+- Durable stage jobs, resumable checkpoints, dependency-aware invalidation, preserved asset receipts, and journaled publication recovery.
+- Modular multi-channel prompts, studio viewer inspection, bounded Gemini/Audacity/TTS handling, and image-budget and preview-approval gates.
+- Installed prompt templates and pronunciation defaults, process-inspection dependencies, and strict source typing without scope exclusions.
+- A Windows ZIP containing the source package, all root prompts, and saved channel profiles, with required archive entries checked before publication.
+
+### Verified
+- The engineering baseline passed 1,976 tests with 9 live tests skipped and full strict typing across 73 source files. Release checks cover wheel/sdist metadata, all 15 prompt assets, and production imports, prompt rendering, and three saved profiles from the extracted ZIP.
+- Adaptive production remains opt-in. Offline verification does not establish live-provider readiness or editorial acceptance.
+
 ## [4.5.0] - 2026-10-23
 
 ### Added

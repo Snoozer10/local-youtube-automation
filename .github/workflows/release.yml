@@ -27,7 +27,7 @@ jobs:
 
       - name: Build Wheel and Source Distribution
         run: |
-          pip install --upgrade pip build wheel
+          python -m pip install --upgrade pip build wheel
           python -m build --sdist --wheel --outdir dist/
 
       - name: Assemble standalone portable Windows zip bundle

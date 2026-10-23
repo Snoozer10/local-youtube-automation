@@ -3,7 +3,7 @@
 Current closeout: PR #21 MERGED at `dadd3b5f9c10761689abff1e273d62e78dc70128` with exact reviewed head `9a0c51f15ed509c770d062cac0e92b06bf303ea4` preserved as a parent and an identical file tree. Post-merge CI39876182132 passed. See [merge record](../docs/sessions/MERGE_PR21_20261023.md). CodeRabbit USER-SKIPPED by owner direction.
 
 > Status: PR #21 MERGED / POST-MERGE MASTER VERIFIED / ENGINEERING CLOSEOUT COMPLETE.
-> Current authority: user authorized updating CHANGELOG and GitHub releases after PR #22 merged at 3b00acb and all retired local/remote branches were removed. Version 4.5.0 release commit, CI, tag, build and asset outcomes belong to `.runtime/codex_release_450_20261023/PUBLICATION_RESULT.json`. Professor D1 remains deferred until an explicit future request; provider/reconciliation exclusions remain.
+> Current authority: user authorized updating CHANGELOG and GitHub releases after PR #22 merged at 3b00acb and all retired local/remote branches were removed. Version 4.5.1 release commit, CI, tag, build and asset outcomes belong to `.runtime/codex_release_451_20261023/PUBLICATION_RESULT.json`. Professor D1 remains deferred until an explicit future request; provider/reconciliation exclusions remain.
 > This register owns current status. Dated prior receipts remain exact-scope historical evidence.
 
 ## Current dashboard
@@ -30,7 +30,7 @@ Current closeout: PR #21 MERGED at `dadd3b5f9c10761689abff1e273d62e78dc70128` wi
 
 ### Immediate resume steps
 
-1. PR #22 is merged at 3b00acb. Consult `.runtime/codex_release_450_20261023/PUBLICATION_RESULT.json` for the exact 4.5.0 release/tag/build/CI result. Only master remains locally and remotely; do not recreate retired branches.
+1. PR #22 is merged at 3b00acb. Consult `.runtime/codex_release_451_20261023/PUBLICATION_RESULT.json` for the exact 4.5.1 release/tag/build/CI result. Only master remains locally and remotely; do not recreate retired branches.
 2. Retain the reviewed source, immutable receipts and excluded operational inputs; new defects reopen only the affected checks.
 3. Professor D1 production is DEFERRED BY USER until a future explicit request. Preserve the approved script; downstream D2-D7 retain their existing dependencies.
 4. After any further implementation changes, run affected focused checks and the required final-tree gates; preserve failures and verify shared-resource isolation.
