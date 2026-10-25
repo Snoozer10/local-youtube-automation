@@ -37,7 +37,7 @@ Archival rendition `2560x1440@30` `yuv420p` (nv12 for QSV) `high@5.1` `VBV 35000
 _Avoid_: 4K, source resolution
 
 **proxy**:
-Scaled rendition (`1080p`/`720p`) derived from same `filter_complex_script` via `split→scale` (lanczos), shares Ken Burns and `frame_count == round(duration*30)` with master; `FFMPEG_THREADS 2` each.
+Scaled rendition (`1080p`/`720p`) derived from the same file-backed `-/filter_complex` graph via `split→scale` (lanczos), shares Ken Burns and `frame_count == round(duration*30)` with master; `FFMPEG_THREADS 2` each.
 _Avoid_: separate encode, transcode
 
 **ladder**:

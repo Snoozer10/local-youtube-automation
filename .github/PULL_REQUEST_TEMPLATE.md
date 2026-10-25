@@ -31,7 +31,7 @@ python <tested_script>.py
 ## Checklist
 
 - [ ] Code follows style guidelines (`black . && ruff check .`)
-- [ ] Type checking passes (`mypy .`)
+- [ ] Type checking passes (`venv/Scripts/python.exe -m mypy --strict src/`)
 - [ ] Self-review completed
 - [ ] No secrets committed (`git diff --check`)
 - [ ] Documentation updated if behavior changed

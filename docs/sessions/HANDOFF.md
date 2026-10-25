@@ -1,22 +1,22 @@
 # Handoff
 
 ## Current Phase
-PR #21 and PR #22 merged. Only master remains locally and remotely, with one primary checkout. Version 4.5.1 release records and portable packaging are synchronized.
+Shared guidance authority implemented; final shared-branch validation pending. Channel DNA decision map is complete.
 
 ## Current Goal
-Maintain the merged engineering baseline. Exact release commit, CI, tag, workflow and download results belong to `.runtime/codex_release_451_20261023/PUBLICATION_RESULT.json`; consult that receipt before treating publication as complete.
+Finish ticket36 validation after active compilation work stabilizes; preserve Antigravity ownership of spec23/tickets24-30.
 
 ## Done
-- Journal recovery ownership is verified: 1,979 tests passed, 9 skipped; lint, strict typing, build and replay passed. See `docs/sessions/JOURNAL_RECOVERY_OWNERSHIP_20261025.md`; local receipts: `.runtime/journal_ownership_20261024T234158Z/`.
-- PR #21 merge dadd3b5 preserves the reviewed tree; PR #22 merge 3b00acb carries the documentation closeout. Reviewed-head CI passed.
-- Local and remote retired branches are removed. The redundant checkout's 680 total files, including 186 ignored files, and both histories are preserved with independent hash/restore/fsck evidence.
-- CHANGELOG, package version and GEMINI frontmatter agree on 4.5.1. The Windows release ZIP includes required source, prompts and saved profiles; release checks bind the final artifacts.
+- Root AGENTS is the shared contract; GEMINI/CLAUDE import it. Source child owns runtime controls; docs/agents/workflows.md routes feature, debug and release work.
+- Reconciled active authority, browser ownership, FFmpeg and full-source typing contradictions.27routing targets verified. Fresh Codex0.160.0 startup/route selection passed; Claude/Gemini runtime and skill discovery were not tested.
+- Record: docs/sessions/SHARED_GUIDANCE_AUTHORITY_20261025.md. Exact receipts: .runtime/guidance_authority_20261025T061500Z/.
+- Study sampling and mandatory evidence decisions are resolved under issues34/35; implementation and meaningful live Windows REA proof remain pending.
 
 ## Next
-Professor D1 remains DEFERRED BY USER until an explicit future request. Retain the approved script and downstream dependencies. No new live/provider grant. Operational inputs and excluded reconciliations remain untouched. QMD is intentionally not updated by user direction.
+Keep36open pending final branch checks. Reconcile the compilation CLI test with Antigravity's current code, then verify a frozen tree before closing36 and unblocking its dependents. Do not start another ticket automatically. Professor D1 remains DEFERRED BY USER. No new live/provider grant. QMD unchanged by prior user direction.
 
 ## Failures & Fixes
-Initial release-list EOF recovered on one retry. The v4.5.0 tag build failed because Windows rejects pip.exe self-upgrade; the corrected workflow uses python -m pip. The original tag/failure is preserved; v4.5.1 carries the correction. The old Windows ZIP omitted the modular package and runtime assets; the release workflow now includes and verifies them. Prior installed-default and disk-full failures remain in their original receipts.
+Typing, lint and wheel/sdist build passed at checked inputs. Full suite stopped at test_compile_video_cli.py::TestMainExecutionAndDelegation::test_main_compiles_successfully_with_fake_runner:335passed,9skipped,1failed (expected -vf command). Parallel compilation source/test edits mean no final exact-tree application pass. First fresh-session detailed read timed out; bounded routing-only check passed. Failed helper/draft evidence is preserved.
 
 ## Resume Context
-Branch: master; no additional branches or worktrees. Release evidence: `.runtime/codex_release_451_20261023/`. Earlier merge/cleanup evidence: `.runtime/codex_merge_pr21_20261023/`, `.runtime/codex_repo_cleanup_20261023/`, `.runtime/codex_merge_pr22_20261023/`. Canonical configuration and both operational inputs retain their pinned bytes. Engineering verification does not replace live or human editorial acceptance.
+master; pre-task HEAD0765085. Only scoped guidance and its prerequisite docs belong to this commit; unrelated dirty work is preserved. Current authority is root AGENTS, not GEMINI precedence. No skill/archive cleanup or source implementation was performed.

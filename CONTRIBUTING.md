@@ -126,7 +126,7 @@ When contributing code, you must strictly follow these engineering invariants:
 - **Intel QSV Lookahead**: Always keep `QSV_LOOKAHEAD=0`. Enabling lookahead with software-decoded streams causes hardware frame pool starvation.
 - **Encoder Failover**: All hardware rendering must implement a try/catch loop with automatic fallback to CPU `libx264`.
 - **Pixel Formatting**: Append `format=nv12` for QSV encoders and `format=yuv420p` for CPU/NVENC.
-- **Command Line Length Limits**: Large filter graphs (>32 KB) must be written to disk and executed using `-filter_complex_script` (never passed raw in CLI arguments).
+- **Command Line Length Limits**: Large filter graphs (>32 KB) must be written to disk and executed using `-/filter_complex` (never passed raw in CLI arguments).
 
 ### 5. UTF-8 & Arabic Console Safety
 
@@ -149,10 +149,10 @@ We enforce strict formatting, linting, and typing across the codebase:
 black --line-length 100 .
 
 # Run linter
-ruff check . --fix
+ruff check .
 
 # Run type checker
-mypy .
+venv/Scripts/python.exe -m mypy --strict src/
 ```
 
 ### Commit Message Guidelines

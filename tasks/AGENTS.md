@@ -13,7 +13,7 @@ Implementation plans, progress checklists and verification records.
 - Link active work from plan.md and todo.md.
 
 ## Work Guidance
-- Use GEMINI.md as current project guidance where older root guidance differs.
+- Follow the shared root AGENTS.md contract and applicable local AGENTS.md files; platform adapters load the shared contract and cannot override it.
 
 ## Verification
 - Verify linked task files exist and completed items have evidence.
