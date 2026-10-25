@@ -7,6 +7,7 @@ PR #21 and PR #22 merged. Only master remains locally and remotely, with one pri
 Maintain the merged engineering baseline. Exact release commit, CI, tag, workflow and download results belong to `.runtime/codex_release_451_20261023/PUBLICATION_RESULT.json`; consult that receipt before treating publication as complete.
 
 ## Done
+- Journal recovery ownership is verified: 1,979 tests passed, 9 skipped; lint, strict typing, build and replay passed. See `docs/sessions/JOURNAL_RECOVERY_OWNERSHIP_20261025.md`; local receipts: `.runtime/journal_ownership_20261024T234158Z/`.
 - PR #21 merge dadd3b5 preserves the reviewed tree; PR #22 merge 3b00acb carries the documentation closeout. Reviewed-head CI passed.
 - Local and remote retired branches are removed. The redundant checkout's 680 total files, including 186 ignored files, and both histories are preserved with independent hash/restore/fsck evidence.
 - CHANGELOG, package version and GEMINI frontmatter agree on 4.5.1. The Windows release ZIP includes required source, prompts and saved profiles; release checks bind the final artifacts.

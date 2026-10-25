@@ -303,7 +303,7 @@ def _validate_pending(root: Path, pending: dict[str, Any], request: dict[str, An
 
 
 def _recover(root: Path, request: dict[str, Any]) -> dict[str, Any]:
-    from .invalidation import invalidate_stage, reconcile_invalidation
+    from .invalidation import invalidate_stage, reconcile_invalidation, stage_output_paths
 
     pending = _json(root / PENDING)
     receipt, outputs = _validate_pending(root, pending, request)
@@ -321,11 +321,9 @@ def _recover(root: Path, request: dict[str, Any]) -> dict[str, Any]:
         _validate_pending(root, pending, request)
         if pending["phase"] == "PREPARED":
             reconcile_invalidation(root)
-            from .invalidation import _STAGE_PATTERNS
 
             intended = {record["source"] for record in pending["deactivated"]}
-            actual = {path.relative_to(root).as_posix() for pattern in _STAGE_PATTERNS[STAGE]
-                      for path in root.glob(pattern) if path.is_file()}
+            actual = {path.relative_to(root).as_posix() for path in stage_output_paths(root, STAGE)}
             if not actual.issubset(intended):
                 raise ValueError("Unknown downstream activation appeared during audio adoption")
             for record in pending["deactivated"]:
@@ -358,7 +356,7 @@ def _recover(root: Path, request: dict[str, Any]) -> dict[str, Any]:
 def adopt_polished_audio(root: str | Path, **kwargs: Any) -> dict[str, Any]:
     """Publish only the exact accepted WAV; no providers, DSP, transcription or encoding."""
     from .contracts import load_brief
-    from .invalidation import _STAGE_PATTERNS
+    from .invalidation import stage_archive_destination, stage_output_paths
     from .shots import ShotPlan, validate_plan
 
     root = Path(root).resolve(strict=True)
@@ -420,18 +418,15 @@ def adopt_polished_audio(root: str | Path, **kwargs: Any) -> dict[str, Any]:
         receipt.update(initial_timeline_sha256=fingerprint(timeline), initial_plan_sha256=fingerprint(plan_data))
         outputs = _activation_outputs(timeline, plan_data, receipt)
         previous = "original-" + fingerprint(source_inputs)
-        transition = f"{previous[:12]}-to-{recipe[:12]}"
         with publication_guard():
             assert_current_audio_state(root, state)
             if _stat(original_audio) != original_stat or _identity(root) != identity:
                 raise ValueError("Original narration changed before adoption")
             deactivated = []
-            for pattern in _STAGE_PATTERNS[STAGE]:
-                for path in sorted(root.glob(pattern)):
-                    if path.is_file():
-                        name = path.relative_to(root).as_posix()
-                        deactivated.append({"source": name, "archive": f".adaptive_history/{transition}/{STAGE}/{name}",
-                                            "sha256": _digest(path)})
+            for path in stage_output_paths(root, STAGE):
+                name = path.relative_to(root).as_posix()
+                archive = stage_archive_destination(root, STAGE, previous, recipe, name)
+                deactivated.append({"source": name, "archive": archive.as_posix(), "sha256": _digest(path)})
             pending = {"version": 1, "kind": "accepted_polish", "recipe": recipe, "request": request,
                        "source_inputs": source_inputs, "receipt": receipt, "previous_recipe": previous,
                        "outputs": {name: hashlib.sha256(data).hexdigest() for name, data in outputs.items()},

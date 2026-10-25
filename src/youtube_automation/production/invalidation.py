@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -145,6 +146,25 @@ _STAGE_PATTERNS: dict[str, tuple[str, ...]] = {
 }
 
 
+@dataclass(frozen=True)
+class InvalidationFile:
+    source: str
+    archive: str
+    sha256: str
+
+
+@dataclass(frozen=True)
+class InvalidationExpectation:
+    stage: str
+    previous_recipe: str
+    next_recipe: str
+    files: tuple[InvalidationFile, ...]
+
+
+class InvalidationConflictError(ValueError):
+    """A pending invalidation journal does not match its pinned owner."""
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -157,6 +177,40 @@ def _journal_path(root: Path) -> Path:
     return root / ".publication_journal" / "stage-invalidation.json"
 
 
+def has_pending_invalidation(run_dir: str | Path) -> bool:
+    return _load_journal(Path(run_dir).resolve()) is not None
+
+
+def stage_output_paths(run_dir: str | Path, stage: str) -> list[Path]:
+    """List current stage outputs in invalidation pattern order, without hashing."""
+    if stage not in _STAGE_PATTERNS:
+        raise ValueError(f"Unknown adaptive stage: {stage}")
+    root = Path(run_dir).resolve()
+    paths: list[Path] = []
+    seen: set[Path] = set()
+    for pattern in _STAGE_PATTERNS[stage]:
+        for path in sorted(root.glob(pattern)):
+            if path.is_file() and path not in seen:
+                seen.add(path)
+                paths.append(path)
+    return paths
+
+
+def stage_archive_destination(
+    run_dir: str | Path, stage: str, previous_recipe: str, next_recipe: str, source: str | Path
+) -> Path:
+    """Return the canonical archive destination for one contained stage output."""
+    if stage not in _STAGE_PATTERNS:
+        raise ValueError(f"Unknown adaptive stage: {stage}")
+    root = Path(run_dir).resolve()
+    relative = Path(source)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("Stage output paths must stay inside the run")
+    if not (root / relative).resolve().is_relative_to(root):
+        raise ValueError("Stage output paths must stay inside the run")
+    return Path(".adaptive_history") / f"{previous_recipe[:12]}-to-{next_recipe[:12]}" / stage / relative
+
+
 def _load_journal(root: Path) -> dict[str, Any] | None:
     path = _journal_path(root)
     if not path.exists():
@@ -167,12 +221,35 @@ def _load_journal(root: Path) -> dict[str, Any] | None:
     return payload
 
 
-def reconcile_invalidation(run_dir: str | Path) -> list[str]:
+def reconcile_invalidation(
+    run_dir: str | Path, *, expected: InvalidationExpectation | None = None
+) -> list[str]:
     """Finish an interrupted deactivation before any stage can publish."""
     root = Path(run_dir).resolve()
     payload = _load_journal(root)
     if payload is None:
         return []
+    if expected is not None:
+        actual = dict(payload)
+        files = actual.get("files")
+        if not isinstance(files, list) or any(not isinstance(item, dict) for item in files):
+            raise InvalidationConflictError("Pending stage-invalidation journal conflicts with its owner")
+        sources = [item.get("source") for item in files]
+        if any(not isinstance(source, str) for source in sources) or len(sources) != len(set(sources)):
+            raise InvalidationConflictError("Pending stage-invalidation journal conflicts with its owner")
+        actual["files"] = sorted(files, key=lambda item: item["source"])
+        expected_payload = {
+            "version": 1,
+            "stage": expected.stage,
+            "previous_recipe": expected.previous_recipe,
+            "next_recipe": expected.next_recipe,
+            "files": sorted(
+                ({"source": item.source, "archive": item.archive, "sha256": item.sha256} for item in expected.files),
+                key=lambda item: item["source"],
+            ),
+        }
+        if actual != expected_payload:
+            raise InvalidationConflictError("Pending stage-invalidation journal conflicts with its owner")
     archived: list[str] = []
     with publication_guard():
         for item in payload["files"]:
@@ -215,25 +292,13 @@ def invalidate_stage(
     preserved = {Path(value).as_posix() for value in (preserve_paths or set())}
     if any(Path(value).is_absolute() or ".." in Path(value).parts for value in preserved):
         raise ValueError("Preserved invalidation paths must stay inside the run")
-    transition = f"{previous_recipe[:12]}-to-{next_recipe[:12]}"
     records: list[dict[str, str]] = []
-    seen: set[Path] = set()
-    for pattern in _STAGE_PATTERNS[stage]:
-        for source in sorted(root.glob(pattern)):
-            if not source.is_file() or source in seen:
-                continue
-            seen.add(source)
-            relative = source.relative_to(root)
-            if relative.as_posix() in preserved:
-                continue
-            archive = Path(".adaptive_history") / transition / stage / relative
-            records.append(
-                {
-                    "source": relative.as_posix(),
-                    "archive": archive.as_posix(),
-                    "sha256": _sha256(source),
-                }
-            )
+    for source in stage_output_paths(root, stage):
+        relative = source.relative_to(root)
+        if relative.as_posix() in preserved:
+            continue
+        archive = stage_archive_destination(root, stage, previous_recipe, next_recipe, relative)
+        records.append({"source": relative.as_posix(), "archive": archive.as_posix(), "sha256": _sha256(source)})
     if not records:
         return []
     journal = _journal_path(root)

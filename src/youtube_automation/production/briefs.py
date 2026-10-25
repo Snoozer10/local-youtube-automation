@@ -1252,11 +1252,11 @@ def requires_visual_strategy_migration(run_dir: str | Path, channel: Channel) ->
 
 def _visual_migration_inventory(root: Path) -> list[dict[str, Any]]:
     from .audio_adoption import _contained
-    from .invalidation import _STAGE_PATTERNS
+    from .invalidation import stage_output_paths
 
     if (root / "flow_prompts.json").exists():
         raise ValueError("Visual-policy migration does not support active Flow prompts")
-    paths = sorted({path for pattern in _STAGE_PATTERNS["plan"] for path in root.glob(pattern) if path.is_file()})
+    paths = sorted(stage_output_paths(root, "plan"))
     if len(paths) > 128 or sum(path.stat().st_size for path in paths) > _VISUAL_MIGRATION_LIMIT:
         raise ValueError("Visual-policy migration invalidation metadata exceeds its bounded scope")
     result = []
@@ -1325,10 +1325,12 @@ def _visual_migration_check_sources(root: Path, request: dict[str, Any], target_
             raise ValueError("Visual-policy migration narration audio changed")
 
 
-def _visual_migration_records(request: dict[str, Any], recipe: str) -> list[dict[str, Any]]:
-    transition = f"{request['previous_recipe'][:12]}-to-{recipe[:12]}"
-    return [{**item, "archive": f".adaptive_history/{transition}/plan/{item['source']}"} for item in request["inventory"]]
-
+def _visual_migration_records(root: Path, request: dict[str, Any], recipe: str) -> list[dict[str, Any]]:
+    from .invalidation import stage_archive_destination
+    return [
+        {**item, "archive": stage_archive_destination(root, "plan", request["previous_recipe"], recipe, item["source"]).as_posix()}
+        for item in request["inventory"]
+    ]
 
 def _visual_migration_check_inventory(root: Path, records: list[dict[str, Any]], *, archived: bool = False) -> None:
     from .audio_adoption import _contained
@@ -1360,7 +1362,13 @@ def _resume_visual_policy_migration(root: Path, channel: Channel, marker: dict[s
                                     strategy_feedback: str) -> Brief:
     from .audio_adoption import _contained, _publish_bytes
     from .contracts import narration_fingerprint
-    from .invalidation import _load_journal, invalidate_stage, reconcile_invalidation
+    from .invalidation import (
+        InvalidationConflictError,
+        InvalidationExpectation,
+        InvalidationFile,
+        invalidate_stage,
+        reconcile_invalidation,
+    )
 
     home = _contained(root, f".visual_policy_migrations/{marker['recipe']}")
     data = _visual_migration_bytes(home / "candidate.json")
@@ -1383,7 +1391,7 @@ def _resume_visual_policy_migration(root: Path, channel: Channel, marker: dict[s
     # Media hashing and accepted-WAV validation are deliberately outside SQLite.
     if _visual_migration_audio(root) != request["audio"]:
         raise ValueError("Visual-policy migration narration audio changed")
-    records = _visual_migration_records(request, marker["recipe"])
+    records = _visual_migration_records(root, request, marker["recipe"])
     with publication_guard():
         if _visual_migration_marker(root) != marker:
             raise ValueError("Visual-policy migration journal changed")
@@ -1395,31 +1403,16 @@ def _resume_visual_policy_migration(root: Path, channel: Channel, marker: dict[s
                 raise ValueError("Completed visual-policy migration changed")
             return target
         if marker["phase"] == "PREPARED":
-            journal = _load_journal(root)
-            expected = {"version": 1, "stage": "plan", "previous_recipe": request["previous_recipe"],
-                        "next_recipe": marker["recipe"], "files": records}
-            if journal is not None:
-                def ordered(records: Any) -> list[dict[str, Any]]:
-                    if not isinstance(records, list):
-                        raise ValueError("Conflicting stage-invalidation journal during visual-policy migration")
-                    result: list[dict[str, Any]] = []
-                    seen: set[str] = set()
-                    for record in records:
-                        if not isinstance(record, dict):
-                            raise ValueError("Conflicting stage-invalidation journal during visual-policy migration")
-                        source = record.get("source")
-                        if not isinstance(source, str) or source in seen:
-                            raise ValueError("Conflicting stage-invalidation journal during visual-policy migration")
-                        seen.add(source)
-                        result.append(record)
-                    return sorted(result, key=lambda record: record["source"])
-
-                actual = dict(journal)
-                actual["files"] = ordered(actual.get("files"))
-                expected["files"] = ordered(expected.get("files"))
-                if actual != expected:
-                    raise ValueError("Conflicting stage-invalidation journal during visual-policy migration")
-            reconcile_invalidation(root)
+            expected = InvalidationExpectation(
+                stage="plan",
+                previous_recipe=request["previous_recipe"],
+                next_recipe=marker["recipe"],
+                files=tuple(InvalidationFile(**record) for record in records),
+            )
+            try:
+                reconcile_invalidation(root, expected=expected)
+            except InvalidationConflictError as exc:
+                raise ValueError("Conflicting stage-invalidation journal during visual-policy migration") from exc
             _visual_migration_check_inventory(root, records)
             invalidate_stage(root, "plan", request["previous_recipe"], marker["recipe"])
             _visual_migration_check_inventory(root, records, archived=True)
@@ -1436,7 +1429,7 @@ def _migrate_visual_policy(root: Path, channel: Channel, ask: Callable[[str], st
                            feedback_path: str | Path | None) -> Brief:
     from .audio_adoption import _contained, _immutable
     from .contracts import load_channel, narration_fingerprint
-    from .invalidation import _load_journal
+    from .invalidation import has_pending_invalidation
     from .ledger import lease_database, leased_resource
     from .shots import _human_quality_feedback
 
@@ -1462,7 +1455,7 @@ def _migrate_visual_policy(root: Path, channel: Channel, ask: Callable[[str], st
         if ask is None:
             raise ValueError("Version 3 profile requires episode visual strategy compilation")
         inventory = _visual_migration_inventory(root)
-        if _load_journal(root) is not None:
+        if has_pending_invalidation(root):
             raise ValueError("An unrelated stage-invalidation journal blocks visual-policy migration")
         external = {"profile": _visual_migration_external(profile_path), "feedback": _visual_migration_external(feedback_path)}
         if profile_path is not None and load_channel(profile_path) != channel:
