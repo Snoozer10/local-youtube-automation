@@ -382,7 +382,7 @@ youtube_runs/
 
 - **Credential isolation** — `.env`, `gemini_model.txt`, and user data directories (`C:\ChromeDebugProfile`) are git-ignored. Never commit tokens or session folders.
 - **Rate limiting & safety** — Built-in exponential backoff, proactive browser tab recycling, and organic Bezier mouse smoothing protect against automated bot detection.
-- **Process termination** — `kill_cdp_chrome()` inspects local listening ports via `netstat` and terminates only the child process bound to the specified debug port.
+- **Process termination** — Before terminating, verify exact owned PID, create time, process image, profile, listener and lease; a port match alone is insufficient.
 
 ---
 

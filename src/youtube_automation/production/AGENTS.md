@@ -106,7 +106,7 @@ Adaptive channel policy, editorial planning, validated assets and local producti
 
 ## Verification
 - Run tests/unit/test_production_*.py and full unit suite before closeout.
-- Run `python -m mypy src/youtube_automation/production --follow-imports=silent` and workspace `ruff check .`.
+- Use focused production-scope mypy checks for iteration and workspace `ruff check .`; the mandatory full source gate is `venv/Scripts/python.exe -m mypy --strict src/` as routed in `docs/agents/workflows.md`.
 - Real FFmpeg regressions verify decoded static frames, frame budgets, overlay encoding, cache integrity and approval gates. Live visual quality remains a separate pilot gate.
 
 ## Child DOX Index
