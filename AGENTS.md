@@ -44,6 +44,7 @@ These instructions are the shared project contract loaded by supported coding ag
 - docs/sessions/ has no child AGENTS.md; root owns session and delegation-record workflows.
 
 ## Project navigation
+- For product, architecture, workflow, vocabulary or resume questions, use [docs/README.md](docs/README.md), the documentation map owned by the root contract.
 - docs/agents/workflows.md routes feature, debug and release work.
 - docs/sessions/ owns handoffs, bounded delegation briefs, returns and learning receipts under the root session contract.
 - docs/product/architecture-renewal-plan.md and architecture-renewal-spec.md record incremental renewal direction and accepted scope. The settled study policies live in their linked decisions; planning does not grant live REA execution.

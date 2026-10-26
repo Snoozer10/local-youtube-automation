@@ -20,6 +20,10 @@ An enterprise-grade, fully autonomous multimedia pipeline that transforms a sing
 
 The new staged workflow analyzes raw scripts against an explicitly selected channel before translation, then plans narration-aligned stills and selective local overlays. It requires preview review before activating a master. See the [usage guide](tasks/adaptive-visual-usage.md), [architecture plan](tasks/adaptive-visual-plan.md), and [implementation checklist](tasks/adaptive-visual-tasks.md) for supported commands and remaining live-validation gates.
 
+## Project documentation
+
+Read the [current project documentation map](https://github.com/Snoozer10/local-youtube-automation/blob/master/docs/README.md) online, or open docs/README.md in a repository checkout. The online page is available after this change reaches the default branch.
+
 ## Table of Contents
 
 - [🤔 What Is This Pipeline?](#-what-is-this-pipeline)

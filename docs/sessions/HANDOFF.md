@@ -23,3 +23,30 @@ Spec #23 receipt completion verified locally; separate guidance and compilation 
 
 ## Resume Context
 Branch codex/spec23-compilation-completion; approved original review baseline 70213c1, completion baseline db2ad58. Final source pins: IMPLEMENTATION_FREEZE_PUBLICATION.json. Commit/PR and eventual merge identities are recorded in Git history, tracker and completion CLOSEOUT.json.
+
+## Navigation batch #37, 2026-10-26
+
+### Done
+- Added the documentation map and bounded README/AGENTS routes. This batch does not amend core product/ADR bodies or complete #37.
+- Focused candidate/checkout checks passed: six reader cases in each tree, links, preservation and isolated restoration; independent Standards and Spec reviews found no remaining blockers.
+- Starting commit 23396894733239af6454041b8be4ae72c228f673 plus exact pre-task snapshots owns the review baseline. Accepted brief, source archives and raw checks are local-only at .runtime/architecture_renewal_audit_20261023/navigation37_20261026T125418Z/.
+
+### Next
+- Review the batch-only commit and remaining #37 core-document reconciliation. No merge, release, issue closure or follow-on ticket is authorized.
+- Default-branch documentation availability remains pending authorized integration and a fresh public-link check. The candidate tree is the pre-integration verification target.
+
+### Failures & Fixes
+- Standards review caught CRLF checkout bytes causing full-file README churn in the first candidate. Path-aware Git clean conversion restored a minimal insertion; working bytes stayed unchanged. Keep the failed candidate and all attempt evidence.
+- Preserve pre-task HANDOFF changes locally; the commit carries only this appended closeout over the starting committed HANDOFF. Earlier completion/integration text is historical; current integration facts remain in tracker/compilation closeout.
+
+## Navigation PR amendment, 2026-10-26
+
+### Done
+- The resume route now discovers the reader's actual task issue through HANDOFF/applicable execution records. #37 is labelled navigation maintenance.
+
+### Next
+- Prepare the focused navigation PR after affected route/link/preservation checks and amendment review. No merge, release, #37 closure or database implementation is authorized.
+- Verify the new documentation page on the published PR head; default-branch verification remains pending authorized integration.
+
+### Failures & Fixes
+- A generic resume route incorrectly linked #37 as every reader's current task. The amendment separates task discovery from navigation maintenance. Exact preimages and amendment evidence: .runtime/architecture_renewal_audit_20261023/navigation37_amend_20261026T134549Z/ (local-only).
