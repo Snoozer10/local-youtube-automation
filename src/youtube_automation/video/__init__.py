@@ -11,6 +11,7 @@ from .journal import (
     compute_generation_fingerprint,
     get_file_sha256,
 )
+from .receipt import verification_receipt_path, verify_compilation_receipt
 from .runner import (
     FakeMediaRunner,
     MediaExecutionError,
@@ -29,6 +30,8 @@ from .schema import (
 )
 
 __all__ = [
+    "verification_receipt_path",
+    "verify_compilation_receipt",
     # Core Engine Facade
     "VideoCompiler",
     "compile_video",

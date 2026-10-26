@@ -174,6 +174,7 @@ class CompilationResult:
     generation_hash: str = ""
     reused_clip_count: int = 0
     clip_executions: tuple[dict[str, Any], ...] = ()
+    receipt_path: Path | None = None
 
 
 class CompilationError(RuntimeError):

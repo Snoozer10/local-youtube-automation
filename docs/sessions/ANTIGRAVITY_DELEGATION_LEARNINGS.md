@@ -1,5 +1,16 @@
 # Spec #23 repair controls - 26 October 2026
 
+## Spec #23 final receipt completion — 2026-10-26
+
+- Codex review found independently bounded audio/video timings could still exceed one frame of pairwise drift; require the direct comparison in the compiler and receipt verifier and preserve the public RED/GREEN cases.
+- Publish immutable hash-bound final receipts before the single video rename; downstream gates verify current bytes and expected render facts. A receipt supplies technical evidence, not editorial acceptance.
+- Reproduce newly enforced contracts with truthful compiler/fake-runner fixtures. Carry verified receipts when fixture media moves to another parent; preserve human-rejection checks instead of stubbing receipt validation.
+- Codex initially retried an unchanged consumer check after a CRLF anchor miss; the two-strike brake stopped it and the user authorized a bounded correction. Preserve raw failures and avoid whole-file newline churn.
+- Pre-execution helper review corrected an incorrect repository-root parent index. Record corrections and freeze the helper before native dispatch; both native entrypoints used synthetic CPU media and isolated ledgers.
+- The Standards worker stalled and its replacement hit HTTP429 after partial readback. Coordinator completed that axis; do not relabel interrupted work or CodeRabbit's skipped status as independent approval.
+- Closure evidence: SPEC23_COMPILATION_COMPLETION_20261026.md; 2,141 passed, 9 skipped, strict typing/Ruff/build passed, 597 inputs unchanged. These are verified Codex results, not an Antigravity return claim.
+
+
 - **Codex fixture correctness:** initial lineage RED used a falsely relocated encoder path; a subtitle test guessed a nonexistent success field. These were rejected fixture evidence, not behavioral RED. Read the public schema and authoritative filesystem paths first; check the corrected RED/green receipts under .runtime/spec23_repair_20261026T035651Z/.
 - **Guard-preserving compatibility:** stricter validation exposed fake duration/dimensions/decoded-format mismatches. Fix the simulation metadata, not the production guard. Retained hardware evidence also made first-rglob-result selectors incorrect; bind the selected graph/sidecar to the recorded command or authoritative pointer SHA and execution data.
 - **Codex cache regression:** isolating CPU fallback initially broke equivalent preview/master reuse. Preserve failure generations while deriving only bounded matching candidates and validating hashes, effective target and exact execution/fallback provenance. Check the 71-case core run, production-tail checks and two-request native-cache canary.

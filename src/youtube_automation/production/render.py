@@ -18,6 +18,7 @@ from typing import Any, cast
 from youtube_automation.core.utils import atomic_write_json
 from youtube_automation.video import filter_graph
 from youtube_automation.video.engine import VideoCompiler
+from youtube_automation.video.receipt import verify_compilation_receipt
 from youtube_automation.video.runner import (
     MediaExecutionError,
     MediaProbeResult,
@@ -26,6 +27,7 @@ from youtube_automation.video.runner import (
     get_default_runner,
 )
 from youtube_automation.video.schema import (
+    CompilationError,
     CompilationProfile,
     CompilationRequest,
     CompilationSpan,
@@ -144,6 +146,28 @@ def _render_journal_path(root: Path, generation: str, preview: bool) -> Path:
     return root / ".publication_journal" / "renders" / f"{kind}-{generation}.json"
 
 
+def require_render_receipt(
+    artifact: Path, inputs: dict[str, Any], frames: int, expected_hash: str
+) -> dict[str, Any]:
+    """Require the compiler's durable media facts to match the current render."""
+    try:
+        receipt = verify_compilation_receipt(artifact)
+    except CompilationError as exc:
+        raise ValueError(f"Compilation receipt is unavailable or invalid: {exc}") from exc
+    config = inputs["config"]
+    fps = int(config["OUTPUT_FPS"])
+    if (
+        receipt["sha256"] != expected_hash
+        or abs(receipt["total_frames"] - frames) > 1
+        or abs(receipt["fps"] - fps) > 1e-6
+        or receipt["width"] != int(config["OUTPUT_WIDTH"])
+        or receipt["height"] != int(config["OUTPUT_HEIGHT"])
+        or abs(receipt["duration"] - frames / fps) > 1 / fps + 1e-6
+    ):
+        raise ValueError("Compilation receipt does not match the current render")
+    return receipt
+
+
 def require_current_preview(
     root: Path, inputs: dict[str, Any], frames: int
 ) -> dict[str, Any]:
@@ -173,6 +197,7 @@ def require_current_preview(
     ):
         raise ValueError("Preview is stale or changed; render a new preview before approval")
     require_encoder_execution(pointer, inputs)
+    require_render_receipt(artifact, inputs, frames, pointer["sha256"])
     return pointer
 
 
@@ -234,11 +259,13 @@ def _recover_render_publication(
         ):
             return None
         require_encoder_execution(pointer, inputs)
+        require_render_receipt(destination, inputs, frames, expected_hash)
         probe_video(destination, frames, fps, require_audio=True, runner=runner)
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError, subprocess.SubprocessError):
         return None
     with publication_guard():
         assert_current_audio_state(root, audio_state)
+        require_render_receipt(destination, inputs, frames, expected_hash)
         if preview:
             from .review import require_no_human_rejection
 
@@ -287,6 +314,7 @@ def render_code_fingerprint() -> str:
             "ken_burns.py",
             "journal.py",
             "runner.py",
+            "receipt.py",
             "schema.py",
         )
     })
@@ -1255,6 +1283,7 @@ def _render_plan(
             current_preview = require_current_preview(root, inputs, plan.total_frames)
             require_no_human_rejection(root, fingerprint(plan), current_preview["sha256"])
             require_no_human_rejection(root, fingerprint(plan), approval.get("preview_sha256", ""))
+        require_render_receipt(pending, inputs, plan.total_frames, output_hash)
         os.replace(pending, destination)
         atomic_write_json(
             str(root / ("adaptive_preview.json" if preview else "active_master.json")),

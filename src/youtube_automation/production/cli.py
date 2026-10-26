@@ -359,7 +359,7 @@ def _render_output_complete(
 ) -> bool:
     root = root.resolve()
     from .flow import verify_generated_assets
-    from .render import require_encoder_execution
+    from .render import require_encoder_execution, require_render_receipt
     from .review import load_run_video_config
 
     brief, plan, timeline = _validated_plan(root)
@@ -389,6 +389,7 @@ def _render_output_complete(
         return False
     try:
         require_encoder_execution(pointer, expected_inputs)
+        require_render_receipt(artifact, expected_inputs, plan.total_frames, pointer["sha256"])
     except (KeyError, TypeError, ValueError):
         return False
     probe_video(artifact, plan.total_frames, plan.fps, require_audio=True, runner=runner)

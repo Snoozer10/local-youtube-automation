@@ -4,6 +4,19 @@ from youtube_automation.production.render import camera_filter, overlay_ass
 from youtube_automation.production.shots import SCHULTE_6X6, Overlay, Shot
 
 
+def _copy_compiled_artifact(source, destination):
+    import shutil
+
+    from youtube_automation.video import verification_receipt_path, verify_compilation_receipt
+
+    verify_compilation_receipt(source)
+    shutil.copyfile(source, destination)
+    receipt = verification_receipt_path(destination)
+    receipt.parent.mkdir(exist_ok=True)
+    shutil.copyfile(verification_receipt_path(source), receipt)
+    verify_compilation_receipt(destination)
+
+
 def _lineage_fixture(tmp_path, monkeypatch):
     import json
     from contextlib import nullcontext
@@ -34,6 +47,33 @@ def _lineage_fixture(tmp_path, monkeypatch):
     artifact.write_bytes(b"verified preview")
     assets = {"asset": "d" * 64}
     config = {"OUTPUT_WIDTH": 640, "OUTPUT_HEIGHT": 360, "CPU_CRF": 17}
+    # The fake compiler must publish the same durable evidence as the live seam.
+    from PIL import Image
+
+    from youtube_automation.video.engine import compile_video
+    from youtube_automation.video.runner import FakeMediaRunner
+    from youtube_automation.video.schema import (
+        CompilationRequest,
+        CompilationSpan,
+        CompilationTarget,
+    )
+
+    image = tmp_path / "lineage-image.png"
+    Image.new("RGB", (640, 360), "#304560").save(image)
+    compile_video(
+        CompilationRequest(
+            spans=(CompilationSpan(0, "lineage", 0, 30, "image"),),
+            audio_path=audio,
+            asset_paths={"image": image},
+            output_path=artifact,
+            target=CompilationTarget(width=640, height=360, fps=30),
+            encoder_override="libx264",
+        ),
+        runner=FakeMediaRunner(default_total_frames=30, default_duration=1.0,
+                               default_width=640, default_height=360, default_fps=30.0,
+                               default_pix_fmt="yuv420p"),
+        base_config=config,
+    )
     monkeypatch.setattr(render, "render_code_fingerprint", lambda: "e" * 64)
     monkeypatch.setattr(render, "render_tool_version", lambda: "FFmpeg test build")
     monkeypatch.setattr("youtube_automation.video.compiler.load_video_config", lambda *_: dict(config))
@@ -236,7 +276,7 @@ def test_tampered_approved_preview_blocks_master_cache_and_orphan(tmp_path, monk
     generation = pointer["generation"]
     destination = tmp_path / "adaptive_renders" / generation / ("master-" + pointer["sha256"] + ".mp4")
     destination.parent.mkdir(parents=True)
-    destination.write_bytes((tmp_path / pointer["path"]).read_bytes())
+    _copy_compiled_artifact(tmp_path / pointer["path"], destination)
     master = dict(pointer, editorial_status="approved", path=str(destination.relative_to(tmp_path)))
     (tmp_path / "active_master.json").write_text(json.dumps(master), encoding="utf-8")
     assert cli._render_output_complete(tmp_path, preview=False)
@@ -304,6 +344,7 @@ def test_executable_source_lineage_ignores_comments_and_crlf_but_not_code(tmp_pa
         video_root / "ken_burns.py",
         video_root / "journal.py",
         video_root / "runner.py",
+        video_root / "receipt.py",
         video_root / "schema.py",
     )
     for path in dependencies:
@@ -345,6 +386,7 @@ def test_renderer_dependency_changes_invalidate_current_render_inputs(tmp_path, 
         video_root / "ken_burns.py",
         video_root / "journal.py",
         video_root / "runner.py",
+        video_root / "receipt.py",
         video_root / "schema.py",
     )
     for path in dependencies:
@@ -431,7 +473,7 @@ def test_archived_rejection_blocks_approval_cache_and_orphan_activation(tmp_path
     generation = pointer["generation"]
     destination = tmp_path / "adaptive_renders" / generation / ("master-" + pointer["sha256"] + ".mp4")
     destination.parent.mkdir(parents=True)
-    destination.write_bytes((tmp_path / pointer["path"]).read_bytes())
+    _copy_compiled_artifact(tmp_path / pointer["path"], destination)
     master["path"] = str(destination.relative_to(tmp_path))
     journal = render._render_journal_path(tmp_path, generation, False)
     journal.parent.mkdir(parents=True)
@@ -441,7 +483,7 @@ def test_archived_rejection_blocks_approval_cache_and_orphan_activation(tmp_path
     assert json.loads((tmp_path / "active_master.json").read_text()) == dict(pointer, editorial_status="approved")
     review.require_no_human_rejection(tmp_path, review.fingerprint(plan), "f" * 64)
     preview_destination = tmp_path / "adaptive_renders" / generation / ("preview-" + pointer["sha256"] + ".mp4")
-    preview_destination.write_bytes((tmp_path / pointer["path"]).read_bytes())
+    _copy_compiled_artifact(tmp_path / pointer["path"], preview_destination)
     preview_pointer = dict(pointer, path=str(preview_destination.relative_to(tmp_path)))
     preview_journal = render._render_journal_path(tmp_path, generation, True)
     preview_journal.write_text(json.dumps({"version": 1, "kind": "preview", "pointer": preview_pointer}), encoding="utf-8")
@@ -1693,3 +1735,30 @@ def test_encoder_runtime_rejects_wrong_cache_and_orphan_execution(tmp_path, monk
     (tmp_path / "adaptive_preview.json").write_text(json.dumps(bad))
     with pytest.raises(ValueError, match="encoder execution"):
         render.require_current_preview(tmp_path, pointer["inputs"], plan.total_frames)
+
+
+@pytest.mark.parametrize("damage", ["missing", "malformed", "wrong_frame_count", "wrong_dimensions"])
+def test_receipt_required_for_preview_approval_and_stage_completion(tmp_path, monkeypatch, damage):
+    import json
+
+    from youtube_automation.production import cli, render
+
+    plan, _, pointer = _lineage_fixture(tmp_path, monkeypatch)
+    artifact = tmp_path / pointer["path"]
+    receipt = artifact.parent / ".compilation-receipts" / (pointer["sha256"] + ".json")
+    if damage == "missing":
+        receipt.unlink(missing_ok=True)
+    else:
+        receipt.parent.mkdir(exist_ok=True)
+        if damage == "malformed":
+            receipt.write_text("{", encoding="utf-8")
+        else:
+            data = json.loads(receipt.read_text(encoding="utf-8")) if receipt.exists() else {}
+            if damage == "wrong_dimensions":
+                data["width"] = 2
+            else:
+                data["total_frames"] = 90
+            receipt.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="[Rr]eceipt"):
+        render.require_current_preview(tmp_path, pointer["inputs"], plan.total_frames)
+    assert not cli._render_output_complete(tmp_path, preview=True)

@@ -18,6 +18,7 @@ from ..production.ledger import lease_database, owned_resource, publication_guar
 from .encoder import EncoderConfig, _build_encoder_config, detect_hardware_encoder
 from .filter_graph import build_span_filter_graph
 from .journal import RenderJournal, compute_generation_fingerprint, get_file_sha256
+from .receipt import _prepare_verification_receipt
 from .runner import MediaExecutionError, MediaRunner, SubprocessMediaRunner
 from .schema import (
     CompilationError,
@@ -537,10 +538,18 @@ class VideoCompiler:
                     stage="verification",
                 )
 
+        if abs(encoded_audio_duration - video_duration) > frame_tolerance:
+            raise CompilationError(
+                "Audio/video duration drift exceeds one frame", stage="verification"
+            )
+
         # A rejected candidate remains available for diagnosis; the destination
         # changes only after all verification succeeds.
         sha256_hash = get_file_sha256(temp_output)
         with publication_guard():
+            receipt_path = _prepare_verification_receipt(
+                temp_output, request.output_path, probe, sha256_hash,
+            )
             temp_output.replace(request.output_path)
 
         return CompilationResult(
@@ -556,6 +565,7 @@ class VideoCompiler:
             fallback_from=fallback_from,
             verified=True,
             sha256=sha256_hash,
+            receipt_path=receipt_path,
             clip_count=len(clips),
             generation_hash=generation_hash,
             reused_clip_count=reused_clip_count,

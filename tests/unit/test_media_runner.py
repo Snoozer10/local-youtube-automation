@@ -143,3 +143,41 @@ def test_fake_runner_uses_explicit_target_and_exact_pending_alias(tmp_path: Path
     pending = tmp_path / "accepted.pending_1234abcd.mp4"
     pending.write_bytes(b"candidate")
     assert runner.probe(pending) == desired
+
+
+def test_fake_bytes_distinguish_media_properties(tmp_path: Path) -> None:
+    small = tmp_path / "small.mp4"
+    large = tmp_path / "large.mp4"
+    FakeMediaRunner(default_width=128, default_height=72).run_ffmpeg(["-y", str(small)])
+    FakeMediaRunner(default_width=256, default_height=144).run_ffmpeg(["-y", str(large)])
+    assert small.read_bytes() != large.read_bytes()
+
+
+def test_fake_bytes_ignore_output_path_but_retain_input_content(tmp_path: Path) -> None:
+    source = tmp_path / "source.png"
+    source.write_bytes(b"first image")
+    first, equivalent, changed = (tmp_path / name / "out.mp4" for name in ("a", "b", "c"))
+    runner = FakeMediaRunner()
+    runner.run_ffmpeg(["-i", str(source), "-y", str(first)])
+    runner.run_ffmpeg(["-i", str(source), "-y", str(equivalent)])
+    assert first.read_bytes() == equivalent.read_bytes()
+    source.write_bytes(b"different image")
+    runner.run_ffmpeg(["-i", str(source), "-y", str(changed)])
+    assert changed.read_bytes() != first.read_bytes()
+
+
+def test_fake_concat_identity_uses_clip_and_narration_bytes(tmp_path: Path) -> None:
+    clip = tmp_path / "clip.mp4"
+    audio = tmp_path / "audio.wav"
+    manifest = tmp_path / "concat.txt"
+    clip.write_bytes(b"encoded clip")
+    audio.write_bytes(b"\xff\xfe narration")
+    manifest.write_text("file '" + clip.as_posix() + "'\n")
+    first = tmp_path / "first.mp4"
+    second = tmp_path / "second.mp4"
+    runner = FakeMediaRunner()
+    args = ["-f", "concat", "-safe", "0", "-i", str(manifest), "-i", str(audio), "-y"]
+    runner.run_ffmpeg(args + [str(first)])
+    audio.write_bytes(b"\xff\xfe changed narration")
+    runner.run_ffmpeg(args + [str(second)])
+    assert first.read_bytes() != second.read_bytes()

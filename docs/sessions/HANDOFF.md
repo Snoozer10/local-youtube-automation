@@ -1,27 +1,25 @@
 # Handoff
 
 ## Current Phase
-Spec #23 compilation repairs verified locally; integration and the final-artifact receipt requirement remain open.
-
-## Current Goal
-Keep the repaired source stable. Finish Spec #23 story 16 before claiming the entire parent complete.
+Spec #23 receipt completion verified locally; separate guidance and compilation PR integration is in progress.
 
 ## Done
-- Seven audited defects repaired, plus input/output alias, canonical timeline and fractional-FPS guards.
-- CPU fallback retains evidence and reuses verified matching clips across equivalent preview/master profiles.
-- Full suite: 2,101 passed, 9 skipped. Full strict mypy (77 source files), Ruff and wheel/sdist build passed; 609 pinned inputs unchanged.
-- Synthetic CPU, subtitle-pixel, lease and cache canaries passed. No production/provider/GPU acceptance was exercised.
-- Current result: docs/sessions/SPEC23_COMPILATION_REPAIR_20261026.md. Evidence: .runtime/spec23_repair_20261026T035651Z/.
+- db2ad58 repaired the seven original audited compilation defects.
+- Story 16 now prepares immutable hash-bound final-artifact JSON receipts before video publication; production reuse, approval and recovery require them.
+- Independent review found and corrected pairwise audio/video drift beyond one frame; two RED public regressions are GREEN.
+- Final frozen gates: 2,141 passed, 9 skipped; strict mypy 78 source files, Ruff, wheel/sdist build passed. All 597 pinned inputs unchanged.
+- Two bounded native CPU requests passed through root CLI and production render_plan; tampered copies rejected, original pairs retained. No provider/browser/GPU/editorial acceptance exercised.
+- Evidence/report: docs/sessions/SPEC23_COMPILATION_COMPLETION_20261026.md; .runtime/spec23_completion_20261026T061513Z/.
 
 ## Next
-- Keep #23/#25 open for atomic final-artifact JSON verification receipts; #25-#29 remain open for integration/disposition.
-- Work is local; no push or PR. Preserve unrelated dirty files.
-- Ticket #36 remains separate; this pass does not close it.
+- Guidance PR #51 is merged (bc05960c); #36 is closed. Integrate the separately scoped compilation PR next.
+- Confirm exact-head CI/review and integration before closing #25-#29 and parent #23. #24/#30 were already closed; #36 belongs to guidance PR #51.
+- Preserve unrelated dirty files. No provider, GUI, REA, production media, release or cleanup grant exists.
 
 ## Failures & Fixes
-- Corrected dishonest fake media metadata and stale graph/receipt selectors without relaxing guards.
-- Fixed the isolation-induced preview/master CPU cache regression; final canary reused two clips with only assembly.
-- Retained HTTP429 worker failures and the native wrapper's null parent exit-code limitation. Final full packet captured actual subprocess codes.
+- Two unchanged consumer-check failures after a CRLF anchor miss triggered the brake; user approved a bounded fixture correction. Preserve failed evidence.
+- Repaired missing-receipt manual media/orphan fixtures via public FakeMediaRunner compilation, without weakening human rejection.
+- Corrected fake media byte collisions, a native helper root-path error before dispatch, and fixture import ordering. Raw failures and preimages retained.
 
 ## Resume Context
-Branch master; baseline 70213c1. Exact commit is in Git history and repair CLOSEOUT.json. No additional provider, GUI, REA, publication or cleanup grant exists.
+Branch codex/spec23-compilation-completion; approved original review baseline 70213c1, completion baseline db2ad58. Final source pins: IMPLEMENTATION_FREEZE_PUBLICATION.json. Commit/PR and eventual merge identities are recorded in Git history, tracker and completion CLOSEOUT.json.

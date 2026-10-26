@@ -6,6 +6,7 @@ orchestration and low-level external process execution, conforming to ADR 0006.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -399,7 +400,49 @@ class FakeMediaRunner:
                 try:
                     out_path.parent.mkdir(parents=True, exist_ok=True)
                     if not out_path.exists():
+                        # Distinct claimed media facts must not share a fictional
+                        # all-zero artifact hash. Keep output paths out of identity.
                         out_path.write_bytes(b"\x00" * 1024)
+                        probe = self.probe(out_path)
+                        inputs: list[str | list[str]] = []
+                        input_format: str | None = None
+                        for index, argument in enumerate(args[:-1]):
+                            if argument == "-f" and index + 1 < len(args):
+                                input_format = args[index + 1]
+                                continue
+                            if argument != "-i" or index + 1 >= len(args):
+                                continue
+                            source = Path(args[index + 1])
+                            if cwd is not None and not source.is_absolute():
+                                source = Path(cwd) / source
+                            sources = [source]
+                            if input_format == "concat" and source.is_file():
+                                sources = []
+                                for line in source.read_text(encoding="utf-8").splitlines():
+                                    if line.startswith("file '") and line.endswith("'"):
+                                        item = Path(line[6:-1])
+                                        sources.append(item if item.is_absolute() else source.parent / item)
+                            hashes: list[str] = []
+                            for item in sources:
+                                digest = hashlib.sha256()
+                                if item.is_file():
+                                    with item.open("rb") as stream:
+                                        while chunk := stream.read(1024 * 1024):
+                                            digest.update(chunk)
+                                else:
+                                    digest.update(b"missing synthetic input")
+                                hashes.append(digest.hexdigest())
+                            inputs.append(hashes)
+                            input_format = None
+                        identity = {
+                            "duration": probe.duration, "frames": probe.total_frames,
+                            "width": probe.width, "height": probe.height, "fps": probe.fps,
+                            "pixel_format": probe.pix_fmt, "color_range": probe.color_range,
+                            "has_audio": probe.has_audio, "audio_duration": probe.audio_duration,
+                            "video_duration": probe.video_duration, "inputs": inputs,
+                        }
+                        encoded_digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).digest()
+                        out_path.write_bytes(encoded_digest * 32)
                 except Exception:
                     pass
 
