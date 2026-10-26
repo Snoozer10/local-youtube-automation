@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
 import queue
 import random
 import re
-import shutil
 import subprocess
 import sys
 import threading
 import time
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Protocol, TypedDict, cast
 
 from .encoder import (  # noqa: F401
@@ -21,11 +22,23 @@ from .encoder import (  # noqa: F401
     _probe_encoder,
     detect_hardware_encoder,
 )
+from .engine import (  # noqa: F401
+    VideoCompiler,
+    compile_video,
+)
 from .filter_graph import (  # noqa: F401
+    CMD_LENGTH_THRESHOLD,
+    SpanFilterGraphResult,
     TimelineBlock,
     _resolve_image_path,
+    build_camera_filter,
     build_chunk_filter_graph,
+    build_span_filter_graph,
+    camera_filter,
+    framed_focal,
     get_sorted_images,
+    normalize_color_range_filter,
+    pixel_format_for_encoder,
 )
 from .ken_burns import (  # noqa: F401
     AudioSyncAligner,
@@ -33,10 +46,35 @@ from .ken_burns import (  # noqa: F401
     build_ken_burns_filter,
     derive_multishot_crop,
 )
+from .runner import (  # noqa: F401
+    MediaRunner,
+    SubprocessMediaRunner,
+)
+from .schema import (  # noqa: F401
+    CompilationError,
+    CompilationProfile,
+    CompilationRequest,
+    CompilationResult,
+    CompilationSpan,
+    CompilationTarget,
+    DialogueCue,
+)
 from .subtitles import (  # noqa: F401
+    SCHULTE_6X6,
+    OverlayAssPass,
+    OverlayFilterRecipe,
+    _ass_time,
+    _safe_ass_text,
+    _scaled_timer_ass_time,
+    _timer_ass_time,
     build_dynamic_ass_subtitles,
     build_subtitle_style_string,
     fix_arabic_srt,
+    format_dialogue_ass,
+    overlay_ass,
+    overlay_filter_recipe,
+    pictogram_ass,
+    timer_segments,
 )
 
 winget_links_path = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links")
@@ -2239,124 +2277,417 @@ def verify_master_video(output_path: str, expected_duration: float) -> bool:
         return False
 
 
-def _main_unleased(run_folder: str | list[str] | tuple[str, ...] | None = None) -> None:
+def parse_compile_args(
+    args: Sequence[str] | str | None = None,
+) -> argparse.Namespace:
+    """Parse CLI arguments for video compilation."""
+    parser = argparse.ArgumentParser(
+        description="Silky Cinematic Video Compilation Facade",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "run_folder",
+        nargs="?",
+        default=None,
+        help="Path to the run folder inside youtube_runs (positional).",
+    )
+    parser.add_argument(
+        "-r",
+        "--run-folder",
+        dest="run_folder_flag",
+        default=None,
+        help="Path to the run folder inside youtube_runs (flag).",
+    )
+    parser.add_argument(
+        "-p",
+        "--profile",
+        choices=["preview", "broadcast_master", "master"],
+        default=None,
+        help="Compilation profile: 'preview' (1080p CFR) or 'broadcast_master' (1440p).",
+    )
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="Shortcut to force preview profile (1080p CFR 30fps).",
+    )
+    parser.add_argument(
+        "-e",
+        "--encoder",
+        default=None,
+        help="Force encoder override (h264_qsv, h264_nvenc, libx264).",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help="Explicit output video path.",
+    )
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=None,
+        help="Target frame rate (overrides config OUTPUT_FPS).",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=None,
+        help="Target video width.",
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=None,
+        help="Target video height.",
+    )
+    parser.add_argument(
+        "-c",
+        "--config",
+        default="video_config.txt",
+        help="Path to video configuration file.",
+    )
+    parser.add_argument(
+        "--font",
+        default=None,
+        help="Subtitle/dialogue font name.",
+    )
+    parser.add_argument(
+        "--work-dir",
+        default=None,
+        help="Scratch/work directory for clip cache.",
+    )
+
+    if isinstance(args, str):
+        split_args = [args]
+    elif args is None:
+        split_args = []
+    else:
+        split_args = list(args)
+
+    return parser.parse_args(split_args)
+
+
+def build_compilation_request_from_run(
+    run_folder: str | Path,
+    config: Mapping[str, Any] | None = None,
+    profile: CompilationProfile | None = None,
+    target: CompilationTarget | None = None,
+    output_path: str | Path | None = None,
+    encoder_override: str | None = None,
+    work_dir: str | Path | None = None,
+    font: str | None = None,
+    fps: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    runner: MediaRunner | None = None,
+) -> CompilationRequest:
+    """Build a structured in-memory CompilationRequest from a run directory."""
+    run_dir = Path(run_folder).resolve()
+    if not run_dir.is_dir():
+        raise FileNotFoundError(f"Run folder not found: {run_dir}")
+
+    cfg: dict[str, Any] = dict(config) if config is not None else load_video_config("video_config.txt")
+    resolved_fps = fps or int(cfg.get("OUTPUT_FPS", 30))
+
+    # Priority audio path resolution
+    polished_audio = run_dir / "audacity_voice" / "full_episode_voice.wav"
+    raw_audio = run_dir / "full_episode_voice.wav"
+    audio_path: Path | None = None
+
+    if polished_audio.exists():
+        audio_path = polished_audio
+    elif raw_audio.exists():
+        audio_path = raw_audio
+    else:
+        accepted_dir = run_dir / "accepted_audio"
+        if accepted_dir.is_dir():
+            wavs = sorted(accepted_dir.glob("*.wav"))
+            if wavs:
+                audio_path = wavs[0]
+
+    if audio_path is None or not audio_path.exists():
+        raise FileNotFoundError(
+            f"No voice track found in '{run_dir}'. Expected 'full_episode_voice.wav'."
+        )
+
+    # Audio duration probing
+    audio_duration: float
+    if runner is not None:
+        try:
+            probe_res = runner.probe(audio_path)
+            audio_duration = probe_res.duration
+        except Exception:
+            audio_duration = get_audio_duration(str(audio_path), timeout=cfg.get("FFPROBE_TIMEOUT", 60))
+    else:
+        audio_duration = get_audio_duration(str(audio_path), timeout=cfg.get("FFPROBE_TIMEOUT", 60))
+    cfg["_audio_duration"] = audio_duration
+
+    # Enrich timeline kinetics if canonical timeline.json exists
+    timeline_json_path = run_dir / "timeline.json"
+    if timeline_json_path.exists():
+        try:
+            enrich_timeline_kinetics(str(run_dir), fps=resolved_fps)
+        except Exception:
+            pass
+
+    # Parse and synchronize timeline
+    raw_image_blocks = parse_image_timeline(str(run_dir))
+    sync_timeline = prepare_synchronized_timeline(
+        raw_image_blocks, audio_duration, resolved_fps, audio_path=str(audio_path)
+    )
+    if not sync_timeline:
+        raise ValueError(f"Timeline is empty. No valid timestamps found in '{run_dir}'.")
+
+    # Asset resolution and validation
+    images_dir = run_dir / "generated_images"
+    available_images = get_sorted_images(str(images_dir))
+    last_valid_image: str | None = None
+
+    anim_enabled = bool(cfg.get("ENABLE_ANIMATIONS", True))
+    ai_cameras = load_ai_camera_decisions(str(run_dir))
+    manual_cameras = load_manual_overrides("manual_animations.txt")
+    camera_pool = ["zoom_in", "zoom_out", "pan_left", "pan_right"]
+
+    spans: list[CompilationSpan] = []
+    asset_paths: dict[str, Path] = {}
+
+    for idx, block in enumerate(sync_timeline):
+        abs_image_path, _ = _resolve_image_path(
+            block["name"],
+            idx,
+            str(images_dir),
+            available_images,
+            last_valid_image,
+            occurrence=block.get("occurrence", 1),
+        )
+        if (
+            abs_image_path is None
+            or not os.path.exists(abs_image_path)
+            or os.path.getsize(abs_image_path) == 0
+        ):
+            raise ValueError(
+                f"Image validation failed. Missing image asset for clip {idx}: {block.get('name')}"
+            )
+        last_valid_image = abs_image_path
+        asset_id = f"asset_{idx:05d}_{block['name']}"
+        asset_paths[asset_id] = Path(abs_image_path)
+
+        # Resolve camera motion
+        if not anim_enabled:
+            camera_motion = "static_hold"
+        elif block.get("camera_action") and block.get("camera_action") != "static":
+            camera_motion = str(block["camera_action"])
+        elif block["name"] in manual_cameras:
+            camera_motion = str(manual_cameras[block["name"]])
+        elif block["name"] in ai_cameras:
+            camera_motion = str(ai_cameras[block["name"]])
+        else:
+            camera_motion = camera_pool[idx % len(camera_pool)]
+
+        span = CompilationSpan(
+            index=idx,
+            shot_id=f"shot_{idx:05d}",
+            start_frame=int(block["start_frame"]),
+            end_frame=int(block["end_frame"]),
+            asset_id=asset_id,
+            camera_motion=camera_motion,
+            metadata={
+                "name": block["name"],
+                "words_per_second": block.get("words_per_second"),
+                "span": block.get("span", {}),
+            },
+        )
+        spans.append(span)
+
+    # Subtitles & Dialogue cues
+    dialogue_events: list[DialogueCue] = []
+    subtitles_path: Path | None = None
+    subs_enabled = bool(cfg.get("ENABLE_SUBTITLES", False))
+
+    if subs_enabled:
+        if timeline_json_path.exists():
+            try:
+                with open(timeline_json_path, encoding="utf-8") as f:
+                    tl_data = json.load(f)
+                for s in tl_data.get("spans", []):
+                    if s.get("text"):
+                        dialogue_events.append(
+                            DialogueCue(
+                                start_frame=int(s.get("start_frame", 0)),
+                                end_frame=int(s.get("end_frame", 0)),
+                                text=str(s.get("text", "")),
+                            )
+                        )
+            except Exception:
+                pass
+        candidate_ass = run_dir / "dynamic_subtitles.ass"
+        if candidate_ass.exists():
+            subtitles_path = candidate_ass
+        elif (run_dir / "subtitles.ass").exists():
+            subtitles_path = run_dir / "subtitles.ass"
+
+    if subtitles_path is not None:
+        # The supplied ASS is the styled legacy caption source; timeline-derived
+        # dialogue is only a fallback and would otherwise duplicate its text.
+        dialogue_events.clear()
+
+    # Profile & Target resolution
+    resolved_profile: CompilationProfile
+    if profile is not None:
+        resolved_profile = profile
+    else:
+        prof_str = str(cfg.get("PROFILE", "")).lower()
+        if prof_str in {"preview", "draft"}:
+            resolved_profile = CompilationProfile.PREVIEW
+        else:
+            resolved_profile = CompilationProfile.BROADCAST_MASTER
+
+    resolved_target: CompilationTarget
+    if target is not None:
+        resolved_target = target
+    else:
+        if resolved_profile == CompilationProfile.BROADCAST_MASTER:
+            if width is not None:
+                w = width
+            elif config is not None and "OUTPUT_WIDTH" in config:
+                w = int(config["OUTPUT_WIDTH"])
+            else:
+                w = int(cfg.get("BROADCAST_WIDTH", 2560))
+
+            if height is not None:
+                h = height
+            elif config is not None and "OUTPUT_HEIGHT" in config:
+                h = int(config["OUTPUT_HEIGHT"])
+            else:
+                h = int(cfg.get("BROADCAST_HEIGHT", 1440))
+            resolved_target = CompilationTarget(
+                width=w,
+                height=h,
+                fps=resolved_fps,
+                pixel_format="nv12",
+                color_range="tv",
+            )
+        else:
+            w = width or int(cfg.get("OUTPUT_WIDTH", 1920))
+            h = height or int(cfg.get("OUTPUT_HEIGHT", 1080))
+            resolved_target = CompilationTarget(
+                width=w,
+                height=h,
+                fps=resolved_fps,
+                pixel_format="yuv420p",
+                color_range="tv",
+            )
+
+    final_output = Path(output_path) if output_path is not None else (run_dir / "youtube_ready_video.mp4")
+    resolved_work_dir = Path(work_dir) if work_dir is not None else None
+    resolved_font = font or str(cfg.get("SUBTITLE_FONT", "Arial"))
+
+    return CompilationRequest(
+        spans=tuple(spans),
+        audio_path=audio_path,
+        asset_paths=asset_paths,
+        output_path=final_output,
+        profile=resolved_profile,
+        target=resolved_target,
+        subtitles_path=subtitles_path,
+        dialogue_events=tuple(dialogue_events),
+        work_dir=resolved_work_dir,
+        encoder_override=encoder_override,
+        font=resolved_font,
+        extra_config=cfg,
+    )
+
+
+def _main_unleased(
+    run_folder: str | Sequence[str] | None = None,
+    runner: MediaRunner | None = None,
+    parsed_args: argparse.Namespace | None = None,
+) -> CompilationResult | None:
     print("=============================================")
     print("Starting SILKY CINEMATIC Video Compilation")
     print("=============================================")
 
-    if isinstance(run_folder, (list, tuple)):
-        run_folder = run_folder[0] if run_folder else None
+    parsed = parsed_args if parsed_args is not None else parse_compile_args(run_folder)
+    selected = parsed.run_folder or parsed.run_folder_flag
+    latest_run = selected if selected else get_latest_run_folder()
 
-    latest_run = run_folder if run_folder else get_latest_run_folder()
     if not latest_run:
         print("[FATAL ERROR] No run folder detected in 'youtube_runs'.")
         sys.exit(1)
 
     print(f"Target Video Folder: {latest_run}")
 
-    config = load_video_config("video_config.txt")
+    config_path = parsed.config or "video_config.txt"
+    config = load_video_config(config_path)
+
+    # Route adaptive runs with episode_brief.json to render_plan
     if os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
         from youtube_automation.production.render import render_plan
         print(render_plan(latest_run, config))
-        return
+        return None
 
-    anim_enabled = config["ENABLE_ANIMATIONS"]
-    subs_enabled = config["ENABLE_SUBTITLES"]
-
-    encoder_config = detect_hardware_encoder(config)
-    print(f"  [ENCODER] Using {encoder_config['encoder_name']} ({encoder_config['hwaccel']})")
-
-    # Audio path priority resolution: Polished Audacity audio -> Raw audio fallback
-    polished_audio = os.path.join(latest_run, "audacity_voice", "full_episode_voice.wav")
-    raw_audio = os.path.join(latest_run, "full_episode_voice.wav")
-
-    if os.path.exists(polished_audio):
-        audio_path = polished_audio
-        print(f"  [AUDIO] Target: Audacity Polished Voice Track ('{audio_path}')")
-    elif os.path.exists(raw_audio):
-        audio_path = raw_audio
-        print(f"  [AUDIO] Audacity track missing. Fallback to Raw Voice Track ('{audio_path}')")
-    else:
-        print(
-            f"[FATAL ERROR] No voice track found in '{latest_run}'. Expected 'full_episode_voice.wav'."
+    profile: CompilationProfile | None = None
+    if parsed.preview:
+        profile = CompilationProfile.PREVIEW
+    elif parsed.profile:
+        profile = (
+            CompilationProfile.PREVIEW
+            if parsed.profile.lower() == "preview"
+            else CompilationProfile.BROADCAST_MASTER
         )
-        sys.exit(1)
 
-    audio_duration = get_audio_duration(audio_path, timeout=config.get("FFPROBE_TIMEOUT", 60))
-    config["_audio_duration"] = audio_duration
-
-    images_dir = os.path.join(latest_run, "generated_images")
-
-    # 0. Enrich timeline with kinetic metadata and synchronize sidecars if timeline.json exists
-    timeline_json_path = os.path.join(latest_run, "timeline.json")
-    if os.path.exists(timeline_json_path):
-        enrich_timeline_kinetics(latest_run, fps=config["OUTPUT_FPS"])
-
-    # 1. Parse timeline blocks from transcript
-    raw_image_blocks = parse_image_timeline(latest_run)
-
-    # 2. Build ZERO-DRIFT synchronized timeline with Acoustic Waveform Snapping
-    sync_timeline = prepare_synchronized_timeline(
-        raw_image_blocks, audio_duration, config["OUTPUT_FPS"], audio_path=audio_path
-    )
-    if not sync_timeline:
-        print(f"[FATAL ERROR] Timeline is empty. No valid timestamps found in '{latest_run}'.")
-        sys.exit(1)
-
-    print("Validating image assets...")
-    invalid_assets = validate_assets(sync_timeline, images_dir)
-    if invalid_assets:
-        print(
-            f"[FATAL ERROR] Image validation failed. Found {len(invalid_assets)} missing image assets:"
+    try:
+        request = build_compilation_request_from_run(
+            run_folder=latest_run,
+            config=config,
+            profile=profile,
+            output_path=parsed.output,
+            encoder_override=parsed.encoder,
+            work_dir=parsed.work_dir,
+            font=parsed.font,
+            fps=parsed.fps,
+            width=parsed.width,
+            height=parsed.height,
+            runner=runner,
         )
-        for idx, name in invalid_assets:
-            print(f"  - Clip {idx}: {name}")
+    except Exception as e:
+        print(f"[FATAL ERROR] Failed to construct compilation request: {e}")
         sys.exit(1)
-    print(f"  [OK] All {len(sync_timeline)} image assets synchronized & verified on disk.")
 
-    print(f"Animations Enabled: {anim_enabled}")
-    print(f"Subtitles Enabled: {subs_enabled}")
-    checkpoint = CheckpointManager(latest_run, config)
-
-    # 3. Execute Chunked Zero-Drift Render & Health Verification
-    ok = run_chunked_compile(
-        config, encoder_config, sync_timeline, images_dir, audio_path, latest_run, checkpoint
-    )
-    output_mp4 = os.path.join(latest_run, "youtube_ready_video.mp4")
-
-    if ok and verify_master_video(output_mp4, audio_duration):
-        print(f"\n[SUCCESS] Master Video Verified & Completed in Sync: {output_mp4}")
-        if checkpoint:
-            checkpoint.cleanup_on_success()
-        if not config.get("DEBUG_SAVE_INTERMEDIATES", False):
-            for d in ["temp_clips", "temp_sfx"]:
-                tdir = os.path.join(latest_run, d)
-                if os.path.exists(tdir):
-                    shutil.rmtree(tdir, ignore_errors=True)
-    else:
-        print("\n[ERROR] Video compilation failed or output verification did not pass.")
+    try:
+        result = compile_video(request, runner=runner)
+        print(f"\n[SUCCESS] Master Video Verified & Completed in Sync: {result.output_path}")
+        print(
+            f"  [RESULT] Total Frames: {result.total_frames} | Duration: {result.duration:.2f}s | "
+            f"FPS: {result.fps} | Encoder: {result.encoder_used}"
+        )
+        return result
+    except CompilationError as e:
+        print(f"\n[ERROR] Video compilation failed: {e}")
         sys.exit(1)
 
 
-def main(run_folder: str | list[str] | tuple[str, ...] | None = None) -> None:
+def main(
+    run_folder: str | Sequence[str] | None = None,
+    runner: MediaRunner | None = None,
+) -> int:
     """Fence legacy encoder access; adaptive rendering owns its lease internally."""
-    if isinstance(run_folder, (list, tuple)):
-        selected = run_folder[0] if run_folder else None
-    else:
-        selected = run_folder
+    parsed = parse_compile_args(run_folder)
+    selected = parsed.run_folder or parsed.run_folder_flag
     latest_run = selected if selected else get_latest_run_folder()
+
     if latest_run and os.path.isfile(os.path.join(latest_run, "episode_brief.json")):
-        return _main_unleased(run_folder)
+        _main_unleased(runner=runner, parsed_args=parsed)
+        return 0
+
     from youtube_automation.production.ledger import leased_resource, resource_database
 
     with leased_resource(resource_database(), "encoder"):
-        return _main_unleased(run_folder)
+        res = _main_unleased(runner=runner, parsed_args=parsed)
+        return 0 if (res is None or isinstance(res, CompilationResult)) else 1
 
 
 if __name__ == "__main__":
-    run_folder_arg = sys.argv[1] if len(sys.argv) > 1 else None
-    main(run_folder_arg)
+    sys.exit(main(sys.argv[1:]))
 
-
-
-__all__ = ['_probe_encoder', '_build_encoder_config', 'detect_hardware_encoder', 'build_ken_burns_filter', 'derive_multishot_crop', 'AudioSyncAligner', 'AudioTransientDetector', 'fix_arabic_srt', 'build_subtitle_style_string', 'build_dynamic_ass_subtitles', 'build_chunk_filter_graph', 'get_sorted_images', '_resolve_image_path', 'load_video_config', 'CheckpointManager', 'get_audio_duration', 'validate_post_encode', 'get_latest_run_folder', '_parse_pre_planned_prompts_txt', '_parse_flow_prompts_cameras', 'load_ai_camera_decisions', 'load_manual_overrides', 'enrich_timeline_kinetics', 'parse_image_timeline', 'prepare_synchronized_timeline', 'validate_assets', '_extract_loudnorm_measured', '_measure_loudnorm', '_build_chunk_ffmpeg_cmd', '_effective_clip_timeout', '_resolve_chunk_workers', '_execute_chunk_ffmpeg', 'render_chunk', 'SFXEngine', '_build_audio_filter_chain', '_execute_final_assembly', 'assemble_final_video', 'export_proxy_ladder', '_signature_drift_reason', '_checkpoint_resume_gate', '_render_all_chunks_parallel', 'run_chunked_compile', 'verify_master_video', 'main']
+__all__ = ['parse_compile_args', 'build_compilation_request_from_run', '_probe_encoder', '_build_encoder_config', 'detect_hardware_encoder', 'build_ken_burns_filter', 'derive_multishot_crop', 'AudioSyncAligner', 'AudioTransientDetector', 'fix_arabic_srt', 'build_subtitle_style_string', 'build_dynamic_ass_subtitles', 'build_chunk_filter_graph', 'get_sorted_images', '_resolve_image_path', 'load_video_config', 'CheckpointManager', 'get_audio_duration', 'validate_post_encode', 'get_latest_run_folder', '_parse_pre_planned_prompts_txt', '_parse_flow_prompts_cameras', 'load_ai_camera_decisions', 'load_manual_overrides', 'enrich_timeline_kinetics', 'parse_image_timeline', 'prepare_synchronized_timeline', 'validate_assets', '_extract_loudnorm_measured', '_measure_loudnorm', '_build_chunk_ffmpeg_cmd', '_effective_clip_timeout', '_resolve_chunk_workers', '_execute_chunk_ffmpeg', 'render_chunk', 'SFXEngine', '_build_audio_filter_chain', '_execute_final_assembly', 'assemble_final_video', 'export_proxy_ladder', '_signature_drift_reason', '_checkpoint_resume_gate', '_render_all_chunks_parallel', 'run_chunked_compile', 'verify_master_video', 'main']

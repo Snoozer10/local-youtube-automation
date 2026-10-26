@@ -1,22 +1,27 @@
 # Handoff
 
 ## Current Phase
-Shared guidance authority implemented; final shared-branch validation pending. Channel DNA decision map is complete.
+Spec #23 compilation repairs verified locally; integration and the final-artifact receipt requirement remain open.
 
 ## Current Goal
-Finish ticket36 validation after active compilation work stabilizes; preserve Antigravity ownership of spec23/tickets24-30.
+Keep the repaired source stable. Finish Spec #23 story 16 before claiming the entire parent complete.
 
 ## Done
-- Root AGENTS is the shared contract; GEMINI/CLAUDE import it. Source child owns runtime controls; docs/agents/workflows.md routes feature, debug and release work.
-- Reconciled active authority, browser ownership, FFmpeg and full-source typing contradictions.27routing targets verified. Fresh Codex0.160.0 startup/route selection passed; Claude/Gemini runtime and skill discovery were not tested.
-- Record: docs/sessions/SHARED_GUIDANCE_AUTHORITY_20261025.md. Exact receipts: .runtime/guidance_authority_20261025T061500Z/.
-- Study sampling and mandatory evidence decisions are resolved under issues34/35; implementation and meaningful live Windows REA proof remain pending.
+- Seven audited defects repaired, plus input/output alias, canonical timeline and fractional-FPS guards.
+- CPU fallback retains evidence and reuses verified matching clips across equivalent preview/master profiles.
+- Full suite: 2,101 passed, 9 skipped. Full strict mypy (77 source files), Ruff and wheel/sdist build passed; 609 pinned inputs unchanged.
+- Synthetic CPU, subtitle-pixel, lease and cache canaries passed. No production/provider/GPU acceptance was exercised.
+- Current result: docs/sessions/SPEC23_COMPILATION_REPAIR_20261026.md. Evidence: .runtime/spec23_repair_20261026T035651Z/.
 
 ## Next
-Keep36open pending final branch checks. Reconcile the compilation CLI test with Antigravity's current code, then verify a frozen tree before closing36 and unblocking its dependents. Do not start another ticket automatically. Professor D1 remains DEFERRED BY USER. No new live/provider grant. QMD unchanged by prior user direction.
+- Keep #23/#25 open for atomic final-artifact JSON verification receipts; #25-#29 remain open for integration/disposition.
+- Work is local; no push or PR. Preserve unrelated dirty files.
+- Ticket #36 remains separate; this pass does not close it.
 
 ## Failures & Fixes
-Typing, lint and wheel/sdist build passed at checked inputs. Full suite stopped at test_compile_video_cli.py::TestMainExecutionAndDelegation::test_main_compiles_successfully_with_fake_runner:335passed,9skipped,1failed (expected -vf command). Parallel compilation source/test edits mean no final exact-tree application pass. First fresh-session detailed read timed out; bounded routing-only check passed. Failed helper/draft evidence is preserved.
+- Corrected dishonest fake media metadata and stale graph/receipt selectors without relaxing guards.
+- Fixed the isolation-induced preview/master CPU cache regression; final canary reused two clips with only assembly.
+- Retained HTTP429 worker failures and the native wrapper's null parent exit-code limitation. Final full packet captured actual subprocess codes.
 
 ## Resume Context
-master; pre-task HEAD0765085. Only scoped guidance and its prerequisite docs belong to this commit; unrelated dirty work is preserved. Current authority is root AGENTS, not GEMINI precedence. No skill/archive cleanup or source implementation was performed.
+Branch master; baseline 70213c1. Exact commit is in Git history and repair CLOSEOUT.json. No additional provider, GUI, REA, publication or cleanup grant exists.

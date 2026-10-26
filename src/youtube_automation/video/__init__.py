@@ -1,24 +1,54 @@
-from .compiler import *  # noqa: F401, F403
-from .encoder import _build_encoder_config, _probe_encoder, detect_hardware_encoder  # noqa: F401
-from .filter_graph import (  # noqa: F401
-    _resolve_image_path,
-    build_chunk_filter_graph,
-    get_sorted_images,
+"""Video processing and compilation package.
+
+Conforms to ADR 0002 and ADR 0006 (Ports & Adapters + Deep Module).
+Callers interact exclusively through VideoCompiler and compile_video.
+"""
+
+from .engine import VideoCompiler, compile_video
+from .journal import (
+    ClipJournalEntry,
+    RenderJournal,
+    compute_generation_fingerprint,
+    get_file_sha256,
 )
-from .ken_burns import (  # noqa: F401
-    AudioSyncAligner,
-    AudioTransientDetector,
-    build_ken_burns_filter,
-    derive_multishot_crop,
+from .runner import (
+    FakeMediaRunner,
+    MediaExecutionError,
+    MediaProbeResult,
+    MediaRunner,
+    SubprocessMediaRunner,
 )
-from .subtitles import (  # noqa: F401
-    build_dynamic_ass_subtitles,
-    build_subtitle_style_string,
-    fix_arabic_srt,
+from .schema import (
+    CompilationError,
+    CompilationProfile,
+    CompilationRequest,
+    CompilationResult,
+    CompilationSpan,
+    CompilationTarget,
+    DialogueCue,
 )
-from .vector_compositor import (  # noqa: F401
-    composite_vector_overlays,
-    draw_callout_badge,
-    draw_directional_arrow,
-    draw_focus_brackets,
-)
+
+__all__ = [
+    # Core Engine Facade
+    "VideoCompiler",
+    "compile_video",
+    # Declarative Schemas
+    "CompilationRequest",
+    "CompilationResult",
+    "CompilationProfile",
+    "CompilationSpan",
+    "CompilationTarget",
+    "CompilationError",
+    "DialogueCue",
+    # Execution Seam (Ports & Adapters)
+    "MediaRunner",
+    "SubprocessMediaRunner",
+    "FakeMediaRunner",
+    "MediaProbeResult",
+    "MediaExecutionError",
+    # Resumable Journal
+    "ClipJournalEntry",
+    "RenderJournal",
+    "compute_generation_fingerprint",
+    "get_file_sha256",
+]

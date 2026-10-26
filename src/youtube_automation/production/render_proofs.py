@@ -18,15 +18,21 @@ from PIL import Image
 
 from youtube_automation.core.utils import atomic_write_json
 from youtube_automation.video.compiler import load_video_config
+from youtube_automation.video.filter_graph import (
+    build_camera_filter as camera_filter,
+)
+from youtube_automation.video.filter_graph import (
+    normalize_color_range_filter as _normalize_color_range_filter,
+)
+from youtube_automation.video.filter_graph import (
+    pixel_format_for_encoder as _pixel_format_for_encoder,
+)
 
 from .assets import asset_storage_id, file_digest, read_shot_receipt
 from .contracts import fingerprint, load_brief
 from .flow import verify_generated_assets
 from .ledger import leased_resource, resource_database
 from .render import (
-    _normalize_color_range_filter,
-    _pixel_format_for_encoder,
-    camera_filter,
     current_render_inputs,
     overlay_filter_recipe,
 )

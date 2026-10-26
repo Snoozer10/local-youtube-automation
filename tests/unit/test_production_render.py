@@ -285,14 +285,100 @@ def test_preview_is_rehashed_inside_approval_publication_guard(tmp_path, monkeyp
 def test_executable_source_lineage_ignores_comments_and_crlf_but_not_code(tmp_path, monkeypatch):
     from youtube_automation.production import render
 
-    monkeypatch.setattr(render, "__file__", str(tmp_path / "render.py"))
-    for name in ("render.py", "graphic_cues.py", "pictograms.py"):
-        (tmp_path / name).write_bytes(b"value = 1\n")
+    package_root = tmp_path / "youtube_automation"
+    production_root = package_root / "production"
+    video_root = package_root / "video"
+    production_root.mkdir(parents=True)
+    video_root.mkdir()
+    monkeypatch.setattr(render, "__file__", str(production_root / "render.py"))
+    monkeypatch.setattr(render.video_encoder, "__file__", str(video_root / "encoder.py"))
+
+    dependencies = (
+        production_root / "render.py",
+        production_root / "graphic_cues.py",
+        production_root / "pictograms.py",
+        video_root / "encoder.py",
+        video_root / "engine.py",
+        video_root / "filter_graph.py",
+        video_root / "subtitles.py",
+        video_root / "ken_burns.py",
+        video_root / "journal.py",
+        video_root / "runner.py",
+        video_root / "schema.py",
+    )
+    for path in dependencies:
+        path.write_bytes(b"value = 1\n")
+
     baseline = render.render_code_fingerprint()
-    (tmp_path / "render.py").write_bytes(b"# harmless comment\r\nvalue = 1\r\n")
+    (production_root / "render.py").write_bytes(b"# harmless comment\r\nvalue = 1\r\n")
     assert render.render_code_fingerprint() == baseline
-    (tmp_path / "render.py").write_bytes(b"value = 2\r\n")
-    assert render.render_code_fingerprint() != baseline
+
+    for path in dependencies:
+        path.write_bytes(b"value = 2\n")
+        assert render.render_code_fingerprint() != baseline, path.name
+        path.write_bytes(b"value = 1\n")
+        assert render.render_code_fingerprint() == baseline, path.name
+
+def test_renderer_dependency_changes_invalidate_current_render_inputs(tmp_path, monkeypatch):
+    from youtube_automation.production import render
+
+    original_fingerprint = render.render_code_fingerprint
+    plan, config, _ = _lineage_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(render, "render_code_fingerprint", original_fingerprint)
+
+    package_root = tmp_path / "isolated_checkout" / "youtube_automation"
+    production_root = package_root / "production"
+    video_root = package_root / "video"
+    production_root.mkdir(parents=True)
+    video_root.mkdir()
+    monkeypatch.setattr(render, "__file__", str(production_root / "render.py"))
+    monkeypatch.setattr(render.video_encoder, "__file__", str(video_root / "encoder.py"))
+
+    dependencies = (
+        production_root / "render.py",
+        production_root / "graphic_cues.py",
+        production_root / "pictograms.py",
+        video_root / "encoder.py",
+        video_root / "engine.py",
+        video_root / "filter_graph.py",
+        video_root / "subtitles.py",
+        video_root / "ken_burns.py",
+        video_root / "journal.py",
+        video_root / "runner.py",
+        video_root / "schema.py",
+    )
+    for path in dependencies:
+        path.write_bytes(b"value = 1\n")
+
+    encoder = {
+        "video_codec": "libx264",
+        "encoder_name": "libx264",
+        "hwaccel": "none",
+        "encoder_args": ["-crf", "17"],
+    }
+    audio = tmp_path / "audio.wav"
+    assets = {"asset": "d" * 64}
+    baseline = render.current_render_inputs(
+        plan, assets, audio, config, encoder_config=encoder
+    )
+
+    unrelated = package_root / "unrelated.py"
+    unrelated.write_bytes(b"value = 2\n")
+    assert render.current_render_inputs(
+        plan, assets, audio, config, encoder_config=encoder
+    ) == baseline
+
+    for path in dependencies:
+        path.write_bytes(b"value = 2\n")
+        changed = render.current_render_inputs(
+            plan, assets, audio, config, encoder_config=encoder
+        )
+        assert changed["render_code_sha256"] != baseline["render_code_sha256"], path.name
+        assert changed != baseline, path.name
+        path.write_bytes(b"value = 1\n")
+        assert render.current_render_inputs(
+            plan, assets, audio, config, encoder_config=encoder
+        ) == baseline, path.name
 
 
 def test_ass_fingerprint_is_checkout_independent():
@@ -782,7 +868,8 @@ def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
     assets.register_asset(tmp_path, shot, brief, image)
     config = load_video_config()
     config.update(OUTPUT_WIDTH=640, OUTPUT_HEIGHT=360, ENCODER_FORCE="libx264", ENABLE_VBV=False)
-    monkeypatch.setattr("youtube_automation.video.compiler.load_video_config", lambda *_: config)
+    cfg_text = "\n".join(f"{k}={v}" for k, v in config.items())
+    (tmp_path / "video_config.txt").write_text(cfg_text, encoding="utf-8")
     with pytest.raises(FileNotFoundError):
         render_plan(tmp_path, config)
     before = (tmp_path / "timeline.json").read_bytes()
@@ -797,15 +884,24 @@ def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
     # A same-duration but edited clip must not be accepted merely because ffprobe passes.
     clip = result.parent / "clip_00000.mp4"
     clip.write_bytes(clip.read_bytes() + b"tampered")
+    from youtube_automation.video.runner import SubprocessMediaRunner
+
     calls = []
-    original_run = render.run_command
 
-    def recorded_run(args, cwd, timeout=600):
-        calls.append((args, Path(cwd)))
-        return original_run(args, cwd, timeout)
+    class RecordingRunner(SubprocessMediaRunner):
+        def run_ffmpeg(
+            self,
+            args: list[str],
+            *,
+            cwd: Path | str | None = None,
+            timeout: float | None = None,
+        ) -> tuple[str, str]:
+            res = super().run_ffmpeg(args, cwd=cwd, timeout=timeout)
+            calls.append((args, self.last_execution_cwd or (Path(cwd) if cwd is not None else Path.cwd())))
+            return res
 
-    monkeypatch.setattr(render, "run_command", recorded_run)
-    render_plan(tmp_path, config, preview=True)
+    rec_runner = RecordingRunner()
+    render_plan(tmp_path, config, preview=True, runner=rec_runner)
     assert any("-/filter_complex" in args for args, _ in calls)
     assert any(
         cwd.name.startswith("youtube-overlay-")
@@ -835,12 +931,18 @@ def test_real_ffmpeg_preview_and_approval_gate(tmp_path, monkeypatch):
     assert (tmp_path / "adaptive_preview.json").read_bytes() == previous_preview
     assert assets.file_digest(tmp_path / active["path"]) == active["sha256"]
     monkeypatch.setattr(render, "atomic_write_json", original_write)
-    monkeypatch.setattr(
-        render,
-        "run_command",
-        lambda *_args, **_kwargs: pytest.fail("verified orphan should activate without re-encoding"),
-    )
-    recovered = render_plan(tmp_path, dict(config, CPU_CRF=28), preview=True)
+
+    class OrphanFailRunner(SubprocessMediaRunner):
+        def run_ffmpeg(
+            self,
+            args: list[str],
+            *,
+            cwd: Path | str | None = None,
+            timeout: float | None = None,
+        ) -> tuple[str, str]:
+            pytest.fail("verified orphan should activate without re-encoding")
+
+    recovered = render_plan(tmp_path, dict(config, CPU_CRF=28), preview=True, runner=OrphanFailRunner())
     recovered_pointer = json.loads((tmp_path / "adaptive_preview.json").read_text())
     assert recovered == tmp_path / recovered_pointer["path"]
     assert assets.file_digest(recovered) == recovered_pointer["sha256"]
@@ -1440,93 +1542,153 @@ def test_encoder_source_recipe_ignores_comments_but_tracks_executable_changes(tm
 
 def _encoder_runtime_fixture(tmp_path, monkeypatch, hardware_failure):
     import json
+    from contextlib import nullcontext
     from types import SimpleNamespace
 
-    from youtube_automation.production import render
-    from youtube_automation.production.contracts import fingerprint
+    from PIL import Image
 
-    plan, config, _ = _lineage_fixture(tmp_path, monkeypatch)
+    from youtube_automation.production import cli, flow, render, review
+    from youtube_automation.production.contracts import fingerprint
+    from youtube_automation.production.shots import EditorialPolicy, Overlay, ShotPlan
+    from youtube_automation.video.runner import FakeMediaRunner, MediaProbeResult
+
+    shot = fixture_shot(end_frame=30, overlays=[
+        Overlay(kind="label", start_frame=0, end_frame=30, text="Visible copy")
+    ])
+    plan = ShotPlan(
+        shots=[shot], brief_sha256="a" * 64, timeline_sha256="b" * 64,
+        fps=30, total_frames=30,
+        editorial_policy=EditorialPolicy(
+            cadence="balanced", target_shot_seconds=5, max_shot_seconds=10,
+            max_consecutive_framing=3, max_motion_fraction=0.5,
+        ),
+    )
+    brief = SimpleNamespace(version=2, source_sha256="c" * 64)
     timeline = {"audio_file": "audio.wav"}
     plan.timeline_sha256 = fingerprint(timeline)
+    (tmp_path / "timeline.json").write_text(json.dumps(timeline), encoding="utf-8")
     (tmp_path / "shot_plan.json").write_text(plan.model_dump_json(), encoding="utf-8")
-    hardware = {"video_codec": "h264_qsv", "encoder_name": "h264_qsv", "hwaccel": "qsv", "encoder_args": ["-global_quality", "19"]}
-    cpu = {"video_codec": "libx264", "encoder_name": "libx264", "hwaccel": "none", "encoder_args": ["-crf", "17"]}
-    monkeypatch.setattr(render, "detect_hardware_encoder", lambda _: hardware)
-    monkeypatch.setattr(render, "_build_encoder_config", lambda *_: cpu)
-    monkeypatch.setattr(render, "load_brief", lambda _: SimpleNamespace(version=2, source_sha256="c" * 64))
-    monkeypatch.setattr(render, "validate_plan", lambda *_: None)
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"canonical audio")
+    image = tmp_path / "asset.png"
+    Image.new("RGB", (640, 360), "#304560").save(image)
+    assets = {"asset": "d" * 64}
+    config = {"OUTPUT_WIDTH": 640, "OUTPUT_HEIGHT": 360, "CPU_CRF": 17}
+
+    runner = FakeMediaRunner(
+        available_encoders={"h264_qsv", "libx264"},
+        error_on_encoder={"h264_qsv"} if hardware_failure else None,
+        default_total_frames=30,
+        default_duration=1.0,
+        default_width=640,
+        default_height=360,
+        default_fps=30.0,
+        default_pix_fmt="yuv420p",
+    )
+    runner.register_probe(
+        audio,
+        MediaProbeResult(
+            duration=1.0,
+            total_frames=30,
+            width=0,
+            height=0,
+            fps=30.0,
+            pix_fmt="",
+            color_range="tv",
+            has_audio=True,
+        ),
+    )
+    monkeypatch.setattr("youtube_automation.video.runner._DEFAULT_RUNNER", runner)
+
+    monkeypatch.setattr(render, "render_code_fingerprint", lambda: "e" * 64)
+    monkeypatch.setattr(render, "render_tool_version", lambda: "FFmpeg test build")
+    monkeypatch.setattr("youtube_automation.video.compiler.load_video_config", lambda *_: dict(config))
+    monkeypatch.setattr(review, "review_context", lambda _: (brief, plan))
+    monkeypatch.setattr(cli, "_validated_plan", lambda _: (brief, plan, timeline))
+    monkeypatch.setattr(review, "load_brief", lambda _: brief)
+    monkeypatch.setattr(render, "load_brief", lambda _: brief)
+    monkeypatch.setattr(review, "verify_generated_assets", lambda *_: None)
+    monkeypatch.setattr(flow, "verify_generated_assets", lambda *_: None)
     monkeypatch.setattr(render, "verify_generated_assets", lambda *_: None)
-    monkeypatch.setattr("youtube_automation.production.visual_gate.require_visual_audit", lambda *_, **__: None)
+    monkeypatch.setattr(render, "validate_plan", lambda *_: None)
+    monkeypatch.setattr(review, "read_shot_receipt", lambda *_: {"sha256": assets["asset"]})
+    monkeypatch.setattr(cli, "read_shot_receipt", lambda *_: {"sha256": assets["asset"]})
+    monkeypatch.setattr(render, "read_shot_receipt", lambda *_: {"dimensions": [640, 360], "path": "asset.png", "sha256": assets["asset"]})
+    monkeypatch.setattr(render, "read_receipt", lambda *_: {"sha256": assets["asset"]})
     monkeypatch.setattr(render, "asset_storage_id", lambda _: "asset")
-    monkeypatch.setattr(render, "read_shot_receipt", lambda *_: {"dimensions": [640, 360], "path": "asset.png", "sha256": "d" * 64})
-    monkeypatch.setattr(render, "read_receipt", lambda *_: {"sha256": "d" * 64})
-    monkeypatch.setattr(render.subprocess, "run", lambda *_, **__: SimpleNamespace(stdout="1.0"))
-    calls = []
+    monkeypatch.setattr("youtube_automation.production.visual_gate.require_visual_audit", lambda *_, **__: None)
+    monkeypatch.setattr(review, "publication_guard", nullcontext)
+    monkeypatch.setattr(render, "publication_guard", nullcontext)
 
-    def command(args, _cwd, **_kwargs):
-        codec = args[args.index("-c:v") + 1]
-        calls.append(codec)
-        if codec == "h264_qsv" and hardware_failure:
-            raise RuntimeError("Observed encoder execution failure")
-        from pathlib import Path
-        Path(args[-1]).write_bytes(("encoded:" + codec).encode())
+    def get_calls():
+        return [
+            cmd[cmd.index("-c:v") + 1]
+            for cmd in runner.commands_run
+            if "-c:v" in cmd and "null" not in cmd and "lavfi" not in cmd
+        ]
 
-    monkeypatch.setattr(render, "run_command", command)
-    return plan, config, calls, json
+    return plan, config, runner, get_calls, json
 
 
 @pytest.mark.parametrize("hardware_failure", [False, True])
 def test_encoder_runtime_execution_binds_hardware_and_cpu_fallback(tmp_path, monkeypatch, hardware_failure):
     from youtube_automation.production import cli, render, review
 
-    plan, config, calls, json = _encoder_runtime_fixture(tmp_path, monkeypatch, hardware_failure)
-    render._render_plan(tmp_path, config, preview=True)
+    plan, config, runner, get_calls, json = _encoder_runtime_fixture(tmp_path, monkeypatch, hardware_failure)
+    render._render_plan(tmp_path, config, preview=True, runner=runner)
     pointer = json.loads((tmp_path / "adaptive_preview.json").read_text())
     expected = "libx264" if hardware_failure else "h264_qsv"
     execution = pointer["encoder_execution"]["clips"][0]["execution"]
     assert pointer["inputs"]["encoder_recipe"]["video_codec"] == "h264_qsv"
     assert execution["encoder_recipe"]["video_codec"] == expected
     assert execution["fallback_from"] == (pointer["inputs"]["encoder_recipe"] if hardware_failure else None)
-    assert calls == (["h264_qsv", "libx264", "libx264"] if hardware_failure else ["h264_qsv", "libx264"])
-    assert cli._render_output_complete(tmp_path, preview=True)
-    review.approve_review(tmp_path, "Human")
-    before = len(calls)
-    render._render_plan(tmp_path, config, preview=False)
-    assert calls[before:] == ["libx264"]  # Proven clip cache reused; assembly still encodes.
-    assert cli._render_output_complete(tmp_path, preview=False)
+    assert get_calls() == (["h264_qsv", "libx264", "libx264"] if hardware_failure else ["h264_qsv", "libx264"])
+    assert cli._render_output_complete(tmp_path, preview=True, runner=runner)
+    review.approve_review(tmp_path, "Human", runner=runner)
+    before = len(get_calls())
+    render._render_plan(tmp_path, config, preview=False, runner=runner)
+    assert get_calls()[before:] == ["libx264"]  # Proven clip cache reused; assembly still encodes.
+    assert cli._render_output_complete(tmp_path, preview=False, runner=runner)
     master = json.loads((tmp_path / "active_master.json").read_text())
     master["encoder_execution"]["clips"][0]["execution"]["encoder_recipe"] = {"video_codec": "unapproved"}
     (tmp_path / "active_master.json").write_text(json.dumps(master))
-    assert not cli._render_output_complete(tmp_path, preview=False)
+    assert not cli._render_output_complete(tmp_path, preview=False, runner=runner)
     render.require_current_preview(tmp_path, pointer["inputs"], plan.total_frames)
 
 
 def test_encoder_runtime_rejects_wrong_cache_and_orphan_execution(tmp_path, monkeypatch):
     from youtube_automation.production import render
 
-    plan, config, calls, json = _encoder_runtime_fixture(tmp_path, monkeypatch, True)
-    render._render_plan(tmp_path, config, preview=True)
+    plan, config, runner, get_calls, json = _encoder_runtime_fixture(tmp_path, monkeypatch, True)
+    render._render_plan(tmp_path, config, preview=True, runner=runner)
     pointer = json.loads((tmp_path / "adaptive_preview.json").read_text())
     generation = pointer["generation"]
     work = tmp_path / "adaptive_renders" / generation
-    receipt_path = work / "clip_00000.json"
+    active_clip = pointer["encoder_execution"]["clips"][0]
+    matching_receipts = [
+        candidate for candidate in work.rglob("clip_00000.json")
+        if (data := json.loads(candidate.read_text()))["clip_sha256"] == active_clip["sha256"]
+        and data["execution"] == active_clip["execution"]
+    ]
+    assert len(matching_receipts) == 1
+    receipt_path = matching_receipts[0]
     cache = json.loads(receipt_path.read_text())
     cache["execution"]["fallback_from"] = None
     receipt_path.write_text(json.dumps(cache))
-    before = len(calls)
-    render._render_plan(tmp_path, config, preview=True)
-    assert calls[before:] == ["h264_qsv", "libx264", "libx264"]
+    before = len(get_calls())
+    render._render_plan(tmp_path, config, preview=True, runner=runner)
+    assert get_calls()[before:] == ["h264_qsv", "libx264", "libx264"]
     pointer = json.loads((tmp_path / "adaptive_preview.json").read_text())
     journal = render._render_journal_path(tmp_path, generation, True)
     bad = json.loads(json.dumps(pointer))
     bad["encoder_execution"]["clips"][0]["execution"]["fallback_from"] = None
     journal.write_text(json.dumps({"version": 1, "kind": "preview", "pointer": bad}))
     before_pointer = (tmp_path / "adaptive_preview.json").read_bytes()
-    assert render._recover_render_publication(tmp_path, generation, pointer["inputs"], plan.total_frames, plan.fps, preview=True) is None
+    assert render._recover_render_publication(tmp_path, generation, pointer["inputs"], plan.total_frames, plan.fps, preview=True, runner=runner) is None
     assert (tmp_path / "adaptive_preview.json").read_bytes() == before_pointer
     assert journal.exists()
     journal.write_text(json.dumps({"version": 1, "kind": "preview", "pointer": pointer}))
-    assert render._recover_render_publication(tmp_path, generation, pointer["inputs"], plan.total_frames, plan.fps, preview=True) == tmp_path / pointer["path"]
+    assert render._recover_render_publication(tmp_path, generation, pointer["inputs"], plan.total_frames, plan.fps, preview=True, runner=runner) == tmp_path / pointer["path"]
     bad["encoder_execution"]["assembly"]["crf"] = "99"
     (tmp_path / "adaptive_preview.json").write_text(json.dumps(bad))
     with pytest.raises(ValueError, match="encoder execution"):

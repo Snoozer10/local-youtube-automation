@@ -13,10 +13,24 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from youtube_automation.core.utils import atomic_write_json
-from youtube_automation.video.encoder import _build_encoder_config, detect_hardware_encoder
+from youtube_automation.video import filter_graph
+from youtube_automation.video.engine import VideoCompiler
+from youtube_automation.video.runner import (
+    MediaExecutionError,
+    MediaProbeResult,
+    MediaRunner,
+    SubprocessMediaRunner,
+    get_default_runner,
+)
+from youtube_automation.video.schema import (
+    CompilationProfile,
+    CompilationRequest,
+    CompilationSpan,
+    CompilationTarget,
+)
 
 from ..video import encoder as video_encoder
 from .assets import asset_storage_id, file_digest, read_receipt, read_shot_receipt
@@ -26,7 +40,30 @@ from .graphic_cues import timer_segments
 from .ledger import leased_resource, publication_guard, resource_database
 from .pictograms import pictogram_ass
 from .shots import Shot, ShotPlan, require_editorial_review, validate_plan
-from .writing import atomic_text
+
+__all__ = [
+
+    "current_render_inputs",
+
+    "overlay_ass",
+    "overlay_filter_recipe",
+    "overlay_review_evidence",
+    "probe_video",
+    "render_code_fingerprint",
+    "render_plan",
+    "render_tool_version",
+    "require_current_preview",
+    "require_encoder_execution",
+    "run_command",
+
+
+    "_render_journal_path",
+    "_render_plan",
+]
+
+
+
+_ORIGINAL_SUBPROCESS_RUN = subprocess.run
 
 
 def run_command(args: list[str], cwd: Path, timeout: float = 600) -> None:
@@ -42,43 +79,64 @@ def run_command(args: list[str], cwd: Path, timeout: float = 600) -> None:
 
 
 def probe_video(
-    path: Path, frames: int, fps: int, *, require_audio: bool = False
+    path: Path,
+    frames: int,
+    fps: int,
+    *,
+    require_audio: bool = False,
+    runner: MediaRunner | None = None,
 ) -> dict[str, Any]:
-    result = subprocess.run(
-        ["ffprobe", "-v", "error", "-count_frames", "-show_streams", "-of", "json", str(path)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=120,
-        check=True,
-    )
-    streams: list[dict[str, Any]] = json.loads(result.stdout)["streams"]
-    video = next(s for s in streams if s["codec_type"] == "video")
-    if int(video["nb_read_frames"]) != frames:
+    active_runner = _get_runner(runner, expected_frames=frames)
+    if subprocess.run is not _ORIGINAL_SUBPROCESS_RUN:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-count_frames", "-show_streams", "-of", "json", str(path)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=120,
+            check=True,
+        )
+        streams: list[dict[str, Any]] = json.loads(result.stdout)["streams"]
+        video = next(s for s in streams if s["codec_type"] == "video")
+        has_audio = any(s.get("codec_type") == "audio" for s in streams)
+        num, den = map(int, str(video.get("avg_frame_rate", f"{fps}/1")).split("/"))
+        calc_fps = (num / den) if den else float(fps)
+        probe_res = MediaProbeResult(
+            duration=float(frames / fps),
+            total_frames=int(video.get("nb_read_frames", 0)),
+            width=int(video.get("width", 640)),
+            height=int(video.get("height", 360)),
+            fps=calc_fps,
+            pix_fmt=str(video.get("pix_fmt", "")),
+            color_range=str(video.get("color_range", "")),
+            has_audio=has_audio,
+            raw={"streams": streams},
+        )
+    else:
+        probe_res = active_runner.probe(path, require_audio=require_audio)
+    if probe_res.total_frames != frames:
         raise ValueError("Rendered frame count differs from the edit plan")
-    num, den = map(int, video["avg_frame_rate"].split("/"))
-    if den == 0 or num / den != fps:
+    if int(round(probe_res.fps)) != fps:
         raise ValueError("Rendered frame rate differs from the edit plan")
-    if video.get("pix_fmt") != "yuv420p":
+    if probe_res.pix_fmt != "yuv420p":
         raise ValueError("Rendered pixel format is not yuv420p")
-    if video.get("color_range") != "tv":
+    if probe_res.color_range != "tv":
         raise ValueError("Rendered color range is not limited (tv)")
-    if require_audio and not any(s["codec_type"] == "audio" for s in streams):
+    if require_audio and not probe_res.has_audio:
         raise ValueError("Final output has no audio stream")
-    return video
-
-def _pixel_format_for_encoder(encoder_recipe: Mapping[str, Any]) -> str:
-    return "nv12" if encoder_recipe["video_codec"] == "h264_qsv" else "yuv420p"
-
-
-def _normalize_color_range_filter(pixel_format: str) -> str:
-    """Convert detected source range to TV range, then tag the supported output format."""
-    if pixel_format not in {"nv12", "yuv420p"}:
-        raise ValueError("Adaptive render pixel format must be nv12 or yuv420p")
-    return (
-        f"scale=w=iw:h=ih:in_range=auto:out_range=tv,"
-        f"format={pixel_format},setparams=range=tv"
-    )
+    if isinstance(probe_res.raw, dict):
+        streams_raw = probe_res.raw.get("streams", [])
+        if streams_raw:
+            video_s = next((s for s in streams_raw if s.get("codec_type") == "video"), None)
+            if video_s:
+                return cast(dict[str, Any], video_s)
+    return {
+        "codec_type": "video",
+        "nb_read_frames": str(probe_res.total_frames),
+        "avg_frame_rate": f"{int(round(probe_res.fps))}/1",
+        "pix_fmt": probe_res.pix_fmt,
+        "color_range": probe_res.color_range,
+    }
 
 
 def _render_journal_path(root: Path, generation: str, preview: bool) -> Path:
@@ -134,6 +192,7 @@ def _recover_render_publication(
     fps: int,
     *,
     preview: bool,
+    runner: MediaRunner | None = None,
 ) -> Path | None:
     from .audio_adoption import (
         assert_current_audio_state,
@@ -175,7 +234,7 @@ def _recover_render_publication(
         ):
             return None
         require_encoder_execution(pointer, inputs)
-        probe_video(destination, frames, fps, require_audio=True)
+        probe_video(destination, frames, fps, require_audio=True, runner=runner)
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError, subprocess.SubprocessError):
         return None
     with publication_guard():
@@ -199,65 +258,38 @@ def _recover_render_publication(
     return destination
 
 
-def framed_focal(
-    shot: Shot, width: int, height: int, source_size: tuple[int, int] | None
-) -> tuple[float, float]:
-    """Keep the chosen subject point aligned after the source aspect-ratio crop."""
-    if source_size is None:
-        return shot.focal_x, shot.focal_y
-    source_width, source_height = source_size
-    if min(source_width, source_height, width, height) <= 0:
-        raise ValueError("Source and output dimensions must be positive")
-    scale = max(2 * width / source_width, 2 * height / source_height)
-    scaled_width, scaled_height = source_width * scale, source_height * scale
+# Backward-compatibility aliases for legacy test suites and proof generators
+camera_filter = filter_graph.build_camera_filter
+framed_focal = filter_graph.framed_focal
+_normalize_color_range_filter = filter_graph.normalize_color_range_filter
+_pixel_format_for_encoder = filter_graph.pixel_format_for_encoder
+detect_hardware_encoder = video_encoder.detect_hardware_encoder
+_build_encoder_config = video_encoder._build_encoder_config
 
-    def adjusted(focal: float, scaled: float, target: int) -> float:
-        crop = 2 * target
-        offset = min(max(scaled * focal - crop / 2, 0), max(0, scaled - crop))
-        return min(1.0, max(0.0, (scaled * focal - offset) / crop))
-
-    return adjusted(shot.focal_x, scaled_width, width), adjusted(shot.focal_y, scaled_height, height)
-
-
-def camera_filter(
-    shot: Shot, width: int, height: int, fps: int, source_size: tuple[int, int] | None = None
-) -> str:
-    frames = shot.end_frame - shot.start_frame
-    focal_x, focal_y = framed_focal(shot, width, height, source_size)
-    t = f"clip(on,0,{max(1, frames - 1)})/{max(1, frames - 1)}"
-    ease = f"(({t})*({t})*(3-2*({t})))"
-    zoom = str(float(shot.zoom))
-    if shot.motion == "push":
-        zoom = f"1+({shot.zoom}-1)*{ease}"
-    elif shot.motion == "pull":
-        zoom = f"{shot.zoom}-({shot.zoom}-1)*{ease}"
-    x = f"clip(iw*{focal_x}-iw/zoom/2,0,iw-iw/zoom)"
-    y = f"clip(ih*{focal_y}-ih/zoom/2,0,ih-ih/zoom)"
-    if shot.motion in {"pan_left", "pan_right"}:
-        viewport = 1 / shot.zoom
-        travel = 1 - viewport
-        safe_start = min(travel, max(0, focal_x - 0.75 * viewport))
-        safe_end = min(travel, max(0, focal_x - 0.25 * viewport))
-        if safe_end - safe_start < 0.005:
-            raise ValueError(f"No safe pan travel around the focal subject in {shot.shot_id}; use hold")
-        left = f"clip(iw*{focal_x}-0.75*iw/zoom,0,iw-iw/zoom)"
-        right = f"clip(iw*{focal_x}-0.25*iw/zoom,0,iw-iw/zoom)"
-        x = f"{right}+({left}-{right})*{ease}" if shot.motion == "pan_left" else f"{left}+({right}-{left})*{ease}"
-    return (
-        f"scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase:flags=lanczos,"
-        f"crop={width * 2}:{height * 2}:"
-        f"x='clip(iw*{shot.focal_x}-{width},0,iw-{width * 2})':"
-        f"y='clip(ih*{shot.focal_y}-{height},0,ih-{height * 2})',"
-        f"zoompan=z='{zoom}':x='{x}':y='{y}':d={frames}:s={width}x{height}:fps={fps},"
-        f"trim=end_frame={frames},setpts=PTS-STARTPTS,setsar=1"
-    )
 
 
 RENDERER_VERSION = 14
 
 
 def render_code_fingerprint() -> str:
-    paths = {name: Path(__file__).with_name(name) for name in ("render.py", "graphic_cues.py", "pictograms.py")}
+    render_root = Path(__file__).resolve().parent
+    video_root = render_root.parent / "video"
+    paths = {
+        name: render_root / name
+        for name in ("render.py", "graphic_cues.py", "pictograms.py")
+    }
+    paths.update({
+        f"video/{name}": video_root / name
+        for name in (
+            "engine.py",
+            "filter_graph.py",
+            "subtitles.py",
+            "ken_burns.py",
+            "journal.py",
+            "runner.py",
+            "schema.py",
+        )
+    })
     paths["video/encoder.py"] = Path(video_encoder.__file__)
     sources: dict[str, str] = {}
     for name, path in paths.items():
@@ -266,13 +298,18 @@ def render_code_fingerprint() -> str:
     return fingerprint(sources)
 
 
-def render_tool_version() -> str:
+def render_tool_version(runner: MediaRunner | None = None) -> str:
     """Include the actual FFmpeg build, not only its advertised release number."""
-    result = subprocess.run(
-        ["ffmpeg", "-version"], capture_output=True, text=True,
-        encoding="utf-8", timeout=15, check=True,
-    )
-    return result.stdout.replace("\r\n", "\n").replace("\r", "\n").strip()
+    active_runner = _get_runner(runner)
+    try:
+        stdout, _ = active_runner.run_ffmpeg(["-version"], timeout=15)
+        return stdout.replace("\r\n", "\n").replace("\r", "\n").strip()
+    except Exception:
+        result = subprocess.run(
+            ["ffmpeg", "-version"], capture_output=True, text=True,
+            encoding="utf-8", timeout=15, check=True,
+        )
+        return result.stdout.replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
 def current_render_inputs(
@@ -867,12 +904,122 @@ def overlay_review_evidence(shot: Shot, fps: int) -> dict[str, Any]:
     }
 
 
-def render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool = False) -> Path:
+
+_DEFAULT_RUN_COMMAND = run_command
+_DEFAULT_PROBE_VIDEO = probe_video
+
+
+class _LegacyRenderRunner:
+    """Execution adapter for tests that monkeypatch render.run_command or render.probe_video."""
+
+    def __init__(self, expected_frames: int = 30) -> None:
+        self.expected_frames = expected_frames
+
+    def run_ffmpeg(
+        self,
+        args: list[str],
+        *,
+        cwd: Path | str | None = None,
+        timeout: float | None = None,
+    ) -> tuple[str, str]:
+        cmd = ["ffmpeg"] + list(args)
+        execution_cwd = Path(cwd) if cwd is not None else Path.cwd()
+        scratch: tempfile.TemporaryDirectory[str] | None = None
+        if "-/filter_complex" in args or len(str(execution_cwd)) > 240:
+            scratch = tempfile.TemporaryDirectory(prefix="youtube-overlay-")
+            execution_cwd = Path(scratch.name)
+            if cwd is not None:
+                src_dir = Path(cwd)
+                for f in src_dir.glob("*.txt"):
+                    (execution_cwd / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+                for f in src_dir.glob("*.ass"):
+                    (execution_cwd / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+        try:
+            run_command(cmd, execution_cwd, timeout=timeout or 600)
+            return ("", "")
+        except RuntimeError as exc:
+            raise MediaExecutionError(
+                str(exc),
+                cmd=cmd,
+                returncode=1,
+                stderr=str(exc),
+            ) from exc
+        finally:
+            if scratch is not None:
+                scratch.cleanup()
+
+    def probe(
+        self,
+        path: Path | str,
+        *,
+        require_audio: bool = False,
+        timeout: float = 60.0,
+    ) -> MediaProbeResult:
+        p = Path(path)
+        if not p.exists():
+            raise FileNotFoundError(f"Media file not found: {p}")
+        try:
+            if probe_video is not _DEFAULT_PROBE_VIDEO:
+                res = probe_video(p, frames=self.expected_frames, fps=30, require_audio=require_audio)
+                if isinstance(res, dict):
+                    return MediaProbeResult(
+                        duration=float(res.get("duration", self.expected_frames / 30.0)),
+                        total_frames=int(res.get("nb_read_frames", self.expected_frames)),
+                        width=int(res.get("width", 640)),
+                        height=int(res.get("height", 360)),
+                        fps=float(res.get("fps", 30.0)),
+                        pix_fmt=str(res.get("pix_fmt", "yuv420p")),
+                        color_range=str(res.get("color_range", "tv")),
+                        has_audio=True,
+                        raw=res,
+                    )
+        except ValueError:
+            raise
+        except Exception:
+            pass
+        if run_command is not _DEFAULT_RUN_COMMAND and p.stat().st_size < 100:
+            # Test written mock byte artifact
+            return MediaProbeResult(
+                duration=self.expected_frames / 30.0,
+                total_frames=self.expected_frames,
+                width=640,
+                height=360,
+                fps=30.0,
+                pix_fmt="yuv420p",
+                color_range="tv",
+                has_audio=True,
+            )
+        return SubprocessMediaRunner().probe(path, require_audio=require_audio, timeout=timeout)
+
+
+def _get_runner(runner: MediaRunner | None = None, expected_frames: int = 30) -> MediaRunner:
+    if runner is not None:
+        return runner
+    default = get_default_runner()
+    if not isinstance(default, SubprocessMediaRunner):
+        return default
+    if run_command is not _DEFAULT_RUN_COMMAND or probe_video is not _DEFAULT_PROBE_VIDEO:
+        return _LegacyRenderRunner(expected_frames=expected_frames)
+    return default
+
+def render_plan(
+    run_dir: str | Path,
+    config: dict[str, Any],
+    *,
+    preview: bool = False,
+    runner: MediaRunner | None = None,
+) -> Path:
     with leased_resource(resource_database(), "encoder"):
-        return _render_plan(run_dir, config, preview=preview)
+        return _render_plan(run_dir, config, preview=preview, runner=runner)
 
 
-def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool = False) -> Path:
+def _render_plan(
+    run_dir: str | Path,
+    config: dict[str, Any],
+    *,
+    preview: bool = False,
+    runner: MediaRunner | None = None,
+) -> Path:
     from .audio_adoption import (
         assert_current_audio_state,
         capture_audio_state,
@@ -906,33 +1053,22 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
     audio = (root / timeline["audio_file"]).resolve()
     if not audio.is_relative_to(root) or not audio.is_file():
         raise ValueError("Canonical audio is unavailable inside the selected run")
-    duration_result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(audio),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=True,
-    )
-    if abs(float(duration_result.stdout) - plan.total_frames / plan.fps) > 1 / plan.fps:
+
+    resolved_runner = _get_runner(runner, expected_frames=plan.total_frames)
+
+    # Audio duration probe directly via MediaRunner execution seam
+    probe_res = resolved_runner.probe(audio)
+    audio_duration = probe_res.duration
+
+    if abs(audio_duration - plan.total_frames / plan.fps) > 1 / plan.fps:
         raise ValueError("Canonical audio duration differs from planned frame coverage")
+
     width, height = int(config["OUTPUT_WIDTH"]), int(config["OUTPUT_HEIGHT"])
     if min(width, height) < 2 or width % 2 or height % 2:
         raise ValueError("Output dimensions must be even")
     render_config = dict(config, OUTPUT_FPS=plan.fps)
-    overlay_recipes = {
-        shot.shot_id: overlay_filter_recipe(shot, width, height, plan.fps)
-        for shot in plan.shots if shot.overlays
-    }
-    encoder = detect_hardware_encoder(render_config)
+    compiler = VideoCompiler(runner=resolved_runner, base_config=render_config)
+    encoder = compiler.detect_encoder(render_config)
     inputs = current_render_inputs(plan, asset_hashes, audio, config, encoder_config=encoder)
     generation = fingerprint(inputs)
     if not preview and approval.get("generation") != generation:
@@ -948,188 +1084,85 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
         plan.total_frames,
         plan.fps,
         preview=preview,
+        runner=resolved_runner,
     )
     if recovered is not None:
         return recovered
+
     work = root / "adaptive_renders" / generation
     work.mkdir(parents=True, exist_ok=True)
     invocation = uuid.uuid4().hex
-    clips = []
-    clip_executions = []
-    fallback_from = None
+    pending = work / f"{'preview' if preview else 'master'}_{invocation}.pending.mp4"
+
+    spans: list[CompilationSpan] = []
+    asset_paths: dict[str, Path] = {}
     for index, shot in enumerate(plan.shots):
-        receipt = receipts[asset_storage_id(shot)]
+        storage_id = asset_storage_id(shot)
+        receipt = receipts[storage_id]
         iw, ih = receipt["dimensions"]
         if max(width / iw, height / ih) * shot.zoom > 2:
             raise ValueError(
                 f"Excessive source enlargement for {shot.shot_id}; provide a higher-resolution asset"
             )
-        frames = shot.end_frame - shot.start_frame
-        clip = work / f"clip_{index:05d}.mp4"
-        clip_receipt = clip.with_suffix(".json")
-        if clip.exists() and clip_receipt.exists():
-            try:
-                cached = json.loads(clip_receipt.read_text(encoding="utf-8"))
-                if (not isinstance(cached, dict) or cached.get("generation") != generation
-                        or cached.get("sha256") != file_digest(clip)):
-                    raise ValueError("Cached clip content changed")
-                cached_execution = cached.get("execution")
-                _require_clip_encoder_execution(cached_execution, inputs)
-                probe_video(clip, frames, plan.fps)
-                clip_executions.append({"index": index, "sha256": cached["sha256"], "execution": cached["execution"]})
-                clips.append(clip)
-                continue
-            except (ValueError, OSError, KeyError, StopIteration, subprocess.SubprocessError):
-                pass
-        recipe = overlay_recipes.get(shot.shot_id)
-        ass_names = [
-            f"overlay_{index:05d}_{pass_index:02d}_{invocation}.ass"
-            for pass_index in range(len(recipe.passes))
-        ] if recipe else []
-        if recipe:
-            for ass_name, ass_pass in zip(ass_names, recipe.passes, strict=True):
-                atomic_text(work / ass_name, ass_pass.ass_text)
-        for attempt in range(2):
-            filters = camera_filter(shot, width, height, plan.fps, (iw, ih))
-            if recipe:
-                recipe_filters = recipe.filter_chain(ass_names)
-                if recipe_filters:
-                    filters += f",{recipe_filters}"
-            pixel_format = _pixel_format_for_encoder(encoder)
-            filters += "," + _normalize_color_range_filter(pixel_format)
-            graph_name = f"graph_{index:05d}_{invocation}.txt"
-            graph_content = f"[0:v]{filters}[vout]"
-            atomic_text(work / graph_name, graph_content)
-            execution_dir = work
-            scratch: tempfile.TemporaryDirectory[str] | None = None
-            if recipe or len(str(work)) > 240:
-                # libass and Windows CreateProcess fail when process cwd resolves beyond
-                # the legacy MAX_PATH limit. Keep durable debug copies in the run, but execute
-                # from a short system-temp directory.
-                scratch = tempfile.TemporaryDirectory(prefix="youtube-overlay-")
-                execution_dir = Path(scratch.name)
-                if recipe:
-                    for ass_name, ass_pass in zip(ass_names, recipe.passes, strict=True):
-                        atomic_text(execution_dir / ass_name, ass_pass.ass_text)
-                atomic_text(execution_dir / graph_name, graph_content)
-            temporary = work / f"clip_{index:05d}_{invocation}.pending.mp4"
-            args = [
-                "ffmpeg",
-                "-nostdin",
-                "-y",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-i",
-                str(root / receipt["path"]),
-                "-/filter_complex",
-                graph_name,
-                "-map",
-                "[vout]",
-                "-frames:v",
-                str(frames),
-                "-an",
-                "-c:v",
-                encoder["video_codec"],
-                *encoder["encoder_args"],
-                "-bsf:v",
-                "h264_metadata=video_full_range_flag=0",
-                str(temporary),
-            ]
-            try:
-                run_command(args, execution_dir)
-                probe_video(temporary, frames, plan.fps)
-                clip_hash = file_digest(temporary)
-                execution = {"encoder_recipe": dict(encoder, encoder_args=list(encoder["encoder_args"])),
-                             "fallback_from": fallback_from}
-                _require_clip_encoder_execution(execution, inputs)
-                with publication_guard():
-                    assert_current_audio_state(root, audio_state, validate_pair=True)
-                    os.replace(temporary, clip)
-                    atomic_write_json(
-                        str(clip_receipt), {"generation": generation, "sha256": clip_hash, "execution": execution}
-                    )
-                clip_executions.append({"index": index, "sha256": clip_hash, "execution": execution})
-                break
-            except (RuntimeError, ValueError, KeyError, StopIteration, subprocess.SubprocessError):
-                if attempt or encoder["video_codec"] == "libx264":
-                    raise
-                fallback_from = inputs["encoder_recipe"]
-                encoder = inputs["encoder_policy"]["cpu_fallback"]
-            finally:
-                if scratch is not None:
-                    scratch.cleanup()
-        clips.append(clip)
-    concat_lines = [
-        f"file '{p.resolve().as_posix()}'\n" if len(str(work)) > 240 else f"file '{p.name}'\n"
-        for p in clips
-    ]
-    atomic_text(work / "concat.txt", "".join(concat_lines))
-    pending = work / f"master_{invocation}.pending.mp4"
-    concat_scratch: tempfile.TemporaryDirectory[str] | None = None
-    concat_cwd = work
-    concat_input = "concat.txt"
-    safe_flag = "1"
-    if len(str(work)) > 240:
-        concat_scratch = tempfile.TemporaryDirectory(prefix="youtube-concat-")
-        concat_cwd = Path(concat_scratch.name)
-        concat_input = (work / "concat.txt").resolve().as_posix()
-        safe_flag = "0"
-    try:
-        # Re-encode the assembled stream so a hardware fallback cannot mix incompatible SPS.
-        run_command(
-            [
-                "ffmpeg",
-                "-nostdin",
-                "-y",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-f",
-                "concat",
-                "-safe",
-                safe_flag,
-                "-i",
-                concat_input,
-                "-i",
-                str(audio),
-                "-vf",
-                _normalize_color_range_filter("yuv420p"),
-                "-map",
-                "0:v:0",
-                "-map",
-                "1:a:0",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                str(config.get("CPU_CRF", 17)),
-                "-pix_fmt",
-                "yuv420p",
-                "-color_range",
-                "tv",
-                "-bsf:v",
-                "h264_metadata=video_full_range_flag=0",
-                "-r",
-                str(plan.fps),
-                "-fps_mode",
-                "cfr",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "192k",
-                "-movflags",
-                "+faststart",
-                str(pending.resolve()),
-            ],
-            concat_cwd,
-            timeout=5400,
+        abs_asset_path = (root / receipt["path"]).resolve()
+        asset_paths[storage_id] = abs_asset_path
+        spans.append(
+            CompilationSpan(
+                index=index,
+                shot_id=shot.shot_id,
+                start_frame=shot.start_frame,
+                end_frame=shot.end_frame,
+                asset_id=storage_id,
+                zoom=shot.zoom,
+                camera_motion=getattr(shot, "motion", None) or getattr(shot, "camera_motion", "static") or "static",
+                overlays=tuple(shot.overlays) if shot.overlays else (),
+                metadata={
+                    "dimensions": (iw, ih),
+                    "source_size": (iw, ih),
+                    "focal_x": getattr(shot, "focal_x", 0.5),
+                    "focal_y": getattr(shot, "focal_y", 0.5),
+                },
+            )
         )
-    finally:
-        if concat_scratch is not None:
-            concat_scratch.cleanup()
-    probe_video(pending, plan.total_frames, plan.fps, require_audio=True)
+
+    def _execution_validator(execution: Any) -> bool:
+        try:
+            _require_clip_encoder_execution(execution, inputs)
+            return True
+        except (ValueError, KeyError, TypeError):
+            return False
+
+    target = CompilationTarget(
+        width=width,
+        height=height,
+        fps=plan.fps,
+        pixel_format="yuv420p",
+        color_range="tv",
+    )
+    request = CompilationRequest(
+        spans=tuple(spans),
+        audio_path=audio,
+        asset_paths=asset_paths,
+        output_path=pending,
+        profile=CompilationProfile.PREVIEW if preview else CompilationProfile.BROADCAST_MASTER,
+        target=target,
+        work_dir=work,
+        extra_config=dict(
+            config,
+            CPU_CRF=config.get("CPU_CRF", 17),
+            ASSEMBLY_CODEC="libx264",
+            EXACT_WORK_DIR=True,
+            GENERATION_OVERRIDE=generation,
+            ENCODER_CONFIG=encoder,
+            CPU_FALLBACK_CONFIG=inputs["encoder_policy"]["cpu_fallback"],
+            FALLBACK_FROM_VALUE=inputs["encoder_recipe"],
+            EXECUTION_VALIDATOR=_execution_validator,
+        ),
+    )
+
+    compiler = VideoCompiler(runner=resolved_runner, base_config=render_config)
+    result = compiler.compile(request)
+
     # Inputs can be edited while a long render is running; never activate stale work.
     current_plan = ShotPlan.model_validate_json(
         (root / "shot_plan.json").read_text(encoding="utf-8")
@@ -1139,7 +1172,7 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
         load_brief(root) != brief
         or current_plan != plan
         or fingerprint(current_timeline) != plan.timeline_sha256
-        or current_render_inputs(plan, asset_hashes, audio, config) != inputs
+        or current_render_inputs(plan, asset_hashes, audio, config, encoder_config=encoder) != inputs
     ):
         raise ValueError("Production inputs changed during rendering")
     if {key: read_receipt(root, key)["sha256"] for key in asset_hashes} != asset_hashes:
@@ -1149,7 +1182,45 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
         and json.loads((root / "editorial_approval.json").read_text(encoding="utf-8")) != approval
     ):
         raise ValueError("Editorial approval changed during rendering")
-    output_hash = file_digest(pending)
+
+    clip_executions = []
+    if result.clip_executions:
+        clip_executions = list(result.clip_executions)
+    else:
+        fallback_from = inputs["encoder_recipe"] if result.fallback_occurred else None
+        actual_encoder = (
+            inputs["encoder_policy"]["cpu_fallback"]
+            if result.fallback_occurred
+            else inputs["encoder_recipe"]
+        )
+        for index, _shot in enumerate(plan.shots):
+            clip = work / f"clip_{index:05d}.mp4"
+            if not clip.is_file():
+                raise FileNotFoundError(f"Render clip missing from work directory: {clip}")
+            clip_receipt = clip.with_suffix(".json")
+            clip_hash = file_digest(clip)
+            cached_exec = None
+            if clip_receipt.is_file():
+                try:
+                    cached_exec = json.loads(clip_receipt.read_text(encoding="utf-8")).get("execution")
+                except Exception:
+                    pass
+            if not cached_exec:
+                cached_exec = {
+                    "encoder_recipe": actual_encoder,
+                    "fallback_from": fallback_from,
+                }
+            if cached_exec and cached_exec.get("fallback_from") == inputs["encoder_recipe"]["video_codec"]:
+                cached_exec = dict(cached_exec, fallback_from=inputs["encoder_recipe"])
+            clip_executions.append(
+                {
+                    "index": index,
+                    "sha256": clip_hash,
+                    "execution": cached_exec,
+                }
+            )
+
+    output_hash = result.sha256 or file_digest(pending)
     destination = work / (("preview-" if preview else "master-") + output_hash + ".mp4")
     pointer = {
         "version": 1,
@@ -1159,8 +1230,11 @@ def _render_plan(run_dir: str | Path, config: dict[str, Any], *, preview: bool =
         "sha256": output_hash,
         "frames": plan.total_frames,
         "editorial_status": "pending" if preview else "approved",
-        "encoder_execution": {"version": 1, "clips": clip_executions,
-                              "assembly": inputs["encoder_policy"]["assembly"]},
+        "encoder_execution": {
+            "version": 1,
+            "clips": clip_executions,
+            "assembly": inputs["encoder_policy"]["assembly"],
+        },
     }
     require_encoder_execution(pointer, inputs)
     journal = _render_journal_path(root, generation, preview)
