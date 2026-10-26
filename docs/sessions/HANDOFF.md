@@ -50,3 +50,22 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 
 ### Failures & Fixes
 - A generic resume route incorrectly linked #37 as every reader's current task. The amendment separates task discovery from navigation maintenance. Exact preimages and amendment evidence: .runtime/architecture_renewal_audit_20261023/navigation37_amend_20261026T134549Z/ (local-only).
+
+## Architecture-Renewal Campaign Startup, 2026-10-27
+
+### Done
+- Established isolated campaign workspace at `C:\Users\Snoozer\teamwork_projects\architecture-renewal-campaign` on branch `codex/renewal-campaign` pinned to verified remote master `09b0b85e2b755a00f35ac2ad05f7fba1412c214d` (canonical tree `f39c6c4d32cc5a263245f8511e19d1aa0a207138`).
+- Applied sparse-checkout projection (`SPARSE_CHECKOUT.txt`) excluding `.runtime/`, `runtime/`, `logs/`, `.env*`, etc. Confirmed 0 junctions/symlinks, local `.git` directory, and clean path boundaries.
+- Created clean Python 3.11 virtual environment (`venv/`) with repo-declared dependencies. Recorded Python 3.11.9, SQLite 3.45.1.
+- Executed isolated resource/preconnection tests (`test_production_publication_mutex.py` and `test_resource_isolation.py`): 7 passed, confirming production SQLite connection attempts fail closed immediately.
+- Applied reviewed documentation patch `transfer/reviewed-documentation.patch` (`docs/README.md`, `docs/product/architecture-renewal-plan.md`, `docs/product/architecture-renewal-spec.md`) and verified blob hashes match expected targets.
+- Installed approved campaign delegation exception in `docs/agents/workflows.md`, designating Antigravity Project Orchestrator as integration owner.
+
+### Next
+- Proceed with Milestone M1: dispatch Track 1 Worker W1 for #54 (Safe ledger failure reporting) and #55 (Windows observation method qualification).
+- Dispatch Track 2 Worker W2 for unblocked #37 core-document reconciliation and #42 brief profile pinning.
+- Maintain independent review gates (R1, R2) and exact head verification. Codex availability is not a routine milestone gate.
+
+### Failures & Fixes
+- `git apply --check` initially failed due to CRLF checkout formatting under Windows default `core.autocrlf=true`. Configured repository-local `core.autocrlf=false` and `core.eol=lf`, checked out native LF files, and re-ran `git apply --check` with 0 errors. Blob hashes match `OVERLAY_TARGETS.json` exactly.
+- Pip dependency install experienced network timeout on large wheel metadata. Installed required test tools (`pytest`, `pytest-mock`, `pytest-cov`, `mypy`, `ruff`, `build`, `pydantic`, `psutil`, `python-dotenv`) with extended timeout and installed project in editable mode (`pip install -e . --no-deps`).

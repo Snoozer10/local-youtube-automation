@@ -1,0 +1,62 @@
+{
+  "timestamp": "2026-10-27T02:35:00Z",
+  "status": "VERIFIED_COMPLETE",
+  "milestone": "M0",
+  "campaign_integration_owner": "Antigravity Project Orchestrator",
+  "baseline_commit": "09b0b85e2b755a00f35ac2ad05f7fba1412c214d",
+  "baseline_tree": "f39c6c4d32cc5a263245f8511e19d1aa0a207138",
+  "branch": "codex/renewal-campaign",
+  "workspace_path": "C:/Users/Snoozer/teamwork_projects/architecture-renewal-campaign",
+  "isolation_verification": {
+    "git_toplevel": "C:/Users/Snoozer/teamwork_projects/architecture-renewal-campaign",
+    "git_dir": ".git",
+    "git_common_dir": ".git",
+    "symlinks_and_junctions_count": 0,
+    "sparse_checkout_applied": true,
+    "excluded_paths_absent": [
+      ".runtime",
+      "runtime",
+      "logs",
+      "debug_snapshots",
+      "runtime_state.json",
+      "youtube_urls.txt"
+    ],
+    "preconnection_guards_verified": true,
+    "test_evidence": "tests/unit/test_production_publication_mutex.py and tests/unit/test_resource_isolation.py: 7 passed in 9.29s"
+  },
+  "environment": {
+    "python_executable": "C:/Users/Snoozer/teamwork_projects/architecture-renewal-campaign/venv/Scripts/python.exe",
+    "python_version": "3.11.9",
+    "sqlite_version": "3.45.1"
+  },
+  "applied_imports": {
+    "documentation_patch": "transfer/reviewed-documentation.patch",
+    "paths_applied": [
+      {
+        "path": "docs/README.md",
+        "expected_blob": "64cf895ca6e70560283a12a766292a259969d914",
+        "actual_blob": "64cf895ca6e70560283a12a766292a259969d914"
+      },
+      {
+        "path": "docs/product/architecture-renewal-plan.md",
+        "expected_blob": "913624a1475f53867ea76dc2ed78b2a00a9b7d9c",
+        "actual_blob": "913624a1475f53867ea76dc2ed78b2a00a9b7d9c"
+      },
+      {
+        "path": "docs/product/architecture-renewal-spec.md",
+        "expected_blob": "b648da551503d9c31a1b4e47ed0c3bdee75c60df",
+        "actual_blob": "b648da551503d9c31a1b4e47ed0c3bdee75c60df"
+      }
+    ],
+    "workflows_guidance_amended": "docs/agents/workflows.md (+1 line campaign integration exception)",
+    "handoff_updated": "docs/sessions/HANDOFF.md (+19 lines campaign startup log)"
+  },
+  "transfer_holds_enforced": {
+    "CONTEXT.md": "Held for owner reconciliation before full vocabulary rewrite (#37)",
+    "understood-errors.md": "Held for owner reconciliation before error-case migration (#38)",
+    "skill-lock.json": "Held for host platform discovery verification (#39)",
+    ".runtime_and_legacy_deletions": "Production runtime and 4 deleted legacy utilities excluded (#40/#41)",
+    "youtube_urls.txt": "skip-worktree preserved outside transfer",
+    "production_data": "No production DBs, WAL/SHM sidecars, credentials, cookies, or browser profiles transferred"
+  }
+}
