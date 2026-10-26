@@ -1,22 +1,25 @@
 # Handoff
 
 ## Current Phase
-Shared guidance authority implemented; final shared-branch validation pending. Channel DNA decision map is complete.
-
-## Current Goal
-Finish ticket36 validation after active compilation work stabilizes; preserve Antigravity ownership of spec23/tickets24-30.
+Spec #23 receipt completion verified locally; separate guidance and compilation PR integration is in progress.
 
 ## Done
-- Root AGENTS is the shared contract; GEMINI/CLAUDE import it. Source child owns runtime controls; docs/agents/workflows.md routes feature, debug and release work.
-- Reconciled active authority, browser ownership, FFmpeg and full-source typing contradictions.27routing targets verified. Fresh Codex0.160.0 startup/route selection passed; Claude/Gemini runtime and skill discovery were not tested.
-- Record: docs/sessions/SHARED_GUIDANCE_AUTHORITY_20261025.md. Exact receipts: .runtime/guidance_authority_20261025T061500Z/.
-- Study sampling and mandatory evidence decisions are resolved under issues34/35; implementation and meaningful live Windows REA proof remain pending.
+- db2ad58 repaired the seven original audited compilation defects.
+- Story 16 now prepares immutable hash-bound final-artifact JSON receipts before video publication; production reuse, approval and recovery require them.
+- Independent review found and corrected pairwise audio/video drift beyond one frame; two RED public regressions are GREEN.
+- Final frozen gates: 2,141 passed, 9 skipped; strict mypy 78 source files, Ruff, wheel/sdist build passed. All 597 pinned inputs unchanged.
+- Two bounded native CPU requests passed through root CLI and production render_plan; tampered copies rejected, original pairs retained. No provider/browser/GPU/editorial acceptance exercised.
+- Evidence/report: docs/sessions/SPEC23_COMPILATION_COMPLETION_20261026.md; .runtime/spec23_completion_20261026T061513Z/.
 
 ## Next
-Keep36open pending final branch checks. Reconcile the compilation CLI test with Antigravity's current code, then verify a frozen tree before closing36 and unblocking its dependents. Do not start another ticket automatically. Professor D1 remains DEFERRED BY USER. No new live/provider grant. QMD unchanged by prior user direction.
+- Guidance PR #51 is merged (bc05960c); #36 is closed. Integrate the separately scoped compilation PR next.
+- Confirm exact-head CI/review and integration before closing #25-#29 and parent #23. #24/#30 were already closed; #36 belongs to guidance PR #51.
+- Preserve unrelated dirty files. No provider, GUI, REA, production media, release or cleanup grant exists.
 
 ## Failures & Fixes
-Typing, lint and wheel/sdist build passed at checked inputs. Full suite stopped at test_compile_video_cli.py::TestMainExecutionAndDelegation::test_main_compiles_successfully_with_fake_runner:335passed,9skipped,1failed (expected -vf command). Parallel compilation source/test edits mean no final exact-tree application pass. First fresh-session detailed read timed out; bounded routing-only check passed. Failed helper/draft evidence is preserved.
+- Two unchanged consumer-check failures after a CRLF anchor miss triggered the brake; user approved a bounded fixture correction. Preserve failed evidence.
+- Repaired missing-receipt manual media/orphan fixtures via public FakeMediaRunner compilation, without weakening human rejection.
+- Corrected fake media byte collisions, a native helper root-path error before dispatch, and fixture import ordering. Raw failures and preimages retained.
 
 ## Resume Context
-master; pre-task HEAD0765085. Only scoped guidance and its prerequisite docs belong to this commit; unrelated dirty work is preserved. Current authority is root AGENTS, not GEMINI precedence. No skill/archive cleanup or source implementation was performed.
+Branch codex/spec23-compilation-completion; approved original review baseline 70213c1, completion baseline db2ad58. Final source pins: IMPLEMENTATION_FREEZE_PUBLICATION.json. Commit/PR and eventual merge identities are recorded in Git history, tracker and completion CLOSEOUT.json.

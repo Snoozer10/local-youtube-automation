@@ -310,12 +310,12 @@ def _stage_recipe(root: Path, args: argparse.Namespace) -> str:
             "count": get_config_value("FLOW_IMAGE_COUNT", "1x"),
         }
     if stage in {"preview", "approve", "render"}:
-        from youtube_automation.video.compiler import load_video_config
+        from .review import load_run_video_config
 
         inputs["renderer_version"] = RENDERER_VERSION
         inputs["render_code_sha256"] = render_code_fingerprint()
         inputs["render_tool"] = render_tool_version()
-        inputs["render_config"] = load_video_config("video_config.txt")
+        inputs["render_config"] = load_run_video_config(root)
         try:
             timeline = json.loads((root / "timeline.json").read_text(encoding="utf-8"))
             audio = (root / timeline["audio_file"]).resolve()
@@ -351,12 +351,16 @@ def _validated_plan(root: Path) -> tuple[Brief, ShotPlan, dict[str, Any]]:
     return brief, plan, timeline
 
 
-def _render_output_complete(root: Path, *, preview: bool) -> bool:
+def _render_output_complete(
+    root: Path,
+    *,
+    preview: bool,
+    runner: Any = None,
+) -> bool:
     root = root.resolve()
-    from youtube_automation.video.compiler import load_video_config
-
     from .flow import verify_generated_assets
-    from .render import require_encoder_execution
+    from .render import require_encoder_execution, require_render_receipt
+    from .review import load_run_video_config
 
     brief, plan, timeline = _validated_plan(root)
     verify_generated_assets(root, plan, brief)
@@ -368,7 +372,9 @@ def _render_output_complete(root: Path, *, preview: bool) -> bool:
     pointer = json.loads((root / pointer_name).read_text(encoding="utf-8"))
     artifact = (root / pointer["path"]).resolve()
     inputs = pointer["inputs"]
-    expected_config = dict(load_video_config("video_config.txt"), OUTPUT_FPS=plan.fps)
+    raw_cfg = load_run_video_config(root)
+    # Normalized video configuration
+    expected_config = dict(raw_cfg, OUTPUT_FPS=plan.fps)
     expected_inputs = current_render_inputs(plan, assets, audio, expected_config)
     expected_status = "pending" if preview else "approved"
     if (
@@ -383,9 +389,10 @@ def _render_output_complete(root: Path, *, preview: bool) -> bool:
         return False
     try:
         require_encoder_execution(pointer, expected_inputs)
+        require_render_receipt(artifact, expected_inputs, plan.total_frames, pointer["sha256"])
     except (KeyError, TypeError, ValueError):
         return False
-    probe_video(artifact, plan.total_frames, plan.fps, require_audio=True)
+    probe_video(artifact, plan.total_frames, plan.fps, require_audio=True, runner=runner)
     if not preview:
         approval = json.loads((root / "editorial_approval.json").read_text(encoding="utf-8"))
         try:
@@ -649,11 +656,11 @@ def _execute_stage(args: argparse.Namespace, root: Path, database: Path) -> None
             record_preview_scorecard(root, args.reviewer, score_payload)
         approve_review(root, args.reviewer)
     else:
-        from youtube_automation.video.compiler import load_video_config
+        from .review import load_run_video_config
 
         print(
             render_plan(
-                root, load_video_config("video_config.txt"), preview=args.stage == "preview"
+                root, load_run_video_config(root), preview=args.stage == "preview"
             )
         )
 

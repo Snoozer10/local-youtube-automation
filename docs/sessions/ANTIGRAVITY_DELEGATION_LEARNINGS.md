@@ -1,3 +1,31 @@
+# Spec #23 repair controls - 26 October 2026
+
+## Spec #23 final receipt completion — 2026-10-26
+
+- Codex review found independently bounded audio/video timings could still exceed one frame of pairwise drift; require the direct comparison in the compiler and receipt verifier and preserve the public RED/GREEN cases.
+- Publish immutable hash-bound final receipts before the single video rename; downstream gates verify current bytes and expected render facts. A receipt supplies technical evidence, not editorial acceptance.
+- Reproduce newly enforced contracts with truthful compiler/fake-runner fixtures. Carry verified receipts when fixture media moves to another parent; preserve human-rejection checks instead of stubbing receipt validation.
+- Codex initially retried an unchanged consumer check after a CRLF anchor miss; the two-strike brake stopped it and the user authorized a bounded correction. Preserve raw failures and avoid whole-file newline churn.
+- Pre-execution helper review corrected an incorrect repository-root parent index. Record corrections and freeze the helper before native dispatch; both native entrypoints used synthetic CPU media and isolated ledgers.
+- The Standards worker stalled and its replacement hit HTTP429 after partial readback. Coordinator completed that axis; do not relabel interrupted work or CodeRabbit's skipped status as independent approval.
+- Closure evidence: SPEC23_COMPILATION_COMPLETION_20261026.md; 2,141 passed, 9 skipped, strict typing/Ruff/build passed, 597 inputs unchanged. These are verified Codex results, not an Antigravity return claim.
+
+
+- **Codex fixture correctness:** initial lineage RED used a falsely relocated encoder path; a subtitle test guessed a nonexistent success field. These were rejected fixture evidence, not behavioral RED. Read the public schema and authoritative filesystem paths first; check the corrected RED/green receipts under .runtime/spec23_repair_20261026T035651Z/.
+- **Guard-preserving compatibility:** stricter validation exposed fake duration/dimensions/decoded-format mismatches. Fix the simulation metadata, not the production guard. Retained hardware evidence also made first-rglob-result selectors incorrect; bind the selected graph/sidecar to the recorded command or authoritative pointer SHA and execution data.
+- **Codex cache regression:** isolating CPU fallback initially broke equivalent preview/master reuse. Preserve failure generations while deriving only bounded matching candidates and validating hashes, effective target and exact execution/fallback provenance. Check the 71-case core run, production-tail checks and two-request native-cache canary.
+- **Bounded execution evidence:** a null PowerShell process ExitCode was preserved as a controller limitation; passed assertions and child receipts were audited without rerunning the proof. Final gates use Python-owned subprocess codes, streaming raw logs and before/after input pins.
+- **Worker limit handling:** two workers returned harness HTTP429 after saving their changes. The coordinator verified saved receipts and finished local checks without blind redispatch. A fresh supported account read allowed ordinary usage; it did not identify a worker-specific quota.
+- **Completion scope:** 2,101 tests passed with 9 skipped, strict source typing, Ruff and package build passed. This does not complete the unimplemented Spec #23 final-artifact JSON receipt or establish production/editorial/GPU readiness. Parent and integration tickets remain open.
+
+# Spec #23 audit return controls - 26 October 2026
+
+- Returned handoff discrepancy: the returned handoff claimed the worktree was clean, while the frozen Git status recorded modified and untracked compilation files. Evidence: BASELINE.json and git-status-before.txt in .runtime/spec23_review_20261026T033201Z/. Verify each returned status claim against fresh Git output and saved receipts; do not infer who wrote the contradictory claim.
+- Returned compilation defects: independent review and local reproductions found narration truncation reported as verified, loss of the prior destination after rejected verification, acceptance of a wrong output target, ignored external ASS subtitles, and deletion of completed hardware-generation evidence during CPU fallback. Evidence and tests are linked in docs/sessions/SPEC23_ANTIGRAVITY_AUDIT_20261026.md and .runtime/spec23_review_20261026T033201Z/. No source authorship is inferred. Before accepting repairs, require targeted public-boundary regressions for audio duration, atomic promotion, target metadata, ASS rendering/fingerprinting, lineage invalidation and fallback recovery.
+- Codex process-coordination error: a 30-second ctx_shell wrapper timed out while its owned pytest process continued; PID inspection prevented a duplicate full-suite run. Evidence: verification/processes-20261026T034107Z.json and verification/full.json. Check process identity and existing receipts before retrying a timed-out wrapper.
+- Codex documentation-writer error: the first writer applied its historical-suffix guard after publishing the report and handoff, then stopped before the lesson edit. The partial write and recovery are recorded in archivist-receipt.json, correction-receipt.json and handoff-receipt.json in the audit runtime. Validate every reconstruction before the first replace; stage all outputs, then verify readback and the exact prior-history suffix. This is a coordinator editing error, separate from the returned handoff discrepancy and returned code defects.
+- Verification scope: 136 focused tests passed; the full suite passed with 2,058 tests and 9 skipped. Strict mypy (77 files), Ruff and the wheel/sdist build passed on matching frozen inputs. Evidence: .runtime/spec23_review_20261026T033201Z/verification/. These checks did not cover the separately reproduced boundaries.
+
 # Codex typing and F1 controls - 22 October 2026
 
 - **Codex worker/tool routing:** repeated Python-c/PowerShell quoting failed before tests or writes; some workers ignored the supplied file-helper route. Use apply_patch-authored Python helper files and explicit repository interpreter. Check REQUEST/RESULT/log existence before reporting test results. Evidence: current task command receipts and preserved failed helpers; these are Codex issues, not Antigravity attribution.

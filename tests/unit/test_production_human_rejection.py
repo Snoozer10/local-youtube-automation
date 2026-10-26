@@ -97,6 +97,49 @@ def test_cached_approval_cannot_skip_a_new_human_rejection(tmp_path, monkeypatch
     assert not cli._stage_complete(tmp_path, SimpleNamespace(stage="approve", reviewer="owner"))
 
 
+def _compile_receipted_fixture_video(tmp_path, output):
+    from PIL import Image
+
+    from youtube_automation.video.engine import compile_video
+    from youtube_automation.video.runner import FakeMediaRunner
+    from youtube_automation.video.schema import (
+        CompilationRequest,
+        CompilationSpan,
+        CompilationTarget,
+    )
+
+    audio = tmp_path / "canonical-fixture.wav"
+    audio.write_bytes(b"canonical fixture audio")
+    image = tmp_path / "canonical-fixture.png"
+    Image.new("RGB", (640, 360), "#304560").save(image)
+    runner = FakeMediaRunner(
+        default_total_frames=30,
+        default_duration=1.0,
+        default_width=640,
+        default_height=360,
+        default_fps=30.0,
+        default_pix_fmt="yuv420p",
+    )
+    result = compile_video(
+        CompilationRequest(
+            spans=(CompilationSpan(0, "synthetic", 0, 30, "subject"),),
+            audio_path=audio,
+            asset_paths={"subject": image},
+            output_path=output,
+            target=CompilationTarget(width=640, height=360, fps=30),
+            encoder_override="libx264",
+        ),
+        runner=runner,
+        base_config={
+            "OUTPUT_WIDTH": 640,
+            "OUTPUT_HEIGHT": 360,
+            "OUTPUT_FPS": 30,
+            "ENCODER_FORCE": "libx264",
+        },
+    )
+    return result
+
+
 def test_orphan_master_cannot_activate_from_rejected_approval(tmp_path, monkeypatch):
     from contextlib import nullcontext
 
@@ -118,9 +161,9 @@ def test_orphan_master_cannot_activate_from_rejected_approval(tmp_path, monkeypa
     }
     generation = render.fingerprint(inputs)
     current_artifact = tmp_path / "current_preview.mp4"
-    current_artifact.write_bytes(b"revised current preview bytes")
+    current_result = _compile_receipted_fixture_video(tmp_path, current_artifact)
     current = {
-        "path": current_artifact.name, "sha256": review.file_digest(current_artifact),
+        "path": current_artifact.name, "sha256": current_result.sha256,
         "inputs": inputs, "generation": generation, "frames": 30, "editorial_status": "pending",
         "encoder_execution": encoder_execution,
     }
@@ -130,14 +173,17 @@ def test_orphan_master_cannot_activate_from_rejected_approval(tmp_path, monkeypa
     )
     work = tmp_path / "adaptive_renders" / generation
     work.mkdir(parents=True)
-    artifact = work / "orphan.mp4"
-    artifact.write_bytes(b"encoded orphan")
-    digest = review.file_digest(artifact)
-    destination = work / f"master-{digest}.mp4"
-    artifact.rename(destination)
+    pending = work / "orphan.pending.mp4"
+    orphan_result = _compile_receipted_fixture_video(tmp_path, pending)
+    orphan_bytes = pending.read_bytes()
+    destination = work / f"master-{orphan_result.sha256}.mp4"
+    pending.rename(destination)
+    from youtube_automation.video.receipt import verify_compilation_receipt
+
+    assert verify_compilation_receipt(destination)["sha256"] == orphan_result.sha256
     pointer = {
         "generation": generation, "inputs": inputs, "frames": 30,
-        "editorial_status": "approved", "sha256": digest,
+        "editorial_status": "approved", "sha256": orphan_result.sha256,
         "path": str(destination.relative_to(tmp_path)),
         "encoder_execution": encoder_execution,
     }
@@ -150,8 +196,7 @@ def test_orphan_master_cannot_activate_from_rejected_approval(tmp_path, monkeypa
         render._recover_render_publication(tmp_path, generation, inputs, 30, 30, preview=False)
     assert not (tmp_path / "active_master.json").exists()
     assert journal.exists()
-    assert destination.read_bytes() == b"encoded orphan"
-
+    assert destination.read_bytes() == orphan_bytes
 
 def test_human_feedback_forces_fresh_complete_critic_and_binds_cache(tmp_path, monkeypatch):
     from youtube_automation.production import render, shots

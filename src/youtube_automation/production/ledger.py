@@ -8,7 +8,7 @@ import threading
 import time
 import uuid
 from collections.abc import Iterator
-from contextlib import ExitStack, closing, contextmanager
+from contextlib import ExitStack, closing, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
@@ -322,6 +322,27 @@ def leased_resource(path: str | Path, resource: str) -> Iterator[None]:
         raise RuntimeError(f"Resource is busy: {resource}")
     with _maintained_claim(ledger, resource, owner, fence, seconds=60):
         yield
+
+
+@contextmanager
+def owned_resource(path: str | Path, resource: str) -> Iterator[None]:
+    """Acquire a resource, or reuse its fenced claim in the same current context."""
+    if _publication_scope.get() is not None:
+        raise RuntimeError("Cannot acquire a production lease during publication")
+    database = Path(path).resolve()
+    active = _active_leases.get()
+    if any(Path(item[0].path).resolve() != database for item in active):
+        raise RuntimeError("Nested production leases must share one ledger")
+    owned = any(item[1] == resource for item in active)
+    scope = nullcontext() if owned else leased_resource(database, resource)
+    with scope:
+        # Reuse the existing all-claim owner/fence/expiry validation. The mutex
+        # is released before any expensive work, and checked again afterwards.
+        with publication_guard():
+            pass
+        yield
+        with publication_guard():
+            pass
 
 
 @contextmanager

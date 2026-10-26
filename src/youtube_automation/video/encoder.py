@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Mapping
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
+
+if TYPE_CHECKING:
+    from .runner import MediaRunner
 
 
 class EncoderConfig(TypedDict):
@@ -12,24 +15,31 @@ class EncoderConfig(TypedDict):
     encoder_args: list[str]
 
 
-def _probe_encoder(encoder_name: str) -> bool:
+def _probe_encoder(encoder_name: str, runner: MediaRunner | None = None) -> bool:
+    test_args = [
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=s=64x64:d=0.04",
+        "-c:v",
+        encoder_name,
+        "-f",
+        "null",
+        "-",
+    ]
+    if runner is not None:
+        try:
+            runner.run_ffmpeg(test_args, timeout=5.0)
+            return True
+        except Exception:
+            return False
+
     try:
-        test_cmd = [
-            "ffmpeg",
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "color=s=64x64:d=0.04",
-            "-c:v",
-            encoder_name,
-            "-f",
-            "null",
-            "-",
-        ]
+        test_cmd = ["ffmpeg"] + test_args
         result = subprocess.run(test_cmd, capture_output=True, timeout=5)
         return result.returncode == 0
     except Exception:
@@ -47,37 +57,47 @@ def _build_encoder_config(encoder: str, config: Mapping[str, Any]) -> EncoderCon
     if encoder == "h264_qsv":
         base["encoder_args"] = [
             "-preset",
-            config["QSV_PRESET"],
+            str(config.get("QSV_PRESET", "fast")),
             "-global_quality",
-            str(config["QSV_GLOBAL_QUALITY"]),
+            str(config.get("QSV_GLOBAL_QUALITY", 22)),
             "-look_ahead",
             "0",  # Enforced QSV_LOOKAHEAD=0
             "-look_ahead_depth",
-            str(config["QSV_LOOKAHEAD_DEPTH"]),
+            str(config.get("QSV_LOOKAHEAD_DEPTH", 20)),
         ]
-        if config["ENABLE_VBV"]:
+        if config.get("ENABLE_VBV", True):
             base["encoder_args"].extend(
-                ["-maxrate", config["VBV_MAXRATE"], "-bufsize", config["VBV_BUFSIZE"]]
+                [
+                    "-maxrate",
+                    str(config.get("VBV_MAXRATE", "8000k")),
+                    "-bufsize",
+                    str(config.get("VBV_BUFSIZE", "16000k")),
+                ]
             )
 
     elif encoder == "h264_nvenc":
         base["encoder_args"] = [
             "-preset",
-            config["NVENC_PRESET"],
+            str(config.get("NVENC_PRESET", "p4")),
             "-cq",
-            str(config["NVENC_CQ"]),
+            str(config.get("NVENC_CQ", 22)),
             "-rc",
-            config["NVENC_RC"],
+            str(config.get("NVENC_RC", "vbr")),
             "-multipass",
-            config["NVENC_MULTIPASS"],
+            str(config.get("NVENC_MULTIPASS", "fullres")),
             "-spatial_aq",
-            str(config["NVENC_SPATIAL_AQ"]),
+            str(config.get("NVENC_SPATIAL_AQ", 1)),
             "-temporal_aq",
-            str(config["NVENC_TEMPORAL_AQ"]),
+            str(config.get("NVENC_TEMPORAL_AQ", 1)),
         ]
-        if config["ENABLE_VBV"]:
+        if config.get("ENABLE_VBV", True):
             base["encoder_args"].extend(
-                ["-maxrate", config["VBV_MAXRATE"], "-bufsize", config["VBV_BUFSIZE"]]
+                [
+                    "-maxrate",
+                    str(config.get("VBV_MAXRATE", "8000k")),
+                    "-bufsize",
+                    str(config.get("VBV_BUFSIZE", "16000k")),
+                ]
             )
 
     else:  # libx264 CPU (Master 2D Animation Profile)
@@ -100,12 +120,17 @@ def _build_encoder_config(encoder: str, config: Mapping[str, Any]) -> EncoderCon
             "-x264-params",
             "bframes=4:b-adapt=2:ref=4:aq-mode=3",  # Eliminates flat-color banding
         ]
-        if config["ENABLE_VBV"]:
+        if config.get("ENABLE_VBV", True):
             base["encoder_args"].extend(
-                ["-maxrate", config["VBV_MAXRATE"], "-bufsize", config["VBV_BUFSIZE"]]
+                [
+                    "-maxrate",
+                    str(config.get("VBV_MAXRATE", "8000k")),
+                    "-bufsize",
+                    str(config.get("VBV_BUFSIZE", "16000k")),
+                ]
             )
 
-    fps = int(config["OUTPUT_FPS"])
+    fps = int(config.get("OUTPUT_FPS", 30))
     target_pix_fmt = "nv12" if "qsv" in encoder else config.get("OUTPUT_PIX_FMT", "yuv420p")
     base["encoder_args"].extend(
         [
@@ -138,24 +163,33 @@ def _build_encoder_config(encoder: str, config: Mapping[str, Any]) -> EncoderCon
             "-movflags",
             "+faststart",
             "-threads",
-            str(config["FFMPEG_THREADS"]),
+            str(config.get("FFMPEG_THREADS", 4)),
         ]
     )
 
     return base
 
 
-def detect_hardware_encoder(config: Mapping[str, Any]) -> EncoderConfig:
+def detect_hardware_encoder(
+    config: Mapping[str, Any],
+    runner: MediaRunner | None = None,
+) -> EncoderConfig:
+    if runner is None:
+        from .runner import SubprocessMediaRunner, get_default_runner
+        default_runner = get_default_runner()
+        if not isinstance(default_runner, SubprocessMediaRunner):
+            runner = default_runner
+
     if config.get("ENCODER_FORCE"):
         return _build_encoder_config(config["ENCODER_FORCE"], config)
 
     if config.get("ENABLE_HARDWARE_ENCODER", True):
         # ADR 0002: Prioritize Intel QuickSync (h264_qsv) including 1440p master via format=nv12
-        if _probe_encoder("h264_qsv"):
+        qsv_ok = _probe_encoder("h264_qsv", runner) if runner is not None else _probe_encoder("h264_qsv")
+        if qsv_ok:
             return _build_encoder_config("h264_qsv", config)
-        if _probe_encoder("h264_nvenc"):
+        nvenc_ok = _probe_encoder("h264_nvenc", runner) if runner is not None else _probe_encoder("h264_nvenc")
+        if nvenc_ok:
             return _build_encoder_config("h264_nvenc", config)
 
     return _build_encoder_config("libx264", config)
-
-

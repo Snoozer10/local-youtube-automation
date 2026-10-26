@@ -29,6 +29,8 @@ Offline verification, regression evidence and deterministic test fixtures.
 
 - Prompt resource regressions verify recursive template byte parity and isolated installed-layout load/render/turn/fragment behavior. Default-configuration tests compare canonical dialect ratios and exact lexicon order/rendered value, ignore missing/decoy prefix configuration, and preserve explicit path/channel/model precedence. Frozen verification checks actual wheel/sdist resources, metadata and offline target installation.
 
+- Final compilation receipt regressions use the public compiler/fake runner and isolated ledger. Preserve prior valid artifact/receipt pairs across write or rename interruptions; reject stale, malformed, conflicting and tampered evidence plus pairwise audio/video drift. Fixture media copies must carry and verify their corresponding receipt. Fake output bytes distinguish measured media properties and input content.
+
 ## Work Guidance
 - Keep fixtures minimal, deterministic and free of secrets or machine-specific session identifiers.
 - When production behavior intentionally changes, add or update the smallest regression that proves the new contract and retain separate cases for distinct failure boundaries.

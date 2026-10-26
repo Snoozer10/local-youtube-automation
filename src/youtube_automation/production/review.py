@@ -265,6 +265,17 @@ def write_review(run_dir: str | Path) -> Path:
     return output / "index.html"
 
 
+def load_run_video_config(root: Path, config_name: str = "video_config.txt") -> dict[str, Any]:
+    """Load video configuration preferring run-local config with standard fallback."""
+
+
+    from youtube_automation.video import compiler
+
+    cfg_file = root / config_name
+    loader = compiler.load_video_config
+    return dict(loader(str(cfg_file)) if cfg_file.is_file() else loader(config_name))
+
+
 def approve_review(
     run_dir: str | Path,
     reviewer: str,
@@ -272,6 +283,7 @@ def approve_review(
     config: dict[str, Any] | None = None,
     encoder_config: dict[str, Any] | None = None,
     asset_identity: Literal["storage", "shot"] = "storage",
+    runner: Any = None,
 ) -> None:
     """Approve exact preview inputs using default or explicitly supplied render recipes."""
     if not reviewer.strip():
@@ -298,13 +310,17 @@ def approve_review(
     if not audio.is_relative_to(root.resolve()):
         raise ValueError("Canonical audio escapes run directory")
     inputs = preview["inputs"]
-    from youtube_automation.video.compiler import load_video_config
+
 
     from .render import current_render_inputs, probe_video, require_current_preview
     from .visual_gate import _render_input_assets
 
     render_assets = _render_input_assets(plan, hashes, asset_identity)
-    render_config = load_video_config("video_config.txt") if config is None else config
+    if config is None:
+        # Run-local video configuration preference
+        render_config = load_run_video_config(root)
+    else:
+        render_config = config
     if encoder_config is None:
         expected_inputs = current_render_inputs(plan, render_assets, audio, render_config)
     else:
@@ -318,7 +334,7 @@ def approve_review(
         or preview.get("editorial_status") != "pending"
     ):
         raise ValueError("Preview is stale; render a new preview before approval")
-    probe_video(artifact, plan.total_frames, plan.fps, require_audio=True)
+    probe_video(artifact, plan.total_frames, plan.fps, require_audio=True, runner=runner)
     scorecard = None
     if brief.version >= 3:
         scorecard = PreviewScorecard.model_validate_json(
