@@ -38,3 +38,15 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 ### Failures & Fixes
 - Standards review caught CRLF checkout bytes causing full-file README churn in the first candidate. Path-aware Git clean conversion restored a minimal insertion; working bytes stayed unchanged. Keep the failed candidate and all attempt evidence.
 - Preserve pre-task HANDOFF changes locally; the commit carries only this appended closeout over the starting committed HANDOFF. Earlier completion/integration text is historical; current integration facts remain in tracker/compilation closeout.
+
+## Navigation PR amendment, 2026-10-26
+
+### Done
+- The resume route now discovers the reader's actual task issue through HANDOFF/applicable execution records. #37 is labelled navigation maintenance.
+
+### Next
+- Prepare the focused navigation PR after affected route/link/preservation checks and amendment review. No merge, release, #37 closure or database implementation is authorized.
+- Verify the new documentation page on the published PR head; default-branch verification remains pending authorized integration.
+
+### Failures & Fixes
+- A generic resume route incorrectly linked #37 as every reader's current task. The amendment separates task discovery from navigation maintenance. Exact preimages and amendment evidence: .runtime/architecture_renewal_audit_20261023/navigation37_amend_20261026T134549Z/ (local-only).
