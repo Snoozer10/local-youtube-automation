@@ -69,3 +69,23 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 ### Failures & Fixes
 - `git apply --check` initially failed due to CRLF checkout formatting under Windows default `core.autocrlf=true`. Configured repository-local `core.autocrlf=false` and `core.eol=lf`, checked out native LF files, and re-ran `git apply --check` with 0 errors. Blob hashes match `OVERLAY_TARGETS.json` exactly.
 - Pip dependency install experienced network timeout on large wheel metadata. Installed required test tools (`pytest`, `pytest-mock`, `pytest-cov`, `mypy`, `ruff`, `build`, `pydantic`, `psutil`, `python-dotenv`) with extended timeout and installed project in editable mode (`pip install -e . --no-deps`).
+
+## Architecture-Renewal Campaign Milestone M1 Completion, 2026-10-27
+
+### Done
+- Milestone M1 completed across both parallel tracks (Track 1: #54 & #55; Track 2: #37 & #42).
+- Track 1 (#54, commit `f2b3209`): Safe failure summaries and historical diagnostic display. Added `is_safe_operational_message` and `project_safe_message` in `src/youtube_automation/core/failure_record.py` and `_build_safe_terminal_detail` in `src/youtube_automation/production/ledger.py`. Prevents non-ASCII canaries, prompt prose, private scripts, and credentials from persisting into public ledger details while preserving raw runtime exceptions and source JSONL bytes. Verified via `tests/unit/test_safe_failure_reporting.py` (11 passed).
+- Track 1 (#55, commit `cfc3393`): Qualified Windows non-mutating SQLite observation method in `src/youtube_automation/production/ledger_observation.py`. Proved rollback journal mode is strictly non-mutating (0 byte drift, 0 sidecars, exact SHA256 preserved, passes under OS read-only ACL). WAL mode fails closed with `UNSUPPORTED_WAL` pre-access check before connecting. Evidence receipt generated at `evidence/receipts/M1_OBSERVATION_QUALIFICATION.json`. Verified via `tests/unit/test_observation_method_proof.py` (11 passed).
+- Track 2 (#37, commit `748dc70`): In-place core document reconciliation. Reconciled `docs/README.md`, `docs/product/architecture-renewal-plan.md`, `docs/product/architecture-renewal-spec.md`. Validated all 37 relative links resolve with 0 broken links. ADR 0005 conflict recorded.
+- Track 2 (#42, commit `31c1d91`): Pinned profile revisions in new-episode briefs with legacy compatibility. Added immutable `revision` field to `Channel`, `profile_revision` to `Brief`, `profile_revision_identity`, and `verify_profile_pin` in `src/youtube_automation/production/contracts.py`. Preserved bound revisions on rebind and migration in `src/youtube_automation/production/briefs.py`. Verified via `tests/unit/test_profile_revision_pins.py` (6 passed) and all 518 production unit tests (0 failures).
+
+### Next
+- Proceed with Milestone M2:
+  - Track 1: Issue #56 (Read-only status command and schema verification).
+  - Track 2: Issue #38 (Error register and triage workflow) & Issue #39 (Skill lock verification and repair).
+- Maintain independent review gates and frozen repo verification.
+
+### Failures & Fixes
+- `test_safe_failure_reporting.py`: Operational regex pattern initially failed on `Stage circuit is open`. Fixed pattern to `stage\s+circuit(?:\s+is)?\s+open`.
+- `test_observation_method_proof.py`: Proved on Windows that WAL mode creates or updates `-shm` sidecars even with `mode=ro`. Enforced pre-access refusal `UNSUPPORTED_WAL` on WAL databases.
+- `briefs.py`: Missing import `profile_revision_identity` and silent rebind mutation corrected to preserve existing/legacy episode revision pins. All 518 production tests pass.
