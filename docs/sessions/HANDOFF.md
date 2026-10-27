@@ -124,3 +124,20 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 ### Failures & Fixes
 - `retention.py`: Refused archiving of any candidate outside `REBUILDABLE_CACHE` with explicit `PermissionError` to guarantee safety boundaries.
 - `test_retired_cohort_restoration.py`: Verified 100% SHA-256 byte match on restored files from preimages before confirming cohort retirement.
+
+## Architecture-Renewal Campaign Milestone M4 Completion, 2026-10-27
+
+### Done
+- Milestone M4 completed across both parallel tracks (Track 1: #43; Track 2: #44).
+- Track 1 (#43, commit `a6a3ac4`): Create resumable bounded local reference study under settled Wayfinder contracts. Implemented `src/youtube_automation/production/study.py` defining `SamplingPolicy`, `CandidateVideo`, `AttributableEvidence`, `InferredTrait`, `ReferenceStudy`, `StudyCollector`, `select_sample`, and `evaluate_study_readiness`. Implemented 3-2-1 selection group ordering (recent, highest-viewed, middle-ranked) with shortfall preservation, candidate pool cap of 30, and minimum 3 distinct videos threshold for core inference. Enforced 4 required core areas (`subject_promise`, `viewer_need`, `tone_register`, `narrative_structure`) requiring >= 2 distinct supporting videos each, with unresolved counterexamples leaving the study partial. Enforced cumulative duration (60m/video, 180m total), byte (2 GiB), and attempt caps across resumes. Verified via `tests/unit/test_reference_study.py` (5 passed).
+- Track 2 (#44, commit `cb37b08`): Derive and safely activate production profiles for new episodes. Implemented `src/youtube_automation/production/profile_activation.py` defining `DerivedProductionProfile`, `derive_production_profile`, and `ProfileActivationManager`. Enforces prerequisite that studies must be `CORE_READY` before profile derivation. Owner preferences (language, dialect, voice, constraints) override reference traits without mutating study observations. Preserved explicit null-voice (`voice=None`) and configured voices (`Achird`, `Charon`). Implemented atomic revision publication (`revisions/<revision>/profile.json`), journaled pointer switching (`active_revision.json`), and interruption recovery. Bound new episodes to pinned active revision through `Brief.profile_revision` while existing episodes retain historical pins. Verified via `tests/unit/test_profile_activation.py` (6 passed).
+
+### Next
+- Proceed with Milestone M5:
+  - Track 1: Issue #46 (Text-visual alignment and narrative hook microbeats), Issue #47 (Motion grammar and pacing constraints), Issue #48 (Local UI kit and visual treatment boundaries), and Issue #49 (Episode visual-policy migration).
+  - Track 2: Issue #50 (Integrated reference study to production verification suite).
+- Separate bounded human approval remains strictly enforced for live Windows REA collection (#45), production database operations, or external provider calls.
+
+### Failures & Fixes
+- `study.py`: `save_study` initially omitted sample-selection shortfall gaps from evaluated study state; preserved both sample and core gaps.
+- `profile_activation.py`: `Channel` contract requires exact fields (`allowed_treatments`, `audience`, etc.); adapted `resolve_channel` to construct valid `Channel` instance matching `contracts.py` invariants.
