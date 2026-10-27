@@ -159,3 +159,22 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 ### Failures & Fixes
 - `test_multimodal_pilot.py`: `narration_fingerprint` initially lacked stripping of `revision` and `profile_revision`, causing visual policy migrations between different profile revisions to fail identity checks. Updated `contracts.py` to pop `revision` and `profile_revision` in `narration_fingerprint`, preserving narration and audio receipts across visual policy revisions without weakening identity/voice guards.
 - `briefs.py`: `rebind_visual_policy` and `_migrate_visual_policy` initially retained `existing.profile_revision` rather than adopting the target channel's revision. Updated to pin `profile_revision_identity(channel) or existing.profile_revision`.
+
+## Architecture-Renewal Campaign Final Integration & Issue #45 Disposition, 2026-10-27
+
+### Done
+- Human approved Option A for Issue #45: accepted the validated offline study pilot and evidence collector (#43, #50) as completing the architecture-renewal campaign scope, closing #45 without live external Windows REA process invocation.
+- All 13 child issues under parent #31 completed, verified, and ready for PR integration:
+  - #54, #55, #56: Safe failure reporting, observation method qualification, non-mutating status CLI.
+  - #37, #38, #39: Core document reconciliation, searchable error cases, canonical skill provenance.
+  - #40, #41: Runtime retention classification & reversible archiving, obsolete cohort retirement.
+  - #42, #43, #44: Profile revision pinning, resumable reference study collector, profile activation.
+  - #45: Closed via approved offline pilot evidence.
+  - #46, #47, #48, #49, #50: Multimodal guidance bundles, policy migration, integrated pilot suite.
+- Campaign suite passes 100%: 129 passed in 11.14s. Ruff and strict mypy: 0 errors.
+
+### Next
+- Push `codex/renewal-campaign` to `origin`.
+- Open campaign PR to merge into `master`.
+- Post completion receipts and close accepted child issues #54-#56, #37-#50.
+- Present final campaign acceptance report to human for parent #31 closure.
