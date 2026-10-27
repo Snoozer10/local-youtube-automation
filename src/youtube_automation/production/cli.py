@@ -784,9 +784,14 @@ def main(argv: list[str] | None = None) -> None:
             "proofs",
             "status",
             "diagnose",
+            "retention",
         ],
     )
     parser.add_argument("--run-dir", help="existing explicit run directory for production stages")
+    parser.add_argument("--runtime-dir", help="retention only: path to runtime root directory")
+    parser.add_argument("--dry-run", action="store_true", help="retention only: dry run report without modifying state")
+    parser.add_argument("--archive-cohort", help="retention only: cohort identifier to archive")
+    parser.add_argument("--restore-cohort", help="retention only: cohort identifier to restore")
     parser.add_argument("--polished-audio-file", help="exact previously owner-accepted local WAV")
     parser.add_argument("--polished-audio-sha256", help="owner-accepted WAV SHA-256; no transcoding")
     parser.add_argument("--audio-acceptance-file", help="existing exact human audio acceptance JSON")
@@ -827,6 +832,34 @@ def main(argv: list[str] | None = None) -> None:
         record = load_last_record(args.diagnostic_path)
         print("No failure records." if record is None else digest(record))
         return
+    if args.stage == "retention":
+        import json
+        from .retention import (
+            ReversibleArchiveCycle,
+            classify_runtime_directory,
+            dry_run_retention,
+        )
+
+        target_dir = Path(args.runtime_dir or args.run_dir or ".runtime").resolve()
+        if args.dry_run or (not args.archive_cohort and not args.restore_cohort):
+            report = dry_run_retention(target_dir)
+            print(json.dumps(report, indent=2))
+            return
+
+        archive_storage = (target_dir / ".archive").resolve()
+        cycle = ReversibleArchiveCycle(target_dir, archive_storage)
+        if args.restore_cohort:
+            res = cycle.restore_archive(args.restore_cohort)
+            print(json.dumps(res, indent=2))
+            return
+        if args.archive_cohort:
+            candidates = [
+                c for c in classify_runtime_directory(target_dir)
+                if c.category.value == "REBUILDABLE_CACHE"
+            ]
+            res = cycle.archive_candidates(args.archive_cohort, candidates)
+            print(json.dumps(res, indent=2))
+            return
     if args.last or args.diagnostic_path:
         parser.error("--last and --path apply only to diagnose")
     if not args.run_dir:
