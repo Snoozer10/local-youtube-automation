@@ -23,6 +23,12 @@ REQUIRED_CORE_AREAS = [
     "narrative_structure",
 ]
 
+ALLOWED_AREAS = REQUIRED_CORE_AREAS + [
+    "visual_motion",
+    "soundtrack",
+    "packaging",
+]
+
 
 class SamplingPolicy(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -338,8 +344,8 @@ class StudyCollector:
         resolved_contradictions: bool = True,
     ) -> ReferenceStudy:
         """Record an inferred core trait with attributable evidence and rationale."""
-        if area not in REQUIRED_CORE_AREAS:
-            raise ValueError(f"Area '{area}' is not a required core area ({REQUIRED_CORE_AREAS})")
+        if area not in ALLOWED_AREAS:
+            raise ValueError(f"Area '{area}' is not a permitted study area ({ALLOWED_AREAS})")
 
         trait = InferredTrait(
             area=area,

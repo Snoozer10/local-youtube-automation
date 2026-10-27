@@ -52,6 +52,7 @@ _PROVIDER_SOFT_REFUSALS = (
 )
 _VISUAL_ONLY_PROFILE_FIELDS = {
     "version",
+    "revision",
     "visual_directives",
     "forbidden_motifs",
     "forbidden_visual_families",
@@ -439,11 +440,12 @@ def rebind_visual_policy(
 
         verify_source_narration(root)
 
+    new_rev = profile_revision_identity(channel) or existing.profile_revision
     updated = Brief(
         version=existing.version,
         source_sha256=existing.source_sha256,
         profile_sha256=fingerprint(channel),
-        profile_revision=existing.profile_revision,
+        profile_revision=new_rev,
         channel=channel,
         analysis=existing.analysis,
         visual_strategy=existing.visual_strategy,
@@ -1488,8 +1490,9 @@ def _migrate_visual_policy(root: Path, channel: Channel, ask: Callable[[str], st
                                                        editorial_feedback=feedback, attempts=1)
             if channel.model_dump(mode="json") != selected_profile:
                 raise ValueError("Selected profile changed during strategy compilation")
+            new_rev = profile_revision_identity(channel) or old.profile_revision
             target = Brief(version=3, source_sha256=old.source_sha256, profile_sha256=fingerprint(channel),
-                           profile_revision=old.profile_revision,
+                           profile_revision=new_rev,
                            channel=channel, analysis=old.analysis, visual_strategy=strategy)
             if narration_fingerprint(target) != narration_fingerprint(old):
                 raise ValueError("Visual-policy migration changed narration identity")

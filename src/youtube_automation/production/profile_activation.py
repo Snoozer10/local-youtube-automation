@@ -28,6 +28,9 @@ class DerivedProductionProfile(BaseModel):
     voice: str | None = None  # None is a valid explicit null-voice (blocks TTS)
     allowed_visual_treatments: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
+    visual_guidance: dict[str, Any] = Field(default_factory=dict)
+    audio_guidance: dict[str, Any] = Field(default_factory=dict)
+    packaging_guidance: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, str] = Field(default_factory=dict)  # field -> source
     created_at: str
 
@@ -100,6 +103,46 @@ def derive_production_profile(
         "owner_override" if "allowed_visual_treatments" in settings else "inherited_default"
     )
 
+    # 5. Multimodal Guidance Bundles (#46, #47, #48)
+    visual_guidance = dict(settings.get("visual_guidance", {}))
+    if not visual_guidance and "visual_motion" in study.core_traits:
+        vt = study.core_traits["visual_motion"]
+        visual_guidance = {
+            "composition": vt.claim,
+            "motion_grammar": vt.rationale,
+            "evidence_ids": vt.evidence_ids,
+            "supporting_video_ids": vt.supporting_video_ids,
+        }
+    provenance["visual_guidance"] = (
+        "owner_override" if "visual_guidance" in settings else ("evidence_derived" if visual_guidance else "inherited_default")
+    )
+
+    audio_guidance = dict(settings.get("audio_guidance", {}))
+    if not audio_guidance and "soundtrack" in study.core_traits:
+        st = study.core_traits["soundtrack"]
+        audio_guidance = {
+            "treatment": st.claim,
+            "sound_policy": st.rationale,
+            "evidence_ids": st.evidence_ids,
+            "supporting_video_ids": st.supporting_video_ids,
+        }
+    provenance["audio_guidance"] = (
+        "owner_override" if "audio_guidance" in settings else ("evidence_derived" if audio_guidance else "inherited_default")
+    )
+
+    packaging_guidance = dict(settings.get("packaging_guidance", {}))
+    if not packaging_guidance and "packaging" in study.core_traits:
+        pt = study.core_traits["packaging"]
+        packaging_guidance = {
+            "packaging_rules": pt.claim,
+            "thumbnail_style": pt.rationale,
+            "evidence_ids": pt.evidence_ids,
+            "supporting_video_ids": pt.supporting_video_ids,
+        }
+    provenance["packaging_guidance"] = (
+        "owner_override" if "packaging_guidance" in settings else ("evidence_derived" if packaging_guidance else "inherited_default")
+    )
+
     study_raw = study.model_dump_json()
     study_sha = hashlib.sha256(study_raw.encode("utf-8")).hexdigest()
 
@@ -115,6 +158,9 @@ def derive_production_profile(
         "voice": voice,
         "allowed_visual_treatments": visual_treatments,
         "constraints": constraints,
+        "visual_guidance": visual_guidance,
+        "audio_guidance": audio_guidance,
+        "packaging_guidance": packaging_guidance,
     }
     revision_id = f"rev_{compute_profile_digest(base_dict)[:16]}"
 
@@ -132,6 +178,9 @@ def derive_production_profile(
         voice=voice,
         allowed_visual_treatments=visual_treatments,
         constraints=constraints,
+        visual_guidance=visual_guidance,
+        audio_guidance=audio_guidance,
+        packaging_guidance=packaging_guidance,
         provenance=provenance,
         created_at=created_at,
     )

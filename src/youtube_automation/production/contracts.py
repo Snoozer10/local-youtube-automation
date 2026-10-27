@@ -285,6 +285,7 @@ def narration_fingerprint(brief: Brief) -> str:
         return fingerprint(brief)
     channel = brief.channel.model_dump(mode="json")
     channel["version"] = 1
+    channel.pop("revision", None)
     channel.pop("visual_directives", None)
     channel.pop("forbidden_motifs", None)
     channel.pop("forbidden_visual_families", None)
@@ -293,6 +294,7 @@ def narration_fingerprint(brief: Brief) -> str:
     channel.pop("max_non_diagram_scene_appearances", None)
     projected = brief.model_dump(mode="json")
     projected["version"] = 2
+    projected.pop("profile_revision", None)
     projected.pop("visual_strategy", None)
     projected["channel"] = channel
     projected["profile_sha256"] = fingerprint(channel)
