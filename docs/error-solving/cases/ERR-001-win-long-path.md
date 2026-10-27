@@ -31,5 +31,5 @@
 - **Verification**: `tests/unit/test_production_render.py`
 
 ## 6. Evidence Links
-- **Legacy Register**: [`docs/error-solving/understood-errors.md#windows-explorer-long-path-video-playback-failure-file-system-error--2147219196`](file:///C:/Users/Snoozer/teamwork_projects/architecture-renewal-campaign/docs/error-solving/understood-errors.md)
-- **Source Code**: [`src/youtube_automation/production/render.py`](file:///C:/Users/Snoozer/teamwork_projects/architecture-renewal-campaign/src/youtube_automation/production/render.py)
+- **Legacy Register**: [`docs/error-solving/understood-errors.md#windows-explorer-long-path-video-playback-failure-file-system-error--2147219196`](../understood-errors.md)
+- **Source Code**: [`src/youtube_automation/production/render.py`](../../../src/youtube_automation/production/render.py)

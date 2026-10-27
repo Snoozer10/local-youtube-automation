@@ -30,5 +30,5 @@
 - **Verification**: `tests/unit/test_gemini_idle_detection.py`
 
 ## 6. Evidence Links
-- **Legacy Register**: [`docs/error-solving/understood-errors.md#gemini-thinking-indicator-substring-false-positive`](file:///C:/Users/Snoozer/teamwork_projects/architecture-renewal-campaign/docs/error-solving/understood-errors.md)
-- **Source Code**: [`src/youtube_automation/production/briefs.py`](file:///C:/Users/Snoozer/teamwork_projects/architecture-renewal-campaign/src/youtube_automation/production/briefs.py)
+- **Legacy Register**: [`docs/error-solving/understood-errors.md#gemini-thinking-indicator-substring-false-positive`](../understood-errors.md)
+- **Source Code**: [`src/youtube_automation/production/briefs.py`](../../../src/youtube_automation/production/briefs.py)

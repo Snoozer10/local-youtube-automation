@@ -31,5 +31,5 @@
 - **Verification**: `tests/unit/test_video_compiler_safety.py`
 
 ## 6. Evidence Links
-- **Legacy Register**: [`docs/error-solving/understood-errors.md#qsv-lookahead-stream-corruption`](file:///C:/Users/Snoozer/teamwork_projects/architecture-renewal-campaign/docs/error-solving/understood-errors.md)
-- **Source Code**: [`src/youtube_automation/video/compiler.py`](file:///C:/Users/Snoozer/teamwork_projects/architecture-renewal-campaign/src/youtube_automation/video/compiler.py)
+- **Legacy Register**: [`docs/error-solving/understood-errors.md#qsv-lookahead-stream-corruption`](../understood-errors.md)
+- **Source Code**: [`src/youtube_automation/video/compiler.py`](../../../src/youtube_automation/video/compiler.py)

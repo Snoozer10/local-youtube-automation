@@ -33,5 +33,5 @@
 - **Verification**: `tests/unit/test_audacity_client.py` and `src/youtube_automation/audio/audacity_client.py`
 
 ## 6. Evidence Links
-- **Legacy Register**: [`docs/error-solving/understood-errors.md#audacity-named-pipe-leading-newline-protocol-framing-desynchronization`](file:///C:/Users/Snoozer/teamwork_projects/architecture-renewal-campaign/docs/error-solving/understood-errors.md)
-- **Source Code**: [`src/youtube_automation/audio/audacity_client.py`](file:///C:/Users/Snoozer/teamwork_projects/architecture-renewal-campaign/src/youtube_automation/audio/audacity_client.py)
+- **Legacy Register**: [`docs/error-solving/understood-errors.md#audacity-named-pipe-leading-newline-protocol-framing-desynchronization`](../understood-errors.md)
+- **Source Code**: [`src/youtube_automation/audio/audacity_client.py`](../../../src/youtube_automation/audio/audacity_client.py)

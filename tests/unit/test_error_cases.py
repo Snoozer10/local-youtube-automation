@@ -46,10 +46,12 @@ def test_error_index_and_guidance_exist():
     # Verify all internal markdown links resolve
     for doc in (readme, agents, template):
         text = doc.read_text(encoding="utf-8")
-        links = re.findall(r"\[.*?\]\((file:///[^)]+)\)", text)
+        links = re.findall(r"\[.*?\]\(([^)#\s]+)(?:#[^)]*)?\)", text)
         for link in links:
-            clean_path = link.replace("file:///", "").split("#")[0]
-            assert Path(clean_path).exists(), f"Broken file link in {doc.name}: {link}"
+            if link.startswith(("http://", "https://", "mailto:")):
+                continue
+            target_path = (doc.parent / link).resolve()
+            assert target_path.exists(), f"Broken file link in {doc.name}: {link}"
 
 
 def test_migrated_cases_follow_template_structure():

@@ -29,5 +29,5 @@
 - **Verification**: `tests/unit/test_production_source_narration.py` and `tests/unit/test_speech_transcriber.py`
 
 ## 6. Evidence Links
-- **Legacy Register**: [`docs/error-solving/understood-errors.md#whisper-spoken-manifest-fallback-and-ghost-word-extrapolation-drift`](file:///C:/Users/Snoozer/teamwork_projects/architecture-renewal-campaign/docs/error-solving/understood-errors.md)
-- **Source Code**: [`src/youtube_automation/speech/transcriber.py`](file:///C:/Users/Snoozer/teamwork_projects/architecture-renewal-campaign/src/youtube_automation/speech/transcriber.py)
+- **Legacy Register**: [`docs/error-solving/understood-errors.md#whisper-spoken-manifest-fallback-and-ghost-word-extrapolation-drift`](../understood-errors.md)
+- **Source Code**: [`src/youtube_automation/speech/transcriber.py`](../../../src/youtube_automation/speech/transcriber.py)
