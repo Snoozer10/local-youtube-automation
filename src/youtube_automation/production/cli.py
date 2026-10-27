@@ -871,9 +871,11 @@ def main(argv: list[str] | None = None) -> None:
         _run_stage_attempt(args, root, database)
         return
     if args.stage == "status":
-        database.parent.mkdir(exist_ok=True)
-        for row in Ledger(database).status():
-            print(row)
+        from .ledger_observation import format_ledger_status, observe_ledger
+
+        decision = observe_ledger(database)
+        print(format_ledger_status(decision))
+        return
     else:
         if args.stage in {"report", "preview", "approve", "render"} and (root / "visual_budget.json").is_file():
             from .visual_gate import require_visual_audit

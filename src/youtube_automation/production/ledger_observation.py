@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -153,3 +155,128 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
                 conn.close()
             except Exception:
                 pass
+
+
+_ALLOWED_STATES = {"PENDING", "IN_FLIGHT", "SUCCEEDED", "FAILED", "CANCELLED"}
+
+
+def project_safe_job(row: dict[str, Any]) -> dict[str, Any]:
+    """Project a raw historical job row in memory into safe bounded diagnostics."""
+    from youtube_automation.core import failure_record
+
+    raw_key = str(row.get("key") or "unknown")
+    key = re.sub(r"[^a-zA-Z0-9_\-:]", "_", raw_key)[:64]
+
+    raw_state = str(row.get("state") or "").upper()
+    state = raw_state if raw_state in _ALLOWED_STATES else "UNKNOWN"
+
+    try:
+        attempts = max(0, min(9999, int(row.get("attempts", 0))))
+    except (TypeError, ValueError):
+        attempts = 0
+
+    fence_val = row.get("fence")
+    try:
+        fence = int(fence_val) if fence_val is not None else None
+    except (TypeError, ValueError):
+        fence = None
+
+    raw_detail = row.get("detail")
+    detail_dict: dict[str, Any] = {}
+    if isinstance(raw_detail, dict):
+        detail_dict = raw_detail
+    elif isinstance(raw_detail, str) and raw_detail.strip():
+        # Bound JSON parse length to 16KB
+        stripped = raw_detail.strip()
+        if len(stripped) <= 16384 and (stripped.startswith("{") or stripped.startswith("[")):
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed, dict):
+                    detail_dict = parsed
+                else:
+                    detail_dict = {"raw_message": stripped}
+            except Exception:
+                detail_dict = {"raw_message": stripped}
+        else:
+            detail_dict = {"raw_message": stripped[:1024]}
+
+    layer = re.sub(r"[^a-zA-Z0-9_\-]", "", str(detail_dict.get("layer") or "unknown"))[:32] or "unknown"
+    kind = re.sub(r"[^a-zA-Z0-9_\-]", "", str(detail_dict.get("kind") or "unknown"))[:32] or "unknown"
+    exc_name = re.sub(r"[^a-zA-Z0-9_]", "", str(detail_dict.get("exception") or ""))[:64]
+    known_val = detail_dict.get("known_issue")
+    known_id = re.sub(r"[^a-zA-Z0-9_\-]", "", str(known_val))[:64] if known_val else None
+
+    # Error message projection
+    err_source = detail_dict.get("error") or detail_dict.get("message") or detail_dict.get("raw_message")
+    safe_summary: str | None = None
+    if err_source is not None:
+        safe_summary = failure_record.project_safe_message(
+            str(err_source),
+            exc_name=exc_name or "Failure",
+            layer=layer,
+            kind=kind,
+            known_issue={"id": known_id} if known_id else None,
+        )
+
+    return {
+        "key": key,
+        "state": state,
+        "attempts": attempts,
+        "fence": fence,
+        "layer": layer,
+        "kind": kind,
+        "exception": exc_name or None,
+        "summary": safe_summary,
+        "known_issue": known_id,
+    }
+
+
+def format_ledger_status(decision: ObservationDecision, *, max_jobs: int = 50) -> str:
+    """Render a human-readable, non-mutating status report from an observation decision."""
+    lines: list[str] = []
+    if decision.status == "POPULATED":
+        projected_jobs = [project_safe_job(row) for row in decision.rows]
+        total = len(projected_jobs)
+        lines.append(f"Ledger Status: POPULATED ({total} jobs recorded)")
+        shown_jobs = projected_jobs[:max_jobs]
+        for job in shown_jobs:
+            parts = [f"  - [{job['state']}] stage={job['key']} attempts={job['attempts']}"]
+            if job.get("fence") is not None:
+                parts.append(f"fence={job['fence']}")
+            if job.get("summary"):
+                parts.append(f"detail={job['summary']!r}")
+            elif job.get("exception"):
+                parts.append(f"exception={job['exception']}")
+            if job.get("known_issue"):
+                parts.append(f"known_issue={job['known_issue']}")
+            lines.append(" ".join(parts))
+        if total > max_jobs:
+            lines.append(f"  [truncated: {max_jobs} of {total} jobs shown; partial view]")
+    elif decision.status == "EMPTY":
+        lines.append("Ledger Status: EMPTY")
+        lines.append("No production jobs recorded in compatible ledger.")
+    elif decision.status == "ABSENT":
+        lines.append("Ledger Status: UNAVAILABLE (database file does not exist)")
+        lines.append(f"Reason: {decision.message}")
+        lines.append("Next action: Run an adaptive generation stage to initialize the production workspace.")
+    elif decision.status == "UNSUPPORTED_WAL":
+        lines.append("Ledger Status: UNAVAILABLE (unsupported WAL layout)")
+        lines.append(f"Reason: {decision.message}")
+        lines.append("Next action: Observe offline or configure standard rollback journal mode for safe inspection.")
+    elif decision.status == "BUSY":
+        lines.append("Ledger Status: UNAVAILABLE (database busy)")
+        lines.append(f"Reason: {decision.message}")
+        lines.append("Next action: Retry status observation when active operation completes.")
+    elif decision.status == "DAMAGED":
+        lines.append("Ledger Status: UNAVAILABLE (corrupted or unreadable database)")
+        lines.append(f"Reason: {decision.message}")
+        lines.append("Next action: Inspect filesystem integrity or restore from authorized backup.")
+    elif decision.status == "UNSUPPORTED_SCHEMA":
+        lines.append("Ledger Status: UNAVAILABLE (foreign or incompatible schema)")
+        lines.append(f"Reason: {decision.message}")
+        lines.append("Next action: Verify the database path points to a valid adaptive production ledger.")
+    else:
+        lines.append(f"Ledger Status: UNAVAILABLE ({decision.status.lower()})")
+        lines.append(f"Reason: {decision.message}")
+        lines.append("Next action: Verify ledger database configuration and health.")
+    return "\n".join(lines)

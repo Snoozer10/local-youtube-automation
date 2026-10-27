@@ -120,7 +120,6 @@ _OPERATIONAL_PATTERN_RE = re.compile(
     r"|\b(?:ceiling reached|quota.*exhausted|usage limit)\b"
     r"|\b(?:invalid syntax|no matching adaptive recipe|validation failed)\b"
     r"|\b(?:intercepts pointer events|overlay)\b"
-    r"|\[redacted\]"
     r"|\[email\]"
     r")"
 )
