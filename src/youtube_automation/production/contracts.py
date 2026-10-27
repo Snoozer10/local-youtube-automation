@@ -75,6 +75,7 @@ class Channel(Contract):
     allowed_treatments: list[Treatment] = Field(min_length=1)
     humor: Literal["none", "light", "central"] = "light"
     max_zoom: float = Field(default=1.06, ge=1, le=1.15)
+    revision: str | None = Field(default=None, max_length=120, description="Immutable profile content revision identity")
 
     @model_validator(mode="after")
     def check_host(self) -> Channel:
@@ -218,6 +219,7 @@ class Brief(Contract):
     version: Literal[2, 3] = 2
     source_sha256: Digest
     profile_sha256: Digest
+    profile_revision: str | None = Field(default=None, max_length=120, description="Pinned immutable profile revision identity")
     channel: Channel
     analysis: Analysis
     visual_strategy: EpisodeVisualStrategy | None = None
@@ -226,6 +228,10 @@ class Brief(Contract):
     def check_policy(self) -> Brief:
         if fingerprint(self.channel) != self.profile_sha256:
             raise ValueError("Profile digest mismatch")
+        if self.profile_revision is not None:
+            expected = profile_revision_identity(self.channel)
+            if expected is not None and self.profile_revision != expected:
+                raise ValueError("Profile revision identity mismatch")
         if not set(self.analysis.treatments) <= set(self.channel.allowed_treatments):
             raise ValueError("Analysis selected a treatment outside channel policy")
         if self.version == 3:
@@ -236,6 +242,25 @@ class Brief(Contract):
         elif self.visual_strategy is not None:
             raise ValueError("Version 2 briefs cannot carry a visual strategy")
         return self
+
+
+def profile_revision_identity(channel: Channel) -> str | None:
+    """Return the immutable revision identity for a channel profile if configured."""
+    if channel.revision and channel.revision.strip():
+        return channel.revision.strip()
+    return None
+
+
+def verify_profile_pin(brief: Brief, channel: Channel | None = None) -> bool:
+    """Verify that a brief's pinned profile revision and digest match the given or embedded channel."""
+    target_channel = channel or brief.channel
+    if fingerprint(target_channel) != brief.profile_sha256:
+        return False
+    if brief.profile_revision is not None:
+        expected = profile_revision_identity(target_channel)
+        if expected is not None and brief.profile_revision != expected:
+            return False
+    return True
 
 
 def episode_cast(brief: Brief) -> dict[str, EpisodeCharacter]:
@@ -279,6 +304,10 @@ def _canonical_fingerprint_value(value: Any) -> Any:
     if isinstance(value, dict):
         normalized = {key: _canonical_fingerprint_value(item) for key, item in value.items()}
         # Optional cast fields preserve fingerprints of already accepted, cast-free artifacts.
+        if normalized.get("revision") is None:
+            normalized.pop("revision", None)
+        if normalized.get("profile_revision") is None:
+            normalized.pop("profile_revision", None)
         for key in ("characters", "character_ids"):
             if normalized.get(key) == []:
                 normalized.pop(key, None)
@@ -324,6 +353,8 @@ def load_brief(run_dir: str | Path) -> Brief:
     raw = (root / "raw_transcript.txt").read_text(encoding="utf-8-sig")
     if fingerprint(raw) != brief.source_sha256:
         raise ValueError("Raw script changed; rebuild the episode brief before downstream work")
+    if not verify_profile_pin(brief):
+        raise ValueError("Episode brief profile pin verification failed")
     if brief.visual_strategy:
         for character in brief.visual_strategy.characters:
             if character.origin == "source_narration" and character.source_excerpt not in raw:

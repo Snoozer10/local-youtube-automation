@@ -28,6 +28,8 @@ from .contracts import (
     EpisodeVisualStrategy,
     fingerprint,
     load_brief,
+    profile_revision_identity,
+    verify_profile_pin,
 )
 from .ledger import publication_guard
 
@@ -241,6 +243,7 @@ def analyze_script(raw: str, channel: Channel, ask: Callable[[str], str]) -> Bri
         version=3 if strategy is not None else 2,
         source_sha256=fingerprint(raw),
         profile_sha256=fingerprint(channel),
+        profile_revision=profile_revision_identity(channel),
         channel=channel,
         analysis=analyses[0],
         visual_strategy=strategy,
@@ -441,6 +444,7 @@ def rebind_visual_policy(
         version=existing.version,
         source_sha256=existing.source_sha256,
         profile_sha256=fingerprint(channel),
+        profile_revision=existing.profile_revision,
         channel=channel,
         analysis=existing.analysis,
         visual_strategy=existing.visual_strategy,
@@ -1486,6 +1490,7 @@ def _migrate_visual_policy(root: Path, channel: Channel, ask: Callable[[str], st
             if channel.model_dump(mode="json") != selected_profile:
                 raise ValueError("Selected profile changed during strategy compilation")
             target = Brief(version=3, source_sha256=old.source_sha256, profile_sha256=fingerprint(channel),
+                           profile_revision=old.profile_revision,
                            channel=channel, analysis=old.analysis, visual_strategy=strategy)
             if narration_fingerprint(target) != narration_fingerprint(old):
                 raise ValueError("Visual-policy migration changed narration identity")
