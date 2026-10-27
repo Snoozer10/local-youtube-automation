@@ -29,7 +29,6 @@ from .contracts import (
     fingerprint,
     load_brief,
     profile_revision_identity,
-    verify_profile_pin,
 )
 from .ledger import publication_guard
 

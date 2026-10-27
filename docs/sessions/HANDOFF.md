@@ -89,3 +89,21 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - `test_safe_failure_reporting.py`: Operational regex pattern initially failed on `Stage circuit is open`. Fixed pattern to `stage\s+circuit(?:\s+is)?\s+open`.
 - `test_observation_method_proof.py`: Proved on Windows that WAL mode creates or updates `-shm` sidecars even with `mode=ro`. Enforced pre-access refusal `UNSUPPORTED_WAL` on WAL databases.
 - `briefs.py`: Missing import `profile_revision_identity` and silent rebind mutation corrected to preserve existing/legacy episode revision pins. All 518 production tests pass.
+
+## Architecture-Renewal Campaign Milestone M2 Completion, 2026-10-27
+
+### Done
+- Milestone M2 completed across both parallel tracks (Track 1: #56; Track 2: #38 & #39).
+- Track 1 (#56, commit `cfff6f0`): Deliver genuinely non-mutating production status CLI. Replaced mutating directory creation and writable `Ledger(database)` instantiation with non-mutating `observe_ledger(database)`. Implemented `project_safe_job` and `format_ledger_status` in `src/youtube_automation/production/ledger_observation.py`. Sanitized prompt prose, credentials, and non-ASCII canaries while projecting operational failures to safe diagnostic summaries. Verified across populated, empty, absent, damaged, WAL layout, foreign schema, busy database, OS read-only permissions, and truncation via `tests/unit/test_production_status_cli.py` (9 passed). Frozen production suite: 555 passed in 115.77s.
+- Track 2 (#38, commit `5313037`): Create searchable error cases while preserving legacy evidence. Preserved `docs/error-solving/understood-errors.md` untouched (exact SHA-256 `73e0486215fc176f581acfc1832c61ec2b0939f7b505bc45a689762defd8dc39`). Created triage guidance (`docs/error-solving/AGENTS.md`), case template (`docs/error-solving/TEMPLATE.md`), shallow index + anchor map (`docs/error-solving/README.md`), and five migrated representative cases in `docs/error-solving/cases/` (`ERR-001` through `ERR-005`). Verified via `tests/unit/test_error_cases.py` (4 passed).
+- Track 2 (#39, commit `0c4093e`): Verify canonical skill provenance, task bindings, and platform discovery. Audited `skill-lock.json` (24 bound skills across 52 tasks, 109 active, 21 archived), `skills-lock.json` (29 upstream repositories with computed hashes), and `.claude/skills/` (14 active skills). Created `docs/skills/PROVENANCE_AND_DISCOVERY.md` detailing discovery surfaces, redundancy verification, restoration procedures, and explicit platform gaps (Codex <0.160 selection, `.agents/` gitignored convention, dynamic reload). Verified via `tests/unit/test_skill_discovery_and_lock.py` (5 passed).
+
+### Next
+- Proceed with Milestone M3:
+  - Track 1: Issue #40 (Classify runtime retention and demonstrate reversible archiving).
+  - Track 2: Issue #41 (Retire one verified obsolete non-runtime cohort).
+- Separate bounded human approval remains strictly enforced for any production data operations, live provider requests, or releases.
+
+### Failures & Fixes
+- `src/youtube_automation/core/failure_record.py`: `_OPERATIONAL_PATTERN_RE` included `|\[redacted\]|`, causing error messages containing redacted tokens to falsely match as operational errors rather than projecting to safe diagnostic summaries. Removed pattern; credential strings safely project to sanitized messages.
+- `tests/unit/test_skill_discovery_and_lock.py`: `active_project_skills` in `skill-lock.json` contains dict items rather than strings; updated test parser to extract `s["name"]`.
