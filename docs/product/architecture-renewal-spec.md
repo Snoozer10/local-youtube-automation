@@ -1,3 +1,5 @@
+Status note — 2026-10-26: [#31](https://github.com/Snoozer10/local-youtube-automation/issues/31) remains the renewal parent. #36 guidance and #23/#24–#30 compilation are integrated; PR #53 delivered the navigation batch, while #37 stays open. #32–#35 policy decisions are closed. See the existing [roadmap reconciliation](architecture-renewal-plan.md#reconciliation--2026-10-26) for remaining #37–#50 work, native dependencies and uncovered Track A lifecycle requirements. This local status amendment does not publish a new spec or alter the tracker’s historical parent body.
+
 ## Problem Statement
 
 Project changes are difficult to make safely because guidance, workflow rules, skills, error knowledge, and documentation have unclear or conflicting ownership. Cleanup is risky: local runtime state and other generated or historical material may contain resumable production state and evidence, while static searches alone cannot prove that code or assets are unused.
@@ -37,7 +39,7 @@ Then use a bounded Channel DNA workflow as the first feature-level architecture 
 23. As an operator, I want the workflow to use a named REA evidence-collection adapter, so that REA’s supported observations can contribute evidence without being mistaken for a Channel DNA analyzer.
 24. As an operator, I want transcript evidence used for narrative claims, sampled frames or clips for visual and motion claims, and audio evidence for sound-treatment claims, so that each conclusion rests on suitable material.
 25. As an operator, I want observations linked to source examples or timestamps when available, so that I can inspect why a trait was recorded.
-26. As an operator, I want confidence and unknown traits recorded explicitly, so that missing evidence does not become invented channel behavior.
+26. As an operator, I want reasoning, uncertainty and unknown traits recorded explicitly, so that missing evidence does not become invented channel behavior; no invented numerical confidence score substitutes for evidence.
 27. As an operator, I want the reference study to preserve observed traits separately from my production profile, so that my preferences do not rewrite the source analysis.
 28. As an operator, I want my explicit language, voice, brand preferences, and constraints applied to the derived production profile, so that production reflects my choices.
 29. As an operator, I want the production profile to cover supported narrative, pacing, composition, motion, audio, title, and thumbnail traits, so that channel guidance can inform the whole workflow.
@@ -61,7 +63,7 @@ Then use a bounded Channel DNA workflow as the first feature-level architecture 
 
 ## Implementation Decisions
 
-- Work in reviewable phases: guidance and documentation ownership; error knowledge; skill discovery; verified cleanup classification; then the bounded Channel DNA workflow. This is a parent specification implemented in bounded batches, not an all-at-once change.
+- Work in bounded batches, using the existing native dependency graph rather than treating this list as a serial gate. Shared authority is integrated; remaining documentation, error knowledge, skill discovery, safe classification, profile pins and local study work may proceed independently where ownership permits.
 - Reconcile the audit and migration plan with current repository state before execution. The audit is a historical snapshot, not current proof.
 - Establish one shared guidance authority and platform-specific adapters. Complete any authority switch atomically after migrating applicable rules and checking task routing.
 - Keep domain rules near the domain they govern. Add scoped instructions only for stable ownership boundaries.
@@ -72,7 +74,7 @@ Then use a bounded Channel DNA workflow as the first feature-level architecture 
 - Use REA as the named evidence-collection adapter for capabilities supported by its documented behavior. Pair it with separate media and semantic analysis for traits REA does not establish.
 - Define the reference study as a record of observations and supporting evidence. Derive the production profile from that study plus explicit owner settings; owner settings affect the derived profile and never rewrite reference observations.
 - Distinguish immutable profile revision identity from schema format version. Pin both the revision identity and content digest into each episode snapshot, reusing existing snapshot and rebind behavior.
-- Before the pilot, define and persist concrete sample eligibility and bounds plus the mandatory evidence and profile-field validation contract. Include pass and fail examples. These are implementation prerequisites still to be designed, not numeric choices settled in the interview.
+- Implement and persist the settled [sample policy #34](https://github.com/Snoozer10/local-youtube-automation/issues/34#issuecomment-6393651666) and [mandatory-evidence/activation contract #35](https://github.com/Snoozer10/local-youtube-automation/issues/35#issuecomment-6393849575), including pass/partial/fail cases. #33 selects REA passive page observation as the pilot candidate; successful live Windows collection is still required separately.
 - Validate mandatory profile content and evidence before automatic activation. Preserve incomplete studies and actionable gaps; leave unsupported optional traits unknown. Use local media analysis where suitable to avoid unnecessary provider work.
 - Apply valid inferred profiles automatically to new episodes. Existing and running episodes retain their original profile revision unless explicitly migrated.
 - Keep stable Channel DNA separate from each episode’s content-specific visual strategy.
@@ -100,7 +102,7 @@ Then use a bounded Channel DNA workflow as the first feature-level architecture 
 - Rewriting the application or changing its primary language or deployment model.
 - Introducing hosted multi-user services.
 - Adopting Turborepo or another workspace build system without an independently built application or package that needs it.
-- Implementing or reworking the compilation scope actively assigned to Antigravity in issues #23 and #24–#30.
+- Duplicating or reworking the already integrated compilation scope in #23 and #24–#30 without a separately accepted change. Reuse ADR 0006, current source contracts and the compilation closeout.
 - Treating REA as a built-in YouTube, audio, visual, or Channel DNA semantic analyzer.
 - Automatically migrating existing or running episodes to a new profile revision.
 - Inventing missing evidence or requiring a routine human approval gate for otherwise valid inferred profiles.
@@ -111,8 +113,8 @@ Then use a bounded Channel DNA workflow as the first feature-level architecture 
 
 - The user’s primary success measure is safer, faster feature changes through fewer regressions, clearer ownership, and faster diagnosis.
 - Reconcile current guidance, task routing, and post-audit changes before implementation. Do not rely on historical audit counts as current measurements.
-- Sample eligibility and bounds, mandatory profile fields and evidence, and live Windows REA feasibility are prerequisites for the DNA pilot and remain to be defined.
+- Sample eligibility/bounds and mandatory fields/evidence are settled by #34/#35. Local studies follow those contracts; live Windows REA feasibility/usefulness remains #45 after #43, not a blocker on the local study.
 - A live Windows REA test is a required completion gate for the Channel DNA implementation. Publishing this specification does not run REA, install dependencies, or authorize provider actions.
 - The external modernization report and playbook informed the audit, but their historical branch and test claims are not current verification evidence.
 - Profile activation is automatic only after required fields and evidence validate. Partial studies remain available for completion and do not activate.
-- The user reports that Antigravity currently owns implementation of issues [#23](https://github.com/Snoozer10/local-youtube-automation/issues/23) and #24–#30. Treat these as active parallel work. Renewal work must not duplicate or redefine those tickets or modify Antigravity-owned files concurrently. Before touching shared interfaces or files, reconcile returned work against current source and establish non-overlapping ownership. Guidance, error-knowledge, skill-discovery, and inventory work may proceed independently where scopes do not overlap.
+- Compilation [#23](https://github.com/Snoozer10/local-youtube-automation/issues/23) and #24–#30 are CLOSED and integrated through PR #52; #36 guidance is CLOSED through PR #51. Reconcile current interfaces and ownership before further changes. Existing preservation, provider, editorial and publication controls remain in force. Track A’s accepted lifecycle policy is recorded in the roadmap crosswalk; its proposed mechanisms are not silently added to #40/#41 or this feature’s acceptance.

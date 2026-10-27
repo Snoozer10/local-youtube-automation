@@ -105,6 +105,76 @@ def _clean(text: str, limit: int = 300) -> str:
     return " ".join(text.split())[:limit]
 
 
+_CANARY_OR_PROSE_RE = re.compile(
+    r"(?i)\b(?:canary|system prompt|user prompt|prompt:|script:|def |class |import |return |select\b.*from\b)\b"
+)
+_CREDENTIAL_RAW_RE = re.compile(
+    r"(?i)\b(?:password|passwd|secret|api[_-]?key|bearer|token)\b\s*[:=]\s*(?!\[redacted\])\S+"
+)
+_OPERATIONAL_PATTERN_RE = re.compile(
+    r"(?i)(?:"
+    r"\b(?:timeout|timed out|operation timed out|connection timed out|ms exceeded)\b"
+    r"|\b(?:page\.goto|locator\.[a-z]+)\b"
+    r"|\b(?:http\s+status\s+code:?\s*\d+|http/[0-9.]+\s+\d{3})\b"
+    r"|\b(?:lost production lease|resource lease renewal failed|nested production leases|cannot acquire a production lease|stale worker|stage\s+circuit(?:\s+is)?\s+open|stage is already running|resource is busy|invalid terminal state)\b"
+    r"|\b(?:ceiling reached|quota.*exhausted|usage limit)\b"
+    r"|\b(?:invalid syntax|no matching adaptive recipe|validation failed)\b"
+    r"|\b(?:intercepts pointer events|overlay)\b"
+    r"|\[email\]"
+    r")"
+)
+_SAFE_SHORT_PHRASE_RE = re.compile(r"^[a-zA-Z0-9_ -]{1,40}$")
+_AUTH_HEADER_PREFIX_RE = re.compile(
+    r"(?i)^['\"]?(?:Authorization|Proxy-Authorization|Cookie|Set-Cookie)['\"]?\s*[:=]"
+)
+
+
+def is_safe_operational_message(text: str) -> bool:
+    """Validate whether an error message is a safe operational summary.
+
+    Rejects non-ASCII canaries, unvalidated prompt prose, private scripts, raw request
+    bodies, and unredacted credentials.
+    """
+    if not isinstance(text, str):
+        return False
+    if not text or not all(32 <= ord(c) <= 126 for c in text):
+        return False
+    if any(c in text for c in ("\n", "\r", "\t", "{", "}", "<", ">")):
+        return False
+    if _CANARY_OR_PROSE_RE.search(text) or _CREDENTIAL_RAW_RE.search(text):
+        return False
+    if len(text) > 200:
+        return False
+    if _OPERATIONAL_PATTERN_RE.search(text) or _SAFE_SHORT_PHRASE_RE.fullmatch(text.strip()):
+        return True
+    return False
+
+
+def project_safe_message(
+    message: str,
+    *,
+    exc_name: str = "",
+    layer: str = "unknown",
+    kind: str = "unknown",
+    known_issue: dict[str, Any] | None = None,
+) -> str:
+    """Project a message into an authorized safe summary.
+
+    If the cleaned message is a verified operational message, it is returned.
+    Otherwise, projects to a known-issue signature or a bounded category diagnostic identity.
+    """
+    cleaned = _clean(message, limit=300)
+    if is_safe_operational_message(cleaned):
+        return cleaned
+    if _AUTH_HEADER_PREFIX_RE.match(cleaned):
+        return cleaned
+    if known_issue and isinstance(known_issue, dict) and known_issue.get("id"):
+        sig = known_issue.get("observed_signature")
+        return f"[{known_issue['id']}] {sig}" if sig else f"[{known_issue['id']}] Known issue matched"
+    base_name = exc_name.strip() or "Failure"
+    return f"[{layer}/{kind}] {base_name}"
+
+
 def classify_layer(exc: BaseException, stage: str = "", frame: Any = _UNSET) -> str:
     """Layer rules, first match wins (matched by class name, no heavy imports).
 
@@ -248,15 +318,33 @@ def build_record(
         safe_path = _safe_repo_path(path)
         if safe_path not in safe_evidence:
             safe_evidence.append(safe_path)
+    kind = error_kind(exc, layer)
+    exc_name = _clean(type(exc).__name__, 80)
+    raw_message = _clean(str(exc))
+    known_issue = match_known_issue(
+        {
+            "exception": exc_name,
+            "message": raw_message,
+            "layer": layer,
+            "frame": safe_frame,
+        }
+    )
+    safe_message = project_safe_message(
+        raw_message,
+        exc_name=exc_name,
+        layer=layer,
+        kind=kind,
+        known_issue=known_issue,
+    )
     record: dict[str, Any] = {
         "version": 1,
         "utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "stage": _clean(str(stage), 80),
         "run_dir": _safe_repo_path(run_dir) if run_dir else None,
         "layer": layer,
-        "kind": error_kind(exc, layer),
-        "exception": _clean(type(exc).__name__, 80),
-        "message": _clean(str(exc)),
+        "kind": kind,
+        "exception": exc_name,
+        "message": safe_message,
         "frame": safe_frame,
         "sends_spent": sends_spent if isinstance(sends_spent, int) and sends_spent >= 0 else None,
         "evidence": safe_evidence,
@@ -265,7 +353,7 @@ def build_record(
             for key, value in list(sanitize_record(extra or {}).items())[:10]
         },
     }
-    record["known_issue"] = match_known_issue(record)
+    record["known_issue"] = known_issue
     return record
 
 
@@ -324,7 +412,9 @@ def load_records(
     records = []
     for line in lines:
         try:
-            records.append(json.loads(line))
+            raw_rec = json.loads(line)
+            if isinstance(raw_rec, dict):
+                records.append(sanitize_record(raw_rec))
         except ValueError:
             continue
     return records[-limit:] if limit else records
@@ -359,11 +449,11 @@ def load_last_record(
         record = json.loads(lines[-1])
     except (UnicodeDecodeError, ValueError):
         return None
-    return record if isinstance(record, dict) else None
+    return sanitize_record(record) if isinstance(record, dict) else None
 
 
 def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
-    """Copy diagnostic JSON with redaction and bounded depth, fields and strings."""
+    """Copy diagnostic JSON with redaction, safe message projection, and bounded depth."""
     if not isinstance(record, dict):
         raise ValueError("Failure record must be a JSON object")
     remaining = 512
@@ -372,8 +462,12 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
         "token", "accesstoken", "refreshtoken", "idtoken", "apikey", "xapikey",
         "password", "passwd", "secret",
     }
+    rec_exc = str(record.get("exception", ""))
+    rec_layer = str(record.get("layer", "unknown"))
+    rec_kind = str(record.get("kind", "unknown"))
+    rec_known = record.get("known_issue")
 
-    def visit(value: Any, depth: int, header_values: bool = False) -> Any:
+    def visit(value: Any, depth: int, header_values: bool = False, key_name: str = "") -> Any:
         nonlocal remaining
         if remaining <= 0:
             return "[truncated]"
@@ -383,7 +477,18 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
         if header_values and not isinstance(value, (dict, list)):
             return "[redacted]"
         if isinstance(value, str):
-            return _clean(value[:4096], limit=300)
+            if key_name == "message":
+                return project_safe_message(
+                    value,
+                    exc_name=rec_exc,
+                    layer=rec_layer,
+                    kind=rec_kind,
+                    known_issue=rec_known,
+                )
+            cleaned = _clean(value[:4096], limit=300)
+            if any(ord(c) > 126 for c in cleaned) or re.search(r"(?i)\bcanary\b", cleaned):
+                return "[redacted]"
+            return cleaned
         if isinstance(value, dict):
             result = {}
             for index, (key, item) in enumerate(value.items()):
@@ -397,7 +502,10 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
                     remaining -= 1
                 else:
                     result[clean_key] = visit(
-                        item, depth + 1, normalized in {"headers", "requestheaders", "responseheaders"}
+                        item,
+                        depth + 1,
+                        normalized in {"headers", "requestheaders", "responseheaders"},
+                        key_name=normalized,
                     )
             return result
         if isinstance(value, list):
@@ -405,11 +513,14 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
             for item in value[:64]:
                 if remaining <= 0:
                     break
-                items.append(visit(item, depth + 1, header_values))
+                items.append(visit(item, depth + 1, header_values, key_name=key_name))
             return items
         if value is None or isinstance(value, (bool, int, float)):
             return value
-        return _clean(str(value)[:4096], limit=300)
+        str_val = _clean(str(value)[:4096], limit=300)
+        if any(ord(c) > 126 for c in str_val) or re.search(r"(?i)\bcanary\b", str_val):
+            return "[redacted]"
+        return str_val
 
     sanitized = visit(record, 0)
     if not isinstance(sanitized, dict):
@@ -419,6 +530,7 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
 
 def digest(record: dict[str, Any]) -> str:
     """Human/agent summary, at most 60 lines."""
+    record = sanitize_record(record)
     frame = record.get("frame")
     out = [
         f"stage: {record.get('stage')}   utc: {record.get('utc')}",

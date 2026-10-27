@@ -259,6 +259,59 @@ class Ledger:
             return dict(row) if row is not None else None
 
 
+def _build_safe_terminal_detail(
+    *,
+    detail: dict[str, Any] | None,
+    key: str,
+    fence: int,
+    exc: BaseException,
+) -> dict[str, Any]:
+    from youtube_automation.core import failure_record
+
+    stage_val = (detail or {}).get("stage") or key
+    stage = str(stage_val)
+    frame = failure_record.innermost_project_frame(exc)
+    layer = failure_record.classify_layer(exc, stage, frame)
+    kind = failure_record.error_kind(exc, layer)
+    exc_name = type(exc).__name__
+    raw_msg = str(exc)
+
+    known = failure_record.match_known_issue(
+        {
+            "exception": exc_name,
+            "message": raw_msg,
+            "layer": layer,
+            "frame": frame,
+        }
+    )
+
+    safe_err = failure_record.project_safe_message(
+        raw_msg,
+        exc_name=exc_name,
+        layer=layer,
+        kind=kind,
+        known_issue=known,
+    )
+
+    safe_detail: dict[str, Any] = {
+        "stage": failure_record._clean(stage, 80),
+        "fence": fence,
+        "layer": layer,
+        "kind": kind,
+        "exception": failure_record._clean(exc_name, 80),
+        "error": safe_err,
+    }
+    if frame:
+        safe_detail["frame"] = frame
+    if known:
+        safe_detail["known_issue"] = known.get("id")
+    if detail and "run" in detail:
+        safe_detail["run"] = failure_record._safe_repo_path(detail["run"])
+    if detail and "recipe" in detail:
+        safe_detail["recipe"] = failure_record._clean(str(detail["recipe"]), 80)
+    return safe_detail
+
+
 @contextmanager
 def _maintained_claim(
     ledger: Ledger,
@@ -295,7 +348,12 @@ def _maintained_claim(
             raise RuntimeError("Resource lease renewal failed") from failures[0]
     except BaseException as exc:
         state = "FAILED"
-        terminal_detail["error"] = str(exc)
+        terminal_detail = _build_safe_terminal_detail(
+            detail=detail,
+            key=key,
+            fence=fence,
+            exc=exc,
+        )
         raise
     finally:
         _active_leases.reset(token)

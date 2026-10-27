@@ -1,6 +1,6 @@
 # Architecture Renewal Audit and Migration Plan
 
-Status: REVIEWABLE. The architecture interview is settled through Q23. This is an audit and migration plan; implementation, cleanup, installation, and provider actions remain pending separate scoped authorization and evidence.
+Status: CURRENT ROADMAP / DATED AUDIT. See the 2026-10-26 reconciliation below for integrated work, remaining tickets and accepted Track A/B policy. The original 2026-10-23 audit and batch sketches remain historical inputs, not current execution status or authorization.
 
 Task ID: architecture-audit-plan
 
@@ -9,11 +9,92 @@ Prepared: 2026-10-23
 Decision record: [Architecture renewal interview](./architecture-renewal-interview.md)
 Domain language: [GLOSSARY.md](../../GLOSSARY.md)
 
+## Reconciliation — 2026-10-26
+
+This section is the current roadmap/status crosswalk under [parent #31](https://github.com/Snoozer10/local-youtube-automation/issues/31). It supersedes pending-work statements in the dated audit and original batch sketches below; it does not create another master plan or change tracker state. The tracker owns completion; HANDOFF owns the current task cursor. This reconciliation is local and uncommitted until separately integrated.
+
+### Completed and integrated
+
+| Work | Verified integration | Remaining boundary |
+| --- | --- | --- |
+| Shared guidance and feature/debug/release routing, #36 | [PR #51](https://github.com/Snoozer10/local-youtube-automation/pull/51), merge bc05960c65199978c3149bbb4c3880a683ef35c4; #36 CLOSED | Root AGENTS is the shared contract; GEMINI/CLAUDE are adapters. Do not repeat the authority switch. Fresh skill discovery remains #39. |
+| Unified compilation, #23 and #24–#30 | [PR #52](https://github.com/Snoozer10/local-youtube-automation/pull/52), merge 23396894733239af6454041b8be4ae72c228f673; all eight issues CLOSED | Reuse [ADR 0006](../adr/0006-unified-video-compilation-engine.md) and the [completion report](../sessions/SPEC23_COMPILATION_COMPLETION_20261026.md). Its test/native receipts are dated proof, not present editorial/provider approval or general DB recovery. |
+| Four-document navigation batch under #37 | [PR #53](https://github.com/Snoozer10/local-youtube-automation/pull/53), merge 09b0b85e2b755a00f35ac2ad05f7fba1412c214d | Six reader routes, candidate/checkout links, preservation and isolated document restoration verified; default-branch map/reader route verified after merge. #37 remains OPEN for core-document reconciliation. |
+| Channel DNA decision map #32 and decisions #33–#35 | All CLOSED; [REA resolution](https://github.com/Snoozer10/local-youtube-automation/issues/33#issuecomment-6392681038), [sample resolution](https://github.com/Snoozer10/local-youtube-automation/issues/34#issuecomment-6393651666), [evidence resolution](https://github.com/Snoozer10/local-youtube-automation/issues/35#issuecomment-6393849575) | Policy settled; no study/profile implementation or meaningful live Windows REA proof is implied. |
+
+Local source packages: docs/sessions/ARCHITECTURE_TRACK_A_DECISIONS.md, final package beginning “Final Track A decision package”; docs/sessions/ARCHITECTURE_TRACK_B_DECISIONS.md, sections 7 and 15. Both remain untracked local-only evidence, unchanged and not silently staged or exposed as public links. Earlier drafts remain historical. Public readers can verify the integrated PRs and published DNA resolutions above; the Track A/B source packages require this checkout's preserved evidence.
+
+### Remaining existing tickets
+
+All #37–#50 are OPEN in the read-only tracker refresh. “Blockers” below are the actual native edges, including closed prerequisites; readiness also requires current ownership, scope and the appropriate task grant. No ticket is claimed or closed here.
+
+| Ticket | Remaining acceptance work | Native blockers |
+| --- | --- | --- |
+| [#37](https://github.com/Snoozer10/local-youtube-automation/issues/37) Documentation | Navigation is integrated. Reconcile product/renewal/workflow status and ADR 0005 clauses in place; resolve or explicitly retain vocabulary/consumer gaps; verify changed routes and evidence. This status amendment is only part of that work. | #36 closed |
+| [#38](https://github.com/Snoozer10/local-youtube-automation/issues/38) Error knowledge | Shallow index/template and representative cases, preserved IDs/anchors/raw evidence, searchable symptoms and prevention checks, verified restoration. | #36 closed |
+| [#39](https://github.com/Snoozer10/local-youtube-automation/issues/39) Skill discovery | Canonical provenance/bindings, actual fresh-session invocation on supported platforms, bounded verified-redundant archive and restoration; unsupported checks remain gaps. | #36 closed |
+| [#40](https://github.com/Snoozer10/local-youtube-automation/issues/40) Runtime retention | Owner/reference/recovery classification, non-mutating dry run, one eligible interrupted archive/restore cycle with hashes. Active DB/leases/recovery/rejection evidence stay protected. Track B's shallow inventory is not this proof. | #36 closed |
+| [#41](https://github.com/Snoozer10/local-youtube-automation/issues/41) Non-runtime retirement | Prove one cohort obsolete across dynamic/legacy/package/config consumers, preserve uncertain items and exact recovery, verify affected behavior. Pre-existing dirty deletions are excluded. | #36 closed; add #40 only if the chosen cohort proves runtime-dependent |
+| [#42](https://github.com/Snoozer10/local-youtube-automation/issues/42) Profile pins | Immutable revision plus digest through public brief boundary, legacy compatibility, unchanged old/running pins and rejection of unverifiable new pins. | #36 closed |
+| [#43](https://github.com/Snoozer10/local-youtube-automation/issues/43) Local study | Implement settled #33–#35 contracts, representative local evidence, distinct observations/inferences/unknowns, cumulative limits and idempotent interrupted-study recovery. | #36 and #35 closed |
+| [#44](https://github.com/Snoozer10/local-youtube-automation/issues/44) Activation | Owner-setting precedence, concrete evidence validation, immutable publication and recoverable active-pointer switch; new episodes pin, old episodes stay pinned; null voice still blocks TTS. | #42 and #43 open |
+| [#45](https://github.com/Snoozer10/local-youtube-automation/issues/45) Live REA | Separately bounded/authorized Windows collection using the chosen page-evidence capability, real useful source-bound evidence consumed by a functioning study, sanitized receipts and retained failures. Launch/version output is insufficient. | #43 open |
+| [#46](https://github.com/Snoozer10/local-youtube-automation/issues/46) Visual/motion | One suitable frame/temporal evidence bundle through study → validated profile → new-episode guidance, with provenance and unsupported traits unknown. | #44 open |
+| [#47](https://github.com/Snoozer10/local-youtube-automation/issues/47) Audio | One actual-audio bundle through the same public boundary; preserve voice/TTS controls and unknown optional traits. | #44 open |
+| [#48](https://github.com/Snoozer10/local-youtube-automation/issues/48) Packaging | One title/thumbnail bundle through study/profile/new-episode packaging guidance, preserving source/owner distinction and editorial controls. | #44 open |
+| [#49](https://github.com/Snoozer10/local-youtube-automation/issues/49) Explicit migration | Only supported, operator-selected existing-episode migration using current invalidation/recovery, protected narration/budgets/rejections and pin/digest proof. General study/activation recovery already belongs in #43/#44. | #44 open |
+| [#50](https://github.com/Snoozer10/local-youtube-automation/issues/50) Integrated pilot | Reuse meaningful live REA evidence plus representative modalities; demonstrate study and activation interruption/recovery, supported migration, old-pin preservation and measured outcomes with a compact handoff. | #45–#49 open |
+
+#37 acceptance crosswalk: the single navigation entry, representative reader routes and baseline/link comparison were delivered by PR #53; stale-material dispositions and non-overlap/preservation evidence were recorded for that batch. Clause-level reconciliation of existing core documents is incomplete. Compilation scope remains intact. Each later document amendment needs its own ownership, preservation and focused checks; neither this reconciliation nor PR #53 closes #37.
+
+### Accepted Track A/B requirements and uncovered tracker work
+
+Track A D1–D8 are accepted policy, not an implemented lifecycle. Canonical content/approvals/evidence stay in existing files; SQLite owns durable operational jobs/events and resource coordination. Derived indexes and handoff records do not become alternative authorities. Track B's settled documentation route has been delivered; its shallow runtime inventory qualified no archive/delete cohort.
+
+| Accepted requirement | Existing coverage and gap |
+| --- | --- |
+| D1: one operator/account/PC; coordinate shared resources across projects, checkouts and compatible clients | #31 is the parent; no #37–#50 child implements convergent discovery, alias/custom-configuration safety or cross-checkout coordination. Exact physical placement is unselected. |
+| D2: affected shared work fails closed on unavailable/damaged/ambiguous/incompatible authority; unrelated offline/status stays available | No suitable lifecycle child. Preserve existing fencing, process identity and publication controls; no silent replacement DB or bypass. |
+| D3: controlled cutover excludes unmodified incompatible old clients while preserving their files/evidence | No suitable runtime/client-compatibility child. Supported launcher/interpreter inventory, actual linked SQLite qualification and cutover proof remain needed. |
+| D4: preserve durable operational history plus complete declared artifact/journal/evidence coverage | #40 preserves retention-eligible cohorts but does not deliver general DB backup/isolated restore. Compilation journals/receipts are reusable components, not complete recovery proof. Cross-project coverage and uncertain external outcomes require reconciliation. |
+| D5: explicit checkpoints and verified preservation before maintenance | No suitable backup/maintenance child. Demonstrate usable isolated recovery; hash-preserved damaged originals are evidence, not healthy backups. Periodic scheduling stays deferred. |
+| D6: bounded one-owner handoffs, preserved attempts/continuations; tracker retains completion | Existing HANDOFF/task/receipt records are prior art. No dedicated minimum-record conformance slice exists; propose one only for demonstrated missing fields/behavior, not a second task engine. |
+| D7: ordinary status makes no live-state changes and honestly reports unavailable/unsafe/dated state | No suitable status-observer child. It must not bootstrap, migrate, repair, recover leases, write logs/indexes or create replacement state. Safe ledger diagnostics must retain useful identity without exposing private text or credentials. |
+| D8: explicit migration/restore maintenance with compatibility and reversal checks | No suitable lifecycle child. Maintenance exclusion must still hold for missing/damaged authority; restored stale fencing generations cannot revive holders or rewind unrelated newer work. |
+
+Unpublished scope candidates under #31, to refine before any issue creation: (a) one declared recovery set and meaningful isolated restore; (b) supported-entrypoint/linked-runtime qualification and bounded runtime update if needed; (c) non-mutating status plus bounded redacted ledger diagnostics, split if the seams warrant it; (d) authority discovery, compatibility and explicit maintenance/cutover, sliced only after the recovery/runtime/ownership contract is specified; (e) one minimum handoff/continuation demonstration using an existing record if a real gap remains. These names are proposals, not reserved issue numbers, a fixed ticket count, accepted storage layouts or authorization. Search current tracker again before publication; extend an existing scope only when its acceptance actually fits.
+
+Not selected: LocalAppData placement, packet.json, a new runtime tree/index, new list/show/doctor/cleanup commands, a universal workflow framework, exact lock technology, a service, or automatic backup scheduling. ADR numbering, project copy/move identity and concrete discovery storage remain design work. Track A's runtime/version observations are dated; qualify every supported actual linked runtime against current upstream fix guidance before a runtime change. No database health or recovery check ran in this reconciliation.
+
+### Real dependencies and independent work
+
+- #37–#43 have no open native blockers after #36/#35 closure. They need not wait for one another: documentation, error cases, skills, retention classification, a genuinely non-runtime cohort, pins and local study are independent subject to file ownership. #43 does not await a live REA run or the documentation index; #42 does not await #37. Maintenance work is not a blanket prerequisite for Channel DNA.
+- #44 needs #42 + #43; #45 needs #43; #46/#47/#48/#49 each need #44; #50 needs #45–#49. Recovery is introduced with state changes in #43/#44, not deferred to #49. Modality slices remain separate and bounded to one representative bundle each.
+- #41 acquires a #40 blocker only for a runtime-dependent candidate. #40 can classify or archive an independently safe cohort without an entire new DB lifecycle. Neither ticket implies permission to relocate, repair or replace active SQLite state.
+- For proposed lifecycle changes, qualify entrypoints/identity and prove a complete isolated recovery boundary before changing installed runtime, authority or schema. Cutover additionally needs supported runtime compatibility, legacy-holder quiescence, exclusion effective with absent/damaged DB, stale-generation rejection and all affected project coverage. Read-only diagnostics/status and minimal-record planning can proceed independently of physical relocation; integrate their proofs before lifecycle closeout.
+- Ordinary local/offline DNA work can remain within existing boundaries. A future live/shared-resource action must satisfy its actual current ownership, coordination and bounded grant; an incomplete cross-checkout protocol is a reason to scope or stop that action, not silently waive it or block every unrelated document task.
+
+### Next bounded scope to specify
+
+Recommend an **ADR 0005 operational-clause amendment under existing #37**. Content scope: docs/adr/0005-audio-dsp-contract.md and the corresponding docs/README.md conflict/status note; required administration: bounded HANDOFF closeout and exclusive preservation/check receipts. Leave the product/workflow rewrite and glossary migration as separately bounded remaining #37 work. This recommendation does not start the amendment.
+
+Acceptance conditions for that brief:
+
+1. Verify each conflicting clause against current root/source/production/channel owners. Explicitly amend recovery-data deletion, Windows pipe framing and the fixed single-voice/model wording using those current owners; do not invent a new operational or Track A mechanism.
+2. Preserve the original ADR decision/rationale as hash-bound history and make clause-level supersession/current status unambiguous. Preserve unaffected DSP/timeline/stitching decisions unless evidence and scope specifically justify a change. Keep the missing audio_chain vocabulary claim an explicit unresolved gap rather than inventing a definition.
+3. Verify checkout and candidate-tree links/anchors and the operational-reader route; confirm commands, source behavior, launchers, prompts, packaging, provider and editorial controls remain unchanged. Do not run the app, DB or providers for a prose-only amendment.
+4. Capture exact preimages, check concurrent drift, demonstrate isolated byte-exact restoration of only owned edits, and preserve unrelated dirty bytes. Read back all changed documents and record focused check results.
+5. Report #37 acceptance coverage and remaining product/workflow/vocabulary work. Keep #37 open unless a later explicit full-acceptance review establishes completion; no automatic follow-on ticket or database implementation.
+
+### Evidence and scope of this reconciliation
+
+Read-only tracker refresh includes full existing issue bodies, published #33–#35 resolutions, native blockers for every #37–#50 ticket and merge identities for PRs #51–#53. Local Track A final package and Track B sections 7/15 supply the accepted policy context; their historical source/runtime metrics were not rerun. Exact source pins, preimages, raw tracker responses and focused reconciliation checks are retained locally under .runtime/architecture_renewal_audit_20261023/roadmap_reconcile_20261026T143303Z/. No issue publication/edit/closure, application implementation, archive execution, Git commit or synchronization is part of this task. QMD remains stale with pending embeddings; current files and raw tracker responses were checked directly instead of claiming indexed freshness.
+
 ## Purpose and success measures
 
 Reduce regressions, make module and document ownership easier to find, and shorten diagnosis when a feature changes. Keep the current Python architecture and improve its boundaries incrementally. A stack change or rewrite requires evidence that a named subsystem is uneconomic to repair.
 
-This is the first reviewable audit and migration plan. It deliberately stops before cleanup, code changes, skill removal, document moves, runtime pruning, provider runs, or a Channel DNA implementation.
+Original deliverable boundary (2026-10-23): this audit stopped before cleanup, code changes, skill removal, document moves, runtime pruning, provider runs or Channel DNA implementation. The dated reconciliation above now records subsequent integrated work.
 
 Measure the outcome in later batches: time from task start to correct owner and check discovery; regression count and severity after scoped changes; time from failure report to a reproduced root cause; and count of changed files outside the owning domain. Baselines are not yet measured, so no improvement claim is made.
 
@@ -44,7 +125,7 @@ Archived source report: [assessment report](../../.runtime/architecture_renewal_
 - Accepted: incremental modular Python, existing domain ownership, classify-before-prune, a bounded Channel DNA pilot, one operator/local workflow, preserve data and resumability.
 - Modified: treat M01–M16 as a reference menu, not 16 mandatory phases. Reuse the existing task/HANDOFF owner instead of adding parallel status registers. Map stage checklists to current durable jobs, recipes, checkpoints, and publication controls; add abstractions only for proven gaps. Keep error records minimal, with richer metadata optional; create local manifests only where rules differ.
 - Deferred: cleanup, retention/deletion actions, new packages or stack, provider actions, and any migration implementation until a named batch has evidence, acceptance checks, and rollback.
-- Navigation naming remains open: proposed docs/README.md here versus docs/index.md in the playbook. Choose one before creating it. A separate docs/architecture.md is optional only if it uniquely owns component/data-flow reference material extracted from existing guidance.
+- Navigation naming was settled by Track B: docs/README.md is the single map, integrated through PR #53. Do not add docs/index.md or a competing product/design master.
 - Snapshot mismatch: the proposals describe a feature branch at HEAD 738ee77; current repository state is master at c774383. Their test counts are historical, not current validation. Do not reopen repaired packaging or quota-recovery findings without new evidence.
 
 ## Audit method and evidence boundary
@@ -54,13 +135,15 @@ Inventory snapshot note (2026-10-23): root AGENTS.md was 36,101 bytes in the ini
 
 Facts below combine bounded repository inspection and coordinator/explorer readback. The exact inventory receipt is [INVENTORY.json](../../.runtime/architecture_renewal_audit_20261023/INVENTORY.json). Its initial snapshot recorded 74 source Python files and 167 Markdown files; the new plan adds one Markdown file. The runtime directory count is an entry count, not a recursive byte or last-used census.
 
-Read current contracts before modifying a domain: root [AGENTS.md](../../AGENTS.md), [GEMINI.md](../../GEMINI.md), platform [CLAUDE.md](../../CLAUDE.md), and the nearest scoped instructions. Current GEMINI guidance governs where older AGENTS text differs. This plan does not reverse that precedence.
+Read current contracts before modifying a domain: root [AGENTS.md](../../AGENTS.md) and the nearest scoped instructions. [GEMINI.md](../../GEMINI.md) and [CLAUDE.md](../../CLAUDE.md) are platform adapters to the shared root contract after PR #51; the older GEMINI-precedence clause is superseded.
 
 Existing scoped contracts include [production/AGENTS.md](../../src/youtube_automation/production/AGENTS.md), [channels/AGENTS.md](../../channels/AGENTS.md), [tools/AGENTS.md](../../tools/AGENTS.md), [tests/AGENTS.md](../../tests/AGENTS.md), and [docs/agents/AGENTS.md](../agents/AGENTS.md). Do not duplicate their detailed production, channel, utility, fixture, or skill-config rules in a new root guide.
 
 The evidence snapshot counted 166 Markdown documents before the interview, 167 after it, and 168 after this plan. It counted 17 direct documentation subfolders. These counts describe the snapshot boundary; they do not establish freshness, correctness, or whether a file is unused.
 
 ## Findings
+
+Historical findings from 2026-10-23 follow. “Current” in this dated section means the audit snapshot; shared-guidance conflicts were subsequently addressed by #36/PR #51. The reconciliation above owns present status; retained counts and failed evidence are not fresh measurements.
 
 ### P0 — conflicting operator instructions
 
@@ -164,11 +247,15 @@ Map any stage-contract checklist onto existing durable jobs, recipes, checkpoint
 
 ## Migration batches and gates
 
+Original conceptual batch sketches, retained as design history. The current issue crosswalk and native dependencies above control sequencing: these numbered sketches are not a serial gate or an instruction to repeat integrated work.
+
 ### Batch 0 — complete the audit and plan
 
 Status: Complete for this deliverable. Q1–Q23 are settled, the external proposals have been reviewed, and initial primary-source REA research is recorded. This audit plan is reviewable; no user answers remain for this phase. Windows/runtime feasibility and actual evidence value are future Batch 5 proof prerequisites. This batch did not install REA, run a provider/browser workflow, or implement project changes.
 
 ### Batch 1 — reconcile urgent instructions and document routing
+
+Current disposition: authority switch completed in #36/PR #51; navigation delivered by PR #53. Only remaining core-document reconciliation stays under #37. The following original sketch is historical and does not authorize repeating the switch.
 
 Owner: coordinator for AGENTS/HANDOFF; documentation executor for owned platform/domain docs. Resolve P0 destructive/process conflicts first, then typing and glossary authority. During migration, preserve current effective authority while shared rules and scoped routes are being reconciled. After every shared rule and route is migrated and verified, make one atomic bounded documentation switch to shared AGENTS.md authority; GEMINI.md and CLAUDE.md become platform adapters that route to it. Remove/replace both old AGENTS-to-GEMINI override statements and any reciprocal stale precedence clauses together, then verify there is no circular or competing authority and all existing guards remain intact. This plan edit does not perform that switch.
 
@@ -232,7 +319,7 @@ flowchart LR
 ```
 
 ### Batch 5 — implement one Channel DNA vertical slice after prerequisites
-Prerequisites (not silently selected by this audit): choose a bounded sample count and source-video eligibility rule; specify mandatory profile fields, evidence bindings, and activation validation; prove the selected REA/runtime path on the target Windows setup and measure actual evidence value; identify real local channel/video inputs and separately authorized access/provider grants; define focused checks for channel isolation, partial-study recovery, owner-setting precedence, and new-episode activation while existing episodes remain pinned. Until resolved, this batch is a design target, not executable authorization.
+Current prerequisite disposition: #33–#35 settled the capability, sampling and mandatory-evidence policy. Use their published resolutions, not new thresholds. #42/#43 can implement offline pins/studies without waiting for #37 or live REA; #44 combines their outcomes. Meaningful live Windows REA proof is #45 after #43 and remains required before #50/overall DNA completion. Concrete source permissions, supported runtime/process ownership and action budgets still require a separately bounded execution grant.
 
 
 Owner: production-domain executor, with independent tests and review. Keep work within existing production contracts and brief compilation until evidence proves a new module boundary is needed.
@@ -253,7 +340,7 @@ Before a frozen full-tree closeout, run repository-required tests, ruff, mypy --
 
 For docs-only batches, verify changed links, old-anchor routing, ownership indexes, exact changed-path scope, and whitespace. tools/lint_exercises.py validates exercise links only; no general Markdown/link gate was found.
 
-No tests, build, QMD reindex, provider action, Git mutation, or destructive operation was run for this plan.
+The original 2026-10-23 plan ran no tests/build/reindex/provider/Git mutation or destructive operation. The 2026-10-26 reconciliation adds read-only tracker refresh and focused document/preservation checks only; its saved results, not historical test counts, establish this task’s verification.
 
 ## Stop conditions and unresolved audit evidence
 
@@ -261,7 +348,7 @@ Stop a cleanup candidate if its owner, active consumer, provenance, or restore p
 
 Stop a code-boundary move if callers, package resources, CLI behavior, monkeypatch compatibility, or release contents are not mapped. Do not create packages to make the tree look modular.
 
-The interview is settled through Q23 and this plan is reviewable. No further user answers are outstanding for this phase. Resolve the bounded Batch 5 prerequisites before pilot implementation; this plan itself does not authorize implementation.
+The interview and #33–#35 decisions are settled. Track A has no unanswered policy questions; concrete lifecycle mechanisms and execution inputs still need bounded specifications. Follow the current dependency crosswalk above; this roadmap does not authorize implementation.
 
 ## Research receipt — 2026-10-23 UTC
 - REA reviewed read-only: [project README](https://github.com/morluto/rea/blob/main/README.md), [package metadata](https://github.com/morluto/rea/blob/main/package.json), and [browser observation docs](https://github.com/morluto/rea/blob/main/docs/browser-observation.md). Release metadata reports rea-agents 6.7.0 and Node ^22.19.0 || ^24.11.0 || >=26.0.0. Browser observation describes passive CDP evidence capture (DOM, scripts, network, screenshots); it does not establish a built-in semantic analyzer for channel videos. Local node/npm are present and rea was not found on PATH; this is not proof that REA is absent elsewhere. No installed dependency/release has been selected and no installation or live run occurred. Windows/runtime feasibility and evidence value remain future bounded proofs. Detailed excerpts and pinned source blob SHAs: [REA_RESEARCH.json](../../.runtime/architecture_renewal_audit_20261023/REA_RESEARCH.json).

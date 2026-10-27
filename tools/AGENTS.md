@@ -22,5 +22,8 @@
 - Review guarded bodies and module-global references when introducing entrypoint guards; do not import operational helpers to test inertness.
 - `tools/lint_exercises.py` is the existing offline exercise-layout/link check.
 
+## Retired Cohorts
+- Ad-hoc browser CDP exploration and hardcoded run inspection scratch scripts (check_project_9320.py, check_h10_project.py, inspect_h10_prompts.py, 	est_banana_21.py, 	est_banana_pro.py, 	est_raw_cdp.py, 	est_cdp_quick.py) were retired in Issue #41 after proving 0 callers, 0 runtime/packaging references, and recording byte-exact preimages in evidence/receipts/RETIRED_COHORT_TOOLS_SCRATCH.json.
+
 ## Child DOX Index
 - None.

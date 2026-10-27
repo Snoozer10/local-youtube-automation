@@ -28,6 +28,7 @@ from .contracts import (
     EpisodeVisualStrategy,
     fingerprint,
     load_brief,
+    profile_revision_identity,
 )
 from .ledger import publication_guard
 
@@ -51,6 +52,7 @@ _PROVIDER_SOFT_REFUSALS = (
 )
 _VISUAL_ONLY_PROFILE_FIELDS = {
     "version",
+    "revision",
     "visual_directives",
     "forbidden_motifs",
     "forbidden_visual_families",
@@ -241,6 +243,7 @@ def analyze_script(raw: str, channel: Channel, ask: Callable[[str], str]) -> Bri
         version=3 if strategy is not None else 2,
         source_sha256=fingerprint(raw),
         profile_sha256=fingerprint(channel),
+        profile_revision=profile_revision_identity(channel),
         channel=channel,
         analysis=analyses[0],
         visual_strategy=strategy,
@@ -437,10 +440,12 @@ def rebind_visual_policy(
 
         verify_source_narration(root)
 
+    new_rev = profile_revision_identity(channel) or existing.profile_revision
     updated = Brief(
         version=existing.version,
         source_sha256=existing.source_sha256,
         profile_sha256=fingerprint(channel),
+        profile_revision=new_rev,
         channel=channel,
         analysis=existing.analysis,
         visual_strategy=existing.visual_strategy,
@@ -1485,7 +1490,9 @@ def _migrate_visual_policy(root: Path, channel: Channel, ask: Callable[[str], st
                                                        editorial_feedback=feedback, attempts=1)
             if channel.model_dump(mode="json") != selected_profile:
                 raise ValueError("Selected profile changed during strategy compilation")
+            new_rev = profile_revision_identity(channel) or old.profile_revision
             target = Brief(version=3, source_sha256=old.source_sha256, profile_sha256=fingerprint(channel),
+                           profile_revision=new_rev,
                            channel=channel, analysis=old.analysis, visual_strategy=strategy)
             if narration_fingerprint(target) != narration_fingerprint(old):
                 raise ValueError("Visual-policy migration changed narration identity")

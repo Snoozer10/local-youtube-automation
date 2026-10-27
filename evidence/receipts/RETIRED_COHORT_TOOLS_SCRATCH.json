@@ -1,0 +1,50 @@
+{
+  "issue": 41,
+  "cohort": "tools_adhoc_browser_and_run_scratch",
+  "status": "RETIRED",
+  "rationale": "Ad-hoc scratch exploration scripts targeting hardcoded URLs or obsolete runs; verified 0 code callers, 0 dynamic imports, 0 packaging/CLI references",
+  "files": [
+    {
+      "path": "tools/check_project_9320.py",
+      "preimage_path": "evidence/preimages/tools_scratch/check_project_9320.py",
+      "size_bytes": 527,
+      "sha256": "2abb22566268d82777321c29aae1f4d03ab782209cf270726760bf3c939fa704"
+    },
+    {
+      "path": "tools/check_h10_project.py",
+      "preimage_path": "evidence/preimages/tools_scratch/check_h10_project.py",
+      "size_bytes": 614,
+      "sha256": "67e98c4fab4475b5f228f7926d150e179f5e8a7ee30c663ac0358e9a8b4d1be5"
+    },
+    {
+      "path": "tools/inspect_h10_prompts.py",
+      "preimage_path": "evidence/preimages/tools_scratch/inspect_h10_prompts.py",
+      "size_bytes": 640,
+      "sha256": "12c0b869b3597470025ee9c46e78082dc2cc2a3c53b011c11120732de8fb7a03"
+    },
+    {
+      "path": "tools/test_banana_21.py",
+      "preimage_path": "evidence/preimages/tools_scratch/test_banana_21.py",
+      "size_bytes": 2970,
+      "sha256": "6de56f3e44116011d1fc029e66706be057d727f0927ad084d7bc1a2cc8a8b63c"
+    },
+    {
+      "path": "tools/test_banana_pro.py",
+      "preimage_path": "evidence/preimages/tools_scratch/test_banana_pro.py",
+      "size_bytes": 3318,
+      "sha256": "fe250ebf3b71c9273fac2a08b2492ea7c7e88e53cc523830b54bfaa5dd93e08c"
+    },
+    {
+      "path": "tools/test_raw_cdp.py",
+      "preimage_path": "evidence/preimages/tools_scratch/test_raw_cdp.py",
+      "size_bytes": 902,
+      "sha256": "325a3da135b893afb728251f1706be94eabd82abe50df5c0e7bdcfc4d334c3b2"
+    },
+    {
+      "path": "tools/test_cdp_quick.py",
+      "preimage_path": "evidence/preimages/tools_scratch/test_cdp_quick.py",
+      "size_bytes": 797,
+      "sha256": "37d1318e42f0c921f0382fecf2b3f8625f885f63ce0eeda0d053f533d39593a9"
+    }
+  ]
+}
