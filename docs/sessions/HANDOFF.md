@@ -141,3 +141,21 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 ### Failures & Fixes
 - `study.py`: `save_study` initially omitted sample-selection shortfall gaps from evaluated study state; preserved both sample and core gaps.
 - `profile_activation.py`: `Channel` contract requires exact fields (`allowed_treatments`, `audience`, etc.); adapted `resolve_channel` to construct valid `Channel` instance matching `contracts.py` invariants.
+
+## Architecture-Renewal Campaign Milestone M5 Completion, 2026-10-27
+
+### Done
+- Milestone M5 completed across both parallel tracks (Track 1: #46, #47, #48, #49; Track 2: #50, commit `39ec893`).
+- Track 1 (#46, #47, #48): Extended `study.py` with `ALLOWED_AREAS = REQUIRED_CORE_AREAS + ["visual_motion", "soundtrack", "packaging"]` and `profile_activation.py` with evidence-derived multimodal guidance bundles (`visual_guidance`, `audio_guidance`, `packaging_guidance`) carrying provenance tracking. Preserves evidence attribution while supporting owner overrides. Verified via `tests/unit/test_multimodal_pilot.py` (`test_issue_46`, `test_issue_47`, `test_issue_48`).
+- Track 1 (#49): Explicit migration of supported existing episodes to a selected profile revision. Added `"revision"` to `_VISUAL_ONLY_PROFILE_FIELDS` in `briefs.py` and updated `rebind_visual_policy` and `_migrate_visual_policy` to adopt target profile revision. Updated `narration_fingerprint` in `contracts.py` to pop `revision` from `channel` and `profile_revision` from `projected`, preventing false invalidation of downstream writing and narration audio receipts during visual policy migrations. Verified via `test_issue_49_explicit_migration_of_existing_episodes`.
+- Track 2 (#50): Integrated end-to-end channel study pilot and recovery suite. Validated 3-2-1 sampling, multi-modal evidence collection, core trait synthesis, atomic profile activation, new-episode revision binding, and existing-episode policy migration in `test_issue_50_integrated_resumable_channel_study_pilot`.
+- Campaign test suite: 129 passed in 11.14s. Ruff checks: 0 errors. Strict mypy on modified modules: 0 errors.
+
+### Next
+- Note on Issue #45 (Live Windows REA Collection): Reserved for separate bounded human approval. Present feasibility findings, pre-flight checks, and approval boundaries to the human.
+- Close out completed milestone issues (#46, #47, #48, #49, #50) on GitHub tracker once campaign review is confirmed.
+- Prepare final campaign acceptance report for parent #31.
+
+### Failures & Fixes
+- `test_multimodal_pilot.py`: `narration_fingerprint` initially lacked stripping of `revision` and `profile_revision`, causing visual policy migrations between different profile revisions to fail identity checks. Updated `contracts.py` to pop `revision` and `profile_revision` in `narration_fingerprint`, preserving narration and audio receipts across visual policy revisions without weakening identity/voice guards.
+- `briefs.py`: `rebind_visual_policy` and `_migrate_visual_policy` initially retained `existing.profile_revision` rather than adopting the target channel's revision. Updated to pin `profile_revision_identity(channel) or existing.profile_revision`.
