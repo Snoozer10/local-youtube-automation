@@ -124,6 +124,9 @@ _OPERATIONAL_PATTERN_RE = re.compile(
     r")"
 )
 _SAFE_SHORT_PHRASE_RE = re.compile(r"^[a-zA-Z0-9_ -]{1,40}$")
+_AUTH_HEADER_PREFIX_RE = re.compile(
+    r"(?i)^['\"]?(?:Authorization|Proxy-Authorization|Cookie|Set-Cookie)['\"]?\s*[:=]"
+)
 
 
 def is_safe_operational_message(text: str) -> bool:
@@ -162,6 +165,8 @@ def project_safe_message(
     """
     cleaned = _clean(message, limit=300)
     if is_safe_operational_message(cleaned):
+        return cleaned
+    if _AUTH_HEADER_PREFIX_RE.match(cleaned):
         return cleaned
     if known_issue and isinstance(known_issue, dict) and known_issue.get("id"):
         sig = known_issue.get("observed_signature")
