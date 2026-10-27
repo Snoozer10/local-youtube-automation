@@ -107,3 +107,20 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 ### Failures & Fixes
 - `src/youtube_automation/core/failure_record.py`: `_OPERATIONAL_PATTERN_RE` included `|\[redacted\]|`, causing error messages containing redacted tokens to falsely match as operational errors rather than projecting to safe diagnostic summaries. Removed pattern; credential strings safely project to sanitized messages.
 - `tests/unit/test_skill_discovery_and_lock.py`: `active_project_skills` in `skill-lock.json` contains dict items rather than strings; updated test parser to extract `s["name"]`.
+
+## Architecture-Renewal Campaign Milestone M3 Completion, 2026-10-27
+
+### Done
+- Milestone M3 completed across both parallel tracks (Track 1: #40; Track 2: #41).
+- Track 1 (#40, commit `8a63fca`): Classify runtime retention and demonstrate reversible archiving. Built `src/youtube_automation/production/retention.py` and CLI retention stage (`--stage retention`, `--dry-run`, `--archive-cohort`, `--restore-cohort`) in `src/youtube_automation/production/cli.py`. Enforced categorization into `ACTIVE_STATE`, `IMMUTABLE_EVIDENCE`, `REBUILDABLE_CACHE`, and fail-safe `UNKNOWN_PRESERVE`. Proved dry-run zero-mutation guarantee, refusal to touch active/protected databases, atomic journaled interruption rollback, and SHA-256 byte-exact restoration via `tests/unit/test_runtime_retention.py` (6 passed).
+- Track 2 (#41, commit `728987b`): Retire one verified obsolete non-runtime cohort. Selected 7 ad-hoc scratch scripts in `tools/` (`check_project_9320.py`, `check_h10_project.py`, `inspect_h10_prompts.py`, `test_banana_21.py`, `test_banana_pro.py`, `test_raw_cdp.py`, `test_cdp_quick.py`). Proved obsolescence beyond age: 0 callers across code, 0 dynamic imports, 0 packaging/release references, hardcoded obsolete URLs and run folders. Saved byte-exact preimages in `evidence/preimages/tools_scratch/` and audit receipt in `evidence/receipts/RETIRED_COHORT_TOOLS_SCRATCH.json`. Updated `tools/AGENTS.md` and verified reversible restoration via `tests/unit/test_retired_cohort_restoration.py` (4 passed).
+
+### Next
+- Proceed with Milestone M4:
+  - Track 1: Issue #43 (Create resumable bounded local reference study under settled Wayfinder contracts).
+  - Track 2: Prepare profile evidence and activation models (#44).
+- Separate bounded human approval remains strictly enforced for live Windows REA collection (#45), production database operations, or external provider calls.
+
+### Failures & Fixes
+- `retention.py`: Refused archiving of any candidate outside `REBUILDABLE_CACHE` with explicit `PermissionError` to guarantee safety boundaries.
+- `test_retired_cohort_restoration.py`: Verified 100% SHA-256 byte match on restored files from preimages before confirming cohort retirement.
