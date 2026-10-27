@@ -834,6 +834,7 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.stage == "retention":
         import json
+
         from .retention import (
             ReversibleArchiveCycle,
             classify_runtime_directory,

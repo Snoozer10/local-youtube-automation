@@ -1,6 +1,12 @@
-import json
-import pytest
 from pathlib import Path
+
+import pytest
+
+from youtube_automation.production.briefs import (
+    analyze_script,
+    ensure_brief,
+    rebind_visual_policy,
+)
 from youtube_automation.production.contracts import (
     Analysis,
     Brief,
@@ -10,11 +16,6 @@ from youtube_automation.production.contracts import (
     load_brief,
     profile_revision_identity,
     verify_profile_pin,
-)
-from youtube_automation.production.briefs import (
-    analyze_script,
-    ensure_brief,
-    rebind_visual_policy,
 )
 
 
