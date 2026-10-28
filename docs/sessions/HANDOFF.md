@@ -178,3 +178,43 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - Open campaign PR to merge into `master`.
 - Post completion receipts and close accepted child issues #54-#56, #37-#50.
 - Present final campaign acceptance report to human for parent #31 closure.
+
+## Architecture-Renewal Corrective Campaign, 2026-10-28
+
+### Done
+1. **Safety Track 1A (Database Status & Diagnostics, PR #60)**:
+   - Fixed RFC 8089 URI formatting in `ledger_observation.py` using `Path.resolve().as_uri() + "?mode=ro"`, preventing URI truncation at `#` and accidental sibling file creation.
+   - Handled damaged/corrupted SQLite disks by catching `(sqlite3.OperationalError, sqlite3.DatabaseError)` and validating `PRAGMA table_info(jobs)` to return `UNSUPPORTED_SCHEMA` / `DAMAGED` without uncaught crashes.
+   - Enforced `_BOUNDED_OPERATIONAL_PATTERNS` and sanitized unlabelled private prose in messages and nested `extra['context']` while safely recursing into structured dictionaries.
+   - Generated dynamic `M1_OBSERVATION_QUALIFICATION.json` bound to tested commit, timestamp, environment, and physical file immutability receipts.
+   - Tests: 39 passed in 4.55s; 78 failure record tests passed in 20.45s.
+
+2. **Safety Track 1B (Runtime Retention & Restoration, PR #61)**:
+   - Eliminated crash window data loss in `rollback_interrupted_cycle` by reconciling physical presence and SHA-256 hashes between source and destination regardless of in-memory `moved` flags, unlinking the archive only after all entries are proven restored.
+   - Prevented overwriting newer resumed work in `restore_archive` by pre-validating destinations and raising `FileExistsError` on conflicting files.
+   - Enforced strict cohort qualification for `REBUILDABLE_CACHE` (excluding code, plans, and state files) and protected archive storage from reclassification.
+   - Made journal updates atomic via tempfile and `os.replace`.
+   - Tests: 10 passed in 1.21s.
+
+3. **Track 2 (Channel DNA Repairs & Acceptance Reconciliation, PR #62)**:
+   - Enforced evidence attributability contract in `study.py:evaluate_study_readiness`: requires sample video ID presence, positive bytes, SHA-256 digests, and appropriate modalities (`transcript`/`metadata`).
+   - Required corroboration across >= 2 distinct supporting sample videos for reusable multimodal guidance (`visual_motion`, `soundtrack`, `packaging`).
+   - Made profile revisions immutable in `ProfileActivationManager` (raises `ValueError` on differing payload under existing revision).
+   - Ensured fail-closed recovery in `recover_interrupted_activation`, discarding corrupted switch targets (`{}`) and preserving the prior active profile pointer.
+   - Propagated multimodal guidance bundles to resolved `Channel` instances across new-episode boundaries.
+   - Added permanent adversarial regression test suite `tests/unit/test_channel_dna_adversarial_regressions.py` (4 passed).
+   - Reconciled documentation navigation (`docs/README.md`), contract discoverability (`AGENTS.md` and `production/AGENTS.md`), and honestly documented static vs live discovery boundaries in `docs/skills/PROVENANCE_AND_DISCOVERY.md`.
+   - Reopened #37 and #39 with explicit remaining acceptance scopes.
+   - Documented and authenticated user Option A offline substitution approval for #45 (conversation step 1613) without claiming live REA demonstration.
+   - Mapped uncovered Track A lifecycle requirements to bounded issues #58 (Recovery Set & Isolated DB Restore) and #59 (Convergent Authority Discovery & Runtime Cutover) under parent #31.
+
+### Next
+- Monitor CI checks on PRs #60, #61, #62.
+- Merge PRs into `master` following final-head checks and independent review.
+- Close demonstrated child issues #54-#56, #40, #43, #44, #46-#48, #50.
+- Keep parent #31, #37, #39, #58, #59 open.
+- Present final corrective campaign disposition to the human for acceptance.
+
+### Failures & Fixes
+- `failure_record.py`: `sanitize_record` initially treated dict values under `context` as unlabelled prose and redacted the entire dictionary to string `"[redacted]"`. Fixed by recursing into structured dictionaries and lists while redacting sensitive string leaves, preserving dictionary access.
+- `study.py`: `add_evidence` and `record_core_trait` called `self.save_study(updated_study)` which computed updated status, but returned the stale un-evaluated `updated_study`. Fixed by returning `self.save_study(updated_study)`.
