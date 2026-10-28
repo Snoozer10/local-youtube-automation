@@ -1,0 +1,104 @@
+{
+  "issue": 58,
+  "requirements": [
+    "D4",
+    "D5"
+  ],
+  "declared_recovery_set_count": 10,
+  "recovery_manifest": {
+    "recovery_id": "qualification_run",
+    "created_at": "2026-10-28T18:57:26Z",
+    "runtime_root": "C:\\Users\\Snoozer\\AppData\\Local\\Temp\\pytest-of-Snoozer\\pytest-1914\\test_generate_recovery_qualifi0\\runtime",
+    "total_files": 5,
+    "total_bytes": 12382,
+    "files": [
+      {
+        "relative_path": "adaptive.sqlite3",
+        "category": "DATABASE",
+        "sha256": "58318207eb6b922c3ca90177ef30b2affe19c89f5f5c2731931a64fb70ff9db0",
+        "size_bytes": 12288,
+        "is_database": true
+      },
+      {
+        "relative_path": "M1_OBSERVATION_RECEIPT.json",
+        "category": "RECEIPT",
+        "sha256": "5691918841ece6713291aedc70c1f58196176fcebe968a98559e532f97a66249",
+        "size_bytes": 18,
+        "is_database": false
+      },
+      {
+        "relative_path": "resource.lease",
+        "category": "LOCK",
+        "sha256": "8fc6b75197192db9f581cc4d286fd265b601ee5b46dbcdbcde8aeeaca64ae849",
+        "size_bytes": 21,
+        "is_database": false
+      },
+      {
+        "relative_path": "run.lock",
+        "category": "LOCK",
+        "sha256": "6c1ba3f153abc4365d919b12b8dc6ce080a91fb40becba2922d0e22b9fb1b412",
+        "size_bytes": 16,
+        "is_database": false
+      },
+      {
+        "relative_path": "SPEC23_CLOSEOUT.json",
+        "category": "RECEIPT",
+        "sha256": "fa8b80c7d1d508ad2bdaf193f9165518ad6c32193a6442d76d7535fcf8cc9768",
+        "size_bytes": 39,
+        "is_database": false
+      }
+    ],
+    "manifest_sha256": "c1c9c678e517adcc4dd4e575c642d4db92b6807ecab6a9fc7ac483296b40378a"
+  },
+  "restoration_receipt": {
+    "status": "RESTORED",
+    "recovery_id": "qualification_run",
+    "restored_at": "2026-10-28T18:57:26Z",
+    "manifest_sha256": "c1c9c678e517adcc4dd4e575c642d4db92b6807ecab6a9fc7ac483296b40378a",
+    "total_files": 5,
+    "restored_files": [
+      {
+        "relative_path": "adaptive.sqlite3",
+        "category": "DATABASE",
+        "sha256": "58318207eb6b922c3ca90177ef30b2affe19c89f5f5c2731931a64fb70ff9db0",
+        "size_bytes": 12288,
+        "is_database": true
+      },
+      {
+        "relative_path": "M1_OBSERVATION_RECEIPT.json",
+        "category": "RECEIPT",
+        "sha256": "5691918841ece6713291aedc70c1f58196176fcebe968a98559e532f97a66249",
+        "size_bytes": 18,
+        "is_database": false
+      },
+      {
+        "relative_path": "resource.lease",
+        "category": "LOCK",
+        "sha256": "8fc6b75197192db9f581cc4d286fd265b601ee5b46dbcdbcde8aeeaca64ae849",
+        "size_bytes": 21,
+        "is_database": false
+      },
+      {
+        "relative_path": "run.lock",
+        "category": "LOCK",
+        "sha256": "6c1ba3f153abc4365d919b12b8dc6ce080a91fb40becba2922d0e22b9fb1b412",
+        "size_bytes": 16,
+        "is_database": false
+      },
+      {
+        "relative_path": "SPEC23_CLOSEOUT.json",
+        "category": "RECEIPT",
+        "sha256": "fa8b80c7d1d508ad2bdaf193f9165518ad6c32193a6442d76d7535fcf8cc9768",
+        "size_bytes": 39,
+        "is_database": false
+      }
+    ]
+  },
+  "demonstrated_properties": {
+    "non_mutating_source_backup": true,
+    "isolated_point_in_time_sqlite_snapshot": true,
+    "database_integrity_verified": true,
+    "conflict_refusal_on_newer_work": true,
+    "tamper_detection_fail_closed": true
+  }
+}
