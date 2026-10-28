@@ -218,3 +218,41 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 ### Failures & Fixes
 - `failure_record.py`: `sanitize_record` initially treated dict values under `context` as unlabelled prose and redacted the entire dictionary to string `"[redacted]"`. Fixed by recursing into structured dictionaries and lists while redacting sensitive string leaves, preserving dictionary access.
 - `study.py`: `add_evidence` and `record_core_trait` called `self.save_study(updated_study)` which computed updated status, but returned the stale un-evaluated `updated_study`. Fixed by returning `self.save_study(updated_study)`.
+
+
+## Architecture-Renewal Disposition Review Corrections, 2026-10-28
+
+### Done
+1. **Safety Track 1 (Database Status, Diagnostics, Retention & Facades, PR #63 - Merged `f22db81`)**:
+   - Closed WAL sidecar creation race in `ledger_observation.py`: re-checks header bytes 18 & 19 on open connection before executing any queries; immediately closes and returns `UNSUPPORTED_WAL` if WAL layout detected, creating 0 `-shm` or `-wal` sidecars. Verified via `test_native_transient_and_sidecar_creation_prevented_on_layout_transition`.
+   - Bound M1 qualification receipt `evidence/receipts/M1_OBSERVATION_QUALIFICATION.json` to source file SHA-256 manifest and demonstrated sidecar prevention proof.
+   - Fixed diagnostic privacy leaks in `failure_record.py`: auth headers project strictly to `{Header}: [redacted]`, dropping trailing prose (e.g. `Our acquisition target is Orion`). `sanitize_record` recurses with `parent_sensitive=True` and enforces semantic key allowlisting, ensuring nested context values (e.g. `context.note = AcquisitionTargetOrion`) are redacted while numbers/bools and safe frame/known-issue definitions are preserved.
+   - Fixed archive cycle reuse in `retention.py`: rejects cycle reuse if receipt already exists (`REFUSED_ALREADY_EXISTS`), protecting earlier archived bytes.
+   - Enhanced multi-file interrupted restore resumption: `restore_archive` verifies destination file SHA-256 hashes to resume across partial moves without raising `FileNotFoundError`.
+   - Hardened cache classification: restricted `REBUILDABLE_CACHE` to `KNOWN_REBUILDABLE_COHORTS` with `UNKNOWN_PRESERVE` default.
+   - Synchronized facade deletions: updated `_FacadeProxy.__delattr__` in `compile_video.py` and `text_gate.py` to forward attribute deletion to underlying `self._target` and synchronize across submodules.
+   - Test suites: 132 passed in 51.46s (safety), 73 passed in 12.69s (facades). All remote CI checks passed on PR #63 (run 40708320778).
+
+2. **Track 2 (Channel DNA Physical Evidence, Modality & Digest Validation, PR #64)**:
+   - Enforced physical disk evidence verification in `study.py`: `evaluate_study_readiness` validates actual file presence, non-zero size, and SHA-256 match on disk.
+   - Required narrative modality (`transcript`/`narrative`) across >= 2 videos for core traits, refusing metadata-only studies from reaching `CORE_READY`.
+   - Gated optional guidance bundles (`visual_motion`, `soundtrack`, `packaging`) on matching modality (`audio` for sound, `visual` for motion, `thumbnail`/`title`/`metadata` for packaging) and `resolved_contradictions is True`.
+   - Validated active profile digest on load: `load_active_profile` computes canonical profile digest and asserts exact match against `active_revision.json['profile_digest']`, raising `ValueError` on file tampering.
+   - Tests: 30 passed in 5.01s (including 8 adversarial regression tests).
+
+3. **Acceptance & Issue State**:
+   - Reopened child issues with demonstrated defects: #54, #55, #56, #40, #43, #44, #46, #47, #48, #50.
+   - Kept open awaiting completion: Parent #31, #37, #39, #58, #59.
+   - User Option A approval for #45 confirmed and preserved without live REA execution.
+
+### Next
+- Verify PR #64 CI completion on GitHub Actions.
+- Merge PR #64 into `master`.
+- Post completion receipts and close satisfied child issues (#54-#56, #40, #43-#44, #46-#48, #50).
+- Keep #31, #37, #39, #58, #59 open.
+- Present final disposition to human for acceptance.
+
+### Failures & Fixes
+- `failure_record.py`: Removing auth header prefix pattern caused projection to `[unknown/unknown] RuntimeError` which lacked `[redacted]` string expected by legacy test cases. Fixed by extracting matched header name and projecting directly to `{header_name}: [redacted]`.
+- `failure_record.py`: Frame and known issue attributes were over-redacted due to missing key allowlisting. Fixed by adding `file`, `function`, and static `known_issue` descriptors to allowlisted diagnostic fields.
+- `profile_activation.py`: Canonical profile digest computation encountered Windows CRLF mismatch against memory strings. Resolved by hashing normalized JSON UTF-8 bytes.
