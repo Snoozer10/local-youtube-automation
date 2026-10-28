@@ -166,6 +166,9 @@ def test_adversarial_tampered_physical_evidence_blocks_derivation_and_activation
     for area in ["subject_promise", "viewer_need", "tone_register", "narrative_structure"]:
         st = col.record_core_trait(st, area, f"claim {area}", ["v1", "v2"], ["ev_t1", "ev_t2"], f"rationale {area}")
 
+    # Derive profile while evidence is intact
+    prof = derive_production_profile(st)
+
     # Tamper physical file on disk
     (col.evidence_dir / "ev_t1.bin").write_bytes(b"tampered bytes!")
     valid, mismatches = col.verify_evidence_integrity(st)
@@ -176,11 +179,9 @@ def test_adversarial_tampered_physical_evidence_blocks_derivation_and_activation
         derive_production_profile(col.load_study())
 
     # Also test publish_and_activate directly refuses tampered profile
-    prof = derive_production_profile(st.model_copy(update={"study_dir": None}))
-    prof_tampered = prof.model_copy(update={"study_dir": str(col.study_dir), "evidence_hashes": {"ev_t1": "original_hash"}})
     mgr = ProfileActivationManager(tmp_path / "ch_t_dir")
-    with pytest.raises(ValueError, match="Cannot activate profile"):
-        mgr.publish_and_activate(prof_tampered)
+    with pytest.raises(ValueError, match="Cannot activate profile.*tampered"):
+        mgr.publish_and_activate(prof)
 
 
 def test_adversarial_metadata_alone_cannot_establish_narrative_core(tmp_path: Path):
@@ -252,4 +253,153 @@ def test_adversarial_active_pointer_digest_mismatch_blocks_load(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Active profile digest mismatch"):
         mgr.load_active_profile()
+
+
+def test_missing_evidence_directory_fails_closed_with_actionable_gaps(tmp_path: Path):
+    """F5: Absent evidence directory fails closed with actionable gaps and blocks activation."""
+    sdir = tmp_path / "study_missing_ev"
+    col = StudyCollector(sdir)
+    st = col.initialize_study("st_m_ev", "ch_m_ev", _make_candidates())
+    st = col.add_evidence(st, "v1", "transcript", b"v1 text", evidence_id="ev1")
+    st = col.add_evidence(st, "v2", "transcript", b"v2 text", evidence_id="ev2")
+
+    for area in ["subject_promise", "viewer_need", "tone_register", "narrative_structure"]:
+        st = col.record_core_trait(st, area, f"claim {area}", ["v1", "v2"], ["ev1", "ev2"], f"rationale {area}")
+
+    # Derive valid profile before storage is moved away
+    prof = derive_production_profile(st)
+
+    # Preserving evidence away simulates absent storage
+    col.evidence_dir.rename(col.study_dir / "evidence-preserved-away")
+    from youtube_automation.production.study import evaluate_study_readiness
+    status, gaps = evaluate_study_readiness(st)
+
+    assert status == StudyStatus.PARTIAL
+    assert any("Physical evidence directory missing on disk" in g for g in gaps)
+
+    # Derivation fails closed on missing storage
+    with pytest.raises(ValueError, match="missing mandatory core evidence"):
+        derive_production_profile(st)
+
+    # Activation fails closed on missing storage
+    mgr = ProfileActivationManager(tmp_path / "ch_missing_ev")
+    with pytest.raises(ValueError, match="physical evidence directory missing"):
+        mgr.publish_and_activate(prof)
+
+
+def test_identical_evidence_input_does_not_double_count_spend(tmp_path: Path):
+    """F7: Repeated identical evidence input must not double-count duration or bytes."""
+    sdir = tmp_path / "study_dup"
+    col = StudyCollector(sdir)
+    st = col.initialize_study("st_dup", "ch_dup", _make_candidates())
+
+    st = col.add_evidence(st, "v1", "transcript", b"same content", duration_sec=20.0, evidence_id="ev_same")
+    before_spend = st.spend.model_dump()
+
+    st = col.add_evidence(st, "v1", "transcript", b"same content", duration_sec=20.0, evidence_id="ev_same")
+    after_spend = st.spend.model_dump()
+
+    assert len(st.evidence) == 1
+    assert before_spend["total_duration_sec"] == 20.0
+    assert after_spend["total_duration_sec"] == 20.0
+    assert before_spend["total_bytes"] == len(b"same content")
+    assert after_spend["total_bytes"] == len(b"same content")
+
+
+def test_external_seconds_budget_exceeded_leaves_study_partial(tmp_path: Path):
+    """F7: Exceeding max_external_seconds leaves study in PARTIAL state with actionable gap."""
+    sdir = tmp_path / "study_budget"
+    col = StudyCollector(sdir)
+    st = col.initialize_study("st_b", "ch_b", _make_candidates())
+    st = col.add_evidence(st, "v1", "transcript", b"v1 text", evidence_id="ev1")
+    st = col.add_evidence(st, "v2", "transcript", b"v2 text", evidence_id="ev2")
+
+    for area in ["subject_promise", "viewer_need", "tone_register", "narrative_structure"]:
+        st = col.record_core_trait(st, area, f"claim {area}", ["v1", "v2"], ["ev1", "ev2"], f"rationale {area}")
+
+    from youtube_automation.production.study import evaluate_study_readiness
+    base_status, base_gaps = evaluate_study_readiness(st)
+    assert base_status == StudyStatus.CORE_READY
+
+    over_spend = st.spend.model_copy(update={"external_seconds": st.policy.max_external_seconds + 1.0})
+    st_over = st.model_copy(update={"spend": over_spend})
+    over_status, over_gaps = evaluate_study_readiness(st_over)
+
+    assert over_status == StudyStatus.PARTIAL
+    assert any("Exceeded external time limit" in g for g in over_gaps)
+
+
+def test_representative_appropriate_media_bundle_into_guidance(tmp_path: Path):
+    """F8 / #46-#48: Bounded valid representative offline media bundle derives observable guidance."""
+    import io
+    import wave
+
+    # Real 1x1 valid PNG image bytes
+    png_bytes = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00"
+        b"\x00\x1f\x15c4\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x00\x05\xfe\x02\xfe\xa7V\xfe\xae"
+        b"\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+    # Real RIFF WAV audio bytes generated via stdlib wave module
+    wav_io = io.BytesIO()
+    with wave.open(wav_io, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(44100)
+        wf.writeframes(b"\x00\x00" * 4410)  # 100ms of valid audio
+    wav_bytes = wav_io.getvalue()
+
+    # Valid MP4 container header
+    mp4_bytes = b"\x00\x00\x00\x1cftypisom\x00\x00\x02\x00isomiso2mp41\x00\x00\x00\x08free\x00\x00\x00\x08mdat"
+
+    sdir = tmp_path / "study_representative"
+    col = StudyCollector(sdir)
+    st = col.initialize_study("st_rep", "ch_rep", _make_candidates())
+
+    # Transcripts
+    st = col.add_evidence(st, "v1", "transcript", b"Documentary narrative transcript 1", evidence_id="ev_t1")
+    st = col.add_evidence(st, "v2", "transcript", b"Documentary narrative transcript 2", evidence_id="ev_t2")
+
+    # Visual frame and motion clip (#46)
+    st = col.add_evidence(st, "v1", "frame", png_bytes, examined_range=(0.0, 5.0), evidence_id="ev_frame")
+    st = col.add_evidence(st, "v2", "clip", mp4_bytes, examined_range=(10.0, 20.0), duration_sec=10.0, evidence_id="ev_clip")
+
+    # Audio (#47)
+    st = col.add_evidence(st, "v1", "audio", wav_bytes, examined_range=(0.0, 10.0), duration_sec=10.0, evidence_id="ev_audio1")
+    st = col.add_evidence(st, "v2", "audio", wav_bytes, examined_range=(0.0, 10.0), duration_sec=10.0, evidence_id="ev_audio2")
+
+    # Packaging thumbnail and title (#48)
+    st = col.add_evidence(st, "v1", "thumbnail", png_bytes, evidence_id="ev_thumb1")
+    st = col.add_evidence(st, "v2", "thumbnail", png_bytes, evidence_id="ev_thumb2")
+    st = col.add_evidence(st, "v1", "title", b"Why Formations Evolved", evidence_id="ev_title1")
+    st = col.add_evidence(st, "v2", "title", b"Tactics and Formations Part 2", evidence_id="ev_title2")
+
+    # Core traits
+    st = col.record_core_trait(st, "subject_promise", "Tactical evolution in warfare", ["v1", "v2"], ["ev_t1", "ev_t2"], "Historical evidence")
+    st = col.record_core_trait(st, "viewer_need", "Military history audience", ["v1", "v2"], ["ev_t1", "ev_t2"], "Viewer retention pattern")
+    st = col.record_core_trait(st, "tone_register", "Serious documentary Khaleeji", ["v1", "v2"], ["ev_t1", "ev_t2"], "Audio/narrative delivery")
+    st = col.record_core_trait(st, "narrative_structure", "Hook, problem, mechanical analysis, outcome", ["v1", "v2"], ["ev_t1", "ev_t2"], "Story arc")
+
+    # Multimodal guidance traits
+    st = col.record_core_trait(st, "visual_motion", "Rule-of-thirds historical portrait framing", ["v1", "v2"], ["ev_frame", "ev_clip"], "Slow linear pans")
+    st = col.record_core_trait(st, "soundtrack", "Acoustic oud ambient underbed", ["v1", "v2"], ["ev_audio1", "ev_audio2"], "Muted under voice")
+    st = col.record_core_trait(st, "packaging", "Question hook title, high contrast figure", ["v1", "v2"], ["ev_thumb1", "ev_thumb2", "ev_title1", "ev_title2"], "Bold white typography")
+
+    assert st.status == StudyStatus.CORE_READY
+    prof = derive_production_profile(st)
+
+    assert prof.visual_guidance["composition"] == "Rule-of-thirds historical portrait framing"
+    assert prof.audio_guidance["treatment"] == "Acoustic oud ambient underbed"
+    assert prof.packaging_guidance["packaging_rules"] == "Question hook title, high contrast figure"
+    assert prof.provenance["visual_guidance"] == "evidence_derived"
+    assert prof.provenance["audio_guidance"] == "evidence_derived"
+
+    mgr = ProfileActivationManager(tmp_path / "ch_rep_active")
+    res = mgr.publish_and_activate(prof)
+    assert res["status"] == "ACTIVATED"
+    channel = mgr.resolve_channel()
+    assert channel.visual_guidance == prof.visual_guidance
+    assert channel.audio_guidance == prof.audio_guidance
+
 
