@@ -94,6 +94,26 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
     conn = None
     try:
         conn = sqlite3.connect(uri, uri=True, timeout=busy_timeout_ms / 1000.0)
+
+        # Re-verify layout before executing any queries to detect concurrent transition to WAL
+        # If an external process switched to WAL, executing queries would create -shm/-wal sidecars.
+        with target.open("rb") as f:
+            post_header = f.read(100)
+        post_wal = (
+            len(post_header) >= 100
+            and (post_header[18] == 2 or post_header[19] == 2)
+        ) or target.with_name(f"{target.name}-wal").exists() or target.with_name(f"{target.name}-shm").exists()
+
+        if post_wal:
+            conn.close()
+            conn = None
+            return ObservationDecision(
+                status="UNSUPPORTED_WAL",
+                message="Database uses WAL layout or has WAL sidecars; pre-access refusal as WAL cannot be proven non-mutating on Windows",
+                rows=[],
+                supported=False,
+            )
+
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
 
