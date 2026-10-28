@@ -27,6 +27,9 @@ class _FacadeProxy(ModuleType):
         else:
             setattr(self._get_module(), name, value)
 
+    def __delattr__(self, name: str) -> None:
+        self.__dict__.pop(name, None)
+
     def __dir__(self) -> list[str]:
         return dir(self._get_module())
 
