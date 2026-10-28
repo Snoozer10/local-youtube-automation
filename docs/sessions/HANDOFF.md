@@ -256,3 +256,39 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - `failure_record.py`: Removing auth header prefix pattern caused projection to `[unknown/unknown] RuntimeError` which lacked `[redacted]` string expected by legacy test cases. Fixed by extracting matched header name and projecting directly to `{header_name}: [redacted]`.
 - `failure_record.py`: Frame and known issue attributes were over-redacted due to missing key allowlisting. Fixed by adding `file`, `function`, and static `known_issue` descriptors to allowlisted diagnostic fields.
 - `profile_activation.py`: Canonical profile digest computation encountered Windows CRLF mismatch against memory strings. Resolved by hashing normalized JSON UTF-8 bytes.
+
+
+## Architecture-Renewal Return Review Corrections (PR #65 & PR #66), 2026-10-28
+
+### Done
+1. **Safety Track 1 (Observation Envelope, Diagnostics Privacy & Retention, PR #65 - Merged `14db478`)**:
+   - Implemented SQLite WAL observation envelope in `ledger_observation.py`: detects concurrent transitions to WAL layout during execution, deterministically closes connection/statements, unlinks transient observer-spawned sidecars, and returns honest refusal (`status="UNSUPPORTED_WAL"`, `supported=False`) with zero sidecars left on disk. Verified via `test_post_second_check_wal_transition_refused_without_sidecars`.
+   - Bound M1 qualification receipt `evidence/receipts/M1_OBSERVATION_QUALIFICATION.json` to source file SHA-256 manifest and demonstrated sidecar prevention proof.
+   - Fixed diagnostic privacy leak for untrusted known issue signatures in `failure_record.py`: non-canonical free-text `observed_signature` (e.g. `Our acquisition target is Orion`) is redacted in `known_issue` and projected to `[id] Known issue matched` without echoing untrusted strings. Verified via `test_historical_known_issue_untrusted_signature_redacted`.
+   - Protected pending archive cycles in `retention.py`: in-progress cycles lacking a completion receipt refuse conflicting reuse with differing candidates (`REFUSED_ALREADY_EXISTS`), preserving older archived bytes and journals. Verified via `test_incomplete_cycle_reuse_refused_preserving_prior_bytes`.
+   - Structured rebuildable cache qualification: defined `QUALIFIED_REBUILDABLE_COHORTS` with explicit owners, generation recipes, and recovery qualifications, matching directory paths rather than arbitrary substrings.
+   - Tests: 128 passed in 49.81s; remote CI passed (run 40733001856 in 9m 32s).
+
+2. **Track 2 (Channel DNA Mandatory Storage, Idempotent Spend & Budget Bounds, PR #66)**:
+   - Mandatory physical evidence storage: `evaluate_study_readiness` and `publish_and_activate` require physical study and evidence directory storage on disk. Absent storage fails closed with actionable gap `Physical evidence directory missing on disk` (`StudyStatus.PARTIAL`) and refuses activation (`ValueError`). Verified via `test_missing_evidence_directory_fails_closed_with_actionable_gaps`.
+   - Idempotent study spend: `StudyCollector.add_evidence` checks for existing identical evidence items (same ID and SHA-256) and avoids double-counting cumulative duration or byte spend on resume. Verified via `test_identical_evidence_input_does_not_double_count_spend`.
+   - Cumulative external seconds budget limit: `evaluate_study_readiness` enforces `study.spend.external_seconds <= study.policy.max_external_seconds`, leaving study in `PARTIAL` state if exceeded. Verified via `test_external_seconds_budget_exceeded_leaves_study_partial`.
+   - Bounded representative offline media bundle: demonstrated derivation from real PNG frames/thumbnails, real RIFF WAV audio, valid MP4 clip, and narrative transcript into observable guidance carried into `Brief` and `Channel` contracts. Verified via `test_representative_appropriate_media_bundle_into_guidance`.
+   - Revalidated physical evidence on recovery: `recover_interrupted_activation` verifies target revision evidence files and SHA-256 hashes before restoring pointer.
+   - Tests: 34 passed in 5.82s.
+
+3. **Issue Status**:
+   - Reopened with verified receipts: #54, #55, #56, #40, #43, #44, #46, #47, #48, #50.
+   - Strictly OPEN: Parent #31 (awaiting final human acceptance), #37, #39, #58, #59.
+   - Option A offline substitution confirmed for #45.
+
+### Next
+1. Merge PR #66 into `master` upon CI completion.
+2. Advance Track A Issue #58 (Complete operational recovery set and isolated database restoration).
+3. Advance Track A Issue #59 (Convergent cross-checkout authority discovery, runtime cutover, and maintenance exclusion).
+4. Reconcile remaining core documentation in #37 and multi-host skill discovery in #39.
+5. Present final campaign results to the human for acceptance; do not close parent #31.
+
+### Failures & Fixes
+- `ledger_observation.py`: On Windows, deleting SQLite WAL sidecars immediately after `conn.close()` failed with `PermissionError` because statement cursor objects retained OS file locks. Resolved by deleting local `cur` reference and calling `gc.collect()` before unlinking transient sidecars.
+- `test_channel_dna_adversarial_regressions.py`: Ruff linter flagged `import io, wave` as `E401` / `I001`. Resolved by splitting imports.
