@@ -90,7 +90,7 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
         )
 
     # Connect strictly in read-only mode via URI for rollback journal databases
-    uri = f"file:{target.as_posix()}?mode=ro"
+    uri = f"{target.as_uri()}?mode=ro"
     conn = None
     try:
         conn = sqlite3.connect(uri, uri=True, timeout=busy_timeout_ms / 1000.0)
@@ -105,6 +105,18 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
             return ObservationDecision(
                 status="UNSUPPORTED_SCHEMA",
                 message="Database does not contain the required 'jobs' table",
+                rows=[],
+                supported=False,
+            )
+
+        cur.execute("PRAGMA table_info(jobs)")
+        existing_cols = {row["name"] for row in cur.fetchall()}
+        required_cols = {"key", "state", "attempts", "fence", "detail"}
+        if not required_cols.issubset(existing_cols):
+            missing = sorted(required_cols - existing_cols)
+            return ObservationDecision(
+                status="UNSUPPORTED_SCHEMA",
+                message=f"Database table 'jobs' is missing required columns: {missing}",
                 rows=[],
                 supported=False,
             )
@@ -127,7 +139,7 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
             supported=True,
         )
 
-    except sqlite3.OperationalError as exc:
+    except (sqlite3.OperationalError, sqlite3.DatabaseError) as exc:
         msg = str(exc).lower()
         if "locked" in msg or "busy" in msg:
             return ObservationDecision(
@@ -136,7 +148,12 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
                 rows=[],
                 supported=False,
             )
-        if "malformed" in msg or "corrupt" in msg or "file is not a database" in msg:
+        if (
+            "malformed" in msg
+            or "corrupt" in msg
+            or "file is not a database" in msg
+            or "disk image" in msg
+        ):
             return ObservationDecision(
                 status="DAMAGED",
                 message=f"Database file is damaged: {exc}",
@@ -145,7 +162,7 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
             )
         return ObservationDecision(
             status="DAMAGED",
-            message=f"Operational error during inspection: {exc}",
+            message=f"Database error during inspection: {exc}",
             rows=[],
             supported=False,
         )

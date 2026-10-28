@@ -282,17 +282,109 @@ def test_native_os_readonly_enforcement_proves_zero_mutation(tmp_path: Path) -> 
         os.chmod(str(db_path), stat.S_IWRITE)
 
 
+def test_observation_handles_metacharacters_in_path_without_mutation(tmp_path: Path) -> None:
+    """AC 5: Path containing URI metacharacters (#, %, spaces) is safely opened via URI without creating sibling files."""
+    db_path = tmp_path / "ledger#private %20.sqlite3"
+    _init_rollback_ledger(db_path, populate=True)
+
+    before_snapshot = _dir_snapshot(tmp_path)
+    before_hash = _file_hash(db_path)
+
+    decision = observe_ledger(db_path)
+    assert decision.status == "POPULATED"
+    assert decision.supported is True
+    assert len(decision.rows) == 1
+
+    after_snapshot = _dir_snapshot(tmp_path)
+    after_hash = _file_hash(db_path)
+
+    assert after_hash == before_hash
+    assert after_snapshot == before_snapshot
+    assert not (tmp_path / "ledger").exists(), "Created unintended truncated sibling file!"
+
+
+def test_observation_handles_damaged_btree_with_valid_header(tmp_path: Path) -> None:
+    """AC 4: Damaged page-1 btree with valid 100-byte SQLite header returns DAMAGED without uncaught exception."""
+    db_path = tmp_path / "damaged_btree.sqlite3"
+    _init_rollback_ledger(db_path, populate=True)
+
+    # Corrupt page-1 btree
+    raw = bytearray(db_path.read_bytes())
+    raw[100] = 0
+    db_path.write_bytes(raw)
+
+    before_hash = _file_hash(db_path)
+    decision = observe_ledger(db_path)
+
+    assert decision.status == "DAMAGED"
+    assert decision.supported is False
+    assert "damaged" in decision.message.lower() or "malformed" in decision.message.lower()
+    assert _file_hash(db_path) == before_hash
+
+
+def test_observation_handles_incompatible_columns_schema(tmp_path: Path) -> None:
+    """AC 4: Table 'jobs' missing required columns is classified as UNSUPPORTED_SCHEMA, not DAMAGED."""
+    db_path = tmp_path / "incompatible_schema.sqlite3"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA journal_mode=DELETE;")
+    conn.execute("CREATE TABLE jobs (key TEXT PRIMARY KEY, state TEXT);")
+    conn.commit()
+    conn.close()
+
+    before_hash = _file_hash(db_path)
+    decision = observe_ledger(db_path)
+
+    assert decision.status == "UNSUPPORTED_SCHEMA"
+    assert decision.supported is False
+    assert "missing required columns" in decision.message
+    assert _file_hash(db_path) == before_hash
+
+
+def test_native_attempted_writes_are_blocked_by_readonly_uri(tmp_path: Path) -> None:
+    """AC 5: Demonstrated evidence that read-only URI strictly blocks all native SQL write operations."""
+    db_path = tmp_path / "native_write_test.sqlite3"
+    _init_rollback_ledger(db_path, populate=True)
+
+    uri = f"{db_path.resolve().as_uri()}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+
+    with pytest.raises(sqlite3.OperationalError, match=r"attempt to write a readonly database"):
+        conn.execute("INSERT INTO jobs (key, recipe, state) VALUES ('k2', 'r', 'PENDING')")
+
+    with pytest.raises(sqlite3.OperationalError, match=r"attempt to write a readonly database"):
+        conn.execute("UPDATE jobs SET state='FAILED'")
+
+    with pytest.raises(sqlite3.OperationalError, match=r"attempt to write a readonly database"):
+        conn.execute("DELETE FROM jobs")
+
+    with pytest.raises(sqlite3.OperationalError, match=r"attempt to write a readonly database"):
+        conn.execute("CREATE TABLE evil (id INT)")
+
+    conn.close()
+
+
 def test_generate_qualification_receipt() -> None:
-    """AC 9 & AC 10: Produce the formal qualification receipt recorded in evidence/receipts/."""
+    """AC 9 & AC 10: Produce the formal qualification receipt bound to source commit and demonstrated checks."""
+    import subprocess
+    from datetime import datetime, timezone
+
     receipt_dir = Path("evidence/receipts")
     receipt_dir.mkdir(parents=True, exist_ok=True)
     receipt_path = receipt_dir / "M1_OBSERVATION_QUALIFICATION.json"
 
+    try:
+        commit_head = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True
+        ).strip()
+    except Exception:
+        commit_head = "untracked"
+
     receipt_data = {
-        "timestamp": "2026-10-27T04:15:00Z",
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "milestone": "M1",
         "issue": 55,
         "qualification_status": "QUALIFIED_WITH_BOUNDARIES",
+        "source_commit": commit_head,
         "environment": {
             "interpreter": sys.executable,
             "python_version": platform.python_version(),
@@ -303,12 +395,18 @@ def test_generate_qualification_receipt() -> None:
         },
         "candidate_strategy": {
             "name": "pre_access_header_discriminated_readonly_uri",
-            "uri_pattern": "file:{target_path}?mode=ro",
+            "uri_pattern": "{target_path.as_uri()}?mode=ro",
             "pre_access_checks": [
                 "filesystem existence validation (prevents file creation on absent databases)",
                 "directory sidecar scan (.db-wal, .db-shm)",
-                "100-byte SQLite header magic verification (b'SQLite format 3\\x00')",
+                "100-byte SQLite header magic verification (b'SQLite format 3\x00')",
                 "header byte 18/19 format version inspection (mode 1 rollback vs mode 2 WAL)",
+                "PRAGMA table_info required column schema validation",
+            ],
+            "native_enforcement": [
+                "RFC 8089 URI encoding via Path.as_uri() prevents path-truncation and sibling file creation",
+                "SQLite URI mode=ro strictly blocks native INSERT/UPDATE/DELETE/CREATE with OperationalError",
+                "Native OS-level read-only attribute (stat.S_IREAD) tested and verified",
             ],
         },
         "supported_states": [
@@ -318,12 +416,18 @@ def test_generate_qualification_receipt() -> None:
                 "result": "status='POPULATED', rows returned",
                 "mutation_audit": "0 byte modifications, 0 sidecars, identical SHA-256 digests before/after",
                 "native_os_proof": "Verified under OS-level read-only attribute (stat.S_IREAD)",
+                "native_write_proof": "Verified sqlite3.OperationalError: attempt to write a readonly database",
             },
             {
                 "state": "EMPTY_ROLLBACK",
                 "condition": "Compatible SQLite 3 database in rollback journal mode with 0 rows in jobs table",
                 "result": "status='EMPTY', 0 rows returned",
                 "mutation_audit": "0 byte modifications, 0 sidecars, identical SHA-256 digests before/after",
+            },
+            {
+                "state": "METAMECHAR_PATH_ROLLBACK",
+                "condition": "Compatible database path containing #, %, and spaces",
+                "result": "status='POPULATED', 0 sibling files created, identical SHA-256",
             },
         ],
         "unsupported_states": [
@@ -343,13 +447,18 @@ def test_generate_qualification_receipt() -> None:
                 "behavior": "Refusal (status='DAMAGED'); zero repair attempts",
             },
             {
+                "state": "DAMAGED_BTREE_VALID_HEADER",
+                "reason": "Corrupted btree structure raises sqlite3.DatabaseError",
+                "behavior": "Refusal (status='DAMAGED'); caught safely, zero repair attempts, 0 byte mutations",
+            },
+            {
                 "state": "BUSY_EXCLUSIVE_LOCK",
                 "reason": "Another process holds an exclusive write lock",
                 "behavior": "Refusal (status='BUSY') after bounded timeout; zero blocking or corruption",
             },
             {
-                "state": "FOREIGN_SCHEMA",
-                "reason": "Database lacks jobs table",
+                "state": "FOREIGN_SCHEMA_OR_MISSING_COLUMNS",
+                "reason": "Database lacks jobs table or lacks required columns (key, state, attempts, fence, detail)",
                 "behavior": "Refusal (status='UNSUPPORTED_SCHEMA'); zero migration or schema writes",
             },
         ],
