@@ -181,6 +181,13 @@ def project_safe_message(
     cleaned = _clean(message, limit=300)
     if is_safe_operational_message(cleaned):
         return cleaned
+    auth_m = re.match(
+        r"(?i)^['\"]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)['\"]?\s*[:=]",
+        cleaned,
+    )
+    if auth_m:
+        header_name = auth_m.group(1).title()
+        return f"{header_name}: [redacted]"
     if known_issue and isinstance(known_issue, dict) and known_issue.get("id"):
         sig = known_issue.get("observed_signature")
         return f"[{known_issue['id']}] {sig}" if sig else f"[{known_issue['id']}] Known issue matched"
@@ -487,6 +494,8 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
         header_values: bool = False,
         key_name: str = "",
         parent_sensitive: bool = False,
+        is_known_issue: bool = False,
+        is_frame: bool = False,
     ) -> Any:
         nonlocal remaining
         if remaining <= 0:
@@ -494,7 +503,7 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
         remaining -= 1
         if depth > 8:
             return "[truncated]"
-        if (header_values or parent_sensitive) and not isinstance(value, (dict, list)):
+        if header_values and not isinstance(value, (dict, list)):
             return "[redacted]"
         if isinstance(value, str):
             if key_name == "message":
@@ -512,6 +521,19 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
             cleaned = _clean(value[:4096], limit=300)
             if any(ord(c) > 126 for c in cleaned) or re.search(r"(?i)\bcanary\b", cleaned):
                 return "[redacted]"
+            if is_known_issue:
+                return cleaned
+            if is_frame:
+                if key_name == "file" and (cleaned.startswith(("src/", ".runtime/")) or cleaned == "<external-path>"):
+                    return cleaned
+                if key_name == "function" and re.fullmatch(r"^[a-zA-Z0-9_]{1,120}$", cleaned):
+                    return cleaned
+            if key_name == "evidence" and (
+                cleaned.startswith(("src/", ".runtime/", "scratch/"))
+                or cleaned == "<external-path>"
+                or re.fullmatch(r"^[a-zA-Z0-9_\-./]{1,120}$", cleaned)
+            ):
+                return cleaned
             if (
                 cleaned in {"<external-path>", "<missing>", "<unknown>"}
                 or is_safe_operational_message(cleaned)
@@ -520,7 +542,7 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
             if key_name in {
                 "stage", "state", "recipe", "job_id", "jobid", "channel_id", "channelid", "fence",
                 "attempts", "category", "severity", "exception", "layer", "kind",
-                "utc", "safe_id", "safeid", "id", "status"
+                "utc", "safe_id", "safeid", "id", "status", "version",
             }:
                 if re.fullmatch(r"^[a-zA-Z0-9_\-.:/]{1,80}$", cleaned):
                     return cleaned
@@ -544,6 +566,8 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
                         header_values or normalized in {"headers", "requestheaders", "responseheaders"},
                         key_name=normalized,
                         parent_sensitive=parent_sensitive or is_sensitive_key,
+                        is_known_issue=is_known_issue or normalized in {"knownissue", "known_issue"},
+                        is_frame=is_frame or normalized == "frame",
                     )
             return result
         if isinstance(value, list):
@@ -558,6 +582,8 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
                         header_values,
                         key_name=key_name,
                         parent_sensitive=parent_sensitive,
+                        is_known_issue=is_known_issue,
+                        is_frame=is_frame,
                     )
                 )
             return items
