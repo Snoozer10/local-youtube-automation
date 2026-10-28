@@ -41,6 +41,7 @@ These instructions are the shared project contract loaded by supported coding ag
 - tests/AGENTS.md: test isolation, regression evidence and fixture ownership.
 - tools/AGENTS.md: maintained QA utilities, manual diagnostics, import safety and verification.
 - .codex/AGENTS.md: branch-local Codex guidance and configuration validation.
+- docs/error-solving/AGENTS.md: case records, known error patterns, and bounded diagnostic procedures.
 - docs/sessions/ has no child AGENTS.md; root owns session and delegation-record workflows.
 
 ## Project navigation

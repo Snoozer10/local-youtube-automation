@@ -83,12 +83,14 @@ To restore an archived skill or reconstruct a verified copy from canonical prove
 2. Verify the downloaded `SKILL.md` against `computedHash`.
 3. If restoring from `.agents/skill-archive/<cohort>/<skill>`, verify the file bytes match the recorded checksum in `skill-lock.json: archive_integrity`.
 4. Copy to the platform-specific directory (`.claude/skills/<skill>/` or `.agents/skills/<skill>/`).
-5. Confirm discovery by running the test suite: `pytest tests/unit/test_skill_discovery_and_lock.py`.
+5. Verify structural lockfile compliance by running: `pytest tests/unit/test_skill_discovery_and_lock.py`. Note that unit tests verify lock schema and file presence; live fresh-session platform discovery and restoration across AGY, Codex, and Claude remain open acceptance items pending host environment checks.
 
 ---
 
 ## 6. Explicit Platform Limitations and Gaps
 
-1. **Codex Selection Enforcement**: Codex versions prior to 0.160 do not enforce project-level skill selection at invocation time.
-2. **Gitignored Workspace Directory**: The `.agents/` folder is explicitly excluded in `.gitignore`. Consequently, workspace skills on AGY/Codex rely on local filesystem presence rather than tracked Git revisions.
-3. **No Dynamic Hot-Reload**: Active conversational sessions do not hot-reload skill catalog changes made during a task; fresh sessions are required to reflect catalog modifications.
+1. **Static Test vs Live Discovery Boundary**: `test_skill_discovery_and_lock.py` validates local file presence, lock schema, and relative paths; it does not invoke live platform agents or execute host-level runtime tool discovery.
+2. **Platform Restoration & Discovery Gaps**: Live fresh-session discovery and byte restoration remain outstanding (Issue #39 is reopened as PARTIAL) pending authentic host-session execution and owner reconciliation of dirty source locks.
+3. **Codex Selection Enforcement**: Codex versions prior to 0.160 do not enforce project-level skill selection at invocation time.
+4. **Gitignored Workspace Directory**: The `.agents/` folder is explicitly excluded in `.gitignore`. Consequently, workspace skills on AGY/Codex rely on local filesystem presence rather than tracked Git revisions.
+5. **No Dynamic Hot-Reload**: Active conversational sessions do not hot-reload skill catalog changes made during a task; fresh sessions are required to reflect catalog modifications.
