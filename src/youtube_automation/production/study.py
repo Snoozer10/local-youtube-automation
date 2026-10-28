@@ -213,16 +213,24 @@ def evaluate_study_readiness(study: ReferenceStudy) -> tuple[StudyStatus, list[s
         gaps.append(
             f"Exceeded external attempt cap: {study.spend.external_attempts} > {study.policy.max_external_attempts}"
         )
+    if study.spend.external_seconds > study.policy.max_external_seconds:
+        gaps.append(
+            f"Exceeded external time limit: {study.spend.external_seconds}s > {study.policy.max_external_seconds}s"
+        )
 
     # 3. Evidence integrity & index
     evidence_by_id = {e.evidence_id: e for e in study.evidence}
     if not study.evidence:
         gaps.append("Study contains zero evidence items; evidence-backed claims required")
 
-    # Physical evidence integrity check
-    if study.study_dir:
+    # Physical evidence integrity check: storage must exist and contain verified files
+    if not study.study_dir:
+        gaps.append("Study directory path is unset; physical storage required")
+    else:
         ev_dir = Path(study.study_dir) / "evidence"
-        if ev_dir.is_dir():
+        if not ev_dir.is_dir():
+            gaps.append(f"Physical evidence directory missing on disk: {ev_dir}")
+        else:
             for ev in study.evidence:
                 ev_file = ev_dir / f"{ev.evidence_id}.bin"
                 if not ev_file.is_file():
@@ -384,13 +392,27 @@ class StudyCollector:
         if evidence_id is None:
             evidence_id = notes if notes.startswith("ev") else f"ev_{video_id}_{modality}_{sha[:8]}"
 
+        # Check if identical evidence was already recorded (idempotent resume)
+        existing_match = None
+        for e in study.evidence:
+            if e.evidence_id == evidence_id:
+                existing_match = e
+                break
+
+        is_identical = (
+            existing_match is not None
+            and existing_match.sha256 == sha
+            and existing_match.byte_count == len(data)
+        )
+
         # Write evidence bytes
         ev_file = self.evidence_dir / f"{evidence_id}.bin"
         ev_file.write_bytes(data)
 
-        # Update spend
+        # Update spend: only increment if evidence is new or changed
         spend = study.spend.model_copy()
-        spend.add_source(duration_sec, len(data))
+        if not is_identical:
+            spend.add_source(duration_sec, len(data))
 
         new_evidence = AttributableEvidence(
             evidence_id=evidence_id,

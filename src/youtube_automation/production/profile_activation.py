@@ -244,19 +244,23 @@ class ProfileActivationManager:
 
     def publish_and_activate(self, profile: DerivedProductionProfile) -> dict[str, Any]:
         """Publish immutable revision and atomically switch active pointer."""
-        # Verify physical evidence integrity before publishing/activating
-        if profile.study_dir:
-            ev_dir = Path(profile.study_dir) / "evidence"
-            if ev_dir.is_dir() and profile.evidence_hashes:
-                for ev_id, expected_sha in profile.evidence_hashes.items():
-                    ev_file = ev_dir / f"{ev_id}.bin"
-                    if not ev_file.is_file():
-                        raise ValueError(f"Cannot activate profile: missing evidence file for {ev_id}")
-                    actual_sha = hashlib.sha256(ev_file.read_bytes()).hexdigest()
-                    if actual_sha != expected_sha:
-                        raise ValueError(
-                            f"Cannot activate profile: physical evidence file {ev_id} tampered (hash mismatch)"
-                        )
+        # Mandatory physical evidence validation before publishing or activating
+        if not profile.study_dir:
+            raise ValueError("Cannot activate profile: missing study directory storage")
+        ev_dir = Path(profile.study_dir) / "evidence"
+        if not ev_dir.is_dir():
+            raise ValueError(f"Cannot activate profile: physical evidence directory missing: {ev_dir}")
+        if not profile.evidence_hashes:
+            raise ValueError("Cannot activate profile: profile contains zero evidence hashes")
+        for ev_id, expected_sha in profile.evidence_hashes.items():
+            ev_file = ev_dir / f"{ev_id}.bin"
+            if not ev_file.is_file():
+                raise ValueError(f"Cannot activate profile: missing evidence file for {ev_id}")
+            actual_sha = hashlib.sha256(ev_file.read_bytes()).hexdigest()
+            if actual_sha != expected_sha:
+                raise ValueError(
+                    f"Cannot activate profile: physical evidence file {ev_id} tampered (hash mismatch)"
+                )
 
         self.revisions_dir.mkdir(parents=True, exist_ok=True)
         rev_dir = self.revisions_dir / profile.revision
@@ -321,8 +325,9 @@ class ProfileActivationManager:
         target_rev = journal["target_revision"]
         rev_file = self.revisions_dir / target_rev / "profile.json"
 
-        # Validate target revision: existence, schema, digest, and identity
+        # Validate target revision: existence, schema, digest, identity, and physical evidence
         is_valid_target = False
+        loaded = None
         if rev_file.is_file():
             try:
                 target_json = rev_file.read_text(encoding="utf-8")
@@ -334,6 +339,24 @@ class ProfileActivationManager:
                     loaded = DerivedProductionProfile.model_validate(target_dict)
                     if loaded.revision == target_rev and loaded.channel_id == journal.get("channel_id"):
                         is_valid_target = True
+            except Exception:
+                is_valid_target = False
+
+        if is_valid_target and loaded is not None:
+            # Revalidate target profile's physical evidence before finalizing recovery pointer
+            try:
+                if not loaded.study_dir:
+                    is_valid_target = False
+                else:
+                    ev_dir = Path(loaded.study_dir) / "evidence"
+                    if not ev_dir.is_dir() or not loaded.evidence_hashes:
+                        is_valid_target = False
+                    else:
+                        for ev_id, expected_sha in loaded.evidence_hashes.items():
+                            ev_file = ev_dir / f"{ev_id}.bin"
+                            if not ev_file.is_file() or hashlib.sha256(ev_file.read_bytes()).hexdigest() != expected_sha:
+                                is_valid_target = False
+                                break
             except Exception:
                 is_valid_target = False
 
