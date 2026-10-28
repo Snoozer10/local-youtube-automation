@@ -331,7 +331,8 @@ def test_external_seconds_budget_exceeded_leaves_study_partial(tmp_path: Path):
 
 def test_representative_appropriate_media_bundle_into_guidance(tmp_path: Path):
     """F8 / #46-#48: Bounded valid representative offline media bundle derives observable guidance."""
-    import io, wave
+    import io
+    import wave
 
     # Real 1x1 valid PNG image bytes
     png_bytes = (
