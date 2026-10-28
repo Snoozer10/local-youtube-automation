@@ -283,12 +283,59 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
    - Option A offline substitution confirmed for #45.
 
 ### Next
-1. Merge PR #66 into `master` upon CI completion.
-2. Advance Track A Issue #58 (Complete operational recovery set and isolated database restoration).
-3. Advance Track A Issue #59 (Convergent cross-checkout authority discovery, runtime cutover, and maintenance exclusion).
-4. Reconcile remaining core documentation in #37 and multi-host skill discovery in #39.
+1. Merge PR #66 into `master` upon CI completion. (Done: merged as `d83da33`).
+2. Advance Track A Issue #58 (Complete operational recovery set and isolated database restoration). (Done: PR #67 merged as `9604eab`).
+3. Advance Track A Issue #59 (Convergent cross-checkout authority discovery, runtime cutover, and maintenance exclusion). (Done: PR #68 merged as `249955e`).
+4. Reconcile remaining core documentation in #37 and multi-host skill discovery in #39. (Done: PR #69 merged as `80de0c7`, PR #70 merged as `de6bf39`).
 5. Present final campaign results to the human for acceptance; do not close parent #31.
 
 ### Failures & Fixes
 - `ledger_observation.py`: On Windows, deleting SQLite WAL sidecars immediately after `conn.close()` failed with `PermissionError` because statement cursor objects retained OS file locks. Resolved by deleting local `cur` reference and calling `gc.collect()` before unlinking transient sidecars.
 - `test_channel_dna_adversarial_regressions.py`: Ruff linter flagged `import io, wave` as `E401` / `I001`. Resolved by splitting imports.
+
+
+## Architecture-Renewal Campaign Full Acceptance & Completion, 2026-10-28
+
+### Done
+1. **Track A Issue #58 (Operational Recovery Set & Isolated DB Restore, PR #67 - Merged `9604eab`)**:
+   - Declared complete operational recovery set in `src/youtube_automation/production/recovery.py` covering SQLite databases, sidecars, locks, and lineage receipts.
+   - Implemented point-in-time database snapshotting using SQLite online backup API (`conn.backup()`) with 0-byte source drift and standalone consolidation (`PRAGMA journal_mode=DELETE`).
+   - Implemented isolated restoration refusing conflicts with newer destination files (`FileExistsError`).
+   - Generated verification receipt `evidence/receipts/M4_RECOVERY_SET_QUALIFICATION.json`.
+   - Verified via `tests/unit/test_operational_recovery.py` (7 passed); remote CI passed (run 40750911078 in 10m 3s). Issue #58 closed.
+
+2. **Track A Issue #59 (Convergent Cross-Checkout Authority & Cutover, PR #68 - Merged `249955e`)**:
+   - Implemented convergent authority discovery in `src/youtube_automation/production/authority.py` across environment overrides, `.authority.json` configs, and checkout fallbacks.
+   - Enforced fail-closed boundaries on ambiguous pointers (`AmbiguousAuthorityError`) and damaged/truncated SQLite databases (`DamagedAuthorityError`).
+   - Enforced runtime compatibility cutover on sub-version schemas (`IncompatibleAuthorityError`).
+   - Implemented maintenance exclusion mode (`MAINTENANCE.lock` raising `MaintenanceExclusionError`) and stale fence rejection (`StaleFencingGenerationError`).
+   - Generated verification receipt `evidence/receipts/M5_AUTHORITY_DISCOVERY_QUALIFICATION.json`.
+   - Verified via `tests/unit/test_cross_checkout_authority.py` (7 passed); remote CI passed (run 40758829056 in 10m 41s). Issue #59 closed.
+
+3. **Core Documentation Issue #37 (ADR 0005 Operational Amendment, PR #69 - Merged `80de0c7`)**:
+   - Reconciled operational clauses in `docs/adr/0005-audio-dsp-contract.md` with root/production contracts in-place (session recovery data preservation, Windows CRLF+NUL named pipe framing, and channel-specific voice / null-voice TTS gating).
+   - Reconciled `docs/README.md` to reflect `Keep` status and updated conflict guidance.
+   - Preserved all core DSP, loudness, and timeline decisions intact with 0 broken links.
+   - Remote CI passed (run 40767050364 in 12m 20s). Issue #37 closed.
+
+4. **Skills Discovery Issue #39 (Canonical Provenance & Platform Discovery, PR #70 - Merged `de6bf39`)**:
+   - Validated canonical lockfiles (`skill-lock.json` and `skills-lock.json`) covering 52 tasks across 24 bound skills and 14 active Claude skills.
+   - Demonstrated isolated byte-exact skill restoration from archive payloads in `test_demonstrate_simulated_skill_restoration`.
+   - Documented explicit recorded platform discovery boundaries in `docs/skills/PROVENANCE_AND_DISCOVERY.md` (Codex <0.160 selection limits, `.agents/` gitignored convention, dynamic reload limits).
+   - Generated verification receipt `evidence/receipts/M2_SKILL_PROVENANCE_QUALIFICATION.json`.
+   - Verified via `tests/unit/test_skill_discovery_and_lock.py` (7 passed); remote CI passed (run 40772522329 in 11m 58s). Issue #39 closed.
+
+5. **Tracker & Campaign State**:
+   - Every single child issue (#37, #38, #39, #40, #41, #42, #43, #44, #45, #46, #47, #48, #49, #50, #54, #55, #56, #58, #59) is verified and CLOSED with recorded qualification receipts.
+   - Parent Spec Issue #31 remains STRICTLY OPEN awaiting final human acceptance.
+
+### Next
+- Present final campaign disposition and verification evidence to the human for final campaign review and acceptance.
+- Await human instruction to close parent #31.
+
+### Failures & Fixes
+- `recovery.py`: SQLite WAL sidecar copying during database backup caused Windows `OSError: [Errno 22] Invalid argument` on memory-mapped `-shm` sidecars. Resolved by using SQLite online backup API to consolidate WAL pages into a standalone database and applying `PRAGMA journal_mode=DELETE` to the backup copy without separate sidecar copying.
+- `authority.py`: Truncated database test failed assertion because file under 100 bytes triggered the truncation guard rather than the header check. Resolved by making corrupted test file >= 100 bytes.
+- `test_skill_discovery_and_lock.py`: Python `write_text` defaulted to CRLF on Windows, altering restored SHA-256 hash. Resolved by enforcing `newline="\n"`.
+- Disk Space: Windows drive `C:` reached 0 MB free during git index write. User freed 3.26 GB, resolving git lock write errors.
+- Network DNS: Local router DNS intermittently failed lookups for `github.com`. Resolved git push operations via `http.curloptResolve=github.com:443:140.82.121.4` without modifying host OS configuration.
