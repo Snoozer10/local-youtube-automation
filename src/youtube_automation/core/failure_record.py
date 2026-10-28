@@ -189,8 +189,20 @@ def project_safe_message(
         header_name = auth_m.group(1).title()
         return f"{header_name}: [redacted]"
     if known_issue and isinstance(known_issue, dict) and known_issue.get("id"):
-        sig = known_issue.get("observed_signature")
-        return f"[{known_issue['id']}] {sig}" if sig else f"[{known_issue['id']}] Known issue matched"
+        raw_id = str(known_issue.get("id") or "").strip()
+        canonical = None
+        for issue in _load_issues():
+            if issue.get("id") == raw_id:
+                canonical = issue
+                break
+        if canonical:
+            sig = canonical.get("observed_signature")
+            return f"[{canonical['id']}] {sig}" if sig else f"[{canonical['id']}] Known issue matched"
+        # Untrusted non-canonical known issue: project bounded ID only, NEVER echo arbitrary free-text signature
+        if re.fullmatch(r"^[a-zA-Z0-9_\-]{1,60}$", raw_id):
+            return f"[{raw_id}] Known issue matched"
+        base_name = exc_name.strip() or "Failure"
+        return f"[{layer}/{kind}] {base_name}"
     base_name = exc_name.strip() or "Failure"
     return f"[{layer}/{kind}] {base_name}"
 
@@ -522,7 +534,33 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
             if any(ord(c) > 126 for c in cleaned) or re.search(r"(?i)\bcanary\b", cleaned):
                 return "[redacted]"
             if is_known_issue:
-                return cleaned
+                if key_name == "id":
+                    if re.fullmatch(r"^[a-zA-Z0-9_\-]{1,60}$", cleaned):
+                        return cleaned
+                    return "[redacted]"
+                if key_name == "observed_signature":
+                    canonical_signatures = {
+                        issue.get("observed_signature") for issue in _load_issues() if issue.get("observed_signature")
+                    }
+                    if cleaned in canonical_signatures:
+                        return cleaned
+                    return "[redacted]"
+                if key_name in {"cause_status", "confidence"}:
+                    if cleaned in {"observed", "hypothesis", "high", "medium", "low"}:
+                        return cleaned
+                    return "[redacted]"
+                if key_name in {"cause", "fix"}:
+                    canonical_texts = {
+                        issue.get(key_name) for issue in _load_issues() if issue.get(key_name)
+                    }
+                    if cleaned in canonical_texts:
+                        return cleaned
+                    return "[redacted]"
+                if key_name == "evidence":
+                    if cleaned.startswith((".runtime/", "src/")) or cleaned == "<external-path>":
+                        return cleaned
+                    return "[redacted]"
+                return "[redacted]"
             if is_frame:
                 if key_name == "file" and (cleaned.startswith(("src/", ".runtime/")) or cleaned == "<external-path>"):
                     return cleaned

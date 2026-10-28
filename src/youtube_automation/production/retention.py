@@ -47,6 +47,47 @@ def compute_sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+@dataclasses.dataclass(frozen=True)
+class RebuildableCohort:
+    name: str
+    owner: str
+    rebuild_recipe: str
+    recovery_qualification: str
+    allowed_extensions: tuple[str, ...]
+
+
+QUALIFIED_REBUILDABLE_COHORTS: dict[str, RebuildableCohort] = {
+    "intermediate_frames": RebuildableCohort(
+        name="intermediate_frames",
+        owner="video_compiler.rasterizer",
+        rebuild_recipe="VideoCompiler.render_span / ffmpeg filtergraph re-rasterization",
+        recovery_qualification="Intermediate PNG/raw frame cache; fully rebuildable from timeline.json and source assets",
+        allowed_extensions=(".cache", ".tmp_cache"),
+    ),
+    "temp_scratch": RebuildableCohort(
+        name="temp_scratch",
+        owner="pipeline.worker",
+        rebuild_recipe="PipelineWorker.execute / scratch rerun from stage inputs",
+        recovery_qualification="Transient task scratch workspace; reproducible from stage input assets and configuration",
+        allowed_extensions=(".cache", ".tmp_cache"),
+    ),
+    "video_compiler_intermediate": RebuildableCohort(
+        name="video_compiler_intermediate",
+        owner="video_compiler.encoder",
+        rebuild_recipe="VideoCompiler.compile_video / segment ladder re-encode",
+        recovery_qualification="Intermediate H.264/AAC segment cache; rebuildable from clip journal and input media",
+        allowed_extensions=(".cache", ".tmp_cache"),
+    ),
+    "ffmpeg_temp": RebuildableCohort(
+        name="ffmpeg_temp",
+        owner="media_runner.ffmpeg",
+        rebuild_recipe="MediaRunner.run_ffmpeg / filtergraph pass rerun",
+        recovery_qualification="Temporary audio/video pass buffer; rebuildable from source clips via media runner",
+        allowed_extensions=(".cache", ".tmp_cache"),
+    ),
+}
+
+
 def classify_entry(path: Path, root: Path) -> RetentionCandidate:
     """Classify a single runtime entry by purpose, active references, and retention policy."""
     rel = path.relative_to(root).as_posix().lower()
@@ -88,23 +129,23 @@ def classify_entry(path: Path, root: Path) -> RetentionCandidate:
     non_disposable_exts = {".json", ".md", ".py", ".sql", ".txt", ".yaml", ".yml", ".sh", ".ps1"}
     has_non_disposable_ext = any(rel.endswith(ext) for ext in non_disposable_exts)
 
-    KNOWN_REBUILDABLE_COHORTS = (
-        "intermediate_frames",
-        "temp_scratch",
-        "video_compiler_intermediate",
-        "ffmpeg_temp",
-    )
-    is_known_cohort = any(k in rel for k in KNOWN_REBUILDABLE_COHORTS)
-    is_cache_ext = rel.endswith(".cache") or rel.endswith(".tmp_cache")
+    rel_parts = Path(rel).parts
+    matched_cohort = None
+    for cohort_name, cohort in QUALIFIED_REBUILDABLE_COHORTS.items():
+        is_in_cohort_dir = cohort_name in rel_parts[:-1]
+        is_cohort_file = rel_parts[-1].startswith(cohort_name)
+        if (is_in_cohort_dir or is_cohort_file) and any(rel.endswith(ext) for ext in cohort.allowed_extensions):
+            matched_cohort = cohort
+            break
 
-    if not has_non_disposable_ext and is_known_cohort and is_cache_ext:
+    if not has_non_disposable_ext and matched_cohort is not None:
         return RetentionCandidate(
             path=path,
             category=RetentionCategory.REBUILDABLE_CACHE,
             size_bytes=size,
             sha256=file_sha,
-            rationale="Rebuildable intermediate cache with reproducible generation recipe",
-            owner="pipeline.worker",
+            rationale=f"{matched_cohort.recovery_qualification} (Recipe: {matched_cohort.rebuild_recipe})",
+            owner=matched_cohort.owner,
         )
 
     # 4. Unknown: fail-safe default is preserve
@@ -206,45 +247,90 @@ class ReversibleArchiveCycle:
         cycle_dir = self.archive_storage / cycle_id
         receipt_path = cycle_dir / "ARCHIVE_RECEIPT.json"
         if receipt_path.is_file():
-            # Refuse cycle reuse to preserve recovery history and historical bytes
+            # Refuse completed cycle reuse to preserve recovery history and historical bytes
             return {
                 "cycle_id": cycle_id,
                 "status": "REFUSED_ALREADY_EXISTS",
                 "receipt_path": str(receipt_path),
                 "archived_count": 0,
             }
-        cycle_dir.mkdir(parents=True, exist_ok=True)
+
         journal_file = self._journal_path(cycle_id)
+        has_existing_journal = journal_file.is_file()
+        has_existing_files = cycle_dir.exists() and any(cycle_dir.rglob("*"))
 
-        # 2. Write pre-archive journal with exact source paths and SHA-256 preimages
-        journal_entries: list[dict[str, Any]] = []
-        for c in candidates:
-            rel = c.path.relative_to(self.runtime_root).as_posix()
-            dest = cycle_dir / rel
-            journal_entries.append({
-                "source": str(c.path.resolve()),
-                "relative": rel,
-                "dest": str(dest.resolve()),
-                "sha256": c.sha256,
-                "size_bytes": c.size_bytes,
-                "moved": False,
-            })
+        if has_existing_journal or has_existing_files:
+            if not has_existing_journal:
+                # Pending files exist without journal or receipt: refuse reuse to protect ambiguous bytes
+                return {
+                    "cycle_id": cycle_id,
+                    "status": "REFUSED_ALREADY_EXISTS",
+                    "cycle_dir": str(cycle_dir),
+                    "archived_count": 0,
+                }
+            try:
+                existing_journal = json.loads(journal_file.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return {
+                    "cycle_id": cycle_id,
+                    "status": "REFUSED_ALREADY_EXISTS",
+                    "journal_path": str(journal_file),
+                    "archived_count": 0,
+                }
+            existing_entries = existing_journal.get("entries", [])
+            candidate_map = {c.path.resolve(): c for c in candidates}
+            journal_sources = {Path(e["source"]).resolve(): e for e in existing_entries}
 
-        journal_data = {
-            "cycle_id": cycle_id,
-            "status": "IN_PROGRESS",
-            "runtime_root": str(self.runtime_root),
-            "cycle_dir": str(cycle_dir),
-            "entries": journal_entries,
-        }
-        self._write_journal_atomically(journal_file, journal_data)
+            is_matching_resume = (
+                len(candidate_map) == len(journal_sources)
+                and all(
+                    src in journal_sources
+                    and (candidate_map[src].sha256 == journal_sources[src].get("sha256"))
+                    for src in candidate_map
+                )
+            )
+            if not is_matching_resume:
+                # Conflicting reuse attempt with differing candidates or modified bytes
+                return {
+                    "cycle_id": cycle_id,
+                    "status": "REFUSED_ALREADY_EXISTS",
+                    "journal_path": str(journal_file),
+                    "archived_count": 0,
+                }
+            journal_entries = existing_entries
+            journal_data = existing_journal
+        else:
+            cycle_dir.mkdir(parents=True, exist_ok=True)
+            journal_entries = []
+            for c in candidates:
+                rel = c.path.relative_to(self.runtime_root).as_posix()
+                dest = cycle_dir / rel
+                journal_entries.append({
+                    "source": str(c.path.resolve()),
+                    "relative": rel,
+                    "dest": str(dest.resolve()),
+                    "sha256": c.sha256,
+                    "size_bytes": c.size_bytes,
+                    "moved": False,
+                })
+            journal_data = {
+                "cycle_id": cycle_id,
+                "status": "IN_PROGRESS",
+                "runtime_root": str(self.runtime_root),
+                "cycle_dir": str(cycle_dir),
+                "entries": journal_entries,
+            }
+            self._write_journal_atomically(journal_file, journal_data)
 
         # 3. Move files to archive directory while updating journal atomically
         for entry in journal_entries:
+            if entry.get("moved"):
+                continue
             src = Path(entry["source"])
             dst = Path(entry["dest"])
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(src), str(dst))
+            if src.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(src), str(dst))
             entry["moved"] = True
             self._write_journal_atomically(journal_file, journal_data)
 
@@ -259,7 +345,7 @@ class ReversibleArchiveCycle:
             "cycle_id": cycle_id,
             "status": "COMPLETED",
             "receipt_path": str(receipt_path),
-            "archived_count": len(candidates),
+            "archived_count": len(journal_entries),
         }
 
     def rollback_interrupted_cycle(self, cycle_id: str) -> dict[str, Any]:
