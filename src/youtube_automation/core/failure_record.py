@@ -523,14 +523,14 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
                 raw_key = str(key)[:1024]
                 clean_key = _clean(raw_key, limit=80)
                 normalized = re.sub(r"[^a-z0-9]", "", raw_key.lower())
-                if header_values or normalized in sensitive:
+                if header_values or (normalized in sensitive and not isinstance(item, (dict, list))):
                     result[clean_key] = "[redacted]"
                     remaining -= 1
                 else:
                     result[clean_key] = visit(
                         item,
                         depth + 1,
-                        normalized in {"headers", "requestheaders", "responseheaders"},
+                        header_values or normalized in {"headers", "requestheaders", "responseheaders"},
                         key_name=normalized,
                     )
             return result
