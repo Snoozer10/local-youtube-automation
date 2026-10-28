@@ -76,6 +76,9 @@ class Channel(Contract):
     humor: Literal["none", "light", "central"] = "light"
     max_zoom: float = Field(default=1.06, ge=1, le=1.15)
     revision: str | None = Field(default=None, max_length=120, description="Immutable profile content revision identity")
+    visual_guidance: dict[str, Any] = Field(default_factory=dict)
+    audio_guidance: dict[str, Any] = Field(default_factory=dict)
+    packaging_guidance: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def check_host(self) -> Channel:
@@ -292,6 +295,9 @@ def narration_fingerprint(brief: Brief) -> str:
     channel.pop("repetition_limited_visual_families", None)
     channel.pop("max_visual_family_repetitions", None)
     channel.pop("max_non_diagram_scene_appearances", None)
+    channel.pop("visual_guidance", None)
+    channel.pop("audio_guidance", None)
+    channel.pop("packaging_guidance", None)
     projected = brief.model_dump(mode="json")
     projected["version"] = 2
     projected.pop("profile_revision", None)
@@ -319,6 +325,12 @@ def _canonical_fingerprint_value(value: Any) -> Any:
             normalized.pop("source_sha256", None)
         if normalized.get("visual_strategy") is None:
             normalized.pop("visual_strategy", None)
+        if normalized.get("visual_guidance") == {}:
+            normalized.pop("visual_guidance", None)
+        if normalized.get("audio_guidance") == {}:
+            normalized.pop("audio_guidance", None)
+        if normalized.get("packaging_guidance") == {}:
+            normalized.pop("packaging_guidance", None)
         if "channel_id" in normalized and normalized.get("max_non_diagram_scene_appearances") is None:
             normalized.pop("max_non_diagram_scene_appearances", None)
         if normalized.get("version") == 1 and "channel_id" in normalized:
@@ -340,7 +352,11 @@ def _canonical_fingerprint_value(value: Any) -> Any:
 
 
 def load_channel(path: str | Path) -> Channel:
-    return Channel.model_validate_json(Path(path).read_text(encoding="utf-8-sig"))
+    p = Path(path)
+    if p.is_dir() and (p / "active_revision.json").is_file():
+        from .profile_activation import ProfileActivationManager
+        return ProfileActivationManager(p).resolve_channel()
+    return Channel.model_validate_json(p.read_text(encoding="utf-8-sig"))
 
 
 def load_brief(run_dir: str | Path) -> Brief:

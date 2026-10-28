@@ -189,14 +189,14 @@ def select_sample(
 
 
 def evaluate_study_readiness(study: ReferenceStudy) -> tuple[StudyStatus, list[str]]:
-    """Evaluate core readiness vs partial state per settled Issue #35 criteria."""
+    """Evaluate core readiness vs partial state per settled Issue #35 criteria and evidence contract."""
     gaps: list[str] = []
 
     # 1. Distinct video sample check
-    distinct_videos = {v.video_id for v in study.selected_sample}
-    if len(distinct_videos) < study.policy.min_distinct_videos_for_core:
+    sample_ids = {v.video_id for v in study.selected_sample}
+    if len(sample_ids) < study.policy.min_distinct_videos_for_core:
         gaps.append(
-            f"Sample has {len(distinct_videos)} distinct videos; minimum {study.policy.min_distinct_videos_for_core} required"
+            f"Sample has {len(sample_ids)} distinct videos; minimum {study.policy.min_distinct_videos_for_core} required"
         )
 
     # 2. Cumulative cap checks
@@ -213,17 +213,63 @@ def evaluate_study_readiness(study: ReferenceStudy) -> tuple[StudyStatus, list[s
             f"Exceeded external attempt cap: {study.spend.external_attempts} > {study.policy.max_external_attempts}"
         )
 
-    # 3. Required core areas check
+    # 3. Evidence integrity & index
+    evidence_by_id = {e.evidence_id: e for e in study.evidence}
+    if not study.evidence:
+        gaps.append("Study contains zero evidence items; evidence-backed claims required")
+
+    for ev in study.evidence:
+        if ev.video_id not in sample_ids:
+            gaps.append(f"Evidence '{ev.evidence_id}' references video '{ev.video_id}' not in selected sample")
+        if not ev.sha256 or len(ev.sha256) != 64:
+            gaps.append(f"Evidence '{ev.evidence_id}' has invalid SHA-256 digest")
+        if ev.byte_count <= 0:
+            gaps.append(f"Evidence '{ev.evidence_id}' has non-positive byte count: {ev.byte_count}")
+
+    # 4. Required core areas check
     for area in REQUIRED_CORE_AREAS:
         trait = study.core_traits.get(area)
         if trait is None:
             gaps.append(f"Missing required core area: '{area}'")
             continue
 
+        if not trait.claim or not trait.claim.strip():
+            gaps.append(f"Core area '{area}' has empty claim")
+        if not trait.rationale or not trait.rationale.strip():
+            gaps.append(f"Core area '{area}' has blank rationale")
+
         distinct_supporting = set(trait.supporting_video_ids)
         if len(distinct_supporting) < 2:
             gaps.append(
                 f"Core area '{area}' supported by {len(distinct_supporting)} video(s); minimum 2 required"
+            )
+
+        for vid in distinct_supporting:
+            if vid not in sample_ids:
+                gaps.append(f"Core area '{area}' references supporting video '{vid}' not in selected sample")
+
+        if not trait.evidence_ids:
+            gaps.append(f"Core area '{area}' has no linked evidence IDs")
+
+        linked_vids = set()
+        for eid in trait.evidence_ids:
+            if eid not in evidence_by_id:
+                gaps.append(f"Core area '{area}' references nonexistent evidence ID '{eid}'")
+                continue
+            ev = evidence_by_id[eid]
+            if ev.video_id not in distinct_supporting:
+                gaps.append(
+                    f"Core area '{area}' linked evidence '{eid}' video '{ev.video_id}' not in supporting video IDs"
+                )
+            if ev.modality not in ("transcript", "metadata"):
+                gaps.append(
+                    f"Core area '{area}' linked evidence '{eid}' has inappropriate modality '{ev.modality}'; expected transcript or metadata"
+                )
+            linked_vids.add(ev.video_id)
+
+        if len(linked_vids) < 2:
+            gaps.append(
+                f"Core area '{area}' linked evidence covers {len(linked_vids)} distinct video(s); minimum 2 required"
             )
 
         if not trait.resolved_contradictions:
@@ -293,6 +339,7 @@ class StudyCollector:
         duration_sec: float = 0.0,
         is_owner_supplied: bool = False,
         notes: str = "",
+        evidence_id: str | None = None,
     ) -> ReferenceStudy:
         """Add attributable evidence, updating cumulative spend and persisting the raw item."""
         # 1. Enforce per-video duration limit
@@ -302,7 +349,8 @@ class StudyCollector:
             )
 
         sha = compute_sha256(data)
-        evidence_id = f"ev_{video_id}_{modality}_{sha[:8]}"
+        if evidence_id is None:
+            evidence_id = notes if notes.startswith("ev") else f"ev_{video_id}_{modality}_{sha[:8]}"
 
         # Write evidence bytes
         ev_file = self.evidence_dir / f"{evidence_id}.bin"
@@ -329,8 +377,7 @@ class StudyCollector:
         updated_study = study.model_copy(
             update={"evidence": existing_evidence, "spend": spend}
         )
-        self.save_study(updated_study)
-        return updated_study
+        return self.save_study(updated_study)
 
     def record_core_trait(
         self,
@@ -361,8 +408,7 @@ class StudyCollector:
         traits[area] = trait
 
         updated_study = study.model_copy(update={"core_traits": traits})
-        self.save_study(updated_study)
-        return updated_study
+        return self.save_study(updated_study)
 
     def verify_evidence_integrity(self, study: ReferenceStudy) -> tuple[bool, list[str]]:
         """Verify that all recorded evidence files exist on disk and match their stored SHA-256."""
