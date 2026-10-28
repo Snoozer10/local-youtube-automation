@@ -97,30 +97,33 @@ def multimodal_study(tmp_path: Path) -> tuple[StudyCollector, Path]:
     study = collector.initialize_study("study_multi", "pilot_channel", candidates)
 
     # 1. Transcripts for narrative/core
-    study = collector.add_evidence(study, "v01", "transcript", b"Transcript 1 narrative bytes")
-    study = collector.add_evidence(study, "v02", "transcript", b"Transcript 2 narrative bytes")
+    study = collector.add_evidence(study, "v01", "transcript", b"Transcript 1 narrative bytes", evidence_id="ev_v01_t")
+    study = collector.add_evidence(study, "v02", "transcript", b"Transcript 2 narrative bytes", evidence_id="ev_v02_t")
 
     # 2. Frames and clips for visual/motion (#46)
-    study = collector.add_evidence(study, "v01", "frame", b"JPEG_FRAME_SAMPLE_1", examined_range=(10.0, 15.0))
-    study = collector.add_evidence(study, "v02", "clip", b"MP4_CLIP_SAMPLE_2", examined_range=(30.0, 45.0), duration_sec=15.0)
+    study = collector.add_evidence(study, "v01", "frame", b"JPEG_FRAME_SAMPLE_1", examined_range=(10.0, 15.0), evidence_id="ev_frame")
+    study = collector.add_evidence(study, "v02", "clip", b"MP4_CLIP_SAMPLE_2", examined_range=(30.0, 45.0), duration_sec=15.0, evidence_id="ev_clip")
 
     # 3. Audio for soundtrack treatment (#47)
-    study = collector.add_evidence(study, "v01", "audio", b"RIFF_WAV_AUDIO_SAMPLE", examined_range=(0.0, 60.0), duration_sec=60.0)
+    study = collector.add_evidence(study, "v01", "audio", b"RIFF_WAV_AUDIO_SAMPLE_1", examined_range=(0.0, 60.0), duration_sec=60.0, evidence_id="ev_audio1")
+    study = collector.add_evidence(study, "v02", "audio", b"RIFF_WAV_AUDIO_SAMPLE_2", examined_range=(0.0, 60.0), duration_sec=60.0, evidence_id="ev_audio2")
 
     # 4. Title and thumbnail for packaging (#48)
-    study = collector.add_evidence(study, "v01", "thumbnail", b"JPEG_THUMBNAIL_BYTES")
-    study = collector.add_evidence(study, "v01", "title", b"Why the Roman Shield Wall Never Failed")
+    study = collector.add_evidence(study, "v01", "thumbnail", b"JPEG_THUMBNAIL_BYTES_1", evidence_id="ev_thumb1")
+    study = collector.add_evidence(study, "v02", "thumbnail", b"JPEG_THUMBNAIL_BYTES_2", evidence_id="ev_thumb2")
+    study = collector.add_evidence(study, "v01", "title", b"Why the Roman Shield Wall Never Failed", evidence_id="ev_title1")
+    study = collector.add_evidence(study, "v02", "title", b"Why the Roman Shield Wall Never Failed Part 2", evidence_id="ev_title2")
 
     # Record 4 required core areas
-    study = collector.record_core_trait(study, "subject_promise", "Ancient military formations", ["v01", "v02"], ["ev_1"], "Direct evidence")
-    study = collector.record_core_trait(study, "viewer_need", "Military history fans", ["v01", "v02"], ["ev_2"], "Direct evidence")
-    study = collector.record_core_trait(study, "tone_register", "Serious documentary Khaleeji", ["v01", "v02"], ["ev_3"], "Direct evidence")
-    study = collector.record_core_trait(study, "narrative_structure", "Hook, explanation, resolution", ["v01", "v02"], ["ev_4"], "Direct evidence")
+    study = collector.record_core_trait(study, "subject_promise", "Ancient military formations", ["v01", "v02"], ["ev_v01_t", "ev_v02_t"], "Direct evidence")
+    study = collector.record_core_trait(study, "viewer_need", "Military history fans", ["v01", "v02"], ["ev_v01_t", "ev_v02_t"], "Direct evidence")
+    study = collector.record_core_trait(study, "tone_register", "Serious documentary Khaleeji", ["v01", "v02"], ["ev_v01_t", "ev_v02_t"], "Direct evidence")
+    study = collector.record_core_trait(study, "narrative_structure", "Hook, explanation, resolution", ["v01", "v02"], ["ev_v01_t", "ev_v02_t"], "Direct evidence")
 
     # Record multimodal traits (#46, #47, #48)
     study = collector.record_core_trait(study, "visual_motion", "Rule-of-thirds historical portrait framing", ["v01", "v02"], ["ev_frame", "ev_clip"], "Slow linear pans")
-    study = collector.record_core_trait(study, "soundtrack", "Acoustic oud ambient underbed, no heavy drums", ["v01"], ["ev_audio"], "Muted during dialogue")
-    study = collector.record_core_trait(study, "packaging", "Question hook title, high contrast central figure", ["v01"], ["ev_thumb", "ev_title"], "Bold white typography")
+    study = collector.record_core_trait(study, "soundtrack", "Acoustic oud ambient underbed, no heavy drums", ["v01", "v02"], ["ev_audio1", "ev_audio2"], "Muted during dialogue")
+    study = collector.record_core_trait(study, "packaging", "Question hook title, high contrast central figure", ["v01", "v02"], ["ev_thumb1", "ev_thumb2", "ev_title1", "ev_title2"], "Bold white typography")
 
     return collector, study_dir
 

@@ -31,14 +31,14 @@ def core_ready_study(tmp_path: Path) -> Path:
         CandidateVideo(video_id="v03", title="Ep 3", published_at="2026-10-10T10:00:00Z", duration_sec=700, view_count=3000),
     ]
     study = collector.initialize_study("study_ready", "test_channel", candidates)
-    collector.add_evidence(study, "v01", "transcript", b"evidence v01")
-    collector.add_evidence(study, "v02", "transcript", b"evidence v02")
+    study = collector.add_evidence(study, "v01", "transcript", b"evidence v01", evidence_id="ev_01")
+    study = collector.add_evidence(study, "v02", "transcript", b"evidence v02", evidence_id="ev_02")
 
     # Record 4 core areas with 2 supporting videos each
-    study = collector.record_core_trait(study, "subject_promise", "Military tactics history", ["v01", "v02"], ["ev1"], "Consistent")
-    study = collector.record_core_trait(study, "viewer_need", "Military strategy analysis", ["v01", "v02"], ["ev2"], "Consistent")
-    study = collector.record_core_trait(study, "tone_register", "Serious documentary Khaleeji", ["v01", "v02"], ["ev3"], "Consistent")
-    study = collector.record_core_trait(study, "narrative_structure", "Hook, conflict, resolution", ["v01", "v02"], ["ev4"], "Consistent")
+    study = collector.record_core_trait(study, "subject_promise", "Military tactics history", ["v01", "v02"], ["ev_01", "ev_02"], "Consistent")
+    study = collector.record_core_trait(study, "viewer_need", "Military strategy analysis", ["v01", "v02"], ["ev_01", "ev_02"], "Consistent")
+    study = collector.record_core_trait(study, "tone_register", "Serious documentary Khaleeji", ["v01", "v02"], ["ev_01", "ev_02"], "Consistent")
+    study = collector.record_core_trait(study, "narrative_structure", "Hook, conflict, resolution", ["v01", "v02"], ["ev_01", "ev_02"], "Consistent")
 
     return study_dir
 

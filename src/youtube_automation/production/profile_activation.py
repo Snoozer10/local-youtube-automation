@@ -46,9 +46,11 @@ def derive_production_profile(
     owner_settings: dict[str, Any] | None = None,
 ) -> DerivedProductionProfile:
     """Derive an immutable production profile from a CORE_READY study and owner settings."""
-    if study.status != StudyStatus.CORE_READY:
+    from .study import evaluate_study_readiness
+    status, gaps = evaluate_study_readiness(study)
+    if status != StudyStatus.CORE_READY or study.status != StudyStatus.CORE_READY:
         raise ValueError(
-            f"Cannot derive production profile from {study.status} study; missing mandatory core evidence"
+            f"Cannot derive production profile from non-CORE_READY study; missing mandatory core evidence: {gaps}"
         )
 
     settings = owner_settings or {}
@@ -104,15 +106,21 @@ def derive_production_profile(
     )
 
     # 5. Multimodal Guidance Bundles (#46, #47, #48)
+    # Require genuine corroboration (>= 2 distinct supporting videos with linked evidence) for reusable guidance
+    evidence_by_id = {e.evidence_id: e for e in study.evidence}
+    sample_vids = {v.video_id for v in study.selected_sample}
+
     visual_guidance = dict(settings.get("visual_guidance", {}))
     if not visual_guidance and "visual_motion" in study.core_traits:
         vt = study.core_traits["visual_motion"]
-        visual_guidance = {
-            "composition": vt.claim,
-            "motion_grammar": vt.rationale,
-            "evidence_ids": vt.evidence_ids,
-            "supporting_video_ids": vt.supporting_video_ids,
-        }
+        ev_vids = {evidence_by_id[eid].video_id for eid in vt.evidence_ids if eid in evidence_by_id}
+        if len(set(vt.supporting_video_ids).intersection(sample_vids)) >= 2 and len(ev_vids) >= 2 and vt.claim.strip():
+            visual_guidance = {
+                "composition": vt.claim,
+                "motion_grammar": vt.rationale,
+                "evidence_ids": vt.evidence_ids,
+                "supporting_video_ids": vt.supporting_video_ids,
+            }
     provenance["visual_guidance"] = (
         "owner_override" if "visual_guidance" in settings else ("evidence_derived" if visual_guidance else "inherited_default")
     )
@@ -120,12 +128,14 @@ def derive_production_profile(
     audio_guidance = dict(settings.get("audio_guidance", {}))
     if not audio_guidance and "soundtrack" in study.core_traits:
         st = study.core_traits["soundtrack"]
-        audio_guidance = {
-            "treatment": st.claim,
-            "sound_policy": st.rationale,
-            "evidence_ids": st.evidence_ids,
-            "supporting_video_ids": st.supporting_video_ids,
-        }
+        ev_vids = {evidence_by_id[eid].video_id for eid in st.evidence_ids if eid in evidence_by_id}
+        if len(set(st.supporting_video_ids).intersection(sample_vids)) >= 2 and len(ev_vids) >= 2 and st.claim.strip():
+            audio_guidance = {
+                "treatment": st.claim,
+                "sound_policy": st.rationale,
+                "evidence_ids": st.evidence_ids,
+                "supporting_video_ids": st.supporting_video_ids,
+            }
     provenance["audio_guidance"] = (
         "owner_override" if "audio_guidance" in settings else ("evidence_derived" if audio_guidance else "inherited_default")
     )
@@ -133,12 +143,14 @@ def derive_production_profile(
     packaging_guidance = dict(settings.get("packaging_guidance", {}))
     if not packaging_guidance and "packaging" in study.core_traits:
         pt = study.core_traits["packaging"]
-        packaging_guidance = {
-            "packaging_rules": pt.claim,
-            "thumbnail_style": pt.rationale,
-            "evidence_ids": pt.evidence_ids,
-            "supporting_video_ids": pt.supporting_video_ids,
-        }
+        ev_vids = {evidence_by_id[eid].video_id for eid in pt.evidence_ids if eid in evidence_by_id}
+        if len(set(pt.supporting_video_ids).intersection(sample_vids)) >= 2 and len(ev_vids) >= 2 and pt.claim.strip():
+            packaging_guidance = {
+                "packaging_rules": pt.claim,
+                "thumbnail_style": pt.rationale,
+                "evidence_ids": pt.evidence_ids,
+                "supporting_video_ids": pt.supporting_video_ids,
+            }
     provenance["packaging_guidance"] = (
         "owner_override" if "packaging_guidance" in settings else ("evidence_derived" if packaging_guidance else "inherited_default")
     )
@@ -202,13 +214,21 @@ class ProfileActivationManager:
         rev_dir.mkdir(parents=True, exist_ok=True)
         profile_file = rev_dir / "profile.json"
 
-        # 1. Write immutable revision payload
         profile_json = profile.model_dump_json(indent=2)
-        temp_profile = profile_file.with_suffix(".tmp")
-        temp_profile.write_text(profile_json, encoding="utf-8")
-        temp_profile.replace(profile_file)
-
         profile_digest = hashlib.sha256(profile_json.encode("utf-8")).hexdigest()
+
+        # 1. Verify revision immutability: refuse to overwrite existing revision with differing content
+        if profile_file.is_file():
+            existing_json = profile_file.read_text(encoding="utf-8")
+            existing_digest = hashlib.sha256(existing_json.encode("utf-8")).hexdigest()
+            if existing_digest != profile_digest:
+                raise ValueError(
+                    f"Revision '{profile.revision}' is immutable and already published with differing content (existing digest {existing_digest} != {profile_digest})"
+                )
+        else:
+            temp_profile = profile_file.with_suffix(".tmp")
+            temp_profile.write_text(profile_json, encoding="utf-8")
+            temp_profile.replace(profile_file)
 
         # 2. Record journal entry for atomic pointer switch
         journal_data = {
@@ -251,8 +271,20 @@ class ProfileActivationManager:
         target_rev = journal["target_revision"]
         rev_file = self.revisions_dir / target_rev / "profile.json"
 
-        # If target revision was written completely, finalize pointer; otherwise discard
+        # Validate target revision: existence, schema, digest, and identity
+        is_valid_target = False
         if rev_file.is_file():
+            try:
+                target_json = rev_file.read_text(encoding="utf-8")
+                actual_digest = hashlib.sha256(target_json.encode("utf-8")).hexdigest()
+                if actual_digest == journal.get("profile_digest"):
+                    loaded = DerivedProductionProfile.model_validate_json(target_json)
+                    if loaded.revision == target_rev and loaded.channel_id == journal.get("channel_id"):
+                        is_valid_target = True
+            except Exception:
+                is_valid_target = False
+
+        if is_valid_target:
             pointer_data = {
                 "channel_id": journal["channel_id"],
                 "active_revision": target_rev,
@@ -306,4 +338,7 @@ class ProfileActivationManager:
             style=profile.tone_and_style,
             voice=profile.voice,
             allowed_treatments=valid_treatments,  # type: ignore[arg-type]
+            visual_guidance=profile.visual_guidance,
+            audio_guidance=profile.audio_guidance,
+            packaging_guidance=profile.packaging_guidance,
         )

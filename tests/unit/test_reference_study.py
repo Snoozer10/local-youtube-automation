@@ -92,19 +92,19 @@ def test_core_readiness_requires_four_areas_with_two_videos_each(tmp_path: Path,
     assert any("Missing required core area" in g for g in study.actionable_gaps)
 
     # Add evidence for 3 videos
-    study = collector.add_evidence(study, "v07", "transcript", b"v07 data", duration_sec=300)
-    study = collector.add_evidence(study, "v06", "transcript", b"v06 data", duration_sec=300)
-    study = collector.add_evidence(study, "v05", "transcript", b"v05 data", duration_sec=300)
+    study = collector.add_evidence(study, "v07", "transcript", b"v07 data", duration_sec=300, evidence_id="ev_v07")
+    study = collector.add_evidence(study, "v06", "transcript", b"v06 data", duration_sec=300, evidence_id="ev_v06")
+    study = collector.add_evidence(study, "v05", "transcript", b"v05 data", duration_sec=300, evidence_id="ev_v05")
 
     # Record 3 core areas
     study = collector.record_core_trait(
-        study, "subject_promise", "Historical military narratives", ["v07", "v06"], ["ev1"], "Consistent theme"
+        study, "subject_promise", "Historical military narratives", ["v07", "v06"], ["ev_v07", "ev_v06"], "Consistent theme"
     )
     study = collector.record_core_trait(
-        study, "viewer_need", "Military history enthusiasts", ["v07", "v06"], ["ev2"], "Audience assumptions"
+        study, "viewer_need", "Military history enthusiasts", ["v07", "v06"], ["ev_v07", "ev_v06"], "Audience assumptions"
     )
     study = collector.record_core_trait(
-        study, "tone_register", "Serious documentary Khaleeji register", ["v07", "v05"], ["ev3"], "Consistent dialect"
+        study, "tone_register", "Serious documentary Khaleeji register", ["v07", "v05"], ["ev_v07", "ev_v05"], "Consistent dialect"
     )
 
     # Still PARTIAL because narrative_structure is missing
@@ -114,7 +114,7 @@ def test_core_readiness_requires_four_areas_with_two_videos_each(tmp_path: Path,
 
     # Add narrative_structure with only 1 supporting video
     study = collector.record_core_trait(
-        study, "narrative_structure", "Three-beat hook structure", ["v07"], ["ev4"], "Only one video observed"
+        study, "narrative_structure", "Three-beat hook structure", ["v07"], ["ev_v07"], "Only one video observed"
     )
     reloaded = collector.load_study()
     assert reloaded.status == StudyStatus.PARTIAL
@@ -122,7 +122,7 @@ def test_core_readiness_requires_four_areas_with_two_videos_each(tmp_path: Path,
 
     # Add second supporting video for narrative_structure
     study = collector.record_core_trait(
-        study, "narrative_structure", "Three-beat hook structure", ["v07", "v05"], ["ev4", "ev5"], "Corroborated across two videos"
+        study, "narrative_structure", "Three-beat hook structure", ["v07", "v05"], ["ev_v07", "ev_v05"], "Corroborated across two videos"
     )
     reloaded = collector.load_study()
     # Now all 4 areas are supported by >= 2 distinct videos -> CORE_READY!
