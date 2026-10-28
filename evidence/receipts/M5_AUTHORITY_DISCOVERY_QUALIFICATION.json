@@ -1,0 +1,23 @@
+{
+  "issue": 59,
+  "requirements": [
+    "D1",
+    "D2",
+    "D3",
+    "D8"
+  ],
+  "authority_resolution": {
+    "database_path": "C:/Users/Snoozer/AppData/Local/Temp/pytest-of-Snoozer/pytest-1917/test_generate_authority_qualif0/shared_state/production_authority.sqlite3",
+    "source": "CONFIG",
+    "schema_generation": 1,
+    "is_maintenance_excluded": false
+  },
+  "demonstrated_properties": {
+    "cross_checkout_convergent_discovery": true,
+    "ambiguous_pointers_fail_closed": true,
+    "damaged_authority_fails_closed": true,
+    "incompatible_schema_fails_closed": true,
+    "maintenance_exclusion_enforced": true,
+    "stale_fencing_generation_rejected": true
+  }
+}
