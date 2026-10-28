@@ -111,42 +111,57 @@ _CANARY_OR_PROSE_RE = re.compile(
 _CREDENTIAL_RAW_RE = re.compile(
     r"(?i)\b(?:password|passwd|secret|api[_-]?key|bearer|token)\b\s*[:=]\s*(?!\[redacted\])\S+"
 )
-_OPERATIONAL_PATTERN_RE = re.compile(
-    r"(?i)(?:"
-    r"\b(?:timeout|timed out|operation timed out|connection timed out|ms exceeded)\b"
-    r"|\b(?:page\.goto|locator\.[a-z]+)\b"
-    r"|\b(?:http\s+status\s+code:?\s*\d+|http/[0-9.]+\s+\d{3})\b"
-    r"|\b(?:lost production lease|resource lease renewal failed|nested production leases|cannot acquire a production lease|stale worker|stage\s+circuit(?:\s+is)?\s+open|stage is already running|resource is busy|invalid terminal state)\b"
-    r"|\b(?:ceiling reached|quota.*exhausted|usage limit)\b"
-    r"|\b(?:invalid syntax|no matching adaptive recipe|validation failed)\b"
-    r"|\b(?:intercepts pointer events|overlay)\b"
-    r"|\[email\]"
-    r")"
-)
-_SAFE_SHORT_PHRASE_RE = re.compile(r"^[a-zA-Z0-9_ -]{1,40}$")
+_BOUNDED_OPERATIONAL_PATTERNS = [
+    re.compile(r"(?i)^BrowserType\.connect_over_cdp:\s*Timeout\s+\d+ms\s+exceeded$"),
+    re.compile(r"(?i)^Page\.goto:\s*Timeout\s+\d+ms\s+exceeded$"),
+    re.compile(r"(?i)^locator\.[a-z]+\s*:\s*Timeout\s+\d+ms\s+exceeded$"),
+    re.compile(r"(?i)^Resource\s+lease\s+renewal\s+failed$"),
+    re.compile(r"(?i)^Lost\s+production\s+lease$"),
+    re.compile(r"(?i)^Cannot\s+acquire\s+a\s+production\s+lease$"),
+    re.compile(r"(?i)^Nested\s+production\s+leases.*$"),
+    re.compile(r"(?i)^Stage\s+circuit(?:\s+is)?\s+open(?:\s+after\s+\d+\s+failed\s+attempts)?(?::\s*[a-zA-Z0-9_\-:]+)?$"),
+    re.compile(r"(?i)^Stage\s+is\s+already\s+running$"),
+    re.compile(r"(?i)^Resource\s+is\s+busy$"),
+    re.compile(r"(?i)^Invalid\s+terminal\s+state$"),
+    re.compile(r"(?i)^Stale\s+worker(?:\s+cannot\s+finish\s+this\s+job)?$"),
+    re.compile(r"(?i)^(?:TTS\s+)?attempt\s+ceiling\s+reached$"),
+    re.compile(r"(?i)^(?:Existing\s+voice\s+chapters\s+have\s+)?no\s+matching\s+adaptive\s+recipe$"),
+    re.compile(r"(?i)^(?:AI\s+Studio\s+banner\s+)?Http\s+response\s+at\s+400\s+or\s+500\s+level,\s*http\s+status\s+code:\s*\d+$"),
+    re.compile(r"(?i)^http\s+status\s+code:?\s*\d+$"),
+    re.compile(r"(?i)^Connection\s+(?:refused|reset(?:\s+by\s+peer)?)$"),
+    re.compile(r"(?i)^Operation\s+timed\s+out$"),
+    re.compile(r"(?i)^Quota\s+exhausted$"),
+    re.compile(r"(?i)^Usage\s+limit\s+reached$"),
+    re.compile(r"(?i)^Validation\s+failed$"),
+    re.compile(r"(?i)^Invalid\s+syntax$"),
+    re.compile(r"(?i)^\[email\]$"),
+]
 _AUTH_HEADER_PREFIX_RE = re.compile(
     r"(?i)^['\"]?(?:Authorization|Proxy-Authorization|Cookie|Set-Cookie)['\"]?\s*[:=]"
 )
 
 
 def is_safe_operational_message(text: str) -> bool:
-    """Validate whether an error message is a safe operational summary.
+    """Validate whether an error message is an authorized bounded operational summary.
 
     Rejects non-ASCII canaries, unvalidated prompt prose, private scripts, raw request
-    bodies, and unredacted credentials.
+    bodies, unredacted credentials, arbitrary ASCII sentences, and messages containing
+    unauthorized trailing prose.
     """
     if not isinstance(text, str):
         return False
-    if not text or not all(32 <= ord(c) <= 126 for c in text):
+    stripped = text.strip()
+    if not stripped or not all(32 <= ord(c) <= 126 for c in stripped):
         return False
-    if any(c in text for c in ("\n", "\r", "\t", "{", "}", "<", ">")):
+    if any(c in stripped for c in ("\n", "\r", "\t", "{", "}", "<", ">")):
         return False
-    if _CANARY_OR_PROSE_RE.search(text) or _CREDENTIAL_RAW_RE.search(text):
+    if _CANARY_OR_PROSE_RE.search(stripped) or _CREDENTIAL_RAW_RE.search(stripped):
         return False
-    if len(text) > 200:
+    if len(stripped) > 200:
         return False
-    if _OPERATIONAL_PATTERN_RE.search(text) or _SAFE_SHORT_PHRASE_RE.fullmatch(text.strip()):
-        return True
+    for pat in _BOUNDED_OPERATIONAL_PATTERNS:
+        if pat.fullmatch(stripped):
+            return True
     return False
 
 
@@ -460,7 +475,8 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
     sensitive = {
         "authorization", "proxyauthorization", "bearer", "cookie", "setcookie",
         "token", "accesstoken", "refreshtoken", "idtoken", "apikey", "xapikey",
-        "password", "passwd", "secret",
+        "password", "passwd", "secret", "prompt", "script", "context", "prose",
+        "text", "body", "payload", "query", "input", "detail", "canary",
     }
     rec_exc = str(record.get("exception", ""))
     rec_layer = str(record.get("layer", "unknown"))
@@ -485,10 +501,20 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
                     kind=rec_kind,
                     known_issue=rec_known,
                 )
+            if key_name in {"rundir", "run_dir", "run"}:
+                return _safe_repo_path(value)
+            if header_values or key_name in sensitive:
+                return "[redacted]"
             cleaned = _clean(value[:4096], limit=300)
             if any(ord(c) > 126 for c in cleaned) or re.search(r"(?i)\bcanary\b", cleaned):
                 return "[redacted]"
-            return cleaned
+            if (
+                cleaned in {"<external-path>", "<missing>", "<unknown>"}
+                or re.fullmatch(r"^[a-zA-Z0-9_\-.:/]{1,80}$", cleaned)
+                or is_safe_operational_message(cleaned)
+            ):
+                return cleaned
+            return "[redacted]"
         if isinstance(value, dict):
             result = {}
             for index, (key, item) in enumerate(value.items()):
@@ -497,14 +523,14 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
                 raw_key = str(key)[:1024]
                 clean_key = _clean(raw_key, limit=80)
                 normalized = re.sub(r"[^a-z0-9]", "", raw_key.lower())
-                if header_values or normalized in sensitive:
+                if header_values or (normalized in sensitive and not isinstance(item, (dict, list))):
                     result[clean_key] = "[redacted]"
                     remaining -= 1
                 else:
                     result[clean_key] = visit(
                         item,
                         depth + 1,
-                        normalized in {"headers", "requestheaders", "responseheaders"},
+                        header_values or normalized in {"headers", "requestheaders", "responseheaders"},
                         key_name=normalized,
                     )
             return result

@@ -277,3 +277,74 @@ def test_status_cli_truncation_indication(tmp_path: Path, monkeypatch: pytest.Mo
 
     assert "Ledger Status: POPULATED (60 jobs recorded)" in out
     assert "[truncated: 50 of 60 jobs shown; partial view]" in out
+
+
+def test_status_cli_filename_with_hash_metacharacter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
+    """Issue #55 / #56: Database path with URI metacharacters (#, spaces) must not create sibling files or fail schema."""
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    db_path = tmp_path / "ledger#private %20.sqlite3"
+    _create_rollback_fixture(db_path, populate=True)
+
+    monkeypatch.setattr(cli, "resource_database", lambda: db_path)
+
+    before_hash = _hash_file(db_path)
+    before_dir = _dir_snapshot(db_path.parent)
+
+    cli.main(["status", "--run-dir", str(run_dir)])
+    out = capsys.readouterr().out
+
+    after_hash = _hash_file(db_path)
+    after_dir = _dir_snapshot(db_path.parent)
+
+    assert after_hash == before_hash
+    assert after_dir == before_dir
+    assert not (tmp_path / "ledger").exists(), "Created unintended truncated sibling file!"
+    assert "Ledger Status: POPULATED (2 jobs recorded)" in out
+
+
+def test_status_cli_damaged_btree_valid_header(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
+    """Issue #55 / #56: Damaged btree with valid SQLite header safely returns DAMAGED without unhandled DatabaseError."""
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    db_path = tmp_path / "damaged_btree.sqlite3"
+    _create_rollback_fixture(db_path, populate=True)
+
+    # Corrupt page-1 btree
+    raw = bytearray(db_path.read_bytes())
+    raw[100] = 0
+    db_path.write_bytes(raw)
+
+    monkeypatch.setattr(cli, "resource_database", lambda: db_path)
+    before_hash = _hash_file(db_path)
+
+    cli.main(["status", "--run-dir", str(run_dir)])
+    out = capsys.readouterr().out
+
+    assert _hash_file(db_path) == before_hash
+    assert "Ledger Status: UNAVAILABLE (corrupted or unreadable database)" in out
+
+
+def test_status_cli_incompatible_columns_schema(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
+    """Issue #55 / #56: Missing required columns in jobs table returns UNSUPPORTED_SCHEMA, not DAMAGED."""
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    db_path = tmp_path / "incompatible_cols.sqlite3"
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute("PRAGMA journal_mode=DELETE;")
+        conn.execute("CREATE TABLE jobs (key TEXT PRIMARY KEY, state TEXT);")
+        conn.commit()
+    finally:
+        conn.close()
+
+    monkeypatch.setattr(cli, "resource_database", lambda: db_path)
+    before_hash = _hash_file(db_path)
+
+    cli.main(["status", "--run-dir", str(run_dir)])
+    out = capsys.readouterr().out
+
+    assert _hash_file(db_path) == before_hash
+    assert "Ledger Status: UNAVAILABLE (foreign or incompatible schema)" in out
+    assert "missing required columns" in out

@@ -234,3 +234,76 @@ def test_operational_transparency_preserves_legitimate_diagnostics(
     # Check digest
     digest_text = fr.digest(rec)
     assert expected_fragment in digest_text
+
+
+def test_unlabelled_private_prose_and_nested_details_are_strictly_redacted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC 1 & AC 2: Plain private ASCII prose and nested details are excluded from projection and sanitize_record."""
+    private_phrase = "Our acquisition target is Orion"
+    operational_with_private = "timeout while processing Our acquisition target is Orion"
+
+    # 1. Plain private message projection
+    proj_plain = fr.project_safe_message(private_phrase, exc_name="RuntimeError")
+    assert "Orion" not in proj_plain
+    assert "acquisition" not in proj_plain
+
+    # 2. Operational prefix with trailing private prose projection
+    proj_op = fr.project_safe_message(operational_with_private, exc_name="RuntimeError")
+    assert "Orion" not in proj_op
+    assert "acquisition" not in proj_op
+
+    # 3. Sanitize record with nested context
+    raw_rec = {
+        "message": "bad",
+        "extra": {
+            "context": private_phrase,
+            "deep": {
+                "confidential": "Private client data",
+                "safe_id": "job_12345",
+            },
+        },
+    }
+    sanitized = fr.sanitize_record(raw_rec)
+    sanitized_str = json.dumps(sanitized)
+    assert "Orion" not in sanitized_str
+    assert "Private client data" not in sanitized_str
+    assert sanitized["extra"]["context"] == "[redacted]"
+    assert sanitized["extra"]["deep"]["confidential"] == "[redacted]"
+    assert sanitized["extra"]["deep"]["safe_id"] == "job_12345"
+
+    # 4. Durable stage with private prose in detail and exception
+    db_path = tmp_path / "ledger_private.sqlite3"
+    jsonl_path = tmp_path / "failures_private.jsonl"
+    monkeypatch.setenv(fr.FAILURES_PATH_ENV, str(jsonl_path))
+
+    with pytest.raises(RuntimeError) as exc_info:
+        with durable_stage(
+            db_path,
+            "stage:test:private_check",
+            "recipe_priv",
+            detail={
+                "stage": "private_check",
+                "run": str(tmp_path / "run_priv"),
+                "context": private_phrase,
+                "memo": "Secret memo text",
+            },
+        ) as execute:
+            assert execute is True
+            raise RuntimeError(operational_with_private)
+
+    # Raw exception preserves exact message in Python runtime
+    assert str(exc_info.value) == operational_with_private
+
+    # SQLite jobs and events details redact/omit private prose
+    ledger = Ledger(db_path)
+    job = ledger.status()[0]
+    job_detail = json.loads(job["detail"])
+    assert "Orion" not in json.dumps(job_detail)
+    assert "Secret memo text" not in json.dumps(job_detail)
+
+    # Companion JSONL redacts private prose
+    rec = fr.load_last_record(jsonl_path)
+    assert rec is not None
+    assert "Orion" not in json.dumps(rec)
+    assert "Secret memo text" not in json.dumps(rec)

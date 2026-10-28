@@ -43,14 +43,14 @@ def test_diagnose_last_without_run_directory_reads_empty_state(tmp_path, capsys,
 
 def test_diagnose_last_prints_only_current_bounded_tail_without_writes(tmp_path, capsys):
     path = tmp_path / "failures.jsonl"
-    old = json.dumps(_record("obsolete failure"))
-    current = json.dumps(_record("current bounded failure"))
+    old = json.dumps(_record("Connection refused"))
+    current = json.dumps(_record("Connection reset by peer"))
     path.write_bytes(("x" * 70_000 + "\n" + old + "\n" + current + "\n").encode("utf-8"))
     before = path.read_bytes()
     cli.main(["diagnose", "--last", "--path", str(path)])
     output = capsys.readouterr().out
-    assert "current bounded failure" in output
-    assert "obsolete failure" not in output
+    assert "Connection reset by peer" in output
+    assert "Connection refused" not in output
     assert "sends spent: 0" in output
     assert path.read_bytes() == before
     assert len(output.splitlines()) <= 60
@@ -58,10 +58,10 @@ def test_diagnose_last_prints_only_current_bounded_tail_without_writes(tmp_path,
 
 def test_diagnose_last_uses_existing_failure_path_environment(tmp_path, monkeypatch, capsys):
     path = tmp_path / "failures.jsonl"
-    path.write_text(json.dumps(_record("configured latest failure")) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(_record("Quota exhausted")) + "\n", encoding="utf-8")
     monkeypatch.setenv(failure_record.FAILURES_PATH_ENV, str(path))
     cli.main(["diagnose", "--last"])
-    assert "configured latest failure" in capsys.readouterr().out
+    assert "Quota exhausted" in capsys.readouterr().out
 
 
 def test_diagnose_last_does_not_substitute_old_record_for_malformed_latest(tmp_path, capsys):

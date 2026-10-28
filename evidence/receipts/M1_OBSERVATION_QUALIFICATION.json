@@ -1,8 +1,9 @@
 {
-  "timestamp": "2026-10-27T04:15:00Z",
+  "timestamp": "2026-10-28T10:44:10Z",
   "milestone": "M1",
   "issue": 55,
   "qualification_status": "QUALIFIED_WITH_BOUNDARIES",
+  "source_commit": "b5de7ae8818b2483bf0615d7425fc93b731a4316",
   "environment": {
     "interpreter": "C:\\Users\\Snoozer\\teamwork_projects\\architecture-renewal-campaign\\venv\\Scripts\\python.exe",
     "python_version": "3.11.9",
@@ -13,12 +14,18 @@
   },
   "candidate_strategy": {
     "name": "pre_access_header_discriminated_readonly_uri",
-    "uri_pattern": "file:{target_path}?mode=ro",
+    "uri_pattern": "{target_path.as_uri()}?mode=ro",
     "pre_access_checks": [
       "filesystem existence validation (prevents file creation on absent databases)",
       "directory sidecar scan (.db-wal, .db-shm)",
-      "100-byte SQLite header magic verification (b'SQLite format 3\\x00')",
-      "header byte 18/19 format version inspection (mode 1 rollback vs mode 2 WAL)"
+      "100-byte SQLite header magic verification (b'SQLite format 3\u0000')",
+      "header byte 18/19 format version inspection (mode 1 rollback vs mode 2 WAL)",
+      "PRAGMA table_info required column schema validation"
+    ],
+    "native_enforcement": [
+      "RFC 8089 URI encoding via Path.as_uri() prevents path-truncation and sibling file creation",
+      "SQLite URI mode=ro strictly blocks native INSERT/UPDATE/DELETE/CREATE with OperationalError",
+      "Native OS-level read-only attribute (stat.S_IREAD) tested and verified"
     ]
   },
   "supported_states": [
@@ -27,13 +34,19 @@
       "condition": "Compatible SQLite 3 database in rollback journal mode (DELETE/TRUNCATE) with jobs table",
       "result": "status='POPULATED', rows returned",
       "mutation_audit": "0 byte modifications, 0 sidecars, identical SHA-256 digests before/after",
-      "native_os_proof": "Verified under OS-level read-only attribute (stat.S_IREAD)"
+      "native_os_proof": "Verified under OS-level read-only attribute (stat.S_IREAD)",
+      "native_write_proof": "Verified sqlite3.OperationalError: attempt to write a readonly database"
     },
     {
       "state": "EMPTY_ROLLBACK",
       "condition": "Compatible SQLite 3 database in rollback journal mode with 0 rows in jobs table",
       "result": "status='EMPTY', 0 rows returned",
       "mutation_audit": "0 byte modifications, 0 sidecars, identical SHA-256 digests before/after"
+    },
+    {
+      "state": "METAMECHAR_PATH_ROLLBACK",
+      "condition": "Compatible database path containing #, %, and spaces",
+      "result": "status='POPULATED', 0 sibling files created, identical SHA-256"
     }
   ],
   "unsupported_states": [
@@ -53,13 +66,18 @@
       "behavior": "Refusal (status='DAMAGED'); zero repair attempts"
     },
     {
+      "state": "DAMAGED_BTREE_VALID_HEADER",
+      "reason": "Corrupted btree structure raises sqlite3.DatabaseError",
+      "behavior": "Refusal (status='DAMAGED'); caught safely, zero repair attempts, 0 byte mutations"
+    },
+    {
       "state": "BUSY_EXCLUSIVE_LOCK",
       "reason": "Another process holds an exclusive write lock",
       "behavior": "Refusal (status='BUSY') after bounded timeout; zero blocking or corruption"
     },
     {
-      "state": "FOREIGN_SCHEMA",
-      "reason": "Database lacks jobs table",
+      "state": "FOREIGN_SCHEMA_OR_MISSING_COLUMNS",
+      "reason": "Database lacks jobs table or lacks required columns (key, state, attempts, fence, detail)",
       "behavior": "Refusal (status='UNSUPPORTED_SCHEMA'); zero migration or schema writes"
     }
   ],
