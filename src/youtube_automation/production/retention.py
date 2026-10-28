@@ -84,8 +84,15 @@ def classify_entry(path: Path, root: Path) -> RetentionCandidate:
             owner="auditor",
         )
 
-    # 3. Rebuildable Caches: intermediate frame extracts, temporary render caches
-    if any(k in rel for k in ("cache", "intermediate_", "scratch", "temp_")):
+    # 3. Rebuildable Caches: verified disposable intermediate caches with explicit recipe
+    non_disposable_exts = {".json", ".md", ".py", ".sql", ".txt", ".yaml", ".yml", ".sh", ".ps1"}
+    has_non_disposable_ext = any(rel.endswith(ext) for ext in non_disposable_exts)
+
+    if not has_non_disposable_ext and (
+        rel.endswith(".cache")
+        or rel.endswith(".tmp_cache")
+        or any(k in rel for k in ("intermediate_frames", "temp_scratch"))
+    ):
         return RetentionCandidate(
             path=path,
             category=RetentionCategory.REBUILDABLE_CACHE,
@@ -107,12 +114,16 @@ def classify_entry(path: Path, root: Path) -> RetentionCandidate:
 
 
 def classify_runtime_directory(root: Path) -> list[RetentionCandidate]:
-    """Inspect and classify all files within the given runtime root directory."""
+    """Inspect and classify all files within the given runtime root directory, excluding archive storage."""
     if not root.is_dir():
         return []
     candidates: list[RetentionCandidate] = []
+    archive_dir_name = ".archive"
     for entry in sorted(root.rglob("*")):
         if entry.is_file():
+            rel_parts = entry.relative_to(root).parts
+            if archive_dir_name in rel_parts or "archive_storage" in rel_parts:
+                continue
             candidates.append(classify_entry(entry, root))
     return candidates
 
@@ -159,12 +170,22 @@ class ReversibleArchiveCycle:
     def _journal_path(self, cycle_id: str) -> Path:
         return self.archive_storage / f".archive_journal_{cycle_id}.json"
 
+    def _write_journal_atomically(self, journal_file: Path, journal_data: dict[str, Any]) -> None:
+        import os
+        tmp_file = journal_file.with_suffix(".tmp")
+        tmp_file.write_text(json.dumps(journal_data, indent=2), encoding="utf-8")
+        os.replace(str(tmp_file), str(journal_file))
+
     def archive_candidates(
         self,
         cycle_id: str,
         candidates: list[RetentionCandidate],
     ) -> dict[str, Any]:
         """Execute a reversible archive cycle on eligible REBUILDABLE_CACHE candidates only."""
+        import re
+        if not re.match(r"^[a-zA-Z0-9_\-]{1,64}$", cycle_id):
+            raise ValueError(f"Invalid cycle_id: {cycle_id!r}")
+
         # 1. Enforce safety policy: reject any protected or unknown candidates
         disallowed = [c for c in candidates if c.category != RetentionCategory.REBUILDABLE_CACHE]
         if disallowed:
@@ -202,17 +223,16 @@ class ReversibleArchiveCycle:
             "cycle_dir": str(cycle_dir),
             "entries": journal_entries,
         }
-        journal_file.write_text(json.dumps(journal_data, indent=2), encoding="utf-8")
+        self._write_journal_atomically(journal_file, journal_data)
 
-        # 3. Move files to archive directory while updating journal
+        # 3. Move files to archive directory while updating journal atomically
         for entry in journal_entries:
             src = Path(entry["source"])
             dst = Path(entry["dest"])
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(src), str(dst))
             entry["moved"] = True
-            # Update journal state durably
-            journal_file.write_text(json.dumps(journal_data, indent=2), encoding="utf-8")
+            self._write_journal_atomically(journal_file, journal_data)
 
         # 4. Finalize receipt and remove active journal
         journal_data["status"] = "COMPLETED"
@@ -229,34 +249,69 @@ class ReversibleArchiveCycle:
         }
 
     def rollback_interrupted_cycle(self, cycle_id: str) -> dict[str, Any]:
-        """Detect an interrupted archive cycle from its journal and safely restore all files."""
+        """Detect an interrupted archive cycle from its journal and safely restore all files without data loss."""
         journal_file = self._journal_path(cycle_id)
         if not journal_file.is_file():
             return {"cycle_id": cycle_id, "status": "NO_ACTIVE_JOURNAL"}
 
         journal_data = json.loads(journal_file.read_text(encoding="utf-8"))
         restored: list[str] = []
+        all_verified = True
 
         for entry in journal_data.get("entries", []):
-            if entry.get("moved", False):
-                dst = Path(entry["dest"])
-                src = Path(entry["source"])
-                if dst.is_file():
+            dst = Path(entry["dest"])
+            src = Path(entry["source"])
+            expected_sha = entry["sha256"]
+
+            # Reconcile physical filesystem state regardless of moved flag
+            if dst.is_file():
+                # Verify archive copy
+                dst_sha = compute_sha256(dst)
+                if dst_sha != expected_sha:
+                    all_verified = False
+                    raise ValueError(
+                        f"Archived file {dst} corrupted: {dst_sha} != {expected_sha}"
+                    )
+                if src.is_file():
+                    src_sha = compute_sha256(src)
+                    if src_sha == expected_sha:
+                        # Source already restored; clean up dst
+                        dst.unlink()
+                    else:
+                        # Conflict with newer source file! Do not overwrite, fail closed!
+                        all_verified = False
+                        raise FileExistsError(
+                            f"Rollback conflict: source file {src} exists with differing hash: {src_sha} != {expected_sha}"
+                        )
+                else:
                     src.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(str(dst), str(src))
-                    # Verify restored file SHA-256 matches preimage
                     restored_sha = compute_sha256(src)
-                    if restored_sha != entry["sha256"]:
+                    if restored_sha != expected_sha:
+                        all_verified = False
                         raise ValueError(
-                            f"Restored file {src} hash mismatch: {restored_sha} != {entry['sha256']}"
+                            f"Restored file {src} hash mismatch: {restored_sha} != {expected_sha}"
                         )
                     restored.append(str(src))
+            elif src.is_file():
+                # File was never moved or already back at source
+                src_sha = compute_sha256(src)
+                if src_sha != expected_sha:
+                    all_verified = False
+            else:
+                # Missing from both locations!
+                all_verified = False
+                raise FileNotFoundError(
+                    f"File missing from both source and destination during rollback: {src}"
+                )
 
-        # Clean up cycle directory and journal
+        # Only clean up cycle directory and journal if ALL entries are verified restored
         cycle_dir = Path(journal_data["cycle_dir"])
-        if cycle_dir.is_dir():
-            shutil.rmtree(cycle_dir, ignore_errors=True)
-        journal_file.unlink()
+        if all_verified:
+            if cycle_dir.is_dir():
+                shutil.rmtree(cycle_dir, ignore_errors=True)
+            if journal_file.exists():
+                journal_file.unlink()
 
         return {
             "cycle_id": cycle_id,
@@ -265,36 +320,59 @@ class ReversibleArchiveCycle:
         }
 
     def restore_archive(self, cycle_id: str) -> dict[str, Any]:
-        """Restore all archived files from a completed archive receipt, verifying byte-exactness."""
+        """Restore all archived files from a completed archive receipt, verifying byte-exactness and refusing conflicts."""
         cycle_dir = self.archive_storage / cycle_id
         receipt_path = cycle_dir / "ARCHIVE_RECEIPT.json"
         if not receipt_path.is_file():
             raise FileNotFoundError(f"Archive receipt missing: {receipt_path}")
 
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-        restored: list[str] = []
+        entries = receipt.get("entries", [])
 
-        for entry in receipt.get("entries", []):
+        # Step 1: Pre-validation of all destinations to prevent overwriting newer resumed work
+        for entry in entries:
             dst = Path(entry["dest"])
             src = Path(entry["source"])
+            expected_sha = entry["sha256"]
+
             if not dst.is_file():
                 raise FileNotFoundError(f"Archived file missing from storage: {dst}")
 
-            # Verify archive copy SHA-256 matches preimage before restoring
             archive_sha = compute_sha256(dst)
-            if archive_sha != entry["sha256"]:
+            if archive_sha != expected_sha:
                 raise ValueError(
-                    f"Archived file corrupted: {dst} hash {archive_sha} != {entry['sha256']}"
+                    f"Archived file corrupted: {dst} hash {archive_sha} != {expected_sha}"
                 )
+
+            if src.is_file():
+                src_sha = compute_sha256(src)
+                if src_sha != expected_sha:
+                    # Destination has newer or modified content! Refuse overwrite to prevent data loss.
+                    raise FileExistsError(
+                        f"Restoration conflict: destination file {src} already exists with differing content (hash {src_sha} != archived {expected_sha})"
+                    )
+
+        # Step 2: Restore verified entries
+        restored: list[str] = []
+        for entry in entries:
+            dst = Path(entry["dest"])
+            src = Path(entry["source"])
+            expected_sha = entry["sha256"]
+
+            if src.is_file() and compute_sha256(src) == expected_sha:
+                # Already present and identical
+                if dst.is_file():
+                    dst.unlink()
+                restored.append(str(src))
+                continue
 
             src.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(dst), str(src))
 
-            # Verify restored file matches preimage
             restored_sha = compute_sha256(src)
-            if restored_sha != entry["sha256"]:
+            if restored_sha != expected_sha:
                 raise ValueError(
-                    f"Restored file {src} hash mismatch: {restored_sha} != {entry['sha256']}"
+                    f"Restored file {src} hash mismatch: {restored_sha} != {expected_sha}"
                 )
             restored.append(str(src))
 
