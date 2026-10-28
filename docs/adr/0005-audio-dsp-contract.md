@@ -28,3 +28,25 @@ The audio chain was an implicit, locally-known sequence: `YouTube_Voice_Optimize
 - **Verification:** `video_config.txt:58` (`-14 LUFS/-1 dBTP/LRA 11`) and `YouTube_Voice_Optimizer.txt` macro contents are the executable sources; ADR is the prose rationale.
 
 Status: accepted
+
+## Operational Amendment (2026-10-28, Issue #37)
+
+The core architectural decisions above (DSP preset, EBU R128 loudness target, Wave stitch, and transcript timeline feed) remain authoritative and unchanged. Three operational directions identified in `docs/README.md` conflict with subsequently established root and production contracts and are amended as follows:
+
+1. **Recovery Data Preservation vs Session Wiping**:
+   - *Original*: "wipe `SessionData`/`AutoSave` before open"
+   - *Amended*: `SessionData` and `AutoSave` recovery directories must NOT be unconditionally wiped. In accordance with root [`AGENTS.md`](../../AGENTS.md) and production [`AGENTS.md`](../../src/youtube_automation/production/AGENTS.md), recovery journals, preimages, and crash session data must be preserved. Disposing or archiving recovery state is governed exclusively by validated retention policies (Issue #40).
+
+2. **Windows Named Pipe Framing**:
+   - *Original*: "every command ends with `\n`; read until empty line is observed."
+   - *Amended*: On Windows, Audacity named pipe communications require Windows command framing with CRLF (`\r\n`) and NUL (`\0`) byte termination, ensuring deterministic buffer flushing across pipe handlers.
+
+3. **Channel-Specific Voices and Null-Voice TTS Gating**:
+   - *Original*: "TTS model fixed: `gemini-2.5-pro-preview-tts`, voice `Achird`... no model swap."
+   - *Amended*: While the default pilot voice remains `Achird`, current production contracts ([`src/youtube_automation/production/contracts.py`](../../src/youtube_automation/production/contracts.py)) and channel policies ([`channels/AGENTS.md`](../../channels/AGENTS.md)) support channel-specific voice configuration and explicit null-voice direction (`voice_direction.py`). A configured `null` voice intentionally blocks TTS execution without failing the pipeline.
+
+4. **Vocabulary Status**:
+   - The reference to `audio_chain` in `CONTEXT.md` is recorded as an explicit unresolved documentation gap; the term remains a transition handle rather than an invented or silently migrated definition.
+
+Status: accepted with operational amendment (2026-10-28)
+
