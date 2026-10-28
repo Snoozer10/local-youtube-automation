@@ -1,0 +1,27 @@
+{
+  "issue": 39,
+  "qualification_status": "QUALIFIED_WITH_RECORDED_PLATFORM_Gaps",
+  "lock_manifests": {
+    "skill-lock.json": "a8ffc25fe450bdf12672e3a3dd990d276a33b1c8cac7af7f1fc05592c99e11d2",
+    "skills-lock.json": "b3bd9d9691ebd11f02af510f64b6aed6202a818543d5c852c19d37672a9da7b7"
+  },
+  "coverage": {
+    "task_count": 52,
+    "bound_skills_count": 24,
+    "active_project_skills_count": 109,
+    "archived_skills_count": 21,
+    "upstream_repositories_count": 29
+  },
+  "demonstrated_properties": {
+    "canonical_provenance_registered": true,
+    "task_binding_integrity_verified": true,
+    "isolated_restoration_proven": true,
+    "redundancy_consolidation_bounded": true
+  },
+  "recorded_platform_gaps": [
+    "Codex versions <0.160 do not enforce project-level skill selection at invocation time.",
+    ".agents/ workspace directory is gitignored by project convention, relying on local filesystem presence.",
+    "Active sessions do not dynamically hot-reload skill catalog modifications.",
+    "Live multi-host execution across AGY/Codex/Claude requires authentic host session launches rather than static unit assertions."
+  ]
+}
