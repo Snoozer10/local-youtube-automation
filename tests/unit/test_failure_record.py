@@ -487,3 +487,21 @@ def test_redacts_sensitive_extra_keys_from_jsonl_and_last_cli(
     output = capsys.readouterr().out
     assert secret not in output
     assert json.loads(output)["extra"]
+
+
+def test_historical_known_issue_untrusted_signature_redacted():
+    """F2: Untrusted historical known_issue free-text signature must be redacted and never projected."""
+    secret = "Our acquisition target is Orion"
+    raw = {
+        "message": "failure",
+        "exception": "RuntimeError",
+        "known_issue": {
+            "id": "example",
+            "observed_signature": secret,
+        },
+    }
+    sanitized = fr.sanitize_record(raw)
+    assert secret not in sanitized["message"]
+    assert secret not in sanitized["known_issue"]["observed_signature"]
+    assert sanitized["message"] == "[example] Known issue matched"
+    assert sanitized["known_issue"]["observed_signature"] == "[redacted]"

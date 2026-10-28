@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from youtube_automation.production import ledger_observation
 from youtube_automation.production.ledger_observation import (
     observe_ledger,
 )
@@ -239,6 +240,66 @@ def test_foreign_schema_database_returns_unsupported_schema(tmp_path: Path) -> N
     assert decision.status == "UNSUPPORTED_SCHEMA"
     assert decision.supported is False
     assert _file_hash(db_path) == before_hash
+
+
+def test_post_second_check_wal_transition_refused_without_sidecars(tmp_path: Path, monkeypatch) -> None:
+    """AC 3 & F1: When an isolated transition to WAL occurs during query execution, envelope refuses without sidecars."""
+    race = tmp_path / "race.sqlite3"
+    c = sqlite3.connect(race)
+    c.execute("CREATE TABLE jobs (key TEXT, state TEXT, attempts INTEGER, fence INTEGER, detail TEXT)")
+    c.commit()
+    c.close()
+
+    raw_connect = sqlite3.connect
+    switched = False
+
+    class Cursor:
+        def __init__(self, c):
+            self.c = c
+        def execute(self, sql, *args):
+            nonlocal switched
+            if not switched:
+                switched = True
+                w = raw_connect(race)
+                w.execute("PRAGMA journal_mode=WAL")
+                w.close()
+            return self.c.execute(sql, *args)
+        def fetchone(self):
+            return self.c.fetchone()
+        def fetchall(self):
+            return self.c.fetchall()
+        def close(self):
+            return self.c.close()
+        def __getattr__(self, k):
+            return getattr(self.c, k)
+
+    class Connection:
+        def __init__(self, c):
+            object.__setattr__(self, "c", c)
+            object.__setattr__(self, "_cur", None)
+        def __setattr__(self, k, v):
+            setattr(self.c, k, v)
+        def cursor(self):
+            c = Cursor(self.c.cursor())
+            object.__setattr__(self, "_cur", c)
+            return c
+        def close(self):
+            cur = getattr(self, "_cur", None)
+            if cur is not None:
+                cur.close()
+                object.__setattr__(self, "_cur", None)
+            return self.c.close()
+        def __getattr__(self, k):
+            return getattr(self.c, k)
+
+    monkeypatch.setattr(ledger_observation.sqlite3, "connect", lambda *args, **kw: Connection(raw_connect(*args, **kw)))
+
+    decision = ledger_observation.observe_ledger(race)
+
+    assert decision.status == "UNSUPPORTED_WAL"
+    assert decision.supported is False
+    assert not race.with_name(f"{race.name}-wal").exists()
+    assert not race.with_name(f"{race.name}-shm").exists()
 
 
 def test_busy_locked_database_returns_bounded_busy_decision(tmp_path: Path) -> None:

@@ -289,3 +289,45 @@ def test_reclassification_strictly_excludes_archive_storage_directory(mock_runti
 
     for p in candidate_paths:
         assert ".archive" not in p, f"Archived file was reclassified: {p}"
+
+
+def test_incomplete_cycle_reuse_refused_preserving_prior_bytes(tmp_path: Path):
+    """F3: Reusing an in-progress cycle ID without completion receipt refuses conflicting reuse and preserves old bytes."""
+    import shutil as test_shutil
+    runtime = tmp_path / "runtime"
+    archive = tmp_path / "archive"
+    scratch = runtime / "temp_scratch"
+    scratch.mkdir(parents=True)
+    f = scratch / "a.cache"
+    f.write_bytes(b"first evidence")
+
+    manager = ReversibleArchiveCycle(runtime, archive)
+    candidates = classify_runtime_directory(runtime)
+
+    original_move = test_shutil.move
+
+    def interrupt_move(*args, **kw):
+        original_move(*args, **kw)
+        raise RuntimeError("injected crash after physical move")
+
+    from youtube_automation.production import retention as ret_mod
+    ret_mod.shutil.move = interrupt_move
+    try:
+        manager.archive_candidates(cycle_id="pending", candidates=candidates)
+    except RuntimeError:
+        pass
+    finally:
+        ret_mod.shutil.move = original_move
+
+    archived_file = archive / "pending" / "temp_scratch" / "a.cache"
+    assert archived_file.exists()
+    assert archived_file.read_bytes() == b"first evidence"
+
+    # Conflicting reuse attempt with newer bytes
+    f.write_bytes(b"new resumed bytes")
+    new_candidates = classify_runtime_directory(runtime)
+    result = manager.archive_candidates(cycle_id="pending", candidates=new_candidates)
+
+    assert result["status"] == "REFUSED_ALREADY_EXISTS"
+    # Old archived bytes must remain completely intact
+    assert archived_file.read_bytes() == b"first evidence"

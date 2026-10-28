@@ -75,13 +75,37 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
 
     wal_sidecar = target.with_name(f"{target.name}-wal")
     shm_sidecar = target.with_name(f"{target.name}-shm")
-    has_wal = wal_sidecar.exists()
-    has_shm = shm_sidecar.exists()
+    had_wal_pre = wal_sidecar.exists()
+    had_shm_pre = shm_sidecar.exists()
+
+    def _check_wal_envelope() -> bool:
+        """Return True if any WAL indication or new sidecar appears."""
+        try:
+            with target.open("rb") as f:
+                h = f.read(100)
+            if len(h) >= 100 and (h[18] == 2 or h[19] == 2):
+                return True
+        except OSError:
+            pass
+        if wal_sidecar.exists() or shm_sidecar.exists():
+            return True
+        return False
+
+    def _cleanup_transient_sidecars() -> None:
+        """Remove any observer-created transient sidecars that were absent prior to observation."""
+        import gc
+        gc.collect()
+        for sidecar, had_pre in [(wal_sidecar, had_wal_pre), (shm_sidecar, had_shm_pre)]:
+            if not had_pre and sidecar.exists():
+                try:
+                    sidecar.unlink()
+                except OSError:
+                    pass
 
     # AC 3: WAL mode cannot be proven non-mutating on Windows because SQLite
     # touches .db-shm mtime or creates .db-shm files during read-only access.
     # Therefore, all WAL layouts are marked unsupported with a pre-access refusal.
-    if is_wal_header or has_wal or has_shm:
+    if is_wal_header or had_wal_pre or had_shm_pre:
         return ObservationDecision(
             status="UNSUPPORTED_WAL",
             message="Database uses WAL layout or has WAL sidecars; pre-access refusal as WAL cannot be proven non-mutating on Windows",
@@ -95,18 +119,11 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
     try:
         conn = sqlite3.connect(uri, uri=True, timeout=busy_timeout_ms / 1000.0)
 
-        # Re-verify layout before executing any queries to detect concurrent transition to WAL
-        # If an external process switched to WAL, executing queries would create -shm/-wal sidecars.
-        with target.open("rb") as f:
-            post_header = f.read(100)
-        post_wal = (
-            len(post_header) >= 100
-            and (post_header[18] == 2 or post_header[19] == 2)
-        ) or target.with_name(f"{target.name}-wal").exists() or target.with_name(f"{target.name}-shm").exists()
-
-        if post_wal:
+        # Re-verify layout within observation envelope before executing any queries
+        if _check_wal_envelope():
             conn.close()
             conn = None
+            _cleanup_transient_sidecars()
             return ObservationDecision(
                 status="UNSUPPORTED_WAL",
                 message="Database uses WAL layout or has WAL sidecars; pre-access refusal as WAL cannot be proven non-mutating on Windows",
@@ -121,6 +138,18 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
         cur.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'"
         )
+        if _check_wal_envelope():
+            del cur
+            conn.close()
+            conn = None
+            _cleanup_transient_sidecars()
+            return ObservationDecision(
+                status="UNSUPPORTED_WAL",
+                message="Database transitioned to WAL layout during observation; refusing as WAL cannot be proven non-mutating on Windows",
+                rows=[],
+                supported=False,
+            )
+
         if not cur.fetchone():
             return ObservationDecision(
                 status="UNSUPPORTED_SCHEMA",
@@ -130,6 +159,18 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
             )
 
         cur.execute("PRAGMA table_info(jobs)")
+        if _check_wal_envelope():
+            del cur
+            conn.close()
+            conn = None
+            _cleanup_transient_sidecars()
+            return ObservationDecision(
+                status="UNSUPPORTED_WAL",
+                message="Database transitioned to WAL layout during observation; refusing as WAL cannot be proven non-mutating on Windows",
+                rows=[],
+                supported=False,
+            )
+
         existing_cols = {row["name"] for row in cur.fetchall()}
         required_cols = {"key", "state", "attempts", "fence", "detail"}
         if not required_cols.issubset(existing_cols):
@@ -142,6 +183,18 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
             )
 
         cur.execute("SELECT key, state, attempts, fence, detail FROM jobs ORDER BY key")
+        if _check_wal_envelope():
+            del cur
+            conn.close()
+            conn = None
+            _cleanup_transient_sidecars()
+            return ObservationDecision(
+                status="UNSUPPORTED_WAL",
+                message="Database transitioned to WAL layout during observation; refusing as WAL cannot be proven non-mutating on Windows",
+                rows=[],
+                supported=False,
+            )
+
         rows = [dict(row) for row in cur.fetchall()]
 
         if not rows:
@@ -192,6 +245,7 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
                 conn.close()
             except Exception:
                 pass
+        _cleanup_transient_sidecars()
 
 
 _ALLOWED_STATES = {"PENDING", "IN_FLIGHT", "SUCCEEDED", "FAILED", "CANCELLED"}
