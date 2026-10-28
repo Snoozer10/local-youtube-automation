@@ -28,10 +28,18 @@ class _FacadeProxy(ModuleType):
             setattr(self._get_module(), name, value)
 
     def __delattr__(self, name: str) -> None:
-        self.__dict__.pop(name, None)
+        if name in self.__dict__:
+            super().__delattr__(name)
+        target = self._get_module()
+        if hasattr(target, name):
+            try:
+                delattr(target, name)
+            except AttributeError:
+                pass
 
     def __dir__(self) -> list[str]:
         return dir(self._get_module())
+
 
 sys.modules[__name__] = _FacadeProxy("youtube_automation.visuals.text_gate")
 

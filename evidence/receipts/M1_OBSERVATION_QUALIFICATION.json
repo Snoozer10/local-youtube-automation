@@ -1,9 +1,13 @@
 {
-  "timestamp": "2026-10-28T10:44:10Z",
+  "timestamp": "2026-10-28T14:39:14Z",
   "milestone": "M1",
   "issue": 55,
   "qualification_status": "QUALIFIED_WITH_BOUNDARIES",
-  "source_commit": "b5de7ae8818b2483bf0615d7425fc93b731a4316",
+  "source_commit": "e3e49ad49d613e464c14b51942c3d37062fdc64a",
+  "source_manifest": {
+    "src/youtube_automation/production/ledger_observation.py": "46a4bed0085414245aff059006369852c1d182fcf525107a88419fd9a4253836",
+    "src/youtube_automation/core/failure_record.py": "f35cb1e58f0c55efdea0db14298ea51b488f7abda79453386e78e4e45f84bcc4"
+  },
   "environment": {
     "interpreter": "C:\\Users\\Snoozer\\teamwork_projects\\architecture-renewal-campaign\\venv\\Scripts\\python.exe",
     "python_version": "3.11.9",

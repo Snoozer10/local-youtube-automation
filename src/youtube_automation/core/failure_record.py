@@ -118,7 +118,7 @@ _BOUNDED_OPERATIONAL_PATTERNS = [
     re.compile(r"(?i)^Resource\s+lease\s+renewal\s+failed$"),
     re.compile(r"(?i)^Lost\s+production\s+lease$"),
     re.compile(r"(?i)^Cannot\s+acquire\s+a\s+production\s+lease$"),
-    re.compile(r"(?i)^Nested\s+production\s+leases.*$"),
+    re.compile(r"(?i)^Nested\s+production\s+leases\s+must\s+share\s+one\s+ledger$"),
     re.compile(r"(?i)^Stage\s+circuit(?:\s+is)?\s+open(?:\s+after\s+\d+\s+failed\s+attempts)?(?::\s*[a-zA-Z0-9_\-:]+)?$"),
     re.compile(r"(?i)^Stage\s+is\s+already\s+running$"),
     re.compile(r"(?i)^Resource\s+is\s+busy$"),
@@ -181,8 +181,13 @@ def project_safe_message(
     cleaned = _clean(message, limit=300)
     if is_safe_operational_message(cleaned):
         return cleaned
-    if _AUTH_HEADER_PREFIX_RE.match(cleaned):
-        return cleaned
+    auth_m = re.match(
+        r"(?i)^['\"]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)['\"]?\s*[:=]",
+        cleaned,
+    )
+    if auth_m:
+        header_name = auth_m.group(1).title()
+        return f"{header_name}: [redacted]"
     if known_issue and isinstance(known_issue, dict) and known_issue.get("id"):
         sig = known_issue.get("observed_signature")
         return f"[{known_issue['id']}] {sig}" if sig else f"[{known_issue['id']}] Known issue matched"
@@ -483,7 +488,15 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
     rec_kind = str(record.get("kind", "unknown"))
     rec_known = record.get("known_issue")
 
-    def visit(value: Any, depth: int, header_values: bool = False, key_name: str = "") -> Any:
+    def visit(
+        value: Any,
+        depth: int,
+        header_values: bool = False,
+        key_name: str = "",
+        parent_sensitive: bool = False,
+        is_known_issue: bool = False,
+        is_frame: bool = False,
+    ) -> Any:
         nonlocal remaining
         if remaining <= 0:
             return "[truncated]"
@@ -503,17 +516,36 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
                 )
             if key_name in {"rundir", "run_dir", "run"}:
                 return _safe_repo_path(value)
-            if header_values or key_name in sensitive:
+            if header_values or parent_sensitive or key_name in sensitive:
                 return "[redacted]"
             cleaned = _clean(value[:4096], limit=300)
             if any(ord(c) > 126 for c in cleaned) or re.search(r"(?i)\bcanary\b", cleaned):
                 return "[redacted]"
+            if is_known_issue:
+                return cleaned
+            if is_frame:
+                if key_name == "file" and (cleaned.startswith(("src/", ".runtime/")) or cleaned == "<external-path>"):
+                    return cleaned
+                if key_name == "function" and re.fullmatch(r"^[a-zA-Z0-9_]{1,120}$", cleaned):
+                    return cleaned
+            if key_name == "evidence" and (
+                cleaned.startswith(("src/", ".runtime/", "scratch/"))
+                or cleaned == "<external-path>"
+                or re.fullmatch(r"^[a-zA-Z0-9_\-./]{1,120}$", cleaned)
+            ):
+                return cleaned
             if (
                 cleaned in {"<external-path>", "<missing>", "<unknown>"}
-                or re.fullmatch(r"^[a-zA-Z0-9_\-.:/]{1,80}$", cleaned)
                 or is_safe_operational_message(cleaned)
             ):
                 return cleaned
+            if key_name in {
+                "stage", "state", "recipe", "job_id", "jobid", "channel_id", "channelid", "fence",
+                "attempts", "category", "severity", "exception", "layer", "kind",
+                "utc", "safe_id", "safeid", "id", "status", "version",
+            }:
+                if re.fullmatch(r"^[a-zA-Z0-9_\-.:/]{1,80}$", cleaned):
+                    return cleaned
             return "[redacted]"
         if isinstance(value, dict):
             result = {}
@@ -523,7 +555,8 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
                 raw_key = str(key)[:1024]
                 clean_key = _clean(raw_key, limit=80)
                 normalized = re.sub(r"[^a-z0-9]", "", raw_key.lower())
-                if header_values or (normalized in sensitive and not isinstance(item, (dict, list))):
+                is_sensitive_key = normalized in sensitive
+                if header_values or (is_sensitive_key and not isinstance(item, (dict, list))):
                     result[clean_key] = "[redacted]"
                     remaining -= 1
                 else:
@@ -532,6 +565,9 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
                         depth + 1,
                         header_values or normalized in {"headers", "requestheaders", "responseheaders"},
                         key_name=normalized,
+                        parent_sensitive=parent_sensitive or is_sensitive_key,
+                        is_known_issue=is_known_issue or normalized in {"knownissue", "known_issue"},
+                        is_frame=is_frame or normalized == "frame",
                     )
             return result
         if isinstance(value, list):
@@ -539,10 +575,22 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
             for item in value[:64]:
                 if remaining <= 0:
                     break
-                items.append(visit(item, depth + 1, header_values, key_name=key_name))
+                items.append(
+                    visit(
+                        item,
+                        depth + 1,
+                        header_values,
+                        key_name=key_name,
+                        parent_sensitive=parent_sensitive,
+                        is_known_issue=is_known_issue,
+                        is_frame=is_frame,
+                    )
+                )
             return items
         if value is None or isinstance(value, (bool, int, float)):
             return value
+        if parent_sensitive:
+            return "[redacted]"
         str_val = _clean(str(value)[:4096], limit=300)
         if any(ord(c) > 126 for c in str_val) or re.search(r"(?i)\bcanary\b", str_val):
             return "[redacted]"

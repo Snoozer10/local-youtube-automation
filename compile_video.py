@@ -31,7 +31,22 @@ class _FacadeProxy:
             super().__delattr__(name)
             return
 
-        self.__dict__.pop(name, None)
+        if name in self.__dict__:
+            super().__delattr__(name)
+
+        if hasattr(self._target, name):
+            try:
+                delattr(self._target, name)
+            except AttributeError:
+                pass
+
+        for mod_name in ["engine", "encoder", "ken_burns", "subtitles", "filter_graph"]:
+            mod = sys.modules.get(f"youtube_automation.video.{mod_name}")
+            if mod and hasattr(mod, name):
+                try:
+                    delattr(mod, name)
+                except AttributeError:
+                    pass
 
 
 sys.modules[__name__] = _FacadeProxy(compiler_mod)  # type: ignore[assignment]

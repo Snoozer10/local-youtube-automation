@@ -363,21 +363,64 @@ def test_native_attempted_writes_are_blocked_by_readonly_uri(tmp_path: Path) -> 
     conn.close()
 
 
+def test_native_transient_and_sidecar_creation_prevented_on_layout_transition(tmp_path: Path) -> None:
+    """AC 5 & AC 10: Demonstrate that concurrent layout transition to WAL causes zero native sidecar creation."""
+    db_path = tmp_path / "race.sqlite3"
+    _init_rollback_ledger(db_path, populate=True)
+
+    entries_before = sorted(x.name for x in tmp_path.iterdir())
+    assert entries_before == ["race.sqlite3"]
+
+    original_connect = sqlite3.connect
+
+    def raced_connect(*args, **kwargs):
+        sqlite3.connect = original_connect
+        # Switch to WAL mode right before the observer opens the file
+        ext_conn = original_connect(str(db_path))
+        ext_conn.execute("PRAGMA journal_mode=WAL")
+        ext_conn.close()
+        return original_connect(*args, **kwargs)
+
+    sqlite3.connect = raced_connect
+    try:
+        decision = observe_ledger(db_path)
+    finally:
+        sqlite3.connect = original_connect
+
+    assert decision.status == "UNSUPPORTED_WAL"
+    assert decision.supported is False
+    entries_after = sorted(x.name for x in tmp_path.iterdir())
+    # Critical verification: observer queries did not create race.sqlite3-shm or race.sqlite3-wal
+    assert "race.sqlite3-shm" not in entries_after
+    assert "race.sqlite3-wal" not in entries_after
+
+
 def test_generate_qualification_receipt() -> None:
     """AC 9 & AC 10: Produce the formal qualification receipt bound to source commit and demonstrated checks."""
     import subprocess
     from datetime import datetime, timezone
 
-    receipt_dir = Path("evidence/receipts")
+    repo_root = Path(__file__).resolve().parents[2]
+    receipt_dir = repo_root / "evidence/receipts"
     receipt_dir.mkdir(parents=True, exist_ok=True)
     receipt_path = receipt_dir / "M1_OBSERVATION_QUALIFICATION.json"
 
     try:
         commit_head = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], text=True
+            ["git", "-C", str(repo_root), "rev-parse", "HEAD"], text=True
         ).strip()
     except Exception:
         commit_head = "untracked"
+
+    import hashlib
+    source_manifest = {
+        "src/youtube_automation/production/ledger_observation.py": hashlib.sha256(
+            (repo_root / "src/youtube_automation/production/ledger_observation.py").read_bytes()
+        ).hexdigest(),
+        "src/youtube_automation/core/failure_record.py": hashlib.sha256(
+            (repo_root / "src/youtube_automation/core/failure_record.py").read_bytes()
+        ).hexdigest(),
+    }
 
     receipt_data = {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -385,6 +428,7 @@ def test_generate_qualification_receipt() -> None:
         "issue": 55,
         "qualification_status": "QUALIFIED_WITH_BOUNDARIES",
         "source_commit": commit_head,
+        "source_manifest": source_manifest,
         "environment": {
             "interpreter": sys.executable,
             "python_version": platform.python_version(),

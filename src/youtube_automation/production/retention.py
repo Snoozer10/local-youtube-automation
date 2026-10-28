@@ -88,11 +88,16 @@ def classify_entry(path: Path, root: Path) -> RetentionCandidate:
     non_disposable_exts = {".json", ".md", ".py", ".sql", ".txt", ".yaml", ".yml", ".sh", ".ps1"}
     has_non_disposable_ext = any(rel.endswith(ext) for ext in non_disposable_exts)
 
-    if not has_non_disposable_ext and (
-        rel.endswith(".cache")
-        or rel.endswith(".tmp_cache")
-        or any(k in rel for k in ("intermediate_frames", "temp_scratch"))
-    ):
+    KNOWN_REBUILDABLE_COHORTS = (
+        "intermediate_frames",
+        "temp_scratch",
+        "video_compiler_intermediate",
+        "ffmpeg_temp",
+    )
+    is_known_cohort = any(k in rel for k in KNOWN_REBUILDABLE_COHORTS)
+    is_cache_ext = rel.endswith(".cache") or rel.endswith(".tmp_cache")
+
+    if not has_non_disposable_ext and is_known_cohort and is_cache_ext:
         return RetentionCandidate(
             path=path,
             category=RetentionCategory.REBUILDABLE_CACHE,
@@ -199,6 +204,15 @@ class ReversibleArchiveCycle:
 
         self.archive_storage.mkdir(parents=True, exist_ok=True)
         cycle_dir = self.archive_storage / cycle_id
+        receipt_path = cycle_dir / "ARCHIVE_RECEIPT.json"
+        if receipt_path.is_file():
+            # Refuse cycle reuse to preserve recovery history and historical bytes
+            return {
+                "cycle_id": cycle_id,
+                "status": "REFUSED_ALREADY_EXISTS",
+                "receipt_path": str(receipt_path),
+                "archived_count": 0,
+            }
         cycle_dir.mkdir(parents=True, exist_ok=True)
         journal_file = self._journal_path(cycle_id)
 
@@ -336,6 +350,9 @@ class ReversibleArchiveCycle:
             expected_sha = entry["sha256"]
 
             if not dst.is_file():
+                if src.is_file() and compute_sha256(src) == expected_sha:
+                    # Already restored in an interrupted run
+                    continue
                 raise FileNotFoundError(f"Archived file missing from storage: {dst}")
 
             archive_sha = compute_sha256(dst)
@@ -358,6 +375,11 @@ class ReversibleArchiveCycle:
             dst = Path(entry["dest"])
             src = Path(entry["source"])
             expected_sha = entry["sha256"]
+
+            if not dst.is_file():
+                if src.is_file() and compute_sha256(src) == expected_sha:
+                    restored.append(str(src))
+                    continue
 
             if src.is_file() and compute_sha256(src) == expected_sha:
                 # Already present and identical
