@@ -91,17 +91,6 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
             return True
         return False
 
-    def _cleanup_transient_sidecars() -> None:
-        """Remove any observer-created transient sidecars that were absent prior to observation."""
-        import gc
-        gc.collect()
-        for sidecar, had_pre in [(wal_sidecar, had_wal_pre), (shm_sidecar, had_shm_pre)]:
-            if not had_pre and sidecar.exists():
-                try:
-                    sidecar.unlink()
-                except OSError:
-                    pass
-
     # AC 3: WAL mode cannot be proven non-mutating on Windows because SQLite
     # touches .db-shm mtime or creates .db-shm files during read-only access.
     # Therefore, all WAL layouts are marked unsupported with a pre-access refusal.
@@ -123,7 +112,6 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
         if _check_wal_envelope():
             conn.close()
             conn = None
-            _cleanup_transient_sidecars()
             return ObservationDecision(
                 status="UNSUPPORTED_WAL",
                 message="Database uses WAL layout or has WAL sidecars; pre-access refusal as WAL cannot be proven non-mutating on Windows",
@@ -142,7 +130,6 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
             del cur
             conn.close()
             conn = None
-            _cleanup_transient_sidecars()
             return ObservationDecision(
                 status="UNSUPPORTED_WAL",
                 message="Database transitioned to WAL layout during observation; refusing as WAL cannot be proven non-mutating on Windows",
@@ -163,7 +150,6 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
             del cur
             conn.close()
             conn = None
-            _cleanup_transient_sidecars()
             return ObservationDecision(
                 status="UNSUPPORTED_WAL",
                 message="Database transitioned to WAL layout during observation; refusing as WAL cannot be proven non-mutating on Windows",
@@ -187,7 +173,6 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
             del cur
             conn.close()
             conn = None
-            _cleanup_transient_sidecars()
             return ObservationDecision(
                 status="UNSUPPORTED_WAL",
                 message="Database transitioned to WAL layout during observation; refusing as WAL cannot be proven non-mutating on Windows",
@@ -245,7 +230,6 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
                 conn.close()
             except Exception:
                 pass
-        _cleanup_transient_sidecars()
 
 
 _ALLOWED_STATES = {"PENDING", "IN_FLIGHT", "SUCCEEDED", "FAILED", "CANCELLED"}

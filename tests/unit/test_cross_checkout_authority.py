@@ -26,8 +26,8 @@ def mock_shared_database(tmp_path: Path) -> Path:
     db_path = shared_dir / "production_authority.sqlite3"
     with sqlite3.connect(db_path.as_posix()) as conn:
         conn.execute("PRAGMA user_version = 1")
-        conn.execute("CREATE TABLE jobs (key TEXT PRIMARY KEY, fence INT)")
-        conn.execute("INSERT INTO jobs VALUES ('render_job', 1)")
+        conn.execute("CREATE TABLE jobs (key TEXT PRIMARY KEY, recipe TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'PENDING', fence INT NOT NULL DEFAULT 0, owner TEXT, expires REAL, attempts INT NOT NULL DEFAULT 0, detail TEXT NOT NULL DEFAULT '{}')")
+        conn.execute("INSERT INTO jobs (key, fence) VALUES ('render_job', 1)")
         conn.commit()
     return db_path
 
@@ -130,6 +130,58 @@ def test_stale_fencing_generation_rejected():
 
     with pytest.raises(StaleFencingGenerationError, match="Stale fencing generation rejected: proposed fence 3 <= current 5"):
         validate_fencing_generation(current_fence, 3)
+
+
+def test_production_entrypoint_governed_by_authority_discovery(mock_shared_database: Path, monkeypatch):
+    """Issue #59: Production callers resolve to configured authority via resource_database()."""
+    from youtube_automation.production import ledger
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(mock_shared_database))
+    resolved_db = ledger.resource_database()
+    assert resolved_db == mock_shared_database.resolve()
+
+    led = ledger.Ledger(resolved_db)
+    fence1 = led.claim("task:1", "rec_a", "worker_1", now=1000.0)
+    assert fence1 == 1
+
+    fence2 = led.claim("task:1", "rec_a", "worker_2", now=2000.0)
+    assert fence2 == 2
+
+
+def test_production_entrypoints_fail_closed_under_maintenance_mode(mock_shared_database: Path, monkeypatch):
+    """Issue #59: Production entrypoints fail closed with MaintenanceExclusionError when maintenance lock is active."""
+    from youtube_automation.production import ledger
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(mock_shared_database))
+    set_maintenance_mode(mock_shared_database.parent, enabled=True, reason="Cutover migration in progress")
+
+    with pytest.raises(MaintenanceExclusionError, match="locked for maintenance: Cutover migration in progress"):
+        ledger.resource_database()
+
+    with pytest.raises(MaintenanceExclusionError, match="locked for maintenance: Cutover migration in progress"):
+        with ledger.publication_guard():
+            pass
+
+    set_maintenance_mode(mock_shared_database.parent, enabled=False)
+    assert ledger.resource_database() == mock_shared_database.resolve()
+
+
+def test_production_entrypoints_fail_closed_on_ambiguous_authority(mock_shared_database: Path, tmp_path: Path, monkeypatch):
+    """Issue #59: Production callers fail closed on conflicting ENV/config."""
+    cfg_file = tmp_path / ".authority.json"
+    cfg_data = AuthorityConfig(database_path=mock_shared_database).to_dict()
+    cfg_file.write_text(json.dumps(cfg_data), encoding="utf-8")
+
+    other_db = tmp_path / "conflicting.sqlite3"
+    other_db.write_bytes(b"SQLite format 3\x00" + b"\x00" * 90)
+
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(other_db))
+
+    from youtube_automation.production.authority import discover_authority
+    with pytest.raises(AmbiguousAuthorityError):
+        discover_authority(config_path=cfg_file)
 
 
 def test_generate_authority_qualification_receipt(mock_shared_database: Path, tmp_path: Path):

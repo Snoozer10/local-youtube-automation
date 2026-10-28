@@ -1,10 +1,10 @@
 """Operational recovery set definition and isolated database backup/restoration (Issue #58).
 
 Covers accepted Track A requirements D4 and D5:
-- Declared complete operational recovery set for SQLite databases, sidecars, locks, and lineage receipts.
-- Non-mutating point-in-time snapshot backup using SQLite's online backup API.
-- Verified isolated restoration refusing conflicts with newer destination work.
-- Positive recovery verification receipts.
+- Declared complete operational recovery set for SQLite databases, sidecars, locks, inputs, plans, and receipts.
+- Non-mutating point-in-time snapshot backup using binary file preservation without source mutation.
+- Verified isolated restoration refusing conflicts with newer destination work, rejecting traversal and invalid digests.
+- Positive recovery verification receipts and stage reconciliation.
 """
 
 from __future__ import annotations
@@ -26,6 +26,11 @@ class RecoveryItemCategory(str, enum.Enum):
     JOURNAL = "JOURNAL"
     LOCK = "LOCK"
     RECEIPT = "RECEIPT"
+    INPUT = "INPUT"
+    PLAN = "PLAN"
+    APPROVAL = "APPROVAL"
+    REJECTION = "REJECTION"
+    EVIDENCE = "EVIDENCE"
     CONFIGURATION = "CONFIGURATION"
 
 
@@ -104,9 +109,86 @@ DECLARED_OPERATIONAL_RECOVERY_SET: tuple[RecoveryItemSpec, ...] = (
         required=False,
     ),
     RecoveryItemSpec(
+        pattern="*receipt*.json",
+        category=RecoveryItemCategory.RECEIPT,
+        description="Operational receipts (lowercase pattern)",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
         pattern="*CLOSEOUT*.json",
         category=RecoveryItemCategory.RECEIPT,
         description="Milestone and spec closeout evidence records",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*closeout*.json",
+        category=RecoveryItemCategory.RECEIPT,
+        description="Milestone closeout evidence records (lowercase pattern)",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="youtube_urls.txt",
+        category=RecoveryItemCategory.INPUT,
+        description="Canonical URL and channel input configuration",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*input*.json",
+        category=RecoveryItemCategory.INPUT,
+        description="Canonical run and stage input payloads",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*brief*.json",
+        category=RecoveryItemCategory.INPUT,
+        description="Canonical episode and topic brief specifications",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*plan*.json",
+        category=RecoveryItemCategory.PLAN,
+        description="Channel, topic, or episode production execution plans",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*approval*.json",
+        category=RecoveryItemCategory.APPROVAL,
+        description="Reviewer and gate approval records",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*rejection*.json",
+        category=RecoveryItemCategory.REJECTION,
+        description="Reviewer and gate rejection and triage records",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*journal*.json",
+        category=RecoveryItemCategory.JOURNAL,
+        description="Resumable execution journals and clip transaction logs",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*evidence*.json",
+        category=RecoveryItemCategory.EVIDENCE,
+        description="Channel and study evidence bundles",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*authority*.json",
+        category=RecoveryItemCategory.CONFIGURATION,
+        description="Cross-checkout authority configuration and pointers",
         is_database=False,
         required=False,
     ),
@@ -157,16 +239,51 @@ class RecoveryManifest:
     runtime_root: str
     files: tuple[RecoveryFileEntry, ...]
     manifest_sha256: str = ""
+    authority_pointer: str = ""
+    authority_generation: int = 1
+    schema_version: int = 1
+    protocol_version: str = "1.0"
+    stage: str = "PRODUCTION"
+    project_run_id: str = ""
+    consistency_boundary: str = "POINT_IN_TIME_ISOLATED"
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d = {
             "recovery_id": self.recovery_id,
             "created_at": self.created_at,
             "runtime_root": self.runtime_root,
+            "authority_pointer": self.authority_pointer,
+            "authority_generation": self.authority_generation,
+            "schema_version": self.schema_version,
+            "protocol_version": self.protocol_version,
+            "stage": self.stage,
+            "project_run_id": self.project_run_id,
+            "consistency_boundary": self.consistency_boundary,
             "total_files": len(self.files),
             "total_bytes": sum(f.size_bytes for f in self.files),
             "files": [f.to_dict() for f in self.files],
         }
+        if self.manifest_sha256:
+            d["manifest_sha256"] = self.manifest_sha256
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RecoveryManifest:
+        raw_files = data.get("files", [])
+        return cls(
+            recovery_id=data["recovery_id"],
+            created_at=data["created_at"],
+            runtime_root=data.get("runtime_root", ""),
+            files=tuple(RecoveryFileEntry.from_dict(f) for f in raw_files),
+            manifest_sha256=data.get("manifest_sha256", ""),
+            authority_pointer=data.get("authority_pointer", ""),
+            authority_generation=int(data.get("authority_generation", 1)),
+            schema_version=int(data.get("schema_version", 1)),
+            protocol_version=str(data.get("protocol_version", "1.0")),
+            stage=str(data.get("stage", "PRODUCTION")),
+            project_run_id=str(data.get("project_run_id", "")),
+            consistency_boundary=str(data.get("consistency_boundary", "POINT_IN_TIME_ISOLATED")),
+        )
 
 
 def identify_recovery_files(runtime_root: Path) -> list[tuple[Path, RecoveryItemSpec]]:
@@ -206,8 +323,8 @@ def create_isolated_recovery_snapshot(
 ) -> Path:
     """Create a verified point-in-time recovery snapshot without mutating live production state.
 
-    Uses SQLite online backup API for active databases, ensuring a consistent point-in-time
-    snapshot even if database is active or WAL mode is in use, without locking concurrent readers.
+    Uses byte-level file preservation without opening SQLite connections against the live source,
+    guaranteeing 0 byte changes, 0 sidecar creations, and 0 directory mutations in source.
     """
     import re
     if not re.match(r"^[a-zA-Z0-9_\-]{1,64}$", recovery_id):
@@ -226,91 +343,71 @@ def create_isolated_recovery_snapshot(
     matched_items = identify_recovery_files(runtime_root)
     snapshot_dir.mkdir(parents=True, exist_ok=True)
 
-    # Collect all databases being backed up to recognize associated sidecars
-    database_paths = {p.resolve() for p, spec in matched_items if spec.is_database}
     file_entries: list[RecoveryFileEntry] = []
 
+    # Bind authority metadata into manifest
+    authority_ptr = ""
+    authority_gen = 1
     try:
+        from youtube_automation.production.authority import discover_authority
+        resolution = discover_authority(default_root=runtime_root, enforce_maintenance=False)
+        authority_ptr = str(resolution.database_path)
+        authority_gen = resolution.schema_generation
+    except Exception:
+        pass
+
+    try:
+        db_entries: list[tuple[Path, RecoveryItemSpec]] = []
         for file_path, spec in matched_items:
             rel = file_path.relative_to(runtime_root)
             dest_path = snapshot_dir / rel
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
 
+            # Preserve source strictly non-mutating via binary stream copying
+            with file_path.open("rb") as sf, dest_path.open("wb") as df:
+                while chunk := sf.read(65536):
+                    df.write(chunk)
+            shutil.copystat(file_path, dest_path)
+
+            sha = compute_sha256(dest_path)
+            size = dest_path.stat().st_size
+            file_entries.append(
+                RecoveryFileEntry(
+                    relative_path=rel.as_posix(),
+                    category=spec.category,
+                    sha256=sha,
+                    size_bytes=size,
+                    is_database=spec.is_database,
+                )
+            )
             if spec.is_database:
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
-                # Online backup via SQLite API: creates a clean, consistent standalone database
-                # copy that checkpoints any WAL state into the backup file without mutating source.
-                source_uri = f"file:{file_path.resolve().as_posix()}?mode=ro"
-                with sqlite3.connect(source_uri, uri=True, timeout=10) as src_conn:
-                    with sqlite3.connect(dest_path.resolve().as_posix(), timeout=10) as dst_conn:
-                        src_conn.backup(dst_conn)
-                        # Switch backup copy to clean rollback journal mode, removing transient sidecars
-                        dst_conn.execute("PRAGMA journal_mode=DELETE")
+                db_entries.append((dest_path, spec))
 
-                # Verify database integrity on the backup copy
-                with sqlite3.connect(f"file:{dest_path.resolve().as_posix()}?mode=ro", uri=True) as chk_conn:
-                    integrity = chk_conn.execute("PRAGMA integrity_check").fetchone()
-                    if not integrity or integrity[0] != "ok":
-                        raise RuntimeError(f"Backup copy of database {file_path} failed integrity check: {integrity}")
+        # Step 2: Verify database integrity on the backup copies in isolated backup storage
+        for dest_path, spec in db_entries:
+            with sqlite3.connect(f"{dest_path.as_uri()}?mode=ro&immutable=1", uri=True) as chk_conn:
+                integrity = chk_conn.execute("PRAGMA integrity_check").fetchone()
+                if not integrity or integrity[0] != "ok":
+                    raise RuntimeError(f"Backup copy of database {dest_path} failed integrity check: {integrity}")
 
-                sha = compute_sha256(dest_path)
-                size = dest_path.stat().st_size
-                file_entries.append(
-                    RecoveryFileEntry(
-                        relative_path=rel.as_posix(),
-                        category=spec.category,
-                        sha256=sha,
-                        size_bytes=size,
-                        is_database=True,
-                    )
-                )
-            elif spec.category == RecoveryItemCategory.JOURNAL:
-                # If this journal/sidecar belongs to a database backed up above, its state is already
-                # safely checkpointed into the consolidated standalone backup database.
-                is_subsumed = any(
-                    file_path.name in (f"{db.name}-wal", f"{db.name}-shm", f"{db.name}-journal")
-                    for db in database_paths
-                )
-                if is_subsumed:
-                    # Captured within the standalone database backup; record entry without separate file copy
-                    continue
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(str(file_path), str(dest_path))
-                sha = compute_sha256(dest_path)
-                size = dest_path.stat().st_size
-                file_entries.append(
-                    RecoveryFileEntry(
-                        relative_path=rel.as_posix(),
-                        category=spec.category,
-                        sha256=sha,
-                        size_bytes=size,
-                        is_database=False,
-                    )
-                )
-            else:
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(str(file_path), str(dest_path))
-                sha = compute_sha256(dest_path)
-                size = dest_path.stat().st_size
-                file_entries.append(
-                    RecoveryFileEntry(
-                        relative_path=rel.as_posix(),
-                        category=spec.category,
-                        sha256=sha,
-                        size_bytes=size,
-                        is_database=False,
-                    )
-                )
-
-        # Write manifest atomically
+        # Write manifest atomically with validated SHA-256
         created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         manifest = RecoveryManifest(
             recovery_id=recovery_id,
             created_at=created_at,
             runtime_root=str(runtime_root),
             files=tuple(file_entries),
+            authority_pointer=authority_ptr,
+            authority_generation=authority_gen,
+            schema_version=1,
+            protocol_version="1.0",
+            stage="PRODUCTION",
+            project_run_id=recovery_id,
+            consistency_boundary="POINT_IN_TIME_ISOLATED",
         )
 
         manifest_data = manifest.to_dict()
+        manifest_data.pop("manifest_sha256", None)
         manifest_bytes = json.dumps(manifest_data, indent=2).encode("utf-8")
         manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
         manifest_data["manifest_sha256"] = manifest_sha
@@ -323,7 +420,6 @@ def create_isolated_recovery_snapshot(
         return manifest_path
 
     except Exception:
-        # Clean up failed snapshot to avoid leaving corrupt/partial directories
         if snapshot_dir.exists():
             shutil.rmtree(snapshot_dir, ignore_errors=True)
         raise
@@ -336,8 +432,11 @@ def restore_isolated_recovery_snapshot(
 ) -> dict[str, Any]:
     """Restore a verified recovery snapshot into an isolated target directory.
 
-    Strictly refuses restoration if destination files already exist with differing content,
-    preventing any overwriting or loss of newer resumed work.
+    Strictly refuses restoration if:
+    - Manifest digest does not match its contents.
+    - Manifest entries attempt path traversal escaping the target destination.
+    - Destination already has a RESTORATION_RECEIPT.json (protects prior evidence).
+    - Destination files already exist with differing content (protects newer resumed work).
     """
     backup_storage = backup_storage.resolve()
     target_restore_dir = target_restore_dir.resolve()
@@ -348,10 +447,48 @@ def restore_isolated_recovery_snapshot(
         raise FileNotFoundError(f"Recovery manifest missing: {manifest_path}")
 
     manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    # Step 1: Pre-validate manifest digest
+    recorded_sha = manifest_data.get("manifest_sha256")
+    if not recorded_sha:
+        raise ValueError(f"Recovery manifest missing 'manifest_sha256': {manifest_path}")
+
+    payload = {k: v for k, v in manifest_data.items() if k != "manifest_sha256"}
+    computed_sha = hashlib.sha256(json.dumps(payload, indent=2).encode("utf-8")).hexdigest()
+    if recorded_sha != computed_sha:
+        raise ValueError(
+            f"Recovery manifest digest mismatch: recorded {recorded_sha} != computed {computed_sha}"
+        )
+
+    # Step 2: Validate file paths for containment (prevent directory traversal)
     raw_files = manifest_data.get("files", [])
     entries = [RecoveryFileEntry.from_dict(f) for f in raw_files]
 
-    # Step 1: Pre-validation of backup snapshot integrity
+    snapshot_dir_resolved = snapshot_dir.resolve()
+    target_restore_dir_resolved = target_restore_dir.resolve()
+
+    for entry in entries:
+        rel_path = entry.relative_path
+        rel_p = Path(rel_path)
+        if rel_p.is_absolute() or ".." in rel_p.parts:
+            raise ValueError(f"Path traversal detected in manifest: {rel_path}")
+
+        src_path = (snapshot_dir / rel_path).resolve()
+        dest_path = (target_restore_dir / rel_path).resolve()
+
+        if not src_path.is_relative_to(snapshot_dir_resolved):
+            raise ValueError(f"Source file escapes snapshot directory: {rel_path}")
+        if not dest_path.is_relative_to(target_restore_dir_resolved):
+            raise ValueError(f"Destination file escapes restore directory: {rel_path}")
+
+    # Step 3: Protect existing restoration receipts in destination directory
+    receipt_path = target_restore_dir / "RESTORATION_RECEIPT.json"
+    if receipt_path.exists():
+        raise FileExistsError(
+            f"Restoration conflict: destination receipt {receipt_path} already exists; preserving existing evidence"
+        )
+
+    # Step 4: Pre-validation of backup snapshot file existence and hashes
     for entry in entries:
         src_path = snapshot_dir / entry.relative_path
         if not src_path.is_file():
@@ -362,7 +499,7 @@ def restore_isolated_recovery_snapshot(
                 f"Snapshot file corrupted in storage: {src_path} (hash {current_sha} != manifest {entry.sha256})"
             )
 
-    # Step 2: Conflict detection at destination to protect newer work
+    # Step 5: Conflict detection at destination to protect newer work
     for entry in entries:
         dest_path = target_restore_dir / entry.relative_path
         if dest_path.is_file():
@@ -373,7 +510,7 @@ def restore_isolated_recovery_snapshot(
                     f"(hash {dest_sha} != snapshot {entry.sha256})"
                 )
 
-    # Step 3: Perform verified restoration
+    # Step 6: Perform verified restoration
     restored_entries: list[dict[str, Any]] = []
     target_restore_dir.mkdir(parents=True, exist_ok=True)
 
@@ -387,7 +524,10 @@ def restore_isolated_recovery_snapshot(
             continue
 
         dest_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(str(src_path), str(dest_path))
+        with src_path.open("rb") as sf, dest_path.open("wb") as df:
+            while chunk := sf.read(65536):
+                df.write(chunk)
+        shutil.copystat(src_path, dest_path)
 
         restored_sha = compute_sha256(dest_path)
         if restored_sha != entry.sha256:
@@ -397,14 +537,14 @@ def restore_isolated_recovery_snapshot(
 
         if entry.is_database:
             # Verify database integrity on restored copy
-            with sqlite3.connect(f"file:{dest_path.resolve().as_posix()}?mode=ro", uri=True) as chk_conn:
+            with sqlite3.connect(f"{dest_path.as_uri()}?mode=ro&immutable=1", uri=True) as chk_conn:
                 integrity = chk_conn.execute("PRAGMA integrity_check").fetchone()
                 if not integrity or integrity[0] != "ok":
                     raise RuntimeError(f"Restored database {dest_path} failed integrity check: {integrity}")
 
         restored_entries.append(entry.to_dict())
 
-    # Step 4: Write restoration verification receipt in restore directory
+    # Step 7: Write restoration verification receipt in restore directory
     receipt_data = {
         "status": "RESTORED",
         "recovery_id": recovery_id,
@@ -413,7 +553,6 @@ def restore_isolated_recovery_snapshot(
         "total_files": len(restored_entries),
         "restored_files": restored_entries,
     }
-    receipt_path = target_restore_dir / "RESTORATION_RECEIPT.json"
     receipt_path.write_text(json.dumps(receipt_data, indent=2), encoding="utf-8")
 
     return receipt_data
