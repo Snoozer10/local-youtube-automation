@@ -197,3 +197,95 @@ def test_cli_retention_stage(mock_runtime_dir: Path, capsys: pytest.CaptureFixtu
     assert rest_res["status"] == "RESTORED"
     assert rest_res["restored_count"] == 2
     assert (mock_runtime_dir / "intermediate_frames.cache").is_file()
+
+
+def test_interrupted_cycle_at_physical_move_boundary_safely_rolls_back_without_data_loss(mock_runtime_dir: Path):
+    """Issue #40: Real crash window after physical move before moved=True persistence must not lose file on rollback."""
+    import shutil
+    storage = mock_runtime_dir.parent / "archive_storage_interrupted"
+    cycle = ReversibleArchiveCycle(mock_runtime_dir, storage)
+
+    cache_file = mock_runtime_dir / "temp_scratch.cache"
+    orig_sha = compute_sha256(cache_file)
+    candidates = [c for c in classify_runtime_directory(mock_runtime_dir) if c.path.name == "temp_scratch.cache"]
+
+    original_move = shutil.move
+    def crash_after_move(src, dst):
+        original_move(src, dst)
+        raise RuntimeError("injected crash after physical move before journal persistence")
+
+    shutil.move = crash_after_move
+    try:
+        cycle.archive_candidates("crash_cycle", candidates)
+    except RuntimeError:
+        pass
+    finally:
+        shutil.move = original_move
+
+    archived_file = storage / "crash_cycle" / "temp_scratch.cache"
+    assert not cache_file.exists(), "Source file should have been moved before crash"
+    assert archived_file.is_file(), "Archived file should be present in archive directory"
+
+    # Rollback must reconcile and restore the physical file despite moved=False in journal
+    rollback_res = cycle.rollback_interrupted_cycle("crash_cycle")
+    assert rollback_res["status"] == "ROLLED_BACK"
+    assert str(cache_file) in rollback_res["restored_files"]
+    assert cache_file.is_file(), "CRITICAL DATA LOSS: Source file was not restored!"
+    assert compute_sha256(cache_file) == orig_sha, "Restored file hash mismatch!"
+    assert not (storage / "crash_cycle").exists(), "Archive directory not cleaned up after complete rollback"
+
+
+def test_restoration_refuses_conflict_with_newer_resumed_source_work(mock_runtime_dir: Path):
+    """Issue #40: Restoration must fail closed with FileExistsError if source file exists with differing content."""
+    storage = mock_runtime_dir.parent / "archive_storage_conflict"
+    cycle = ReversibleArchiveCycle(mock_runtime_dir, storage)
+
+    cache_file = mock_runtime_dir / "temp_scratch.cache"
+    cache_file.write_bytes(b"old cached state")
+    candidates = [c for c in classify_runtime_directory(mock_runtime_dir) if c.path.name == "temp_scratch.cache"]
+
+    cycle.archive_candidates("cycle_conflict", candidates)
+    assert not cache_file.exists()
+
+    # Operator or background task resumes and creates newer work at source
+    newer_bytes = b"newer resumed work that must never be clobbered"
+    cache_file.write_bytes(newer_bytes)
+
+    with pytest.raises(FileExistsError, match="Restoration conflict"):
+        cycle.restore_archive("cycle_conflict")
+
+    # Source file must be completely untouched
+    assert cache_file.read_bytes() == newer_bytes
+    # Archive directory and files must remain intact for operator recovery
+    assert (storage / "cycle_conflict" / "temp_scratch.cache").is_file()
+
+
+def test_plans_and_resumable_state_are_preserved_not_classified_as_rebuildable_cache(mock_runtime_dir: Path):
+    """Issue #40: Non-cache files (plans, code, json, md) are preserved by default as UNKNOWN_PRESERVE."""
+    scratch_dir = mock_runtime_dir / "scratch"
+    scratch_dir.mkdir(parents=True, exist_ok=True)
+    plan_file = scratch_dir / "current_plan.json"
+    plan_file.write_text('{"resumable": true}', encoding="utf-8")
+
+    notes_file = scratch_dir / "scratch_notes.md"
+    notes_file.write_text("# Scratch plan notes", encoding="utf-8")
+
+    from youtube_automation.production.retention import classify_entry
+    plan_candidate = classify_entry(plan_file, mock_runtime_dir)
+    notes_candidate = classify_entry(notes_file, mock_runtime_dir)
+
+    assert plan_candidate.category == RetentionCategory.UNKNOWN_PRESERVE
+    assert notes_candidate.category == RetentionCategory.UNKNOWN_PRESERVE
+
+
+def test_reclassification_strictly_excludes_archive_storage_directory(mock_runtime_dir: Path):
+    """Issue #40: Files inside .archive or archive_storage must be excluded from reclassification."""
+    archive_dir = mock_runtime_dir / ".archive" / "cycle_01"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    (archive_dir / "archived_cache.cache").write_bytes(b"archived data")
+
+    candidates = classify_runtime_directory(mock_runtime_dir)
+    candidate_paths = [str(c.path) for c in candidates]
+
+    for p in candidate_paths:
+        assert ".archive" not in p, f"Archived file was reclassified: {p}"
