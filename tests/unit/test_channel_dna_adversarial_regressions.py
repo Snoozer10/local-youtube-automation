@@ -153,3 +153,103 @@ def test_guidance_carried_to_resolved_channel(tmp_path: Path):
     assert ch.visual_guidance["composition"] == "Framing"
     assert ch.audio_guidance["treatment"] == "Oud bed"
     assert ch.packaging_guidance["packaging_rules"] == "Question hook"
+
+
+def test_adversarial_tampered_physical_evidence_blocks_derivation_and_activation(tmp_path: Path):
+    """P1: Tampered physical evidence on disk must block derivation and activation."""
+    sdir = tmp_path / "study_tamper"
+    col = StudyCollector(sdir)
+    st = col.initialize_study("st_t", "ch_t", _make_candidates())
+    st = col.add_evidence(st, "v1", "transcript", b"authentic bytes 1", evidence_id="ev_t1")
+    st = col.add_evidence(st, "v2", "transcript", b"authentic bytes 2", evidence_id="ev_t2")
+
+    for area in ["subject_promise", "viewer_need", "tone_register", "narrative_structure"]:
+        st = col.record_core_trait(st, area, f"claim {area}", ["v1", "v2"], ["ev_t1", "ev_t2"], f"rationale {area}")
+
+    # Tamper physical file on disk
+    (col.evidence_dir / "ev_t1.bin").write_bytes(b"tampered bytes!")
+    valid, mismatches = col.verify_evidence_integrity(st)
+    assert not valid
+    assert len(mismatches) > 0
+
+    with pytest.raises(ValueError, match="Cannot derive production profile from non-CORE_READY study"):
+        derive_production_profile(col.load_study())
+
+    # Also test publish_and_activate directly refuses tampered profile
+    prof = derive_production_profile(st.model_copy(update={"study_dir": None}))
+    prof_tampered = prof.model_copy(update={"study_dir": str(col.study_dir), "evidence_hashes": {"ev_t1": "original_hash"}})
+    mgr = ProfileActivationManager(tmp_path / "ch_t_dir")
+    with pytest.raises(ValueError, match="Cannot activate profile"):
+        mgr.publish_and_activate(prof_tampered)
+
+
+def test_adversarial_metadata_alone_cannot_establish_narrative_core(tmp_path: Path):
+    """P1: Page metadata alone must not satisfy narrative core requirements."""
+    sdir = tmp_path / "study_meta"
+    col = StudyCollector(sdir)
+    st = col.initialize_study("st_m", "ch_m", _make_candidates())
+    st = col.add_evidence(st, "v1", "metadata", b"meta 1", evidence_id="ev_m1")
+    st = col.add_evidence(st, "v2", "metadata", b"meta 2", evidence_id="ev_m2")
+
+    for area in ["subject_promise", "viewer_need", "tone_register", "narrative_structure"]:
+        st = col.record_core_trait(st, area, f"claim {area}", ["v1", "v2"], ["ev_m1", "ev_m2"], f"rationale {area}")
+
+    assert st.status == StudyStatus.PARTIAL
+    assert any("metadata alone cannot establish narrative core" in g for g in st.actionable_gaps)
+    with pytest.raises(ValueError, match="Cannot derive production profile from non-CORE_READY study"):
+        derive_production_profile(st)
+
+
+def test_adversarial_unresolved_contradictions_and_wrong_modality_reject_optional_guidance(tmp_path: Path):
+    """P1: Optional traits with wrong modality or unresolved contradictions are not promoted to guidance."""
+    sdir = tmp_path / "study_opt"
+    col = StudyCollector(sdir)
+    st = col.initialize_study("st_o", "ch_o", _make_candidates())
+    st = col.add_evidence(st, "v1", "transcript", b"t1", evidence_id="ev_t1")
+    st = col.add_evidence(st, "v2", "transcript", b"t2", evidence_id="ev_t2")
+    st = col.add_evidence(st, "v1", "metadata", b"meta_audio", evidence_id="ev_m_audio")
+    st = col.add_evidence(st, "v2", "metadata", b"meta_audio_2", evidence_id="ev_m_audio_2")
+
+    for area in ["subject_promise", "viewer_need", "tone_register", "narrative_structure"]:
+        st = col.record_core_trait(st, area, f"claim {area}", ["v1", "v2"], ["ev_t1", "ev_t2"], f"rationale {area}")
+
+    # Soundtrack backed by metadata and unresolved contradictions
+    st = col.record_core_trait(
+        st,
+        "soundtrack",
+        claim="Lo-fi beats",
+        supporting_video_ids=["v1", "v2"],
+        evidence_ids=["ev_m_audio", "ev_m_audio_2"],
+        rationale="From video description",
+        counterexamples=["Video 2 has rock music"],
+        resolved_contradictions=False,
+    )
+
+    prof = derive_production_profile(st)
+    assert prof.audio_guidance == {}
+
+
+def test_adversarial_active_pointer_digest_mismatch_blocks_load(tmp_path: Path):
+    """P1: load_active_profile must verify disk content against active pointer digest and reject tampering."""
+    sdir = tmp_path / "study_ptr"
+    col = StudyCollector(sdir)
+    st = col.initialize_study("st_p", "ch_p", _make_candidates())
+    st = col.add_evidence(st, "v1", "transcript", b"t1", evidence_id="ev1")
+    st = col.add_evidence(st, "v2", "transcript", b"t2", evidence_id="ev2")
+
+    for area in ["subject_promise", "viewer_need", "tone_register", "narrative_structure"]:
+        st = col.record_core_trait(st, area, f"claim {area}", ["v1", "v2"], ["ev1", "ev2"], f"rationale {area}")
+
+    prof = derive_production_profile(st)
+    mgr = ProfileActivationManager(tmp_path / "ch_ptr_dir")
+    mgr.publish_and_activate(prof)
+
+    # Directly tamper profile.json on disk
+    prof_file = mgr.revisions_dir / prof.revision / "profile.json"
+    data = json.loads(prof_file.read_text(encoding="utf-8"))
+    data["tone_and_style"] = "tampered style"
+    prof_file.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Active profile digest mismatch"):
+        mgr.load_active_profile()
+

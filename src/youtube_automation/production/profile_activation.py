@@ -32,6 +32,8 @@ class DerivedProductionProfile(BaseModel):
     audio_guidance: dict[str, Any] = Field(default_factory=dict)
     packaging_guidance: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, str] = Field(default_factory=dict)  # field -> source
+    study_dir: str | None = None
+    evidence_hashes: dict[str, str] = Field(default_factory=dict)
     created_at: str
 
 
@@ -113,8 +115,18 @@ def derive_production_profile(
     visual_guidance = dict(settings.get("visual_guidance", {}))
     if not visual_guidance and "visual_motion" in study.core_traits:
         vt = study.core_traits["visual_motion"]
-        ev_vids = {evidence_by_id[eid].video_id for eid in vt.evidence_ids if eid in evidence_by_id}
-        if len(set(vt.supporting_video_ids).intersection(sample_vids)) >= 2 and len(ev_vids) >= 2 and vt.claim.strip():
+        ev_vids = {
+            evidence_by_id[eid].video_id
+            for eid in vt.evidence_ids
+            if eid in evidence_by_id and evidence_by_id[eid].modality in ("video", "frame", "clip", "visual")
+        }
+        if (
+            vt.resolved_contradictions
+            and not vt.counterexamples
+            and len(set(vt.supporting_video_ids).intersection(sample_vids)) >= 2
+            and len(ev_vids) >= 2
+            and vt.claim.strip()
+        ):
             visual_guidance = {
                 "composition": vt.claim,
                 "motion_grammar": vt.rationale,
@@ -128,8 +140,18 @@ def derive_production_profile(
     audio_guidance = dict(settings.get("audio_guidance", {}))
     if not audio_guidance and "soundtrack" in study.core_traits:
         st = study.core_traits["soundtrack"]
-        ev_vids = {evidence_by_id[eid].video_id for eid in st.evidence_ids if eid in evidence_by_id}
-        if len(set(st.supporting_video_ids).intersection(sample_vids)) >= 2 and len(ev_vids) >= 2 and st.claim.strip():
+        ev_vids = {
+            evidence_by_id[eid].video_id
+            for eid in st.evidence_ids
+            if eid in evidence_by_id and evidence_by_id[eid].modality in ("audio", "soundtrack")
+        }
+        if (
+            st.resolved_contradictions
+            and not st.counterexamples
+            and len(set(st.supporting_video_ids).intersection(sample_vids)) >= 2
+            and len(ev_vids) >= 2
+            and st.claim.strip()
+        ):
             audio_guidance = {
                 "treatment": st.claim,
                 "sound_policy": st.rationale,
@@ -143,8 +165,18 @@ def derive_production_profile(
     packaging_guidance = dict(settings.get("packaging_guidance", {}))
     if not packaging_guidance and "packaging" in study.core_traits:
         pt = study.core_traits["packaging"]
-        ev_vids = {evidence_by_id[eid].video_id for eid in pt.evidence_ids if eid in evidence_by_id}
-        if len(set(pt.supporting_video_ids).intersection(sample_vids)) >= 2 and len(ev_vids) >= 2 and pt.claim.strip():
+        ev_vids = {
+            evidence_by_id[eid].video_id
+            for eid in pt.evidence_ids
+            if eid in evidence_by_id and evidence_by_id[eid].modality in ("thumbnail", "packaging", "metadata", "title")
+        }
+        if (
+            pt.resolved_contradictions
+            and not pt.counterexamples
+            and len(set(pt.supporting_video_ids).intersection(sample_vids)) >= 2
+            and len(ev_vids) >= 2
+            and pt.claim.strip()
+        ):
             packaging_guidance = {
                 "packaging_rules": pt.claim,
                 "thumbnail_style": pt.rationale,
@@ -177,12 +209,15 @@ def derive_production_profile(
     revision_id = f"rev_{compute_profile_digest(base_dict)[:16]}"
 
     created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    evidence_hashes = {e.evidence_id: e.sha256 for e in study.evidence}
 
     return DerivedProductionProfile(
         channel_id=study.channel_id,
         revision=revision_id,
         study_id=study.study_id,
         study_digest=study_sha,
+        study_dir=study.study_dir,
+        evidence_hashes=evidence_hashes,
         target_language=target_language,
         target_dialect=target_dialect,
         audience_intent=audience_intent,
@@ -209,25 +244,39 @@ class ProfileActivationManager:
 
     def publish_and_activate(self, profile: DerivedProductionProfile) -> dict[str, Any]:
         """Publish immutable revision and atomically switch active pointer."""
+        # Verify physical evidence integrity before publishing/activating
+        if profile.study_dir:
+            ev_dir = Path(profile.study_dir) / "evidence"
+            if ev_dir.is_dir() and profile.evidence_hashes:
+                for ev_id, expected_sha in profile.evidence_hashes.items():
+                    ev_file = ev_dir / f"{ev_id}.bin"
+                    if not ev_file.is_file():
+                        raise ValueError(f"Cannot activate profile: missing evidence file for {ev_id}")
+                    actual_sha = hashlib.sha256(ev_file.read_bytes()).hexdigest()
+                    if actual_sha != expected_sha:
+                        raise ValueError(
+                            f"Cannot activate profile: physical evidence file {ev_id} tampered (hash mismatch)"
+                        )
+
         self.revisions_dir.mkdir(parents=True, exist_ok=True)
         rev_dir = self.revisions_dir / profile.revision
         rev_dir.mkdir(parents=True, exist_ok=True)
         profile_file = rev_dir / "profile.json"
 
-        profile_json = profile.model_dump_json(indent=2)
-        profile_digest = hashlib.sha256(profile_json.encode("utf-8")).hexdigest()
+        profile_dict = profile.model_dump()
+        profile_digest = compute_profile_digest(profile_dict)
 
         # 1. Verify revision immutability: refuse to overwrite existing revision with differing content
         if profile_file.is_file():
-            existing_json = profile_file.read_text(encoding="utf-8")
-            existing_digest = hashlib.sha256(existing_json.encode("utf-8")).hexdigest()
+            existing_dict = json.loads(profile_file.read_bytes().decode("utf-8"))
+            existing_digest = compute_profile_digest(existing_dict)
             if existing_digest != profile_digest:
                 raise ValueError(
                     f"Revision '{profile.revision}' is immutable and already published with differing content (existing digest {existing_digest} != {profile_digest})"
                 )
         else:
             temp_profile = profile_file.with_suffix(".tmp")
-            temp_profile.write_text(profile_json, encoding="utf-8")
+            temp_profile.write_bytes(profile.model_dump_json(indent=2).encode("utf-8"))
             temp_profile.replace(profile_file)
 
         # 2. Record journal entry for atomic pointer switch
@@ -245,6 +294,7 @@ class ProfileActivationManager:
             "channel_id": profile.channel_id,
             "active_revision": profile.revision,
             "digest": profile_digest,
+            "profile_digest": profile_digest,
             "activated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
         temp_pointer = self.active_pointer_file.with_suffix(".tmp")
@@ -276,9 +326,12 @@ class ProfileActivationManager:
         if rev_file.is_file():
             try:
                 target_json = rev_file.read_text(encoding="utf-8")
+                target_dict = json.loads(target_json)
                 actual_digest = hashlib.sha256(target_json.encode("utf-8")).hexdigest()
-                if actual_digest == journal.get("profile_digest"):
-                    loaded = DerivedProductionProfile.model_validate_json(target_json)
+                canonical_digest = compute_profile_digest(target_dict)
+                exp = journal.get("profile_digest")
+                if actual_digest == exp or canonical_digest == exp:
+                    loaded = DerivedProductionProfile.model_validate(target_dict)
                     if loaded.revision == target_rev and loaded.channel_id == journal.get("channel_id"):
                         is_valid_target = True
             except Exception:
@@ -315,6 +368,26 @@ class ProfileActivationManager:
         profile_file = self.revisions_dir / rev / "profile.json"
         if not profile_file.is_file():
             raise FileNotFoundError(f"Active profile file missing: {profile_file}")
+
+        # Enforce active pointer digest validation against profile content on disk
+        if self.active_pointer_file.is_file():
+            ptr_data = json.loads(self.active_pointer_file.read_text(encoding="utf-8"))
+            expected_digest = ptr_data.get("profile_digest") or ptr_data.get("digest")
+            raw_bytes = profile_file.read_bytes()
+            actual_digest = hashlib.sha256(raw_bytes).hexdigest()
+            try:
+                prof_dict = json.loads(raw_bytes.decode("utf-8"))
+                canonical_digest = compute_profile_digest(prof_dict)
+            except Exception:
+                canonical_digest = None
+
+            if expected_digest:
+                if actual_digest != expected_digest and canonical_digest != expected_digest:
+                    raise ValueError(
+                        f"Active profile digest mismatch: pointer expects {expected_digest}, but file on disk has {actual_digest}"
+                    )
+            return DerivedProductionProfile.model_validate(prof_dict)
+
         return DerivedProductionProfile.model_validate_json(profile_file.read_text(encoding="utf-8"))
 
     def resolve_channel(self) -> Channel:

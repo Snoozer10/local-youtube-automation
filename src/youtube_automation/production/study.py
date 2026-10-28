@@ -121,6 +121,7 @@ class ReferenceStudy(BaseModel):
     )
     actionable_gaps: list[str] = Field(default_factory=list)
     spend: CumulativeSpend = Field(default_factory=CumulativeSpend)
+    study_dir: str | None = None
 
 
 def compute_sha256(data: bytes) -> str:
@@ -218,6 +219,22 @@ def evaluate_study_readiness(study: ReferenceStudy) -> tuple[StudyStatus, list[s
     if not study.evidence:
         gaps.append("Study contains zero evidence items; evidence-backed claims required")
 
+    # Physical evidence integrity check
+    if study.study_dir:
+        ev_dir = Path(study.study_dir) / "evidence"
+        if ev_dir.is_dir():
+            for ev in study.evidence:
+                ev_file = ev_dir / f"{ev.evidence_id}.bin"
+                if not ev_file.is_file():
+                    gaps.append(f"Physical evidence file missing on disk for '{ev.evidence_id}'")
+                    continue
+                if ev_file.stat().st_size != ev.byte_count:
+                    gaps.append(f"Physical evidence file size mismatch for '{ev.evidence_id}'")
+                    continue
+                actual_sha = hashlib.sha256(ev_file.read_bytes()).hexdigest()
+                if actual_sha != ev.sha256:
+                    gaps.append(f"Physical evidence file SHA-256 mismatch for '{ev.evidence_id}'")
+
     for ev in study.evidence:
         if ev.video_id not in sample_ids:
             gaps.append(f"Evidence '{ev.evidence_id}' references video '{ev.video_id}' not in selected sample")
@@ -272,6 +289,17 @@ def evaluate_study_readiness(study: ReferenceStudy) -> tuple[StudyStatus, list[s
                 f"Core area '{area}' linked evidence covers {len(linked_vids)} distinct video(s); minimum 2 required"
             )
 
+        # Narrative core traits require transcript/narrative modality from >= 2 distinct sample videos
+        narrative_vids = {
+            evidence_by_id[eid].video_id
+            for eid in trait.evidence_ids
+            if eid in evidence_by_id and evidence_by_id[eid].modality in ("transcript", "narrative")
+        }
+        if len(narrative_vids) < 2:
+            gaps.append(
+                f"Core area '{area}' requires narrative/transcript evidence covering >= 2 distinct sample videos; page metadata alone cannot establish narrative core"
+            )
+
         if not trait.resolved_contradictions:
             gaps.append(f"Core area '{area}' has unresolved contradictions or counterexamples")
 
@@ -313,10 +341,11 @@ class StudyCollector:
 
     def save_study(self, study: ReferenceStudy) -> ReferenceStudy:
         """Persist study state atomically."""
-        status, gaps = evaluate_study_readiness(study)
-        sample_gaps = [g for g in study.actionable_gaps if "group" in g or "Insufficient sample" in g]
+        study_with_dir = study.model_copy(update={"study_dir": str(self.study_dir)})
+        status, gaps = evaluate_study_readiness(study_with_dir)
+        sample_gaps = [g for g in study_with_dir.actionable_gaps if "group" in g or "Insufficient sample" in g]
         all_gaps = sorted(set(sample_gaps + gaps))
-        updated = study.model_copy(update={"status": status, "actionable_gaps": all_gaps})
+        updated = study_with_dir.model_copy(update={"status": status, "actionable_gaps": all_gaps})
         temp_file = self.study_file.with_suffix(".tmp")
         temp_file.write_text(updated.model_dump_json(indent=2), encoding="utf-8")
         temp_file.replace(self.study_file)
@@ -327,7 +356,10 @@ class StudyCollector:
         if not self.study_file.is_file():
             raise FileNotFoundError(f"Study file missing: {self.study_file}")
         data = json.loads(self.study_file.read_text(encoding="utf-8"))
-        return ReferenceStudy.model_validate(data)
+        study = ReferenceStudy.model_validate(data)
+        if not study.study_dir:
+            study = study.model_copy(update={"study_dir": str(self.study_dir)})
+        return study
 
     def add_evidence(
         self,
