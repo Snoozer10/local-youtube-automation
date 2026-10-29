@@ -102,8 +102,26 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
             supported=False,
         )
 
-    # Connect strictly in read-only mode via URI for rollback journal databases
-    uri = f"{target.as_uri()}?mode=ro"
+    # Check for active exclusive locks on Windows (AC 4: locked database returns BUSY)
+    try:
+        import msvcrt
+        with target.open("rb") as f:
+            f.seek(1073741824)
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 512)
+            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 512)
+    except (OSError, PermissionError):
+        return ObservationDecision(
+            status="BUSY",
+            message="Database is locked by another process",
+            rows=[],
+            supported=False,
+        )
+    except Exception:
+        pass
+
+    # Connect strictly in read-only immutable mode via URI for rollback journal databases
+    # immutable=1 guarantees that SQLite never creates or touches sidecars even under concurrent WAL transition
+    uri = f"{target.as_uri()}?mode=ro&immutable=1"
     conn = None
     try:
         conn = sqlite3.connect(uri, uri=True, timeout=busy_timeout_ms / 1000.0)

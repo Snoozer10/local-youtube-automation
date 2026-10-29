@@ -16,10 +16,15 @@ from pathlib import Path
 from typing import Any
 
 MINIMUM_SCHEMA_GENERATION = 1
+MAXIMUM_SCHEMA_GENERATION = 1
 
 
 class AuthorityError(Exception):
     """Base exception for resource authority failures."""
+
+
+class MissingAuthorityError(AuthorityError):
+    """Raised when a registered or configured authority database is missing on disk, requiring recovery rather than silent replacement."""
 
 
 class AmbiguousAuthorityError(AuthorityError):
@@ -157,13 +162,21 @@ def discover_authority(
             f"Authority at {target_path} is currently locked for maintenance: {maint_reason}"
         )
 
-    # 3. Check for Incompatible Schema Generation
-    if generation < MINIMUM_SCHEMA_GENERATION:
-        raise IncompatibleAuthorityError(
-            f"Authority schema generation {generation} is incompatible with required minimum {MINIMUM_SCHEMA_GENERATION}"
+    # 3. Check for Missing Registered Authority (Enrollment vs Recovery)
+    if source_type in ("ENV", "CONFIG") and not target_path.exists():
+        raise MissingAuthorityError(
+            f"Registered authority database at {target_path} is missing on disk; "
+            f"refusing silent empty replacement to preserve historical state"
         )
 
-    # 4. Check for Physical Database Damage if file exists (strictly non-mutating)
+    # 4. Check for Incompatible Schema Generation
+    if generation < MINIMUM_SCHEMA_GENERATION or generation > MAXIMUM_SCHEMA_GENERATION:
+        raise IncompatibleAuthorityError(
+            f"Authority schema generation {generation} is incompatible with required minimum {MINIMUM_SCHEMA_GENERATION} "
+            f"(supported range [{MINIMUM_SCHEMA_GENERATION}, {MAXIMUM_SCHEMA_GENERATION}])"
+        )
+
+    # 5. Check for Physical Database Damage and Compatibility if file exists (strictly non-mutating)
     if target_path.exists():
         if target_path.stat().st_size < 100:
             raise DamagedAuthorityError(f"Authority database at {target_path} is truncated or damaged (<100 bytes)")
@@ -174,9 +187,10 @@ def discover_authority(
                     raise DamagedAuthorityError(f"Authority file at {target_path} is not a valid SQLite database")
                 # SQLite header offset 60-64 stores user_version as a 4-byte big-endian integer
                 db_version = int.from_bytes(header[60:64], "big")
-                if db_version > 0 and db_version < MINIMUM_SCHEMA_GENERATION:
+                if db_version > 0 and (db_version < MINIMUM_SCHEMA_GENERATION or db_version > MAXIMUM_SCHEMA_GENERATION):
                     raise IncompatibleAuthorityError(
-                        f"Database user_version {db_version} is less than required minimum {MINIMUM_SCHEMA_GENERATION}"
+                        f"Database user_version {db_version} is incompatible with supported range "
+                        f"[{MINIMUM_SCHEMA_GENERATION}, {MAXIMUM_SCHEMA_GENERATION}]"
                     )
         except OSError as err:
             raise DamagedAuthorityError(f"Cannot read authority database at {target_path}: {err}") from err

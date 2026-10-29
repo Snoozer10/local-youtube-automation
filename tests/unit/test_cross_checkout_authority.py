@@ -269,3 +269,91 @@ def test_old_lease_publication_rejected_after_authority_cutover(tmp_path: Path, 
             with ledger.publication_guard():
                 entered = True
     assert entered is False
+
+
+def test_missing_registered_authority_rejected_without_silent_replacement(tmp_path: Path, monkeypatch):
+    """Issue #59 / Track A D2: Missing registered authority must raise MissingAuthorityError and refuse silent empty replacement."""
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import MissingAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    db = tmp_path / "adaptive.sqlite3"
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    # Initial setup
+    init_ledger = ledger.Ledger(db)
+    with init_ledger.connection() as c:
+        c.execute("INSERT INTO jobs(key,recipe,state,detail) VALUES('preserved-history','recipe','SUCCEEDED','{}')")
+
+    # Rename original to simulate missing registered authority
+    preserved = tmp_path / "preserved-original.sqlite3"
+    db.rename(preserved)
+
+    entered = False
+    with pytest.raises(MissingAuthorityError, match="refusing silent empty replacement"):
+        with ledger.leased_resource(ledger.resource_database(), "browser"):
+            entered = True
+
+    assert entered is False
+    assert not db.exists(), "Empty replacement database must not be silently created"
+    assert preserved.is_file(), "Original preserved database must remain intact"
+
+
+def test_foreign_future_schema_version_rejected_before_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Track A D2/D3: Unsupported newer schema generations (e.g. user_version 999) must be rejected before initialization."""
+    import sqlite3
+
+    from youtube_automation.production import authority, ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    db = tmp_path / "future.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE future_private_state(payload TEXT)")
+    c.execute("PRAGMA user_version=999")
+    c.commit()
+    c.close()
+
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="exceeds maximum supported schema generation|is incompatible with supported range"):
+        authority.discover_authority()
+
+    with pytest.raises(IncompatibleAuthorityError, match="exceeds maximum supported schema generation"):
+        ledger.Ledger(db)
+
+    # Verify no tables were created or state modified
+    c = sqlite3.connect(db)
+    tables = [row[0] for row in c.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+    uv = c.execute("PRAGMA user_version").fetchone()[0]
+    c.close()
+
+    assert tables == ["future_private_state"]
+    assert uv == 999
+
+
+def test_maintenance_exclusion_blocks_ledger_writes_before_initialization(tmp_path: Path, monkeypatch):
+    """Issue #59: Maintenance exclusion must block Ledger initialization before changing journal mode or running DDL."""
+    import sqlite3
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import MaintenanceExclusionError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    db = tmp_path / "maint_db.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute("PRAGMA journal_mode=DELETE")
+    c.executescript("CREATE TABLE jobs(key TEXT PRIMARY KEY, recipe TEXT, state TEXT, fence INT DEFAULT 0, owner TEXT, expires REAL, attempts INT DEFAULT 0, detail TEXT DEFAULT '{}');")
+    c.commit()
+    c.close()
+
+    before_mode = db.read_bytes()[18:20].hex()
+    (tmp_path / "MAINTENANCE.lock").write_text("scheduled maintenance", encoding="utf-8")
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(MaintenanceExclusionError, match="locked for maintenance"):
+        with ledger.leased_resource(db, "browser"):
+            pass
+
+    after_mode = db.read_bytes()[18:20].hex()
+    assert before_mode == after_mode == "0101", "Journal mode must remain unchanged DELETE (0101) under maintenance"

@@ -422,3 +422,31 @@ def test_status_cli_damaged_database_unmocked_authority_discovery_graceful(
 
     assert "Ledger Status: UNAVAILABLE (corrupted or unreadable database)" in out
     assert "Authority resolution failure" in out
+
+
+def test_status_cli_maintenance_canary_sanitized(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """Issue #55 / #56: Maintenance lock containing sensitive canary tokens or prose must be projected safely without leaks."""
+    db_dir = tmp_path / "privacy"
+    db_dir.mkdir(parents=True, exist_ok=True)
+    db_path = db_dir / "adaptive.sqlite3"
+    _create_rollback_fixture(db_path, populate=True)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    canary = "Bearer sk-status-canary-123 Our acquisition target is Orion"
+    (db_dir / "MAINTENANCE.lock").write_text(canary, encoding="utf-8")
+
+    from youtube_automation.production import ledger
+    monkeypatch.setattr(cli, "resource_database", ledger._unpatched_resource_database)
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db_path))
+
+    cli.main(["status", "--run-dir", str(run_dir)])
+    out = capsys.readouterr().out
+
+    assert "sk-status-canary-123" not in out, "Credential canary must be sanitized from public status display"
+    assert "Our acquisition target is Orion" not in out, "Private prose must be sanitized from public status display"
+    assert "MaintenanceExclusionError" in out or "locked for maintenance" in out
+    assert "Ledger Status: UNAVAILABLE" in out

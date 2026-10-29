@@ -503,3 +503,174 @@ def test_restore_conflict_preservation_newer_work_and_receipt(tmp_path: Path):
     assert (target / "RESTORATION_RECEIPT.json").read_bytes() == b"newer restoration evidence"
     # Interrupted/failed recovery record is preserved
     assert (target / "FAILED_RESTORATION_race_restore.json").is_file()
+
+
+def test_uncommitted_spill_aba_rollback_rejected(tmp_path: Path):
+    """Issue #58: Cache spill during uncommitted rollback transaction must not be certified as valid recovery."""
+    import shutil
+    import sqlite3
+    from unittest.mock import patch
+
+    from youtube_automation.production import recovery as rec
+
+    src = tmp_path / "source"
+    src.mkdir(parents=True)
+    p = src / "adaptive.sqlite3"
+    c = sqlite3.connect(p)
+    c.execute("PRAGMA journal_mode=DELETE")
+    c.execute("CREATE TABLE jobs(key TEXT PRIMARY KEY, detail TEXT)")
+    c.executemany("INSERT INTO jobs VALUES(?,?)", [(f"episode-{i}", "X" * 1024) for i in range(1200)])
+    c.commit()
+    c.close()
+
+    storage = tmp_path / "storage"
+    target = storage / "aba" / "adaptive.sqlite3"
+    started = False
+    writer = None
+    orig_open = Path.open
+    orig_stat = shutil.copystat
+
+    def hook_open(self, *args, **kwargs):
+        nonlocal writer, started
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if self == target and mode == "wb" and not started:
+            started = True
+            writer = sqlite3.connect(p)
+            writer.execute("PRAGMA cache_size=10")
+            writer.execute("PRAGMA cache_spill=ON")
+            writer.execute("BEGIN IMMEDIATE")
+            writer.execute("UPDATE jobs SET detail=?", ("Y" * 1024,))
+        return orig_open(self, *args, **kwargs)
+
+    def hook_stat(s, d, *args, **kwargs):
+        if Path(s) == p and Path(d) == target and writer is not None:
+            writer.rollback()
+            writer.close()
+        return orig_stat(s, d, *args, **kwargs)
+
+    try:
+        with patch.object(Path, "open", hook_open), patch.object(shutil, "copystat", hook_stat):
+            with pytest.raises(RuntimeError, match="Consistency boundary violation"):
+                rec.create_isolated_recovery_snapshot(src, storage, "aba")
+    finally:
+        if writer is not None:
+            try:
+                writer.rollback()
+                writer.close()
+            except Exception:
+                pass
+
+    # Verify failed snapshot evidence is preserved and uncommitted data not certified
+    assert (storage / "aba" / "FAILED_SNAPSHOT.json").is_file()
+    assert not (storage / "aba" / "RECOVERY_MANIFEST.json").is_file()
+
+
+def test_wal_only_committed_jobs_included_in_closure_and_restored(tmp_path: Path):
+    """Issue #58: Committed WAL job references must be discovered and restored (immutable=1 must not blind closure)."""
+    import subprocess
+    import sys
+
+    from youtube_automation.production import recovery as rec
+
+    src = tmp_path / "source"
+    src.mkdir(parents=True)
+    p = src / "adaptive.sqlite3"
+    (src / "voice.mp3").write_bytes(b"synthetic retained media bytes")
+
+    child = (
+        "import sys, sqlite3, json, os\n"
+        "c = sqlite3.connect(sys.argv[1])\n"
+        "c.execute('PRAGMA journal_mode=WAL')\n"
+        "c.execute('CREATE TABLE jobs(key TEXT PRIMARY KEY, detail TEXT)')\n"
+        "c.commit()\n"
+        "c.execute('PRAGMA wal_checkpoint(TRUNCATE)')\n"
+        "c.execute('INSERT INTO jobs VALUES(?,?)', ('episode-A', json.dumps({'source_audio':'voice.mp3'})))\n"
+        "c.commit()\n"
+        "os._exit(0)\n"
+    )
+    res = subprocess.run([sys.executable, "-I", "-B", "-c", child, str(p)], capture_output=True)
+    assert res.returncode == 0, res.stderr
+
+    storage = tmp_path / "storage"
+    m_path = rec.create_isolated_recovery_snapshot(src, storage, "wal_snap")
+    manifest = json.loads(m_path.read_text(encoding="utf-8"))
+
+    # Manifest must truthfully record project_run_id from WAL and include referenced media
+    assert manifest["project_run_id"] == "episode-A"
+    manifest_files = [f["relative_path"] for f in manifest["files"]]
+    assert "voice.mp3" in manifest_files
+
+    restored = tmp_path / "restored"
+    outcome = rec.restore_isolated_recovery_snapshot(storage, "wal_snap", restored)
+    assert outcome["status"] == "RESTORED"
+    assert (restored / "voice.mp3").is_file()
+    assert (restored / "voice.mp3").read_bytes() == b"synthetic retained media bytes"
+
+
+def test_string_list_references_in_json_extracted_and_restored(tmp_path: Path):
+    """Issue #58: String references inside lists must be transitively included in recovery closure."""
+    from youtube_automation.production import recovery as rec
+
+    src = tmp_path / "source"
+    src.mkdir(parents=True)
+    (src / "shot_plan.json").write_text(json.dumps({"required_evidence": ["appendix.md"]}), encoding="utf-8")
+    (src / "appendix.md").write_text("required preserved evidence", encoding="utf-8")
+
+    storage = tmp_path / "storage"
+    m_path = rec.create_isolated_recovery_snapshot(src, storage, "list_snap")
+    manifest = json.loads(m_path.read_text(encoding="utf-8"))
+
+    manifest_files = [f["relative_path"] for f in manifest["files"]]
+    assert "appendix.md" in manifest_files
+
+    restored = tmp_path / "restored"
+    outcome = rec.restore_isolated_recovery_snapshot(storage, "list_snap", restored)
+    assert outcome["status"] == "RESTORED"
+    assert (restored / "appendix.md").is_file()
+    assert (restored / "appendix.md").read_text(encoding="utf-8") == "required preserved evidence"
+
+
+def test_destination_containment_junction_escape_refused(tmp_path: Path):
+    """Issue #58: Directory junction swap after preflight must be refused and not write outside target."""
+    import subprocess
+    from unittest.mock import patch
+
+    from youtube_automation.production import recovery as rec
+
+    src = tmp_path / "source"
+    (src / "nested").mkdir(parents=True)
+    (src / "nested" / "brief.json").write_text('{"title":"original"}', encoding="utf-8")
+
+    storage = tmp_path / "storage"
+    rec.create_isolated_recovery_snapshot(src, storage, "j_snap")
+
+    restore = tmp_path / "restore"
+    escape = tmp_path / "outside_target"
+    escape.mkdir(parents=True)
+
+    dest = restore / "nested" / "brief.json"
+    orig_open = Path.open
+    done = False
+
+    def hook_open(self, *args, **kwargs):
+        nonlocal done
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if self == dest and mode == "xb" and not done:
+            done = True
+            dest.parent.rename(tmp_path / "preserved_parent")
+            p = subprocess.run(
+                ["cmd.exe", "/c", "mklink", "/J", str(dest.parent), str(escape)],
+                capture_output=True,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            assert p.returncode == 0, p.stderr
+        return orig_open(self, *args, **kwargs)
+
+    with patch.object(Path, "open", hook_open):
+        with pytest.raises(RuntimeError, match="Restoration destination containment violation"):
+            rec.restore_isolated_recovery_snapshot(storage, "j_snap", restore)
+
+    # Escape path must not contain leaked file
+    assert not (escape / "brief.json").exists()
+    # Failed restoration record must be preserved
+    assert (restore / "FAILED_RESTORATION_j_snap.json").is_file()

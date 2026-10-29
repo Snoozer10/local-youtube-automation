@@ -57,7 +57,17 @@ def publication_guard() -> Iterator[None]:
         MaintenanceExclusionError,
         StaleFencingGenerationError,
     )
-    publication_path = resource_database().resolve()
+    try:
+        publication_path = resource_database().resolve()
+    except Exception as exc:
+        for item in active:
+            auth_domain = item[4] if len(item) > 4 else None
+            if auth_domain is not None:
+                raise StaleFencingGenerationError(
+                    f"Authority cutover detected: lease was acquired under authority {auth_domain} "
+                    f"but current authority has changed or is unavailable: {exc}"
+                ) from exc
+        raise
 
     # Enforce maintenance exclusion at publication boundary
     maint_lock = publication_path.parent / "MAINTENANCE.lock"
@@ -134,12 +144,25 @@ class Ledger:
         self.path = str(path)
         self.generation: int = 1
         p = Path(self.path)
+
+        # 1. Maintenance exclusion check BEFORE any connection or writes
+        self._check_maintenance()
+
+        # 2. Schema compatibility validation
         if p.is_file():
             try:
                 with p.open("rb") as f:
                     h = f.read(100)
                     if len(h) >= 100:
                         self.generation = int.from_bytes(h[60:64], "big") or 1
+                        if self.generation > 1:
+                            from youtube_automation.production.authority import (
+                                IncompatibleAuthorityError,
+                            )
+
+                            raise IncompatibleAuthorityError(
+                                f"Database user_version {self.generation} exceeds maximum supported schema generation 1"
+                            )
             except OSError:
                 pass
         with self.connection() as conn:

@@ -387,3 +387,58 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - `ledger_observation.py`: Unowned sidecar cleanup deleted concurrent writer's WAL/SHM when observer encountered WAL transition. Resolved by eliminating sidecar cleanup entirely; observer cleanly refuses without unlinking.
 - `recovery.py`: Opening live source SQLite database with `mode=ro` created `-shm` sidecar and checkpointed WAL, altering source SHA256. Resolved by using direct binary file streaming from source.
 - `recovery.py`: Memory-mapped SQLite connections to `-shm` during integrity checks blocked subsequent writes with `OSError: [Errno 22] Invalid argument`. Resolved by decoupling file copying from integrity checks and using `immutable=1` URI mode.
+
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Renewal), 2026-10-29
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Verified PR #74 head before this batch: `c207dffc1447275390883de20873253d370ab7a6`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial per platform discovery limitations.
+
+### Done
+1. **Coherent committed recovery (#58)**:
+   - Added preflight checks forbidding snapshots while active rollback journals (`{db}-journal`) exist.
+   - Enforced destination copy hash validation (`dest_sha == pre_sha == curr_sha`) and immediate post-copy check for transient journal appearance. Uncommitted cache spills and rollback/ABA mutations are detected and refused with `RuntimeError` rather than restoring uncommitted dirty pages. Preserved failure evidence (`FAILED_SNAPSHOT.json`).
+
+2. **Complete logical-state closure (#58)**:
+   - Fixed `_extract_references` in `src/youtube_automation/production/recovery.py` to extract string elements inside lists (e.g. `required_evidence: ["appendix.md"]`).
+   - Restored committed WAL job inspection: decoupled SQLite queries from `immutable=1` (which blinded WAL frames), enabling discovery of committed WAL jobs and referenced files (e.g. `voice.mp3`, `spoken.txt`) without mutating the source.
+   - Truthfully derived `project_run_id` from committed jobs table across both rollback and WAL layouts.
+
+3. **Authority admission before writes (#59)**:
+   - Distinguished first-time enrollment (unconfigured default initial bootstrap) from missing registered authority (`source_type in ("ENV", "CONFIG")`), raising `MissingAuthorityError` on missing registered files to prevent silent empty replacement.
+   - Enforced schema generation bounds (`[MINIMUM_SCHEMA_GENERATION, MAXIMUM_SCHEMA_GENERATION] = [1, 1]`) in both `discover_authority()` and `Ledger.__init__()`, rejecting foreign/future schemas (e.g. `user_version=999`) before modifying tables or headers.
+   - Enforced maintenance exclusion check at the start of `Ledger.__init__()` before acquiring connections or executing PRAGMA statements, preserving rollback header bytes (`0101`).
+
+4. **Safe status reporting (#55, #56)**:
+   - Routed `AuthorityError` in `cli.main(['status', ...])` through `failure_record.project_safe_message`, projecting maintenance and authority errors to bounded diagnostics (e.g. `[authority/resolution] MaintenanceExclusionError`).
+   - Completely sanitized credential canaries (`Bearer sk-...`) and private prose from public stdout.
+
+5. **Genuinely non-mutating observation (#55, #56)**:
+   - Connected rollback database inspection in `observe_ledger` with `mode=ro&immutable=1`, preventing SQLite C engine from creating `-shm` or `-wal` sidecars under concurrent WAL transition races.
+   - Retained non-mutating Windows exclusive lock detection via byte-range probing at the SQLite lock offset (`msvcrt.locking` on 1GB mark), correctly returning `status="BUSY"` when an exclusive transaction is active without blocking or mutating.
+
+6. **Restoration containment through publication (#58)**:
+   - Enforced containment validation through the write phase: re-verifying resolved destination path immediately upon leaf open (`open("xb")`) before writing bytes.
+   - Detected Windows directory junction rebinding, immediately closing and unlinking escaped leaves, recording `FAILED_RESTORATION_{id}.json`, and raising `RuntimeError`.
+
+### Verification
+- Replayed all 9 independent audit probe classes in isolated synthetic fixtures:
+  1. `probe_aba`: Snapshot refused with `Consistency boundary violation`, uncommitted spill rejected, `FAILED_SNAPSHOT.json` preserved.
+  2. `probe_wal_closure`: Committed WAL job discovered, `voice.mp3` restored, truthful `project_run_id: "episode-A"`.
+  3. `probe_junction`: Junction escape caught, outside target unmodified, `FAILED_RESTORATION_j.json` preserved.
+  4. `probe_configured_missing`: Missing registered authority raises `MissingAuthorityError`, zero replacement created, claim refused.
+  5. `probe_list_closure`: List string reference `appendix.md` extracted and restored.
+  6. `probe_compatibility`: `user_version=999` rejected before initialization, 0 tables created.
+  7. `probe_status_privacy`: Bearer canary and prose sanitized from stdout, zero leaks.
+  8. `probe_maintenance_init`: `Ledger` instantiation under maintenance raises `MaintenanceExclusionError`, header bytes unchanged `0101`.
+  9. `probe_late_wal`: Late WAL transition returns `UNSUPPORTED_WAL`, zero sidecars created.
+- Focused test suite: 193 passed in 17.02s (17 affected modules + new unit regressions across all 7 findings).
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Stop point: Stop for review of PR #74 renewed corrections. Do NOT merge without explicit user consent.

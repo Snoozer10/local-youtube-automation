@@ -17,6 +17,7 @@ import os
 import shutil
 import sqlite3
 import time
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -344,12 +345,11 @@ def expand_recovery_closure(
 
     def _extract_references(data: Any) -> list[str]:
         refs: list[str] = []
-        if isinstance(data, dict):
+        if isinstance(data, str):
+            refs.append(data)
+        elif isinstance(data, dict):
             for _k, v in data.items():
-                if isinstance(v, str):
-                    refs.append(v)
-                elif isinstance(v, (dict, list)):
-                    refs.extend(_extract_references(v))
+                refs.extend(_extract_references(v))
         elif isinstance(data, list):
             for elem in data:
                 refs.extend(_extract_references(elem))
@@ -372,14 +372,29 @@ def expand_recovery_closure(
                     content = file_path.read_text(encoding="utf-8")
                     parsed = json.loads(content)
                     discovered_refs.extend(_extract_references(parsed))
-                except Exception:
+                except json.JSONDecodeError:
                     pass
+                except Exception as exc:
+                    raise RuntimeError(f"Failed extracting references from {file_path}: {exc}") from exc
 
-            # Traverse SQLite databases (strictly non-mutating immutable read)
+            # Traverse SQLite databases to discover committed logical state (including committed WAL frames)
             elif spec.is_database and file_path.is_file():
+                wal_sidecar = file_path.with_name(f"{file_path.name}-wal")
+                shm_sidecar = file_path.with_name(f"{file_path.name}-shm")
+                temp_dir_ctx = None
+                inspect_db = file_path
                 try:
-                    uri = f"{file_path.resolve().as_uri()}?mode=ro&immutable=1"
-                    with sqlite3.connect(uri, uri=True) as conn:
+                    if wal_sidecar.is_file() and not shm_sidecar.is_file():
+                        import tempfile
+
+                        temp_dir_ctx = tempfile.TemporaryDirectory()
+                        td = Path(temp_dir_ctx.name)
+                        inspect_db = td / file_path.name
+                        shutil.copy2(file_path, inspect_db)
+                        shutil.copy2(wal_sidecar, td / wal_sidecar.name)
+
+                    uri = f"{inspect_db.resolve().as_uri()}?mode=ro"
+                    with closing(sqlite3.connect(uri, uri=True)) as conn:
                         cur = conn.cursor()
                         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")
                         if cur.fetchone():
@@ -391,15 +406,24 @@ def expand_recovery_closure(
                                 for row in cur.fetchall():
                                     for val in row:
                                         if isinstance(val, str):
-                                            if val.startswith("{") or val.startswith("["):
+                                            val_s = val.strip()
+                                            if val_s.startswith("{") or val_s.startswith("["):
                                                 try:
-                                                    discovered_refs.extend(_extract_references(json.loads(val)))
+                                                    discovered_refs.extend(_extract_references(json.loads(val_s)))
                                                 except Exception:
-                                                    pass
+                                                    discovered_refs.append(val)
                                             else:
                                                 discovered_refs.append(val)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    if not isinstance(exc, RuntimeError):
+                        raise RuntimeError(f"Failed extracting references from database {file_path}: {exc}") from exc
+                    raise
+                finally:
+                    if temp_dir_ctx is not None:
+                        try:
+                            temp_dir_ctx.cleanup()
+                        except Exception:
+                            pass
 
             for ref in discovered_refs:
                 ref = ref.strip()
@@ -535,14 +559,42 @@ def create_isolated_recovery_snapshot(
     # Truthful project_run_id from jobs table or recovery_id
     project_run = recovery_id
     if db_items and db_items[0].is_file():
+        wal_sidecar = db_items[0].with_name(f"{db_items[0].name}-wal")
+        shm_sidecar = db_items[0].with_name(f"{db_items[0].name}-shm")
+        temp_dir_ctx = None
+        inspect_db = db_items[0]
         try:
-            uri = f"{db_items[0].resolve().as_uri()}?mode=ro&immutable=1"
-            with sqlite3.connect(uri, uri=True) as conn:
+            if wal_sidecar.is_file() and not shm_sidecar.is_file():
+                import tempfile
+
+                temp_dir_ctx = tempfile.TemporaryDirectory()
+                td = Path(temp_dir_ctx.name)
+                inspect_db = td / db_items[0].name
+                shutil.copy2(db_items[0], inspect_db)
+                shutil.copy2(wal_sidecar, td / wal_sidecar.name)
+            uri = f"{inspect_db.resolve().as_uri()}?mode=ro"
+            with closing(sqlite3.connect(uri, uri=True)) as conn:
                 row = conn.execute("SELECT key FROM jobs LIMIT 1").fetchone()
                 if row and row[0]:
                     project_run = str(row[0])
         except Exception:
             pass
+        finally:
+            if temp_dir_ctx is not None:
+                try:
+                    temp_dir_ctx.cleanup()
+                except Exception:
+                    pass
+
+    # Enforce consistency boundary preflight: active rollback journal or transient transaction blocks capture
+    for file_path, spec in matched_items:
+        if spec.is_database:
+            j_file = file_path.with_name(f"{file_path.name}-journal")
+            if j_file.exists():
+                raise RuntimeError(
+                    f"Consistency boundary violation: active rollback journal detected for {file_path.name}; "
+                    f"cannot certify coherent committed capture during active transaction"
+                )
 
     # Record pre-copy state for all database and journal files to enforce consistency boundary
     pre_db_state: dict[Path, tuple[int, int, str]] = {}
@@ -569,6 +621,23 @@ def create_isolated_recovery_snapshot(
 
             sha = compute_sha256(dest_path)
             size = dest_path.stat().st_size
+
+            if spec.is_database:
+                # Immediate check for journal appearance during copy
+                j_file = file_path.with_name(f"{file_path.name}-journal")
+                if j_file.exists():
+                    raise RuntimeError(
+                        f"Consistency boundary violation: transient rollback journal appeared for {file_path.name} during copy; "
+                        f"refusing uncommitted capture"
+                    )
+                # Verify that copied bytes match the pre-copy source hash
+                pre_size, _pre_mtime, pre_sha = pre_db_state[file_path]
+                if sha != pre_sha or size != pre_size:
+                    raise RuntimeError(
+                        f"Consistency boundary violation: copied database {dest_path.name} hash {sha} "
+                        f"does not match verified source hash {pre_sha}; uncommitted or concurrent spill detected"
+                    )
+
             file_entries.append(
                 RecoveryFileEntry(
                     relative_path=rel.as_posix(),
@@ -587,6 +656,12 @@ def create_isolated_recovery_snapshot(
                 raise RuntimeError(
                     f"Consistency boundary violation: source file {file_path.name} was removed during snapshot capture"
                 )
+            if file_path.is_file():
+                j_file = file_path.with_name(f"{file_path.name}-journal")
+                if j_file.exists():
+                    raise RuntimeError(
+                        f"Consistency boundary violation: rollback journal {j_file.name} present after copy"
+                    )
             curr_size = file_path.stat().st_size
             curr_sha = compute_sha256(file_path)
             if curr_size != pre_size or curr_sha != pre_sha:
@@ -597,7 +672,7 @@ def create_isolated_recovery_snapshot(
 
         # Step 2: Verify database integrity on the backup copies in isolated backup storage
         for dest_path, _spec in db_entries:
-            with sqlite3.connect(f"{dest_path.as_uri()}?mode=ro&immutable=1", uri=True) as chk_conn:
+            with closing(sqlite3.connect(f"{dest_path.as_uri()}?mode=ro&immutable=1", uri=True)) as chk_conn:
                 integrity = chk_conn.execute("PRAGMA integrity_check").fetchone()
                 if not integrity or integrity[0] != "ok":
                     raise RuntimeError(f"Backup copy of database {dest_path} failed integrity check: {integrity}")
@@ -754,8 +829,24 @@ def restore_isolated_recovery_snapshot(
                 continue
 
             dest_path.parent.mkdir(parents=True, exist_ok=True)
+            if not dest_path.resolve().is_relative_to(target_restore_dir_resolved):
+                raise ValueError(f"Destination file escapes restore directory: {entry.relative_path}")
+
             try:
                 with src_path.open("rb") as sf, dest_path.open("xb") as df:
+                    # Enforce containment through writing: re-verify resolved path while df is open
+                    curr_resolved = dest_path.resolve()
+                    if not curr_resolved.is_relative_to(target_restore_dir_resolved):
+                        try:
+                            df.close()
+                            if dest_path.is_file():
+                                dest_path.unlink()
+                        except Exception:
+                            pass
+                        raise RuntimeError(
+                            f"Restoration destination containment violation: destination path {dest_path} "
+                            f"(resolved {curr_resolved}) escaped target root {target_restore_dir_resolved} during open"
+                        )
                     while chunk := sf.read(65536):
                         df.write(chunk)
                 shutil.copystat(src_path, dest_path)
@@ -775,7 +866,7 @@ def restore_isolated_recovery_snapshot(
 
             if entry.is_database:
                 # Verify database integrity on restored copy
-                with sqlite3.connect(f"{dest_path.as_uri()}?mode=ro&immutable=1", uri=True) as chk_conn:
+                with closing(sqlite3.connect(f"{dest_path.as_uri()}?mode=ro&immutable=1", uri=True)) as chk_conn:
                     integrity = chk_conn.execute("PRAGMA integrity_check").fetchone()
                     if not integrity or integrity[0] != "ok":
                         raise RuntimeError(f"Restored database {dest_path} failed integrity check: {integrity}")
@@ -792,8 +883,19 @@ def restore_isolated_recovery_snapshot(
             "restored_files": restored_entries,
         }
         receipt_bytes = json.dumps(receipt_data, indent=2).encode("utf-8")
+        receipt_path_resolved = receipt_path.resolve()
+        if not receipt_path_resolved.is_relative_to(target_restore_dir_resolved):
+            raise ValueError(f"Restoration receipt escapes restore directory: {receipt_path}")
         try:
             with receipt_path.open("xb") as rf:
+                if not receipt_path.resolve().is_relative_to(target_restore_dir_resolved):
+                    try:
+                        rf.close()
+                        if receipt_path.is_file():
+                            receipt_path.unlink()
+                    except Exception:
+                        pass
+                    raise RuntimeError(f"Restoration receipt escaped target root during open: {receipt_path}")
                 rf.write(receipt_bytes)
         except FileExistsError as err:
             raise FileExistsError(

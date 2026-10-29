@@ -914,10 +914,27 @@ def main(argv: list[str] | None = None) -> None:
         from .ledger_observation import ObservationDecision, format_ledger_status, observe_ledger
 
         if authority_err is not None:
-            status_type = "DAMAGED" if "Damaged" in type(authority_err).__name__ else "UNSUPPORTED_SCHEMA"
+            from youtube_automation.core import failure_record
+
+            err_type = type(authority_err).__name__
+            if "Damaged" in err_type:
+                status_type = "DAMAGED"
+            elif "Missing" in err_type:
+                status_type = "ABSENT"
+            elif "Maintenance" in err_type:
+                status_type = "BUSY"
+            else:
+                status_type = "UNSUPPORTED_SCHEMA"
+
+            safe_summary = failure_record.project_safe_message(
+                str(authority_err),
+                exc_name=err_type,
+                layer="authority",
+                kind="resolution",
+            )
             decision = ObservationDecision(
                 status=status_type,
-                message=f"Authority resolution failure: {authority_err}",
+                message=f"Authority resolution failure: {safe_summary}",
                 rows=[],
                 supported=False,
             )
