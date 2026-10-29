@@ -665,27 +665,36 @@ def create_isolated_recovery_snapshot(
         captured_rel_paths = {entry.relative_path for entry in file_entries}
         for dest_path, _spec in db_entries:
             captured_refs: list[str] = []
-            uri = f"{dest_path.as_uri()}?mode=ro&immutable=1"
-            with closing(sqlite3.connect(uri, uri=True)) as conn:
-                cur = conn.cursor()
-                cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")
-                if cur.fetchone():
-                    cur.execute("PRAGMA table_info(jobs)")
-                    cols = {row[1] for row in cur.fetchall()}
-                    query_cols = [c for c in ["key", "recipe", "detail"] if c in cols]
-                    if query_cols:
-                        cur.execute(f"SELECT {','.join(query_cols)} FROM jobs")
-                        for row in cur.fetchall():
-                            for val in row:
-                                if isinstance(val, str):
-                                    val_s = val.strip()
-                                    if val_s.startswith("{") or val_s.startswith("["):
-                                        try:
-                                            captured_refs.extend(_extract_references(json.loads(val_s)))
-                                        except Exception:
+            with tempfile.TemporaryDirectory() as inspect_tmp:
+                inspect_db = Path(inspect_tmp) / dest_path.name
+                shutil.copyfile(dest_path, inspect_db)
+                for sidecar_ext in ["-wal", "-shm"]:
+                    s_file = dest_path.with_name(f"{dest_path.name}{sidecar_ext}")
+                    if s_file.exists():
+                        try:
+                            shutil.copyfile(s_file, Path(inspect_tmp) / s_file.name)
+                        except OSError:
+                            pass
+                with closing(sqlite3.connect(inspect_db)) as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")
+                    if cur.fetchone():
+                        cur.execute("PRAGMA table_info(jobs)")
+                        cols = {row[1] for row in cur.fetchall()}
+                        query_cols = [c for c in ["key", "recipe", "detail"] if c in cols]
+                        if query_cols:
+                            cur.execute(f"SELECT {','.join(query_cols)} FROM jobs")
+                            for row in cur.fetchall():
+                                for val in row:
+                                    if isinstance(val, str):
+                                        val_s = val.strip()
+                                        if val_s.startswith("{") or val_s.startswith("["):
+                                            try:
+                                                captured_refs.extend(_extract_references(json.loads(val_s)))
+                                            except Exception:
+                                                captured_refs.append(val)
+                                        else:
                                             captured_refs.append(val)
-                                    else:
-                                        captured_refs.append(val)
             for ref in captured_refs:
                 ref = ref.strip()
                 if not ref or len(ref) > 260:
@@ -703,10 +712,20 @@ def create_isolated_recovery_snapshot(
 
         # Step 3: Verify database integrity on the backup copies in isolated backup storage
         for dest_path, _spec in db_entries:
-            with closing(sqlite3.connect(f"{dest_path.as_uri()}?mode=ro&immutable=1", uri=True)) as chk_conn:
-                integrity = chk_conn.execute("PRAGMA integrity_check").fetchone()
-                if not integrity or integrity[0] != "ok":
-                    raise RuntimeError(f"Backup copy of database {dest_path} failed integrity check: {integrity}")
+            with tempfile.TemporaryDirectory() as inspect_tmp:
+                inspect_db = Path(inspect_tmp) / dest_path.name
+                shutil.copyfile(dest_path, inspect_db)
+                for sidecar_ext in ["-wal", "-shm"]:
+                    s_file = dest_path.with_name(f"{dest_path.name}{sidecar_ext}")
+                    if s_file.exists():
+                        try:
+                            shutil.copyfile(s_file, Path(inspect_tmp) / s_file.name)
+                        except OSError:
+                            pass
+                with closing(sqlite3.connect(inspect_db)) as chk_conn:
+                    integrity = chk_conn.execute("PRAGMA integrity_check").fetchone()
+                    if not integrity or integrity[0] != "ok":
+                        raise RuntimeError(f"Backup copy of database {dest_path} failed integrity check: {integrity}")
 
         # Write manifest atomically with validated SHA-256
         created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())

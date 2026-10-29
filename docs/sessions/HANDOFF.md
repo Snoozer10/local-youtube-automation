@@ -495,3 +495,59 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
 - Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
 - Stop point: Stop for review of PR #74 renewed corrections. Do NOT merge without explicit user consent.
+
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Follow-Up Review Corrections), 2026-10-29
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Verified PR #74 head before follow-up review batch: `78d90494878c98b2eda853772231f098adb31268`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial per platform discovery limitations.
+
+### Done
+1. **Recovery closure validation with committed WAL (#58 / Standards S1)**:
+   - In `create_isolated_recovery_snapshot` steps 2 and 3, eliminated `immutable=1` when validating the captured database in isolated storage; SQLite was explicitly ignoring WAL sidecars under `immutable=1`, causing snapshots to accept databases with uncaptured referenced files committed to WAL.
+   - Captured database and existing sidecars are inspected via an isolated temporary directory copy without `immutable=1`, qualifying logical generation closure and integrity across all committed WAL frames.
+   - Concurrently committed references in WAL after discovery are detected, failing closed with `RuntimeError` and recording `FAILED_SNAPSHOT.json`.
+
+2. **Database admission and foreign schema rejection (#59 / Spec R1)**:
+   - In `discover_authority()` and `Ledger.__init__()`, replaced main-file-only inspection with isolated temporary copy inspection including `-wal` and `-shm` sidecars, verifying all tables and schema structure before constructor writes, table creation, or journal mode changes.
+   - Enforced schema qualification on `jobs`: table must contain required `key` column. Foreign databases (e.g. `jobs(unrelated TEXT)` or foreign WAL schemas lacking `jobs`) raise `IncompatibleAuthorityError` with zero mutation to source files, headers, or sidecars. Uncertain inspection fails closed.
+
+3. **Claim/epoch coherence (#58/#59 / Spec R2)**:
+   - Bound authority epoch to claim issuance time in `leased_resource`: captured `claim_epoch = ledger.get_authority_epoch()` before executing `ledger.claim()`, passing `auth_epoch` into `_maintained_claim`.
+   - In `publication_guard()`, verified that the lease's recorded epoch matches the active database's current authority epoch. Restorations occurring between claim execution and lease registration invalidate the old claim with `StaleFencingGenerationError`.
+
+4. **Non-mutating status observation (#55/#56 / Spec R3)**:
+   - Removed `.authority_enrolled.json` creation from `discover_authority()`. Observation of default authority is strictly passive: reports `POPULATED` or `EMPTY` with zero writes to directory entries or database files.
+   - Authorized enrollment is strictly reserved for write-path initialization in `Ledger.__init__()`.
+
+5. **Committed status truth boundary (#55/#56 / Spec R4)**:
+   - In `observe_ledger()`, reinforced the observation boundary: checking `_is_database_busy()` before query preparation, before row fetching, and after row fetching.
+   - Tracked database file modification timestamp (`st_mtime_ns`) and file size across query execution; concurrent writer transactions that spill uncommitted dirty pages and roll back are caught, returning `ObservationDecision(status="BUSY", message="Database is locked by another process or has an active transaction", rows=[], supported=False)` and preventing uncommitted `[SUCCEEDED]` displays.
+
+6. **CI Gate & Test Linting Fix**:
+   - Fixed 7 ruff import-order and unused-import errors in `tests/unit/test_cross_checkout_authority.py` and `tests/unit/test_production_status_cli.py`, satisfying CI run 40828412443 requirements.
+
+7. **Preexisting Gap Disposition: Same-ID Concurrent Snapshot Overwrite (#58)**:
+   - Evaluated `standards/SNAPSHOT_RACE_RESULTS.json` demonstrating check-then-mkdir race when two snapshots use the same ID.
+   - Identified that this behavior predates PR #74 and is present at baseline `66c0e29ec63b79ebc4d55aef832e1a4b474364e1`. Classified as a preexisting architectural limitation under #58 to be hardened with atomic reservation in future batches; distinct from introduced regressions.
+
+### Verification
+- Replayed all executable reproducers from the follow-up review:
+  1. `wal_closure_generation_probe`: WAL committed reference change detected and refused with `Consistency boundary violation`, snapshot fails closed.
+  2. `spec/edge_probe (foreign_jobs_name)`: `jobs(unrelated TEXT)` rejected with `IncompatibleAuthorityError`, 0 tables added, source unchanged.
+  3. `spec/edge_probe (foreign_wal_schema)`: Foreign WAL-only schema rejected with `IncompatibleAuthorityError`, 0 tables added.
+  4. `spec/edge_probe (claim_to_epoch_bind_race)`: Restoration between claim and epoch bind rejected in `publication_guard` with `StaleFencingGenerationError`.
+  5. `default_status_probe_v2`: Default status CLI reports `POPULATED` with `created: []` (zero files created).
+  6. `observer_dirty_read_probe_v3`: Spilled writer rolling back reports `UNAVAILABLE (database busy)` with `reported_uncommitted_success: false`.
+- Maintained all 7 prior passing cases: `cleanup_race`, `closure_generation`, `source_observation`, `spec_probe`, `restore_epoch`.
+- Focused test suite: 207 passed in 23.59s (17 modules, exit 0).
+- Static analysis: `ruff check src/ tests/` clean (0 errors).
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Stop point: Stop for review of PR #74 follow-up corrections. Do NOT merge without explicit user authorization.

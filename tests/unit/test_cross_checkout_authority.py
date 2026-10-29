@@ -362,7 +362,7 @@ def test_maintenance_exclusion_blocks_ledger_writes_before_initialization(tmp_pa
 def test_lost_previously_used_default_authority_rejected(tmp_path: Path, monkeypatch):
     """Issue #59 / Spec 1: A previously used default authority that disappears must raise MissingAuthorityError rather than creating empty replacement."""
     import gc
-    import sqlite3
+
     from youtube_automation.production import authority, ledger
     from youtube_automation.production.authority import MissingAuthorityError
 
@@ -400,7 +400,8 @@ def test_foreign_version_zero_database_rejected_without_writes(tmp_path: Path, m
     """Issue #59 / Spec 2: Foreign SQLite database with user_version=0 lacking jobs table must be rejected without writes."""
     import hashlib
     import sqlite3
-    from youtube_automation.production import authority, ledger
+
+    from youtube_automation.production import ledger
     from youtube_automation.production.authority import IncompatibleAuthorityError
 
     monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
@@ -436,8 +437,8 @@ def test_foreign_version_zero_database_rejected_without_writes(tmp_path: Path, m
 def test_pre_restore_lease_cannot_publish_after_same_path_restoration(tmp_path: Path, monkeypatch):
     """Issue #59/#58 / Spec 3: A pre-restore lease cannot publish into authority path after restoration."""
     import gc
-    import json
     import sqlite3
+
     from youtube_automation.production import authority, ledger, recovery
     from youtube_automation.production.authority import StaleFencingGenerationError
 
@@ -468,3 +469,119 @@ def test_pre_restore_lease_cannot_publish_after_same_path_restoration(tmp_path: 
             authority.set_maintenance_mode(live, False)
             with ledger.publication_guard():
                 pass
+
+
+def test_foreign_jobs_table_wrong_columns_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec R1: Foreign table named 'jobs' with unrelated columns must raise IncompatibleAuthorityError."""
+    import hashlib
+    import sqlite3
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "foreign-jobs"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE jobs(unrelated TEXT)")
+    c.execute("INSERT INTO jobs VALUES(?)", ("owned foreign record",))
+    c.commit()
+    c.close()
+
+    before_sha = hashlib.sha256(db.read_bytes()).hexdigest()
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="Foreign or unrecognized schema in jobs table"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after_sha = hashlib.sha256(db.read_bytes()).hexdigest()
+    assert before_sha == after_sha
+
+    c = sqlite3.connect(db)
+    tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+    c.close()
+    assert tables == ["jobs"]
+
+
+def test_foreign_wal_schema_without_jobs_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec R1: Uncheckpointed foreign schema in WAL must be inspected and rejected without writes."""
+    import sqlite3
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "foreign-wal"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA wal_autocheckpoint=0")
+    c.execute("CREATE TABLE unrelated_private_state(value TEXT)")
+    c.execute("INSERT INTO unrelated_private_state VALUES(?)", ("owned foreign record",))
+    c.commit()
+    c.close()
+
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="missing required jobs table"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    c = sqlite3.connect(db)
+    tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+    c.close()
+    assert tables == ["unrelated_private_state"]
+
+
+def test_claim_to_epoch_bind_race_invalidates_old_claim(tmp_path: Path, monkeypatch):
+    """Issue #58/#59 / Spec R2: A restoration occurring between claim issuance and epoch binding must invalidate old claim."""
+    import gc
+    import sqlite3
+    from unittest.mock import patch
+
+    from youtube_automation.production import authority, ledger, recovery
+    from youtube_automation.production.authority import StaleFencingGenerationError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "bind-race"
+    live = d / "authority"
+    live.mkdir(parents=True)
+    backup = d / "backup"
+    backup.mkdir()
+    quarantine = d / "old"
+    quarantine.mkdir()
+    db = live / "adaptive.sqlite3"
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    ledger.Ledger(db)
+    real_claim = ledger.Ledger.claim
+    restored = False
+
+    def claim_then_restore(self, *args, **kwargs):
+        nonlocal restored
+        fence = real_claim(self, *args, **kwargs)
+        if not restored:
+            restored = True
+            c = sqlite3.connect(db)
+            c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            c.close()
+            recovery.create_isolated_recovery_snapshot(live, backup, "bound")
+            authority.set_maintenance_mode(live, True, "epoch-bind race")
+            gc.collect()
+            for p in list(live.iterdir()):
+                if p.is_file() and p.name != "MAINTENANCE.lock":
+                    p.rename(quarantine / p.name)
+            recovery.restore_isolated_recovery_snapshot(backup, "bound", live)
+            authority.set_maintenance_mode(live, False)
+        return fence
+
+    with patch.object(ledger.Ledger, "claim", claim_then_restore):
+        with pytest.raises(StaleFencingGenerationError, match="Stale authority epoch"):
+            with ledger.leased_resource(db, "browser"):
+                with ledger.publication_guard():
+                    pass

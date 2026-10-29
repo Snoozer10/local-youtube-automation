@@ -831,3 +831,44 @@ def test_restoration_advances_authority_epoch(tmp_path: Path):
     assert len(epoch) > 0
     assert (restore / ".authority_epoch").is_file()
     assert (restore / ".authority_epoch").read_text(encoding="utf-8").strip() == epoch
+
+
+def test_recovery_closure_committed_wal_reference_change_refused(tmp_path: Path):
+    """Issue #58 / Standards S1: WAL committed reference change after discovery must be detected and refused."""
+    import json
+    import sqlite3
+    from unittest.mock import patch
+
+    from youtube_automation.production import recovery as rec
+
+    source = tmp_path / "source"
+    source.mkdir(parents=True)
+    (source / "old.txt").write_text("old", encoding="utf-8")
+    (source / "new.txt").write_text("new", encoding="utf-8")
+    db_path = source / "adaptive.sqlite3"
+
+    c = sqlite3.connect(db_path)
+    c.execute("CREATE TABLE jobs(key TEXT PRIMARY KEY, recipe TEXT, detail TEXT)")
+    c.execute("INSERT INTO jobs VALUES(?, ?, ?)", ("episode-A", "recipe", json.dumps({"input_file": "old.txt"})))
+    c.commit()
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    real_identify = rec.identify_recovery_files
+
+    def identify_then_commit(root):
+        matched = real_identify(root)
+        c.execute("UPDATE jobs SET detail=?", (json.dumps({"input_file": "new.txt"}),))
+        c.commit()
+        return matched
+
+    backup = tmp_path / "backup"
+    try:
+        with patch.object(rec, "identify_recovery_files", identify_then_commit):
+            with pytest.raises(RuntimeError, match="Consistency boundary violation: captured database requires referenced artifact 'new.txt'"):
+                rec.create_isolated_recovery_snapshot(source, backup, "wal_inconsistent")
+    finally:
+        c.close()
+
+    assert (backup / "wal_inconsistent" / "FAILED_SNAPSHOT.json").is_file()
+    assert not (backup / "wal_inconsistent" / "RECOVERY_MANIFEST.json").is_file()

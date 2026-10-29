@@ -459,6 +459,7 @@ def test_status_cli_uncommitted_exclusive_writer_reports_busy(
     import subprocess
     import sys
     import time
+
     from youtube_automation.production import ledger
 
     root = tmp_path / "dirty_read"
@@ -506,3 +507,127 @@ def test_status_cli_uncommitted_exclusive_writer_reports_busy(
     finally:
         release.touch()
         child.communicate(timeout=10)
+
+
+def test_status_cli_default_discovery_is_strictly_non_mutating(tmp_path: Path, monkeypatch, capsys):
+    """Issue #55/#56 / Spec R3: Status CLI observation of DEFAULT authority must never create .authority_enrolled.json."""
+    import hashlib
+    import sqlite3
+
+    from youtube_automation.production import authority, cli, ledger
+
+    r = tmp_path / "default-status-nonmutating"
+    r.mkdir()
+    (r / ".runtime").mkdir()
+    (r / "run").mkdir()
+    db = r / ".runtime" / "adaptive.sqlite3"
+
+    c = sqlite3.connect(db)
+    c.execute("PRAGMA user_version=1")
+    c.execute("CREATE TABLE jobs(key TEXT PRIMARY KEY, state TEXT, attempts INTEGER, fence INTEGER, detail TEXT)")
+    c.execute("INSERT INTO jobs VALUES(?, ?, ?, ?, ?)", ("example", "CANCELLED", 1, 1, "{}"))
+    c.commit()
+    c.close()
+
+    monkeypatch.setattr(authority, "__file__", str(r / "src" / "youtube_automation" / "production" / "authority.py"))
+    monkeypatch.delenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", raising=False)
+    monkeypatch.setattr(cli, "resource_database", ledger._unpatched_resource_database)
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+
+    before_files = {p.relative_to(r).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in r.rglob("*") if p.is_file()}
+
+    cli.main(["status", "--run-dir", str(r / "run")])
+    out = capsys.readouterr().out
+
+    assert "Ledger Status: POPULATED" in out
+    after_files = {p.relative_to(r).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in r.rglob("*") if p.is_file()}
+
+    assert not (r / ".authority_enrolled.json").exists()
+    assert set(after_files) - set(before_files) == set()
+    assert before_files[".runtime/adaptive.sqlite3"] == after_files[".runtime/adaptive.sqlite3"]
+
+
+def test_status_cli_uncommitted_spill_rollback_reports_busy_not_succeeded(tmp_path: Path, monkeypatch, capsys):
+    """Issue #55/#56 / Spec R4: Real external writer spilling uncommitted rows and rolling back must be detected as busy."""
+    import inspect
+    import sqlite3
+    import subprocess
+    import sys
+    import time
+
+    from youtube_automation.production import cli, ledger
+
+    root = tmp_path / "observer-dirty-read-v3"
+    root.mkdir()
+    db = root / "adaptive.sqlite3"
+    run_dir = root / "run"
+    run_dir.mkdir()
+
+    real_connect = sqlite3.connect
+    c = real_connect(db)
+    c.execute("PRAGMA journal_mode=DELETE")
+    c.execute("PRAGMA user_version=1")
+    c.execute("CREATE TABLE jobs(key TEXT PRIMARY KEY, state TEXT, attempts INTEGER, fence INTEGER, detail TEXT)")
+    c.executemany("INSERT INTO jobs VALUES(?,?,?,?,?)", [(f"job-{i:03d}", "CANCELLED", 1, 1, "X"*4096) for i in range(200)])
+    c.commit()
+    c.close()
+
+    ready = root / "writer.ready"
+    release = root / "writer.release"
+    child = None
+
+    child_code = (
+        'import sqlite3,sys,time;from pathlib import Path;'
+        'c=sqlite3.connect(sys.argv[1],isolation_level=None);'
+        'c.execute("PRAGMA cache_size=1");c.execute("PRAGMA cache_spill=ON");c.execute("BEGIN EXCLUSIVE");'
+        'c.execute("UPDATE jobs SET state=?,detail=?",("SUCCEEDED","Y"*4096));'
+        'Path(sys.argv[2]).write_text("ready");'
+        'deadline=time.monotonic()+10;\n'
+        'while not Path(sys.argv[3]).exists() and time.monotonic()<deadline: time.sleep(.01)\n'
+        'c.execute("ROLLBACK");c.close()'
+    )
+
+    class AuditCursor(sqlite3.Cursor):
+        def execute(self, sql, *args):
+            self.audit_sql = sql
+            return super().execute(sql, *args)
+
+        def fetchall(self):
+            rows = super().fetchall()
+            if getattr(self, "audit_sql", "").startswith("SELECT key, state"):
+                release.touch()
+                if child is not None:
+                    child.wait(timeout=10)
+            return rows
+
+    class AuditConnection(sqlite3.Connection):
+        def cursor(self, *args, **kwargs):
+            kwargs["factory"] = AuditCursor
+            return super().cursor(*args, **kwargs)
+
+    def intercept_connect(*args, **kwargs):
+        nonlocal child
+        if child is None and inspect.currentframe().f_back.f_code.co_name == "observe_ledger" and str(args[0]).startswith(db.as_uri()):
+            child = subprocess.Popen([sys.executable, "-I", "-B", "-c", child_code, str(db), str(ready), str(release)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            deadline = time.monotonic() + 5
+            while not ready.exists() and child.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert ready.exists(), "Writer did not become ready"
+        if inspect.currentframe().f_back.f_code.co_name == "observe_ledger":
+            kwargs["factory"] = AuditConnection
+        return real_connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", intercept_connect)
+    monkeypatch.setattr(cli, "resource_database", ledger._unpatched_resource_database)
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    try:
+        cli.main(["status", "--run-dir", str(run_dir)])
+        out = capsys.readouterr().out
+        assert "Ledger Status: UNAVAILABLE (database busy)" in out
+        assert "[SUCCEEDED]" not in out
+    finally:
+        release.touch()
+        if child is not None:
+            child.communicate(timeout=10)

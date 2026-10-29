@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
+import tempfile
 import threading
 import time
 import uuid
@@ -163,6 +165,27 @@ def publication_guard() -> Iterator[None]:
 
 
 class Ledger:
+    def get_authority_epoch(self) -> str:
+        p = Path(self.path).resolve()
+        epoch_file = p.parent / ".authority_epoch"
+        if epoch_file.is_file():
+            try:
+                val = epoch_file.read_text(encoding="utf-8").strip()
+                if val:
+                    return val
+            except OSError:
+                pass
+        receipt_file = p.parent / "RESTORATION_RECEIPT.json"
+        if receipt_file.is_file():
+            try:
+                r_data = json.loads(receipt_file.read_text(encoding="utf-8"))
+                val = str(r_data.get("authority_epoch", "")).strip()
+                if val:
+                    return val
+            except Exception:
+                pass
+        return "init-epoch"
+
     def __init__(self, path: str | Path):
         self.path = str(path)
         self.generation: int = 1
@@ -190,18 +213,33 @@ class Ledger:
                 pass
 
             from youtube_automation.production.authority import IncompatibleAuthorityError
-            uri = f"{p.resolve().as_uri()}?mode=ro&immutable=1"
             try:
-                with closing(sqlite3.connect(uri, uri=True)) as chk_conn:
-                    tables = [r[0] for r in chk_conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-                    if tables and "jobs" not in tables:
-                        raise IncompatibleAuthorityError(
-                            f"Foreign or unrecognized database schema at {p} (tables: {tables}); missing required jobs table"
-                        )
+                with tempfile.TemporaryDirectory() as chk_tmp:
+                    chk_db = Path(chk_tmp) / p.name
+                    shutil.copyfile(p, chk_db)
+                    for s_ext in ["-wal", "-shm"]:
+                        s_file = p.with_name(f"{p.name}{s_ext}")
+                        if s_file.exists():
+                            try:
+                                shutil.copyfile(s_file, Path(chk_tmp) / s_file.name)
+                            except OSError:
+                                pass
+                    with closing(sqlite3.connect(chk_db)) as chk_conn:
+                        tables = [r[0] for r in chk_conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+                        if tables:
+                            if "jobs" not in tables:
+                                raise IncompatibleAuthorityError(
+                                    f"Foreign or unrecognized database schema at {p} (tables: {tables}); missing required jobs table"
+                                )
+                            cols = {r[1] for r in chk_conn.execute("PRAGMA table_info(jobs)").fetchall()}
+                            if "key" not in cols:
+                                raise IncompatibleAuthorityError(
+                                    f"Foreign or unrecognized schema in jobs table at {p}: missing required column 'key' (columns: {cols})"
+                                )
             except IncompatibleAuthorityError:
                 raise
-            except Exception:
-                pass
+            except Exception as err:
+                raise IncompatibleAuthorityError(f"Failed to inspect authority database schema at {p}: {err}") from err
         with self.connection() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript("""
@@ -455,6 +493,7 @@ def _maintained_claim(
     *,
     seconds: float,
     detail: dict[str, Any] | None = None,
+    auth_epoch: str | None = None,
 ) -> Iterator[None]:
     active = _active_leases.get()
     ledger_path = str(Path(ledger.path).resolve())
@@ -476,23 +515,8 @@ def _maintained_claim(
     state = "SUCCEEDED"
     terminal_detail = dict(detail or {})
     auth_domain = str(resource_database().resolve())
-    epoch_file = Path(auth_domain).parent / ".authority_epoch"
-    auth_epoch = ""
-    if epoch_file.is_file():
-        try:
-            auth_epoch = epoch_file.read_text(encoding="utf-8").strip()
-        except OSError:
-            pass
-    if not auth_epoch:
-        receipt_file = Path(auth_domain).parent / "RESTORATION_RECEIPT.json"
-        if receipt_file.is_file():
-            try:
-                r_data = json.loads(receipt_file.read_text(encoding="utf-8"))
-                auth_epoch = str(r_data.get("authority_epoch", ""))
-            except Exception:
-                pass
-    if not auth_epoch:
-        auth_epoch = "init-epoch"
+    if auth_epoch is None:
+        auth_epoch = ledger.get_authority_epoch()
     token = _active_leases.set(active + ((ledger, key, owner, fence, auth_domain, auth_epoch),))
     try:
         yield
@@ -527,10 +551,11 @@ def leased_resource(path: str | Path, resource: str) -> Iterator[None]:
     database.parent.mkdir(parents=True, exist_ok=True)
     ledger = Ledger(database)
     owner = str(uuid.uuid4())
+    claim_epoch = ledger.get_authority_epoch()
     fence = ledger.claim(resource, "resource-v1", owner)
     if fence is None:
         raise RuntimeError(f"Resource is busy: {resource}")
-    with _maintained_claim(ledger, resource, owner, fence, seconds=60):
+    with _maintained_claim(ledger, resource, owner, fence, seconds=60, auth_epoch=claim_epoch):
         yield
 
 
@@ -592,6 +617,7 @@ def durable_stage(
     stage_detail = detail or {}
     stage_name = str(stage_detail.get("stage") or key)
     run_dir = stage_detail.get("run")
+    claim_epoch = ledger.get_authority_epoch()
     with _maintained_claim(
         ledger,
         key,
@@ -599,6 +625,7 @@ def durable_stage(
         decision.fence,
         seconds=60,
         detail=detail,
+        auth_epoch=claim_epoch,
     ):
         with failure_record.capture(stage_name, run_dir=run_dir):
             yield True
