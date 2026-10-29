@@ -192,6 +192,48 @@ DECLARED_OPERATIONAL_RECOVERY_SET: tuple[RecoveryItemSpec, ...] = (
         is_database=False,
         required=False,
     ),
+    RecoveryItemSpec(
+        pattern="*timeline*.json",
+        category=RecoveryItemCategory.PLAN,
+        description="Canonical timeline and scene sequence plans",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*script*.txt",
+        category=RecoveryItemCategory.INPUT,
+        description="Canonical script text and dialogue inputs",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*script*.json",
+        category=RecoveryItemCategory.INPUT,
+        description="Structured script payloads",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*.wav",
+        category=RecoveryItemCategory.EVIDENCE,
+        description="Canonical narration, scratch audio, and audio evidence",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*.mp4",
+        category=RecoveryItemCategory.EVIDENCE,
+        description="Rendered proof clips and video evidence",
+        is_database=False,
+        required=False,
+    ),
+    RecoveryItemSpec(
+        pattern="*.png",
+        category=RecoveryItemCategory.EVIDENCE,
+        description="Frame renderings, storyboard images, and thumbnail evidence",
+        is_database=False,
+        required=False,
+    ),
 )
 
 
@@ -286,6 +328,129 @@ class RecoveryManifest:
         )
 
 
+def expand_recovery_closure(
+    runtime_root: Path,
+    base_items: list[tuple[Path, RecoveryItemSpec]],
+) -> list[tuple[Path, RecoveryItemSpec]]:
+    """Traverse references in databases and JSON artifacts to ensure full operational closure.
+
+    Inspects jobs tables and json payloads (briefs, plans, timelines) for referenced
+    canonical files (scripts, audio, images, evidence). If a referenced file exists,
+    it is added to the recovery set. If a referenced file is missing, an explicit
+    error is raised to prevent incomplete captures.
+    """
+    closure_items = list(base_items)
+    seen_paths = {p.resolve() for p, _ in closure_items}
+
+    def _extract_references(data: Any) -> list[str]:
+        refs: list[str] = []
+        if isinstance(data, dict):
+            for _k, v in data.items():
+                if isinstance(v, str):
+                    refs.append(v)
+                elif isinstance(v, (dict, list)):
+                    refs.extend(_extract_references(v))
+        elif isinstance(data, list):
+            for elem in data:
+                refs.extend(_extract_references(elem))
+        return refs
+
+    media_extensions = {".wav", ".mp3", ".mp4", ".png", ".jpg", ".jpeg", ".webp"}
+    doc_extensions = {".txt", ".json", ".md"}
+    valid_extensions = media_extensions | doc_extensions
+
+    changed = True
+    while changed:
+        changed = False
+        new_items: list[tuple[Path, RecoveryItemSpec]] = []
+        for file_path, spec in list(closure_items):
+            discovered_refs: list[str] = []
+
+            # Traverse JSON files
+            if file_path.suffix == ".json" and not file_path.name.startswith("RECOVERY_MANIFEST"):
+                try:
+                    content = file_path.read_text(encoding="utf-8")
+                    parsed = json.loads(content)
+                    discovered_refs.extend(_extract_references(parsed))
+                except Exception:
+                    pass
+
+            # Traverse SQLite databases (strictly non-mutating immutable read)
+            elif spec.is_database and file_path.is_file():
+                try:
+                    uri = f"{file_path.resolve().as_uri()}?mode=ro&immutable=1"
+                    with sqlite3.connect(uri, uri=True) as conn:
+                        cur = conn.cursor()
+                        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")
+                        if cur.fetchone():
+                            cur.execute("PRAGMA table_info(jobs)")
+                            cols = {row[1] for row in cur.fetchall()}
+                            query_cols = [c for c in ["key", "recipe", "detail"] if c in cols]
+                            if query_cols:
+                                cur.execute(f"SELECT {','.join(query_cols)} FROM jobs")
+                                for row in cur.fetchall():
+                                    for val in row:
+                                        if isinstance(val, str):
+                                            if val.startswith("{") or val.startswith("["):
+                                                try:
+                                                    discovered_refs.extend(_extract_references(json.loads(val)))
+                                                except Exception:
+                                                    pass
+                                            else:
+                                                discovered_refs.append(val)
+                except Exception:
+                    pass
+
+            for ref in discovered_refs:
+                ref = ref.strip()
+                if not ref or len(ref) > 260:
+                    continue
+                ref_p = Path(ref)
+                if ref_p.suffix.lower() not in valid_extensions:
+                    continue
+                target = (runtime_root / ref_p).resolve()
+                if not target.is_relative_to(runtime_root):
+                    continue
+
+                if target in seen_paths:
+                    continue
+
+                if not target.is_file():
+                    raise RuntimeError(
+                        f"Incomplete recovery closure: referenced artifact {ref!r} is missing from runtime root {runtime_root}"
+                    )
+
+                ext = target.suffix.lower()
+                name = target.name.lower()
+                if ext in media_extensions:
+                    cat = RecoveryItemCategory.EVIDENCE
+                elif ext == ".txt":
+                    cat = RecoveryItemCategory.INPUT
+                elif "timeline" in name:
+                    cat = RecoveryItemCategory.PLAN
+                elif "script" in name or "brief" in name:
+                    cat = RecoveryItemCategory.INPUT
+                elif "plan" in name:
+                    cat = RecoveryItemCategory.PLAN
+                else:
+                    cat = RecoveryItemCategory.EVIDENCE
+
+                item_spec = RecoveryItemSpec(
+                    pattern=target.name,
+                    category=cat,
+                    description=f"Referenced operational artifact: {ref}",
+                    is_database=False,
+                    required=True,
+                )
+                new_items.append((target, item_spec))
+                seen_paths.add(target)
+                changed = True
+
+        closure_items.extend(new_items)
+
+    return sorted(closure_items, key=lambda x: str(x[0]))
+
+
 def identify_recovery_files(runtime_root: Path) -> list[tuple[Path, RecoveryItemSpec]]:
     """Scan runtime root and match files against declared operational recovery set specification."""
     if not runtime_root.is_dir():
@@ -313,7 +478,7 @@ def identify_recovery_files(runtime_root: Path) -> list[tuple[Path, RecoveryItem
                 seen_paths.add(file_path)
                 break
 
-    return matched
+    return expand_recovery_closure(runtime_root, matched)
 
 
 def create_isolated_recovery_snapshot(
@@ -345,16 +510,49 @@ def create_isolated_recovery_snapshot(
 
     file_entries: list[RecoveryFileEntry] = []
 
-    # Bind authority metadata into manifest
+    # Bind truthful authority metadata into manifest
     authority_ptr = ""
     authority_gen = 1
-    try:
-        from youtube_automation.production.authority import discover_authority
-        resolution = discover_authority(default_root=runtime_root, enforce_maintenance=False)
-        authority_ptr = str(resolution.database_path)
-        authority_gen = resolution.schema_generation
-    except Exception:
-        pass
+    db_items = [f for f, spec in matched_items if spec.is_database]
+    if db_items:
+        authority_ptr = str(db_items[0].resolve())
+        try:
+            with db_items[0].open("rb") as f:
+                h = f.read(100)
+                if len(h) >= 100:
+                    authority_gen = int.from_bytes(h[60:64], "big") or 1
+        except OSError:
+            pass
+    else:
+        try:
+            from youtube_automation.production.authority import discover_authority
+            resolution = discover_authority(default_root=runtime_root, enforce_maintenance=False)
+            authority_ptr = str(resolution.database_path)
+            authority_gen = resolution.schema_generation
+        except Exception:
+            pass
+
+    # Truthful project_run_id from jobs table or recovery_id
+    project_run = recovery_id
+    if db_items and db_items[0].is_file():
+        try:
+            uri = f"{db_items[0].resolve().as_uri()}?mode=ro&immutable=1"
+            with sqlite3.connect(uri, uri=True) as conn:
+                row = conn.execute("SELECT key FROM jobs LIMIT 1").fetchone()
+                if row and row[0]:
+                    project_run = str(row[0])
+        except Exception:
+            pass
+
+    # Record pre-copy state for all database and journal files to enforce consistency boundary
+    pre_db_state: dict[Path, tuple[int, int, str]] = {}
+    for file_path, spec in matched_items:
+        if spec.is_database or spec.category == RecoveryItemCategory.JOURNAL:
+            pre_db_state[file_path] = (
+                file_path.stat().st_size,
+                file_path.stat().st_mtime_ns,
+                compute_sha256(file_path),
+            )
 
     try:
         db_entries: list[tuple[Path, RecoveryItemSpec]] = []
@@ -383,8 +581,22 @@ def create_isolated_recovery_snapshot(
             if spec.is_database:
                 db_entries.append((dest_path, spec))
 
+        # Enforce consistency boundary: verify that source databases and journals did not mutate concurrently during copy
+        for file_path, (pre_size, _pre_mtime, pre_sha) in pre_db_state.items():
+            if not file_path.exists():
+                raise RuntimeError(
+                    f"Consistency boundary violation: source file {file_path.name} was removed during snapshot capture"
+                )
+            curr_size = file_path.stat().st_size
+            curr_sha = compute_sha256(file_path)
+            if curr_size != pre_size or curr_sha != pre_sha:
+                raise RuntimeError(
+                    f"Consistency boundary violation: concurrent database modification detected on {file_path.name} during snapshot capture; "
+                    f"refusing capture to prevent mixed-generation inconsistency"
+                )
+
         # Step 2: Verify database integrity on the backup copies in isolated backup storage
-        for dest_path, spec in db_entries:
+        for dest_path, _spec in db_entries:
             with sqlite3.connect(f"{dest_path.as_uri()}?mode=ro&immutable=1", uri=True) as chk_conn:
                 integrity = chk_conn.execute("PRAGMA integrity_check").fetchone()
                 if not integrity or integrity[0] != "ok":
@@ -402,7 +614,7 @@ def create_isolated_recovery_snapshot(
             schema_version=1,
             protocol_version="1.0",
             stage="PRODUCTION",
-            project_run_id=recovery_id,
+            project_run_id=project_run,
             consistency_boundary="POINT_IN_TIME_ISOLATED",
         )
 
@@ -419,9 +631,20 @@ def create_isolated_recovery_snapshot(
 
         return manifest_path
 
-    except Exception:
-        if snapshot_dir.exists():
-            shutil.rmtree(snapshot_dir, ignore_errors=True)
+    except Exception as exc:
+        # Preserve failed recovery evidence
+        try:
+            fail_record = {
+                "status": "FAILED",
+                "recovery_id": recovery_id,
+                "failed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            }
+            fail_manifest = snapshot_dir / "FAILED_SNAPSHOT.json"
+            fail_manifest.write_text(json.dumps(fail_record, indent=2), encoding="utf-8")
+        except Exception:
+            pass
         raise
 
 
@@ -510,49 +733,87 @@ def restore_isolated_recovery_snapshot(
                     f"(hash {dest_sha} != snapshot {entry.sha256})"
                 )
 
-    # Step 6: Perform verified restoration
-    restored_entries: list[dict[str, Any]] = []
-    target_restore_dir.mkdir(parents=True, exist_ok=True)
+    # Step 6: Perform verified restoration with conflict preservation at write boundary
+    try:
+        restored_entries: list[dict[str, Any]] = []
+        target_restore_dir.mkdir(parents=True, exist_ok=True)
 
-    for entry in entries:
-        src_path = snapshot_dir / entry.relative_path
-        dest_path = target_restore_dir / entry.relative_path
+        for entry in entries:
+            src_path = snapshot_dir / entry.relative_path
+            dest_path = target_restore_dir / entry.relative_path
 
-        if dest_path.is_file() and compute_sha256(dest_path) == entry.sha256:
-            # Already identical; skip copy
+            if dest_path.is_file():
+                dest_sha = compute_sha256(dest_path)
+                if dest_sha != entry.sha256:
+                    raise FileExistsError(
+                        f"Restoration conflict: destination file {dest_path} already exists with differing content "
+                        f"(hash {dest_sha} != snapshot {entry.sha256}); preserving newer work"
+                    )
+                # Already identical; skip copy
+                restored_entries.append(entry.to_dict())
+                continue
+
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with src_path.open("rb") as sf, dest_path.open("xb") as df:
+                    while chunk := sf.read(65536):
+                        df.write(chunk)
+                shutil.copystat(src_path, dest_path)
+            except FileExistsError:
+                dest_sha = compute_sha256(dest_path)
+                if dest_sha != entry.sha256:
+                    raise FileExistsError(
+                        f"Restoration conflict: destination file {dest_path} appeared concurrently with differing content "
+                        f"(hash {dest_sha} != snapshot {entry.sha256}); preserving newer work"
+                    ) from None
+
+            restored_sha = compute_sha256(dest_path)
+            if restored_sha != entry.sha256:
+                raise ValueError(
+                    f"Restored file {dest_path} hash mismatch: {restored_sha} != {entry.sha256}"
+                )
+
+            if entry.is_database:
+                # Verify database integrity on restored copy
+                with sqlite3.connect(f"{dest_path.as_uri()}?mode=ro&immutable=1", uri=True) as chk_conn:
+                    integrity = chk_conn.execute("PRAGMA integrity_check").fetchone()
+                    if not integrity or integrity[0] != "ok":
+                        raise RuntimeError(f"Restored database {dest_path} failed integrity check: {integrity}")
+
             restored_entries.append(entry.to_dict())
-            continue
 
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
-        with src_path.open("rb") as sf, dest_path.open("wb") as df:
-            while chunk := sf.read(65536):
-                df.write(chunk)
-        shutil.copystat(src_path, dest_path)
+        # Step 7: Write restoration verification receipt in restore directory (exclusive write)
+        receipt_data = {
+            "status": "RESTORED",
+            "recovery_id": recovery_id,
+            "restored_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "manifest_sha256": manifest_data.get("manifest_sha256", ""),
+            "total_files": len(restored_entries),
+            "restored_files": restored_entries,
+        }
+        receipt_bytes = json.dumps(receipt_data, indent=2).encode("utf-8")
+        try:
+            with receipt_path.open("xb") as rf:
+                rf.write(receipt_bytes)
+        except FileExistsError as err:
+            raise FileExistsError(
+                f"Restoration conflict: destination receipt {receipt_path} was created concurrently; preserving newer evidence"
+            ) from err
 
-        restored_sha = compute_sha256(dest_path)
-        if restored_sha != entry.sha256:
-            raise ValueError(
-                f"Restored file {dest_path} hash mismatch: {restored_sha} != {entry.sha256}"
-            )
-
-        if entry.is_database:
-            # Verify database integrity on restored copy
-            with sqlite3.connect(f"{dest_path.as_uri()}?mode=ro&immutable=1", uri=True) as chk_conn:
-                integrity = chk_conn.execute("PRAGMA integrity_check").fetchone()
-                if not integrity or integrity[0] != "ok":
-                    raise RuntimeError(f"Restored database {dest_path} failed integrity check: {integrity}")
-
-        restored_entries.append(entry.to_dict())
-
-    # Step 7: Write restoration verification receipt in restore directory
-    receipt_data = {
-        "status": "RESTORED",
-        "recovery_id": recovery_id,
-        "restored_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "manifest_sha256": manifest_data.get("manifest_sha256", ""),
-        "total_files": len(restored_entries),
-        "restored_files": restored_entries,
-    }
-    receipt_path.write_text(json.dumps(receipt_data, indent=2), encoding="utf-8")
-
-    return receipt_data
+        return receipt_data
+    except Exception as exc:
+        try:
+            target_restore_dir.mkdir(parents=True, exist_ok=True)
+            fail_record = {
+                "status": "FAILED",
+                "recovery_id": recovery_id,
+                "failed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            }
+            fail_path = target_restore_dir / f"FAILED_RESTORATION_{recovery_id}.json"
+            if not fail_path.exists():
+                fail_path.write_text(json.dumps(fail_record, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        raise

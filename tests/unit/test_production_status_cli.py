@@ -348,3 +348,77 @@ def test_status_cli_incompatible_columns_schema(tmp_path: Path, monkeypatch: pyt
     assert _hash_file(db_path) == before_hash
     assert "Ledger Status: UNAVAILABLE (foreign or incompatible schema)" in out
     assert "missing required columns" in out
+
+
+def test_status_cli_wal_missing_shm_unmocked_authority_discovery_non_mutating(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """Issue #55 / #56: Exercise public status CLI with unmocked authority discovery on WAL without SHM.
+    Verifies that neither authority discovery nor observation creates or mutates sidecars."""
+    import gc
+    import subprocess
+    import sys
+
+    wal_dir = tmp_path / "wal"
+    wal_dir.mkdir(parents=True, exist_ok=True)
+    db_path = wal_dir / "adaptive.sqlite3"
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    child = (
+        'import sqlite3,sys,os; '
+        'c=sqlite3.connect(sys.argv[1]); '
+        'c.execute("PRAGMA journal_mode=WAL"); '
+        'c.execute("CREATE TABLE jobs(key TEXT PRIMARY KEY,state TEXT,attempts INTEGER,fence INTEGER,detail TEXT)"); '
+        'c.commit(); '
+        'c.execute("PRAGMA wal_checkpoint(TRUNCATE)"); '
+        'c.execute("INSERT INTO jobs VALUES(?,?,?,?,?)",("kept","SUCCEEDED",1,1,"{}")); '
+        'c.commit(); '
+        'os._exit(0)'
+    )
+    res = subprocess.run([sys.executable, "-I", "-B", "-c", child, str(db_path)], capture_output=True)
+    assert res.returncode == 0, res.stderr
+
+    # Remove the SHM file so it is absent
+    shm_path = db_path.with_name(f"{db_path.name}-shm")
+    assert shm_path.is_file()
+    shm_path.unlink()
+
+    from youtube_automation.production import ledger
+    monkeypatch.setattr(cli, "resource_database", ledger._unpatched_resource_database)
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db_path))
+
+    before = _dir_snapshot(wal_dir)
+    cli.main(["status", "--run-dir", str(run_dir)])
+    out = capsys.readouterr().out
+    gc.collect()
+    after = _dir_snapshot(wal_dir)
+
+    assert before == after, f"Status execution created or modified files: {set(after) ^ set(before)}"
+    assert not shm_path.exists(), "Status execution created unintended .sqlite3-shm file"
+    assert "Ledger Status: UNAVAILABLE (unsupported WAL layout)" in out
+
+
+def test_status_cli_damaged_database_unmocked_authority_discovery_graceful(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """Issue #55 / #56: Exercise public status CLI on damaged file through unmocked authority resolution.
+    Verifies graceful UNAVAILABLE output without unhandled DamagedAuthorityError crash."""
+    damaged_dir = tmp_path / "damaged"
+    damaged_dir.mkdir(parents=True, exist_ok=True)
+    db_path = damaged_dir / "damaged.sqlite3"
+    db_path.write_bytes(b"not a database")
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    from youtube_automation.production import ledger
+    monkeypatch.setattr(cli, "resource_database", ledger._unpatched_resource_database)
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db_path))
+
+    cli.main(["status", "--run-dir", str(run_dir)])
+    out = capsys.readouterr().out
+
+    assert "Ledger Status: UNAVAILABLE (corrupted or unreadable database)" in out
+    assert "Authority resolution failure" in out

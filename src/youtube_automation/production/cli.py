@@ -874,7 +874,13 @@ def main(argv: list[str] | None = None) -> None:
         print(render_current_proofs(root))
         return
     # Shared across runs in this installation; never scope exclusive devices per run.
-    database = resource_database()
+    from .authority import AuthorityError
+    authority_err: AuthorityError | None = None
+    try:
+        database = resource_database()
+    except AuthorityError as err:
+        database = None
+        authority_err = err
     if args.stage == "direct" and not args.direction_response_file:
         parser.error("direct requires --direction-response-file; provider requests need separate authorization")
     if args.direction_response_file and args.stage != "direct":
@@ -905,11 +911,22 @@ def main(argv: list[str] | None = None) -> None:
         _run_stage_attempt(args, root, database)
         return
     if args.stage == "status":
-        from .ledger_observation import format_ledger_status, observe_ledger
+        from .ledger_observation import ObservationDecision, format_ledger_status, observe_ledger
 
-        decision = observe_ledger(database)
+        if authority_err is not None:
+            status_type = "DAMAGED" if "Damaged" in type(authority_err).__name__ else "UNSUPPORTED_SCHEMA"
+            decision = ObservationDecision(
+                status=status_type,
+                message=f"Authority resolution failure: {authority_err}",
+                rows=[],
+                supported=False,
+            )
+        else:
+            decision = observe_ledger(database)
         print(format_ledger_status(decision))
         return
+    if authority_err is not None:
+        raise authority_err
     else:
         if args.stage in {"report", "preview", "approve", "render"} and (root / "visual_budget.json").is_file():
             from .visual_gate import require_visual_audit

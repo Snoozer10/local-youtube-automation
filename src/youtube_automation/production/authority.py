@@ -12,7 +12,6 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
-import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -137,6 +136,8 @@ def discover_authority(
     else:
         root = default_root or Path(__file__).resolve().parents[3]
         target_path = (root / ".runtime" / "adaptive.sqlite3").resolve()
+        if not target_path.exists() and (root / "adaptive.sqlite3").exists():
+            target_path = (root / "adaptive.sqlite3").resolve()
         source_type = "DEFAULT"
         generation = MINIMUM_SCHEMA_GENERATION
         maint_mode = False
@@ -162,32 +163,23 @@ def discover_authority(
             f"Authority schema generation {generation} is incompatible with required minimum {MINIMUM_SCHEMA_GENERATION}"
         )
 
-    # 4. Check for Physical Database Damage if file exists
+    # 4. Check for Physical Database Damage if file exists (strictly non-mutating)
     if target_path.exists():
         if target_path.stat().st_size < 100:
             raise DamagedAuthorityError(f"Authority database at {target_path} is truncated or damaged (<100 bytes)")
         try:
             with target_path.open("rb") as f:
-                header = f.read(16)
-                if header != b"SQLite format 3\x00":
+                header = f.read(100)
+                if len(header) < 100 or header[:16] != b"SQLite format 3\x00":
                     raise DamagedAuthorityError(f"Authority file at {target_path} is not a valid SQLite database")
-        except OSError as err:
-            raise DamagedAuthorityError(f"Cannot read authority database at {target_path}: {err}") from err
-
-        # Verify integrity of database tables
-        try:
-            with sqlite3.connect(f"file:{target_path.as_posix()}?mode=ro", uri=True) as conn:
-                row = conn.execute("PRAGMA integrity_check").fetchone()
-                if not row or row[0] != "ok":
-                    raise DamagedAuthorityError(f"Integrity check failed for authority database: {row}")
-                # Check user_version compatibility if set
-                db_version = conn.execute("PRAGMA user_version").fetchone()[0]
+                # SQLite header offset 60-64 stores user_version as a 4-byte big-endian integer
+                db_version = int.from_bytes(header[60:64], "big")
                 if db_version > 0 and db_version < MINIMUM_SCHEMA_GENERATION:
                     raise IncompatibleAuthorityError(
                         f"Database user_version {db_version} is less than required minimum {MINIMUM_SCHEMA_GENERATION}"
                     )
-        except sqlite3.DatabaseError as err:
-            raise DamagedAuthorityError(f"Authority database failed connection integrity: {err}") from err
+        except OSError as err:
+            raise DamagedAuthorityError(f"Cannot read authority database at {target_path}: {err}") from err
 
     return AuthorityResolution(
         database_path=target_path,

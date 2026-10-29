@@ -365,3 +365,141 @@ def test_generate_recovery_qualification_receipt(mock_operational_runtime: Path,
 
     assert receipt_file.is_file()
     assert receipt["demonstrated_properties"]["non_mutating_source_backup"] is True
+
+
+def test_recovery_closure_transitive_references(tmp_path: Path):
+    """Issue #58: Complete operational closure traverses references across DB, briefs, plans, timelines, and media."""
+    import shutil
+
+    rt = tmp_path / "transitive_runtime"
+    rt.mkdir(parents=True)
+
+    # Database with jobs referencing brief and timeline
+    conn = sqlite3.connect(rt / "adaptive.sqlite3")
+    conn.execute("CREATE TABLE jobs (key TEXT PRIMARY KEY, recipe TEXT, state TEXT, detail TEXT)")
+    conn.execute(
+        "INSERT INTO jobs VALUES (?, ?, ?, ?)",
+        ("episode-A", "recipe-1", "RUNNING", json.dumps({"brief": "brief.json", "timeline": "timeline.json"}))
+    )
+    conn.commit()
+    conn.close()
+
+    # JSON artifacts forming dependency graph
+    (rt / "brief.json").write_text(json.dumps({"script": "script.txt", "timeline": "timeline.json", "plan": "shot_plan.json"}))
+    (rt / "shot_plan.json").write_text(json.dumps({"audio_file": "narration.wav", "shots": [{"image": "frame.png"}]}))
+    (rt / "timeline.json").write_text(json.dumps({"audio_file": "narration.wav", "text": "Preserved canonical content"}))
+    (rt / "script.txt").write_text("Preserved canonical narration text")
+
+    # Media fixtures
+    media_dir = Path(__file__).resolve().parents[1] / "fixtures" / "media"
+    shutil.copyfile(media_dir / "sample_audio.wav", rt / "narration.wav")
+    shutil.copyfile(media_dir / "sample_thumb.png", rt / "frame.png")
+
+    backups = tmp_path / "backups"
+    manifest_p = create_isolated_recovery_snapshot(rt, backups, "transitive_proof")
+    manifest = json.loads(manifest_p.read_text(encoding="utf-8"))
+
+    manifest_names = {entry["relative_path"] for entry in manifest["files"]}
+    expected = {"adaptive.sqlite3", "brief.json", "shot_plan.json", "timeline.json", "script.txt", "narration.wav", "frame.png"}
+    assert expected.issubset(manifest_names), f"Missing from closure: {expected - manifest_names}"
+
+    assert manifest["project_run_id"] == "episode-A"
+    assert Path(manifest["authority_pointer"]).is_file()
+
+    restore_target = tmp_path / "restored_closure"
+    receipt = restore_isolated_recovery_snapshot(backups, "transitive_proof", restore_target)
+    assert receipt["status"] == "RESTORED"
+
+    for fname in expected:
+        assert (restore_target / fname).is_file(), f"Restored file missing: {fname}"
+
+
+def test_recovery_closure_missing_referenced_artifact_refused(tmp_path: Path):
+    """Issue #58: Missing required referenced artifact produces an explicit error rather than false success."""
+    rt = tmp_path / "missing_ref_runtime"
+    rt.mkdir(parents=True)
+
+    (rt / "brief.json").write_text(json.dumps({"script": "missing_script.txt"}))
+
+    backups = tmp_path / "backups"
+    with pytest.raises(RuntimeError, match="Incomplete recovery closure: referenced artifact 'missing_script.txt' is missing"):
+        create_isolated_recovery_snapshot(rt, backups, "incomplete_snap")
+
+
+def test_recovery_consistency_boundary_concurrent_writer_refused(tmp_path: Path):
+    """Issue #58: Concurrent writer during snapshot capture violates consistency boundary and is refused."""
+    from youtube_automation.production import recovery as rec
+
+    src = tmp_path / "race_source"
+    src.mkdir(parents=True)
+    db = src / "adaptive.sqlite3"
+
+    conn = sqlite3.connect(db)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("CREATE TABLE a(x INTEGER)")
+    conn.execute("CREATE TABLE b(x INTEGER)")
+    conn.commit()
+
+    storage = tmp_path / "race_storage"
+    orig_sha = rec.compute_sha256
+
+    def race_interleave(p):
+        res = orig_sha(p)
+        if Path(p).name == "adaptive.sqlite3" and Path(p).parent == storage / "race_snap":
+            conn.execute("INSERT INTO a VALUES(1)")
+            conn.commit()
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.execute("INSERT INTO b VALUES(1)")
+            conn.commit()
+        return res
+
+    rec.compute_sha256 = race_interleave
+    try:
+        with pytest.raises(RuntimeError, match="Consistency boundary violation: concurrent database modification"):
+            rec.create_isolated_recovery_snapshot(src, storage, "race_snap")
+    finally:
+        rec.compute_sha256 = orig_sha
+        conn.close()
+
+    # Preserves failed snapshot evidence
+    assert (storage / "race_snap" / "FAILED_SNAPSHOT.json").is_file()
+
+
+def test_restore_conflict_preservation_newer_work_and_receipt(tmp_path: Path):
+    """Issue #58: Restoration preserves newer destination files and receipts created after preflight."""
+    from youtube_automation.production import recovery as rec
+
+    src = tmp_path / "source"
+    src.mkdir(parents=True)
+    (src / "brief.json").write_bytes(b"original snapshot")
+
+    storage = tmp_path / "storage"
+    target = tmp_path / "restore"
+    target.mkdir(parents=True)
+
+    rec.create_isolated_recovery_snapshot(src, storage, "race_restore")
+
+    real_open = Path.open
+    events = []
+
+    def race_open(self, mode="r", *args, **kwargs):
+        if self == target / "brief.json" and ("w" in mode or "x" in mode) and not events:
+            with real_open(self, "wb") as f:
+                f.write(b"newer concurrently resumed work")
+            with real_open(target / "RESTORATION_RECEIPT.json", "wb") as f:
+                f.write(b"newer restoration evidence")
+            events.append(True)
+        return real_open(self, mode, *args, **kwargs)
+
+    Path.open = race_open
+    try:
+        with pytest.raises(FileExistsError, match="Restoration conflict"):
+            rec.restore_isolated_recovery_snapshot(storage, "race_restore", target)
+    finally:
+        Path.open = real_open
+
+    # Both newer files must be completely preserved
+    assert (target / "brief.json").read_bytes() == b"newer concurrently resumed work"
+    assert (target / "RESTORATION_RECEIPT.json").read_bytes() == b"newer restoration evidence"
+    # Interrupted/failed recovery record is preserved
+    assert (target / "FAILED_RESTORATION_race_restore.json").is_file()

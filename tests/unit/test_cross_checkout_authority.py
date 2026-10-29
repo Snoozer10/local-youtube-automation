@@ -218,3 +218,54 @@ def test_generate_authority_qualification_receipt(mock_shared_database: Path, tm
 
     assert receipt_file.is_file()
     assert receipt["demonstrated_properties"]["cross_checkout_convergent_discovery"] is True
+
+
+def test_cached_client_maintenance_exclusion(tmp_path: Path, monkeypatch):
+    """Issue #59: Cached Ledger clients cannot claim stages or leases during maintenance."""
+    from youtube_automation.production import ledger
+
+    db_path = tmp_path / "maintenance_test" / "adaptive.sqlite3"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db_path))
+
+    cached_ledger = ledger.Ledger(db_path)
+    # Pre-maintenance claim succeeds
+    decision = cached_ledger.claim_stage("stage:pre", "recipe", "worker_1")
+    assert decision.state == "CLAIMED"
+
+    # Engage maintenance lock
+    set_maintenance_mode(db_path.parent, enabled=True, reason="Scheduled storage migration")
+
+    # Cached client now rejects claim and claim_stage
+    with pytest.raises(MaintenanceExclusionError, match="currently locked for maintenance"):
+        cached_ledger.claim_stage("stage:post", "recipe", "worker_1")
+
+    with pytest.raises(MaintenanceExclusionError, match="currently locked for maintenance"):
+        cached_ledger.claim("resource:task", "recipe", "worker_1")
+
+    # Release maintenance lock
+    set_maintenance_mode(db_path.parent, enabled=False)
+    decision_after = cached_ledger.claim_stage("stage:post", "recipe", "worker_1")
+    assert decision_after.state == "CLAIMED"
+
+
+def test_old_lease_publication_rejected_after_authority_cutover(tmp_path: Path, monkeypatch):
+    """Issue #59: An active lease acquired on an old authority cannot enter publication_guard after cutover."""
+    from youtube_automation.production import ledger
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    old_db = tmp_path / "cutover_old" / "adaptive.sqlite3"
+    new_db = tmp_path / "cutover_new" / "adaptive.sqlite3"
+    old_db.parent.mkdir(parents=True, exist_ok=True)
+    new_db.parent.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(old_db))
+
+    entered = False
+    with pytest.raises(StaleFencingGenerationError, match="Authority cutover detected"):
+        with ledger.leased_resource(old_db, "browser"):
+            # Authority pointer cuts over to new database during the active lease
+            monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(new_db))
+            with ledger.publication_guard():
+                entered = True
+    assert entered is False

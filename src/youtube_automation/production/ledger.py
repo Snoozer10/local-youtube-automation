@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 from youtube_automation.core import failure_record
 
-_Lease = tuple["Ledger", str, str, int]
+_Lease = tuple[Any, ...]
 _active_leases: ContextVar[tuple[_Lease, ...]] = ContextVar(
     "production_leases", default=()
 )
@@ -53,13 +53,46 @@ _unpatched_resource_database = resource_database
 def publication_guard() -> Iterator[None]:
     """Serialize short publications across direct callers and every claim ledger."""
     active = _active_leases.get()
+    from youtube_automation.production.authority import (
+        MaintenanceExclusionError,
+        StaleFencingGenerationError,
+    )
     publication_path = resource_database().resolve()
+
+    # Enforce maintenance exclusion at publication boundary
+    maint_lock = publication_path.parent / "MAINTENANCE.lock"
+    if maint_lock.is_file():
+        try:
+            maint_reason = maint_lock.read_text(encoding="utf-8").strip() or "Active MAINTENANCE.lock present"
+        except OSError:
+            maint_reason = "Active MAINTENANCE.lock present"
+        raise MaintenanceExclusionError(
+            f"Authority at {publication_path} is currently locked for maintenance: {maint_reason}"
+        )
+
     nested = _publication_scope.get()
     if nested is not None:
         if nested != (str(publication_path), active):
             raise RuntimeError("Nested publication cannot change its lease or database domain")
         yield
         return
+
+    # Reject leases that were acquired under stale authority or before cutover
+    for item in active:
+        claim_ledger = item[0]
+        auth_domain = item[4] if len(item) > 4 else None
+        if auth_domain is not None and Path(auth_domain).resolve() != publication_path:
+            raise StaleFencingGenerationError(
+                f"Authority cutover detected: lease was acquired under authority {auth_domain} "
+                f"but current authority has changed to {publication_path}; publication rejected"
+            )
+        lease_db = Path(claim_ledger.path).resolve()
+        if auth_domain is not None and lease_db == Path(auth_domain).resolve() and lease_db != publication_path:
+            raise StaleFencingGenerationError(
+                f"Authority cutover detected: active lease database {lease_db} "
+                f"does not match current authority {publication_path}; publication rejected"
+            )
+
     databases = {str(Path(item[0].path).resolve()) for item in active}
     if len(databases) > 1:
         raise RuntimeError("Nested production leases must share one ledger")
@@ -77,7 +110,8 @@ def publication_guard() -> Iterator[None]:
         token = _publication_scope.set((str(publication_path), active))
         try:
             now = time.time()
-            for _, resource, owner, fence in active:
+            for item in active:
+                resource, owner, fence = item[1], item[2], item[3]
                 row = claims.execute("SELECT * FROM jobs WHERE key=?", (resource,)).fetchone()
                 if (row is None or row["owner"] != owner or row["fence"] != fence
                         or row["state"] != "RUNNING" or row["expires"] <= now):
@@ -98,6 +132,16 @@ def publication_guard() -> Iterator[None]:
 class Ledger:
     def __init__(self, path: str | Path):
         self.path = str(path)
+        self.generation: int = 1
+        p = Path(self.path)
+        if p.is_file():
+            try:
+                with p.open("rb") as f:
+                    h = f.read(100)
+                    if len(h) >= 100:
+                        self.generation = int.from_bytes(h[60:64], "big") or 1
+            except OSError:
+                pass
         with self.connection() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript("""
@@ -110,6 +154,19 @@ class Ledger:
                   state TEXT NOT NULL, detail TEXT NOT NULL);
             """)
 
+    def _check_maintenance(self) -> None:
+        """Reject operations if maintenance mode is active on this ledger."""
+        maintenance_lock = Path(self.path).parent / "MAINTENANCE.lock"
+        if maintenance_lock.is_file():
+            try:
+                reason = maintenance_lock.read_text(encoding="utf-8").strip() or "Active MAINTENANCE.lock present"
+            except OSError:
+                reason = "Active MAINTENANCE.lock present"
+            from youtube_automation.production.authority import MaintenanceExclusionError
+            raise MaintenanceExclusionError(
+                f"Authority at {self.path} is currently locked for maintenance: {reason}"
+            )
+
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
         with closing(sqlite3.connect(self.path, timeout=10, isolation_level=None)) as conn:
@@ -120,6 +177,7 @@ class Ledger:
     def claim(
         self, key: str, recipe: str, owner: str, *, seconds: float = 60, now: float | None = None
     ) -> int | None:
+        self._check_maintenance()
         now = time.time() if now is None else now
         if seconds <= 0:
             raise ValueError("Lease duration must be positive")
@@ -174,6 +232,7 @@ class Ledger:
         force: bool = False,
         now: float | None = None,
     ) -> StageClaim:
+        self._check_maintenance()
         now = time.time() if now is None else now
         if seconds <= 0 or max_attempts <= 0:
             raise ValueError("Lease duration and maximum attempts must be positive")
@@ -211,7 +270,9 @@ class Ledger:
                     )
                     conn.commit()
                     return StageClaim("BLOCKED")
-                fence = int(row["fence"]) + 1
+                from youtube_automation.production.authority import validate_fencing_generation
+                current_fence = int(row["fence"])
+                fence = validate_fencing_generation(current_fence, current_fence + 1)
                 conn.execute(
                     "UPDATE jobs SET recipe=?,state='RUNNING',fence=?,owner=?,expires=?,attempts=attempts+1 WHERE key=?",
                     (recipe, fence, owner, now + seconds, key),
@@ -347,7 +408,8 @@ def _maintained_claim(
     thread.start()
     state = "SUCCEEDED"
     terminal_detail = dict(detail or {})
-    token = _active_leases.set(active + ((ledger, key, owner, fence),))
+    auth_domain = str(resource_database().resolve())
+    token = _active_leases.set(active + ((ledger, key, owner, fence, auth_domain),))
     try:
         yield
         if failures:
