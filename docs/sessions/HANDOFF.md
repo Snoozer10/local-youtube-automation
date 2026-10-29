@@ -339,3 +339,51 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - `test_skill_discovery_and_lock.py`: Python `write_text` defaulted to CRLF on Windows, altering restored SHA-256 hash. Resolved by enforcing `newline="\n"`.
 - Disk Space: Windows drive `C:` reached 0 MB free during git index write. User freed 3.26 GB, resolving git lock write errors.
 - Network DNS: Local router DNS intermittently failed lookups for `github.com`. Resolved git push operations via `http.curloptResolve=github.com:443:140.82.121.4` without modifying host OS configuration.
+
+## Architecture-Renewal Corrective Campaign Batch, 2026-10-29
+
+### Done
+1. **Safety & Observation Safety (Issues #55, #56 - PR branch `fix/track-1-safety-observation-recovery-55-58`)**:
+   - Completely removed unowned sidecar deletion (`_cleanup_transient_sidecars`) from `src/youtube_automation/production/ledger_observation.py`.
+   - When concurrent writer transitions to WAL after pre-checks, observer detects it safely, closes connection, and refuses with `UNSUPPORTED_WAL`.
+   - Leaves concurrent writer's WAL/SHM sidecars and committed rows 100% intact (0 bytes lost, 0 sidecars unlinked).
+   - Verified via `tests/unit/test_observation_method_proof.py` (18 passed, including `test_concurrent_writer_wal_and_committed_rows_preserved_without_deletion`).
+
+2. **Source-Preserving Recovery & Safe Restoration (Issue #58 - PR branch `fix/track-1-safety-observation-recovery-55-58`)**:
+   - Switched SQLite database snapshots in `src/youtube_automation/production/recovery.py` to binary file streaming (`open("rb")`), guaranteeing 0 sidecar creations and 0 source drift in the live source directory.
+   - Post-copy database integrity checks use `?mode=ro&immutable=1` exclusively on backup storage copies, avoiding Windows memory-mapped file locks.
+   - Restored snapshot protection: validates `manifest_sha256` before writing files, rejects path traversal (`..` or absolute paths escaping target restore directory), and refuses to overwrite existing destination files and receipts (`RESTORATION_RECEIPT.json`).
+   - Expanded `DECLARED_OPERATIONAL_RECOVERY_SET` to include canonical inputs (`youtube_urls.txt`, briefs), plans (`channel_plan.json`), approval/rejection evidence, and execution journals (`clip_journal.json`), bound with authority configuration and fencing generation.
+   - Verified via `tests/unit/test_operational_recovery.py` (11 passed).
+
+3. **Production Authority Integration (Issue #59 - PR branch `fix/track-1-safety-observation-recovery-55-58`)**:
+   - Reconnected `resource_database()` in `src/youtube_automation/production/ledger.py` directly to `discover_authority().database_path`, routing all production entrypoints (`leased_resource`, `publication_guard`, `cli`) through authority discovery.
+   - Connected maintenance exclusion (`MAINTENANCE.lock`) and generation fencing to active production leasing calls.
+   - Verified via `tests/unit/test_cross_checkout_authority.py` (10 passed).
+
+4. **Meaningful Media Evidence (Issues #46, #47, #48, #50 - PR branch `fix/track-2-channel-dna-media-46-50`)**:
+   - Generated valid, playable offline media fixtures in `tests/fixtures/media/`:
+     - `sample_clip.mp4`: Valid 2.0s 320x240 H.264 video with `moov` atom (probed by ffprobe).
+     - `sample_audio.wav`: Valid 2.0s 44.1kHz 16-bit mono PCM acoustic audio (probed by ffprobe).
+     - `sample_thumb.png`: Valid 64x64 PNG thumbnail (probed by ffprobe).
+   - Updated `tests/unit/test_channel_dna_adversarial_regressions.py` to assert against exact 2.0s examined ranges and traceable guidance observations.
+   - Verified via `tests/unit/test_channel_dna_adversarial_regressions.py` (12 passed).
+
+5. **Core Documentation & Multi-Host Skills Reconciliation (Issues #37, #39 - PR branch `docs/navigation-reconciliation-37`)**:
+   - Reconciled `docs/README.md` to update Product overview and Project workflow statuses, reflect accepted Option A offline substitution for reference evidence, and map `audio_chain` to `dsp_pipeline`.
+   - Maintained `docs/skills/PROVENANCE_AND_DISCOVERY.md` documenting platform-level discovery boundaries and byte-exact restoration.
+
+### Next
+1. Push branches to remote:
+   - `fix/track-1-safety-observation-recovery-55-58`
+   - `fix/track-2-channel-dna-media-46-50`
+   - `docs/navigation-reconciliation-37`
+2. Open pull requests for each track and monitor GitHub CI.
+3. Merge verified pull requests into `master`.
+4. Update issue tracker with qualification receipts and close child issues upon demonstrated acceptance.
+5. Keep parent issue #31 strictly OPEN awaiting human acceptance.
+
+### Failures & Fixes
+- `ledger_observation.py`: Unowned sidecar cleanup deleted concurrent writer's WAL/SHM when observer encountered WAL transition. Resolved by eliminating sidecar cleanup entirely; observer cleanly refuses without unlinking.
+- `recovery.py`: Opening live source SQLite database with `mode=ro` created `-shm` sidecar and checkpointed WAL, altering source SHA256. Resolved by using direct binary file streaming from source.
+- `recovery.py`: Memory-mapped SQLite connections to `-shm` during integrity checks blocked subsequent writes with `OSError: [Errno 22] Invalid argument`. Resolved by decoupling file copying from integrity checks and using `immutable=1` URI mode.
