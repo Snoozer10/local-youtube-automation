@@ -180,6 +180,150 @@ def test_restore_fails_closed_on_tampered_backup_storage(mock_operational_runtim
     assert not (restore_target / "run.lock").exists()
 
 
+def test_restore_rejects_malformed_manifest_digest_before_any_writes(tmp_path: Path):
+    """Issue #58 regression: Malformed or mismatched manifest digest must fail closed before writes."""
+    backups = tmp_path / "backups"
+    snap = backups / "bad_digest_snap"
+    snap.mkdir(parents=True)
+    (snap / "run.lock").write_text("lock_content", encoding="utf-8")
+    h = compute_sha256(snap / "run.lock")
+
+    manifest = {
+        "recovery_id": "bad_digest_snap",
+        "created_at": "2026-10-29T00:00:00Z",
+        "runtime_root": str(tmp_path),
+        "total_files": 1,
+        "total_bytes": len("lock_content"),
+        "manifest_sha256": "deliberately_false_sha256_digest_that_does_not_match",
+        "files": [{
+            "relative_path": "run.lock",
+            "category": "LOCK",
+            "sha256": h,
+            "size_bytes": len("lock_content"),
+            "is_database": False,
+        }],
+    }
+    (snap / "RECOVERY_MANIFEST.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    restore_target = tmp_path / "restore_bad_digest"
+    restore_target.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="Recovery manifest digest mismatch"):
+        restore_isolated_recovery_snapshot(backups, "bad_digest_snap", restore_target)
+
+    # Nothing should have been written to restore target
+    assert not (restore_target / "run.lock").exists()
+
+
+def test_restore_rejects_path_traversal_escaping_destination(tmp_path: Path):
+    """Issue #58 regression: Paths escaping destination directory must be rejected before writing."""
+    import hashlib
+    backups = tmp_path / "backups"
+    snap = backups / "traversal_snap"
+    snap.mkdir(parents=True)
+    escaped_file = backups / "escaped.txt"
+    escaped_file.write_text("fixture content outside snapshot", encoding="utf-8")
+    h = compute_sha256(escaped_file)
+
+    manifest_payload = {
+        "recovery_id": "traversal_snap",
+        "created_at": "2026-10-29T00:00:00Z",
+        "runtime_root": str(tmp_path),
+        "total_files": 1,
+        "total_bytes": 42,
+        "files": [{
+            "relative_path": "../escaped.txt",
+            "category": "RECEIPT",
+            "sha256": h,
+            "size_bytes": 42,
+            "is_database": False,
+        }],
+    }
+    manifest_bytes = json.dumps(manifest_payload, indent=2).encode("utf-8")
+    manifest_payload["manifest_sha256"] = hashlib.sha256(manifest_bytes).hexdigest()
+    (snap / "RECOVERY_MANIFEST.json").write_text(json.dumps(manifest_payload, indent=2), encoding="utf-8")
+
+    restore_target = tmp_path / "restore_traversal"
+    restore_target.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="Path traversal detected in manifest"):
+        restore_isolated_recovery_snapshot(backups, "traversal_snap", restore_target)
+
+    assert not (tmp_path / "escaped.txt").exists()
+
+
+def test_restore_refuses_to_overwrite_existing_restoration_receipt(mock_operational_runtime: Path, tmp_path: Path):
+    """Issue #58 regression: Pre-existing RESTORATION_RECEIPT.json at destination must be preserved."""
+    backup_storage = tmp_path / "backups"
+    restore_target = tmp_path / "restore_existing_receipt"
+    restore_target.mkdir(parents=True, exist_ok=True)
+
+    create_isolated_recovery_snapshot(mock_operational_runtime, backup_storage, "receipt_protect_snap")
+
+    # Operator or previous recovery placed a newer restoration receipt
+    prior_receipt = restore_target / "RESTORATION_RECEIPT.json"
+    prior_receipt.write_text('{"prior_evidence": "must_be_preserved"}', encoding="utf-8")
+    prior_sha = compute_sha256(prior_receipt)
+
+    with pytest.raises(FileExistsError, match="destination receipt .* already exists; preserving existing evidence"):
+        restore_isolated_recovery_snapshot(backup_storage, "receipt_protect_snap", restore_target)
+
+    # Receipt must remain 100% unmutated
+    assert compute_sha256(prior_receipt) == prior_sha
+    assert json.loads(prior_receipt.read_text(encoding="utf-8")) == {"prior_evidence": "must_be_preserved"}
+
+
+def test_complete_recovery_set_closure_covers_inputs_plans_evidence_journals(tmp_path: Path):
+    """Issue #58 regression: Declared recovery closure covers canonical inputs, plans, journals, evidence."""
+    rt = tmp_path / "complete_runtime"
+    rt.mkdir(parents=True)
+
+    # 1. Canonical inputs
+    (rt / "youtube_urls.txt").write_text("https://youtube.com/watch?v=sample1", encoding="utf-8")
+    (rt / "episode_brief.json").write_text('{"topic": "Formations", "revision": 1}', encoding="utf-8")
+
+    # 2. Production plans
+    (rt / "channel_plan.json").write_text('{"target_cadence": "weekly"}', encoding="utf-8")
+
+    # 3. Execution journals
+    (rt / "clip_journal.json").write_text('{"clips": ["c1", "c2"]}', encoding="utf-8")
+
+    # 4. Approval/rejection evidence
+    (rt / "APPROVAL_GATE.json").write_text('{"gate": "audio", "status": "APPROVED"}', encoding="utf-8")
+    (rt / "REJECTION_LOG.json").write_text('{"gate": "visual", "reason": "unsupported"}', encoding="utf-8")
+
+    # 5. Multimodal evidence
+    (rt / "multimodal_evidence.json").write_text('{"samples": 2}', encoding="utf-8")
+
+    matched = identify_recovery_files(rt)
+    matched_names = {path.name: spec.category for path, spec in matched}
+
+    assert "youtube_urls.txt" in matched_names
+    assert matched_names["youtube_urls.txt"] == RecoveryItemCategory.INPUT
+    assert "episode_brief.json" in matched_names
+    assert matched_names["episode_brief.json"] == RecoveryItemCategory.INPUT
+    assert "channel_plan.json" in matched_names
+    assert matched_names["channel_plan.json"] == RecoveryItemCategory.PLAN
+    assert "clip_journal.json" in matched_names
+    assert matched_names["clip_journal.json"] == RecoveryItemCategory.JOURNAL
+    assert "APPROVAL_GATE.json" in matched_names
+    assert matched_names["APPROVAL_GATE.json"] == RecoveryItemCategory.APPROVAL
+    assert "REJECTION_LOG.json" in matched_names
+    assert matched_names["REJECTION_LOG.json"] == RecoveryItemCategory.REJECTION
+    assert "multimodal_evidence.json" in matched_names
+    assert matched_names["multimodal_evidence.json"] == RecoveryItemCategory.EVIDENCE
+
+    # Snapshot and verify bound metadata
+    backups = tmp_path / "backups"
+    manifest_path = create_isolated_recovery_snapshot(rt, backups, "full_closure_01")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["protocol_version"] == "1.0"
+    assert manifest["stage"] == "PRODUCTION"
+    assert manifest["consistency_boundary"] == "POINT_IN_TIME_ISOLATED"
+    assert manifest["total_files"] == 7
+
+
 def test_generate_recovery_qualification_receipt(mock_operational_runtime: Path, tmp_path: Path):
     """Generate and persist positive recovery qualification receipt for Issue #58."""
     backup_storage = tmp_path / "qual_backups"

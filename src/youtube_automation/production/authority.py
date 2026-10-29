@@ -98,6 +98,13 @@ def discover_authority(
     env_val = env_override or os.environ.get("YOUTUBE_AUTOMATION_AUTHORITY_DB")
     env_db: Path | None = Path(env_val).resolve() if env_val else None
 
+    root = default_root or Path(__file__).resolve().parents[3]
+    if config_path is None:
+        for candidate in [root / ".authority.json", root / "config" / "authority.json"]:
+            if candidate.is_file():
+                config_path = candidate
+                break
+
     cfg: AuthorityConfig | None = None
     if config_path and config_path.is_file():
         try:

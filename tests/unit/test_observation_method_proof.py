@@ -298,8 +298,56 @@ def test_post_second_check_wal_transition_refused_without_sidecars(tmp_path: Pat
 
     assert decision.status == "UNSUPPORTED_WAL"
     assert decision.supported is False
-    assert not race.with_name(f"{race.name}-wal").exists()
-    assert not race.with_name(f"{race.name}-shm").exists()
+    # Observer must NEVER delete writer's sidecars:
+    assert race.with_name(f"{race.name}-wal").exists()
+
+
+def test_concurrent_writer_wal_and_committed_rows_preserved_without_deletion(tmp_path: Path) -> None:
+    """Issue #55/#56 regression: Observer must not delete concurrent writer's WAL/SHM or lose committed rows."""
+    import subprocess
+    db = tmp_path / "concurrent_state.sqlite3"
+    c = sqlite3.connect(str(db))
+    c.execute("CREATE TABLE jobs (key TEXT, state TEXT, attempts INT, fence INT, detail TEXT)")
+    c.execute("INSERT INTO jobs VALUES ('base', 'DONE', 1, 1, '{}')")
+    c.commit()
+    c.close()
+
+    writer_code = (
+        "import sqlite3, os, sys; "
+        "c = sqlite3.connect(sys.argv[1]); "
+        "c.execute('PRAGMA journal_mode=WAL'); "
+        "c.execute(\"INSERT INTO jobs VALUES ('writer', 'DONE', 1, 2, '{}')\"); "
+        "c.commit(); "
+        "os._exit(0)"
+    )
+
+    orig_connect = sqlite3.connect
+    seen_writer: dict[str, Any] = {}
+
+    def raced_connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        con = orig_connect(*args, **kwargs)
+        if not seen_writer and str(args[0]).startswith("file:"):
+            subprocess.run([sys.executable, "-I", "-B", "-c", writer_code, str(db)], check=True)
+            seen_writer["wal_size_before"] = (tmp_path / "concurrent_state.sqlite3-wal").stat().st_size
+        return con
+
+    ledger_observation.sqlite3.connect = raced_connect
+    try:
+        decision = ledger_observation.observe_ledger(db)
+        assert decision.status == "UNSUPPORTED_WAL"
+        assert decision.supported is False
+    finally:
+        ledger_observation.sqlite3.connect = orig_connect
+
+    # WAL and SHM sidecars from concurrent writer must NOT have been unlinked
+    wal_file = tmp_path / "concurrent_state.sqlite3-wal"
+    assert wal_file.exists(), "Writer's WAL file was wrongfully deleted by observer"
+
+    # Committed rows must include both base and writer (zero data loss)
+    chk_conn = orig_connect(str(db))
+    rows = chk_conn.execute("SELECT key FROM jobs ORDER BY key").fetchall()
+    chk_conn.close()
+    assert rows == [("base",), ("writer",)], f"Committed writer row was lost: {rows}"
 
 
 def test_busy_locked_database_returns_bounded_busy_decision(tmp_path: Path) -> None:

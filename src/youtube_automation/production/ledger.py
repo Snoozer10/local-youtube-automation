@@ -42,7 +42,11 @@ class StageClaim:
 
 
 def resource_database() -> Path:
-    return Path(__file__).resolve().parents[3] / ".runtime" / "adaptive.sqlite3"
+    from youtube_automation.production.authority import discover_authority
+    resolution = discover_authority()
+    return resolution.database_path
+
+_unpatched_resource_database = resource_database
 
 
 @contextmanager
@@ -130,7 +134,9 @@ class Ledger:
                 if row["state"] == "RUNNING" and row["expires"] > now:
                     conn.rollback()
                     return None
-                fence = int(row["fence"]) + 1
+                from youtube_automation.production.authority import validate_fencing_generation
+                current_fence = int(row["fence"])
+                fence = validate_fencing_generation(current_fence, current_fence + 1)
                 conn.execute(
                     "UPDATE jobs SET recipe=?,state='RUNNING',fence=?,owner=?,expires=?,attempts=attempts+1 WHERE key=?",
                     (recipe, fence, owner, now + seconds, key),
