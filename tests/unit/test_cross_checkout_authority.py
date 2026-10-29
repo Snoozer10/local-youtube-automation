@@ -357,3 +357,114 @@ def test_maintenance_exclusion_blocks_ledger_writes_before_initialization(tmp_pa
 
     after_mode = db.read_bytes()[18:20].hex()
     assert before_mode == after_mode == "0101", "Journal mode must remain unchanged DELETE (0101) under maintenance"
+
+
+def test_lost_previously_used_default_authority_rejected(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec 1: A previously used default authority that disappears must raise MissingAuthorityError rather than creating empty replacement."""
+    import gc
+    import sqlite3
+    from youtube_automation.production import authority, ledger
+    from youtube_automation.production.authority import MissingAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    monkeypatch.delenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", raising=False)
+
+    repo = tmp_path / "default_repo"
+    (repo / ".runtime").mkdir(parents=True)
+    monkeypatch.setattr(authority, "__file__", str(repo / "src" / "youtube_automation" / "production" / "authority.py"))
+
+    p = ledger.resource_database()
+    with ledger.leased_resource(p, "historical-browser"):
+        pass
+
+    assert p.is_file()
+    gc.collect()
+
+    preserved = tmp_path / "preserved"
+    preserved.mkdir()
+    for f in list(p.parent.iterdir()):
+        if f.is_file():
+            f.rename(preserved / f.name)
+
+    assert not p.exists()
+
+    with pytest.raises(MissingAuthorityError, match="missing on disk after prior enrollment"):
+        resolved = ledger.resource_database()
+        with ledger.leased_resource(resolved, "replacement-browser"):
+            pass
+
+    assert not p.exists(), "Empty replacement database must not be silently created"
+
+
+def test_foreign_version_zero_database_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec 2: Foreign SQLite database with user_version=0 lacking jobs table must be rejected without writes."""
+    import hashlib
+    import sqlite3
+    from youtube_automation.production import authority, ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    p = tmp_path / "foreign" / "adaptive.sqlite3"
+    p.parent.mkdir(parents=True)
+
+    c = sqlite3.connect(p)
+    c.execute("CREATE TABLE unrelated_private_state(id INTEGER PRIMARY KEY, value TEXT)")
+    c.execute("INSERT INTO unrelated_private_state(value) VALUES (?)", ("kept synthetic state",))
+    c.commit()
+    c.close()
+
+    before_hash = hashlib.sha256(p.read_bytes()).hexdigest()
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(p))
+
+    with pytest.raises(IncompatibleAuthorityError, match="Foreign or unrecognized database schema"):
+        resolved = ledger.resource_database()
+        with ledger.leased_resource(resolved, "browser"):
+            pass
+
+    after_hash = hashlib.sha256(p.read_bytes()).hexdigest()
+    assert before_hash == after_hash, "Foreign database must not be modified"
+
+    c = sqlite3.connect(p)
+    tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+    version = c.execute("PRAGMA user_version").fetchone()[0]
+    c.close()
+
+    assert tables == ["unrelated_private_state"]
+    assert version == 0
+
+
+def test_pre_restore_lease_cannot_publish_after_same_path_restoration(tmp_path: Path, monkeypatch):
+    """Issue #59/#58 / Spec 3: A pre-restore lease cannot publish into authority path after restoration."""
+    import gc
+    import json
+    import sqlite3
+    from youtube_automation.production import authority, ledger, recovery
+    from youtube_automation.production.authority import StaleFencingGenerationError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    live = tmp_path / "authority"
+    live.mkdir()
+    storage = tmp_path / "backups"
+    storage.mkdir()
+    quarantine = tmp_path / "quarantine"
+    quarantine.mkdir()
+    db = live / "adaptive.sqlite3"
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    ledger.Ledger(db)
+
+    with pytest.raises(StaleFencingGenerationError, match="Stale authority epoch"):
+        with ledger.leased_resource(db, "browser"):
+            c = sqlite3.connect(db)
+            c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            c.close()
+            recovery.create_isolated_recovery_snapshot(live, storage, "snap")
+            gc.collect()
+            authority.set_maintenance_mode(live, True, "restore maintenance")
+            for pf in list(live.iterdir()):
+                if pf.is_file() and pf.name != "MAINTENANCE.lock":
+                    pf.rename(quarantine / pf.name)
+            recovery.restore_isolated_recovery_snapshot(storage, "snap", live)
+            authority.set_maintenance_mode(live, False)
+            with ledger.publication_guard():
+                pass

@@ -102,22 +102,29 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
             supported=False,
         )
 
-    # Check for active exclusive locks on Windows (AC 4: locked database returns BUSY)
-    try:
-        import msvcrt
-        with target.open("rb") as f:
-            f.seek(1073741824)
-            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 512)
-            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 512)
-    except (OSError, PermissionError):
+    def _is_database_busy() -> bool:
+        if target.with_name(f"{target.name}-journal").exists():
+            return True
+        try:
+            import msvcrt
+            with target.open("rb") as f:
+                f.seek(1073741824)
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 512)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 512)
+        except (OSError, PermissionError):
+            return True
+        except Exception:
+            pass
+        return False
+
+    # Check for active exclusive locks or rollback transactions (AC 4: locked/busy database returns BUSY)
+    if _is_database_busy():
         return ObservationDecision(
             status="BUSY",
             message="Database is locked by another process",
             rows=[],
             supported=False,
         )
-    except Exception:
-        pass
 
     # Connect strictly in read-only immutable mode via URI for rollback journal databases
     # immutable=1 guarantees that SQLite never creates or touches sidecars even under concurrent WAL transition
@@ -199,6 +206,19 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
             )
 
         rows = [dict(row) for row in cur.fetchall()]
+
+        # Re-verify busy state: if an exclusive writer started or rollback journal appeared,
+        # observation cannot be certified consistent (avoids dirty read of spilled uncommitted pages)
+        if _is_database_busy():
+            del cur
+            conn.close()
+            conn = None
+            return ObservationDecision(
+                status="BUSY",
+                message="Database is locked by another process",
+                rows=[],
+                supported=False,
+            )
 
         if not rows:
             return ObservationDecision(

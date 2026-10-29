@@ -329,6 +329,19 @@ class RecoveryManifest:
         )
 
 
+def _extract_references(data: Any) -> list[str]:
+    refs: list[str] = []
+    if isinstance(data, str):
+        refs.append(data)
+    elif isinstance(data, dict):
+        for _k, v in data.items():
+            refs.extend(_extract_references(v))
+    elif isinstance(data, list):
+        for elem in data:
+            refs.extend(_extract_references(elem))
+    return refs
+
+
 def expand_recovery_closure(
     runtime_root: Path,
     base_items: list[tuple[Path, RecoveryItemSpec]],
@@ -342,18 +355,6 @@ def expand_recovery_closure(
     """
     closure_items = list(base_items)
     seen_paths = {p.resolve() for p, _ in closure_items}
-
-    def _extract_references(data: Any) -> list[str]:
-        refs: list[str] = []
-        if isinstance(data, str):
-            refs.append(data)
-        elif isinstance(data, dict):
-            for _k, v in data.items():
-                refs.extend(_extract_references(v))
-        elif isinstance(data, list):
-            for elem in data:
-                refs.extend(_extract_references(elem))
-        return refs
 
     media_extensions = {".wav", ".mp3", ".mp4", ".png", ".jpg", ".jpeg", ".webp"}
     doc_extensions = {".txt", ".json", ".md"}
@@ -378,52 +379,46 @@ def expand_recovery_closure(
                     raise RuntimeError(f"Failed extracting references from {file_path}: {exc}") from exc
 
             # Traverse SQLite databases to discover committed logical state (including committed WAL frames)
+            # Always inspect via an isolated temporary directory to ensure zero source sidecar creation or mutation
             elif spec.is_database and file_path.is_file():
                 wal_sidecar = file_path.with_name(f"{file_path.name}-wal")
                 shm_sidecar = file_path.with_name(f"{file_path.name}-shm")
-                temp_dir_ctx = None
-                inspect_db = file_path
+                import tempfile
                 try:
-                    if wal_sidecar.is_file() and not shm_sidecar.is_file():
-                        import tempfile
-
-                        temp_dir_ctx = tempfile.TemporaryDirectory()
-                        td = Path(temp_dir_ctx.name)
+                    with tempfile.TemporaryDirectory() as td_name:
+                        td = Path(td_name)
                         inspect_db = td / file_path.name
                         shutil.copy2(file_path, inspect_db)
-                        shutil.copy2(wal_sidecar, td / wal_sidecar.name)
+                        if wal_sidecar.is_file():
+                            shutil.copy2(wal_sidecar, td / wal_sidecar.name)
+                        if shm_sidecar.is_file():
+                            shutil.copy2(shm_sidecar, td / shm_sidecar.name)
 
-                    uri = f"{inspect_db.resolve().as_uri()}?mode=ro"
-                    with closing(sqlite3.connect(uri, uri=True)) as conn:
-                        cur = conn.cursor()
-                        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")
-                        if cur.fetchone():
-                            cur.execute("PRAGMA table_info(jobs)")
-                            cols = {row[1] for row in cur.fetchall()}
-                            query_cols = [c for c in ["key", "recipe", "detail"] if c in cols]
-                            if query_cols:
-                                cur.execute(f"SELECT {','.join(query_cols)} FROM jobs")
-                                for row in cur.fetchall():
-                                    for val in row:
-                                        if isinstance(val, str):
-                                            val_s = val.strip()
-                                            if val_s.startswith("{") or val_s.startswith("["):
-                                                try:
-                                                    discovered_refs.extend(_extract_references(json.loads(val_s)))
-                                                except Exception:
+                        uri = f"{inspect_db.resolve().as_uri()}?mode=ro"
+                        with closing(sqlite3.connect(uri, uri=True)) as conn:
+                            cur = conn.cursor()
+                            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")
+                            if cur.fetchone():
+                                cur.execute("PRAGMA table_info(jobs)")
+                                cols = {row[1] for row in cur.fetchall()}
+                                query_cols = [c for c in ["key", "recipe", "detail"] if c in cols]
+                                if query_cols:
+                                    cur.execute(f"SELECT {','.join(query_cols)} FROM jobs")
+                                    for row in cur.fetchall():
+                                        for val in row:
+                                            if isinstance(val, str):
+                                                val_s = val.strip()
+                                                if val_s.startswith("{") or val_s.startswith("["):
+                                                    try:
+                                                        discovered_refs.extend(_extract_references(json.loads(val_s)))
+                                                    except Exception:
+                                                        discovered_refs.append(val)
+                                                else:
                                                     discovered_refs.append(val)
-                                            else:
-                                                discovered_refs.append(val)
                 except Exception as exc:
                     if not isinstance(exc, RuntimeError):
                         raise RuntimeError(f"Failed extracting references from database {file_path}: {exc}") from exc
                     raise
-                finally:
-                    if temp_dir_ctx is not None:
-                        try:
-                            temp_dir_ctx.cleanup()
-                        except Exception:
-                            pass
 
             for ref in discovered_refs:
                 ref = ref.strip()
@@ -556,35 +551,28 @@ def create_isolated_recovery_snapshot(
         except Exception:
             pass
 
-    # Truthful project_run_id from jobs table or recovery_id
+    # Truthful project_run_id from jobs table or recovery_id (isolated temp inspection)
     project_run = recovery_id
     if db_items and db_items[0].is_file():
         wal_sidecar = db_items[0].with_name(f"{db_items[0].name}-wal")
         shm_sidecar = db_items[0].with_name(f"{db_items[0].name}-shm")
-        temp_dir_ctx = None
-        inspect_db = db_items[0]
+        import tempfile
         try:
-            if wal_sidecar.is_file() and not shm_sidecar.is_file():
-                import tempfile
-
-                temp_dir_ctx = tempfile.TemporaryDirectory()
-                td = Path(temp_dir_ctx.name)
+            with tempfile.TemporaryDirectory() as td_name:
+                td = Path(td_name)
                 inspect_db = td / db_items[0].name
                 shutil.copy2(db_items[0], inspect_db)
-                shutil.copy2(wal_sidecar, td / wal_sidecar.name)
-            uri = f"{inspect_db.resolve().as_uri()}?mode=ro"
-            with closing(sqlite3.connect(uri, uri=True)) as conn:
-                row = conn.execute("SELECT key FROM jobs LIMIT 1").fetchone()
-                if row and row[0]:
-                    project_run = str(row[0])
+                if wal_sidecar.is_file():
+                    shutil.copy2(wal_sidecar, td / wal_sidecar.name)
+                if shm_sidecar.is_file():
+                    shutil.copy2(shm_sidecar, td / shm_sidecar.name)
+                uri = f"{inspect_db.resolve().as_uri()}?mode=ro"
+                with closing(sqlite3.connect(uri, uri=True)) as conn:
+                    row = conn.execute("SELECT key FROM jobs LIMIT 1").fetchone()
+                    if row and row[0]:
+                        project_run = str(row[0])
         except Exception:
             pass
-        finally:
-            if temp_dir_ctx is not None:
-                try:
-                    temp_dir_ctx.cleanup()
-                except Exception:
-                    pass
 
     # Enforce consistency boundary preflight: active rollback journal or transient transaction blocks capture
     for file_path, spec in matched_items:
@@ -670,7 +658,50 @@ def create_isolated_recovery_snapshot(
                     f"refusing capture to prevent mixed-generation inconsistency"
                 )
 
-        # Step 2: Verify database integrity on the backup copies in isolated backup storage
+        # Step 2: Enforce logical generation closure: verify that all references required by the captured databases exist in the snapshot closure
+        media_extensions = {".wav", ".mp3", ".mp4", ".png", ".jpg", ".jpeg", ".webp"}
+        doc_extensions = {".txt", ".json", ".md"}
+        valid_extensions = media_extensions | doc_extensions
+        captured_rel_paths = {entry.relative_path for entry in file_entries}
+        for dest_path, _spec in db_entries:
+            captured_refs: list[str] = []
+            uri = f"{dest_path.as_uri()}?mode=ro&immutable=1"
+            with closing(sqlite3.connect(uri, uri=True)) as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")
+                if cur.fetchone():
+                    cur.execute("PRAGMA table_info(jobs)")
+                    cols = {row[1] for row in cur.fetchall()}
+                    query_cols = [c for c in ["key", "recipe", "detail"] if c in cols]
+                    if query_cols:
+                        cur.execute(f"SELECT {','.join(query_cols)} FROM jobs")
+                        for row in cur.fetchall():
+                            for val in row:
+                                if isinstance(val, str):
+                                    val_s = val.strip()
+                                    if val_s.startswith("{") or val_s.startswith("["):
+                                        try:
+                                            captured_refs.extend(_extract_references(json.loads(val_s)))
+                                        except Exception:
+                                            captured_refs.append(val)
+                                    else:
+                                        captured_refs.append(val)
+            for ref in captured_refs:
+                ref = ref.strip()
+                if not ref or len(ref) > 260:
+                    continue
+                ref_p = Path(ref)
+                if ref_p.suffix.lower() not in valid_extensions:
+                    continue
+                if not ref_p.is_absolute():
+                    ref_posix = ref_p.as_posix()
+                    if ref_posix not in captured_rel_paths and not (snapshot_dir / ref_p).is_file():
+                        raise RuntimeError(
+                            f"Consistency boundary violation: captured database requires referenced artifact {ref!r} "
+                            f"not present in snapshot generation; concurrent modification detected"
+                        )
+
+        # Step 3: Verify database integrity on the backup copies in isolated backup storage
         for dest_path, _spec in db_entries:
             with closing(sqlite3.connect(f"{dest_path.as_uri()}?mode=ro&immutable=1", uri=True)) as chk_conn:
                 integrity = chk_conn.execute("PRAGMA integrity_check").fetchone()
@@ -839,8 +870,8 @@ def restore_isolated_recovery_snapshot(
                     if not curr_resolved.is_relative_to(target_restore_dir_resolved):
                         try:
                             df.close()
-                            if dest_path.is_file():
-                                dest_path.unlink()
+                            # Inspect destination existence without unlinking escaped path to preserve competitor work
+                            dest_path.is_file()
                         except Exception:
                             pass
                         raise RuntimeError(
@@ -873,10 +904,19 @@ def restore_isolated_recovery_snapshot(
 
             restored_entries.append(entry.to_dict())
 
-        # Step 7: Write restoration verification receipt in restore directory (exclusive write)
+        # Step 7: Advance authority epoch to invalidate prior tokens/leases upon restoration
+        import uuid
+        restored_epoch = str(uuid.uuid4())
+        try:
+            (target_restore_dir / ".authority_epoch").write_text(restored_epoch, encoding="utf-8")
+        except Exception:
+            pass
+
+        # Step 8: Write restoration verification receipt in restore directory (exclusive write)
         receipt_data = {
             "status": "RESTORED",
             "recovery_id": recovery_id,
+            "authority_epoch": restored_epoch,
             "restored_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "manifest_sha256": manifest_data.get("manifest_sha256", ""),
             "total_files": len(restored_entries),
@@ -891,8 +931,6 @@ def restore_isolated_recovery_snapshot(
                 if not receipt_path.resolve().is_relative_to(target_restore_dir_resolved):
                     try:
                         rf.close()
-                        if receipt_path.is_file():
-                            receipt_path.unlink()
                     except Exception:
                         pass
                     raise RuntimeError(f"Restoration receipt escaped target root during open: {receipt_path}")

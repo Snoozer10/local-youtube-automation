@@ -450,3 +450,59 @@ def test_status_cli_maintenance_canary_sanitized(
     assert "Our acquisition target is Orion" not in out, "Private prose must be sanitized from public status display"
     assert "MaintenanceExclusionError" in out or "locked for maintenance" in out
     assert "Ledger Status: UNAVAILABLE" in out
+
+
+def test_status_cli_uncommitted_exclusive_writer_reports_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """Issue #55/#56 / Spec 4: Uncommitted exclusive transaction must report BUSY, avoiding dirty read."""
+    import subprocess
+    import sys
+    import time
+    from youtube_automation.production import ledger
+
+    root = tmp_path / "dirty_read"
+    root.mkdir()
+    db = root / "adaptive.sqlite3"
+    run_dir = root / "run"
+    run_dir.mkdir()
+
+    conn = sqlite3.connect(db)
+    conn.execute("PRAGMA journal_mode=DELETE")
+    conn.execute("PRAGMA user_version=1")
+    conn.execute("CREATE TABLE jobs(key TEXT PRIMARY KEY, state TEXT, attempts INTEGER, fence INTEGER, detail TEXT)")
+    conn.executemany("INSERT INTO jobs VALUES(?,?,?,?,?)", [(f"job-{i:03d}", "CANCELLED", 1, 1, "X"*1024) for i in range(20)])
+    conn.commit()
+    conn.close()
+
+    ready = root / "writer.ready"
+    release = root / "writer.release"
+
+    child_code = (
+        'import sqlite3,sys,time;from pathlib import Path;c=sqlite3.connect(sys.argv[1],isolation_level=None);'
+        'c.execute("PRAGMA cache_size=1");c.execute("PRAGMA cache_spill=ON");c.execute("BEGIN EXCLUSIVE");'
+        'c.execute("UPDATE jobs SET state=\'SUCCEEDED\'");Path(sys.argv[2]).write_text("ready");'
+        'deadline=time.monotonic()+10;\nwhile not Path(sys.argv[3]).exists() and time.monotonic()<deadline:time.sleep(.01)\n'
+        'c.execute("ROLLBACK");c.close()'
+    )
+
+    child = subprocess.Popen([sys.executable, "-I", "-B", "-c", child_code, str(db), str(ready), str(release)])
+    try:
+        deadline = time.monotonic() + 5
+        while not ready.exists() and child.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert ready.exists(), "Writer failed to acquire lock and update"
+
+        monkeypatch.setattr(cli, "resource_database", ledger._unpatched_resource_database)
+        monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+        monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+        cli.main(["status", "--run-dir", str(run_dir)])
+        out = capsys.readouterr().out
+
+        assert "Ledger Status: UNAVAILABLE (database busy)" in out
+        assert "Database is locked by another process" in out
+        assert "[SUCCEEDED]" not in out, "Uncommitted transaction must not be reported as succeeded"
+    finally:
+        release.touch()
+        child.communicate(timeout=10)

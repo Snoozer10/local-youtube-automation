@@ -59,6 +59,23 @@ def publication_guard() -> Iterator[None]:
     )
     try:
         publication_path = resource_database().resolve()
+        epoch_file = publication_path.parent / ".authority_epoch"
+        current_epoch = ""
+        if epoch_file.is_file():
+            try:
+                current_epoch = epoch_file.read_text(encoding="utf-8").strip()
+            except OSError:
+                pass
+        if not current_epoch:
+            receipt_file = publication_path.parent / "RESTORATION_RECEIPT.json"
+            if receipt_file.is_file():
+                try:
+                    r_data = json.loads(receipt_file.read_text(encoding="utf-8"))
+                    current_epoch = str(r_data.get("authority_epoch", ""))
+                except Exception:
+                    pass
+        if not current_epoch:
+            current_epoch = "init-epoch"
     except Exception as exc:
         for item in active:
             auth_domain = item[4] if len(item) > 4 else None
@@ -97,10 +114,16 @@ def publication_guard() -> Iterator[None]:
                 f"but current authority has changed to {publication_path}; publication rejected"
             )
         lease_db = Path(claim_ledger.path).resolve()
+        lease_epoch = item[5] if len(item) > 5 else None
         if auth_domain is not None and lease_db == Path(auth_domain).resolve() and lease_db != publication_path:
             raise StaleFencingGenerationError(
                 f"Authority cutover detected: active lease database {lease_db} "
                 f"does not match current authority {publication_path}; publication rejected"
+            )
+        if lease_epoch and current_epoch and lease_epoch != current_epoch:
+            raise StaleFencingGenerationError(
+                f"Stale authority epoch: lease was acquired under epoch {lease_epoch} "
+                f"but current authority epoch is {current_epoch} (restoration occurred); publication rejected"
             )
 
     databases = {str(Path(item[0].path).resolve()) for item in active}
@@ -165,6 +188,20 @@ class Ledger:
                             )
             except OSError:
                 pass
+
+            from youtube_automation.production.authority import IncompatibleAuthorityError
+            uri = f"{p.resolve().as_uri()}?mode=ro&immutable=1"
+            try:
+                with closing(sqlite3.connect(uri, uri=True)) as chk_conn:
+                    tables = [r[0] for r in chk_conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+                    if tables and "jobs" not in tables:
+                        raise IncompatibleAuthorityError(
+                            f"Foreign or unrecognized database schema at {p} (tables: {tables}); missing required jobs table"
+                        )
+            except IncompatibleAuthorityError:
+                raise
+            except Exception:
+                pass
         with self.connection() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript("""
@@ -176,6 +213,13 @@ class Ledger:
                   id INTEGER PRIMARY KEY, at REAL NOT NULL, key TEXT NOT NULL,
                   state TEXT NOT NULL, detail TEXT NOT NULL);
             """)
+        if p.name == "adaptive.sqlite3" and p.parent.name == ".runtime":
+            enroll_file = p.parent.parent / ".authority_enrolled.json"
+            if not enroll_file.is_file():
+                try:
+                    enroll_file.write_text(json.dumps({"authority_path": str(p.resolve())}), encoding="utf-8")
+                except OSError:
+                    pass
 
     def _check_maintenance(self) -> None:
         """Reject operations if maintenance mode is active on this ledger."""
@@ -432,7 +476,24 @@ def _maintained_claim(
     state = "SUCCEEDED"
     terminal_detail = dict(detail or {})
     auth_domain = str(resource_database().resolve())
-    token = _active_leases.set(active + ((ledger, key, owner, fence, auth_domain),))
+    epoch_file = Path(auth_domain).parent / ".authority_epoch"
+    auth_epoch = ""
+    if epoch_file.is_file():
+        try:
+            auth_epoch = epoch_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            pass
+    if not auth_epoch:
+        receipt_file = Path(auth_domain).parent / "RESTORATION_RECEIPT.json"
+        if receipt_file.is_file():
+            try:
+                r_data = json.loads(receipt_file.read_text(encoding="utf-8"))
+                auth_epoch = str(r_data.get("authority_epoch", ""))
+            except Exception:
+                pass
+    if not auth_epoch:
+        auth_epoch = "init-epoch"
+    token = _active_leases.set(active + ((ledger, key, owner, fence, auth_domain, auth_epoch),))
     try:
         yield
         if failures:

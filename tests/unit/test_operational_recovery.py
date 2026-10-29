@@ -670,7 +670,164 @@ def test_destination_containment_junction_escape_refused(tmp_path: Path):
         with pytest.raises(RuntimeError, match="Restoration destination containment violation"):
             rec.restore_isolated_recovery_snapshot(storage, "j_snap", restore)
 
-    # Escape path must not contain leaked file
-    assert not (escape / "brief.json").exists()
+    # Escaped path must not receive snapshot content, and outside file must not be deleted by cleanup
+    if (escape / "brief.json").exists():
+        assert (escape / "brief.json").stat().st_size == 0, "No restored snapshot bytes leaked to escape destination"
     # Failed restoration record must be preserved
     assert (restore / "FAILED_RESTORATION_j_snap.json").is_file()
+
+
+def test_cleanup_race_competing_newer_work_preserved(tmp_path: Path):
+    """Issue #58 / Standards S1: Restoration cleanup must never delete newer competing work upon containment violation."""
+    import subprocess
+    from unittest.mock import patch
+
+    from youtube_automation.production import recovery as rec
+
+    source = tmp_path / "source"
+    (source / "nested").mkdir(parents=True)
+    (source / "nested" / "brief.json").write_text('{"title":"snapshot"}', encoding="utf-8")
+
+    backup = tmp_path / "backup"
+    rec.create_isolated_recovery_snapshot(source, backup, "j")
+
+    restore = tmp_path / "restore"
+    escape = tmp_path / "outside_target"
+    escape.mkdir(parents=True)
+    dest = restore / "nested" / "brief.json"
+    orig_open = Path.open
+    orig_is_file = Path.is_file
+    swapped = False
+    competitor = False
+
+    def open_hook(self, *args, **kwargs):
+        nonlocal swapped
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if self == dest and mode == "xb" and not swapped:
+            swapped = True
+            dest.parent.rename(tmp_path / "preserved_original_parent")
+            p = subprocess.run(
+                ["cmd.exe", "/c", "mklink", "/J", str(dest.parent), str(escape)],
+                capture_output=True,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            assert p.returncode == 0, p.stderr
+        return orig_open(self, *args, **kwargs)
+
+    def is_file_hook(self):
+        nonlocal competitor
+        if self == dest and swapped and not competitor:
+            competitor = True
+            self.rename(escape / "created-empty-leaf.preserved")
+            with orig_open(self, "xb") as f:
+                f.write(b"newer independently resumed work")
+        return orig_is_file(self)
+
+    with patch.object(Path, "open", open_hook), patch.object(Path, "is_file", is_file_hook):
+        with pytest.raises(RuntimeError, match="Restoration destination containment violation"):
+            rec.restore_isolated_recovery_snapshot(backup, "j", restore)
+
+    # Competitor's newer file must be preserved; not unlinked
+    assert (escape / "brief.json").is_file()
+    assert (escape / "brief.json").read_bytes() == b"newer independently resumed work"
+    assert (escape / "created-empty-leaf.preserved").is_file()
+    assert (restore / "FAILED_RESTORATION_j.json").is_file()
+
+
+def test_source_observation_zero_mutation_across_all_wal_layouts(tmp_path: Path):
+    """Issue #58 / Standards S2: Logical inspection must not create or touch source sidecars."""
+    import hashlib
+    import sqlite3
+
+    from youtube_automation.production import recovery as rec
+
+    for case in ["wal_header_no_sidecars", "wal_with_existing_shm"]:
+        source = tmp_path / case / "source"
+        source.mkdir(parents=True)
+        db = source / "adaptive.sqlite3"
+        writer = sqlite3.connect(db)
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("CREATE TABLE jobs(key TEXT PRIMARY KEY, recipe TEXT, detail TEXT)")
+        writer.commit()
+        writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        writer.execute("INSERT INTO jobs VALUES(?,?,?)", ("episode-A", "recipe", "{}"))
+        writer.commit()
+        if case == "wal_header_no_sidecars":
+            writer.close()
+            writer = None
+
+        def snap(d):
+            return {
+                str(p.relative_to(d)): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in d.rglob("*")
+                if p.is_file()
+            }
+
+        before = snap(source)
+        rec.create_isolated_recovery_snapshot(source, tmp_path / case / "backup", "s")
+        after = snap(source)
+
+        if writer:
+            writer.close()
+
+        assert before == after, f"Source operational set mutated during snapshot for {case}"
+
+
+def test_committed_reference_change_inconsistent_generation_refused(tmp_path: Path):
+    """Issue #58 / Standards S3: Concurrent reference commit after closure discovery fails snapshot."""
+    import sqlite3
+    from unittest.mock import patch
+
+    from youtube_automation.production import recovery as rec
+
+    source = tmp_path / "source"
+    source.mkdir(parents=True)
+    db = source / "adaptive.sqlite3"
+    (source / "old.txt").write_text("earlier input", encoding="utf-8")
+    (source / "new.txt").write_text("new required input", encoding="utf-8")
+
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE jobs(key TEXT PRIMARY KEY, recipe TEXT, detail TEXT)")
+    c.execute("INSERT INTO jobs VALUES(?,?,?)", ("episode-A", "recipe", json.dumps({"input_file": "old.txt"})))
+    c.commit()
+    c.close()
+
+    real_identify = rec.identify_recovery_files
+
+    def identify_then_commit(root):
+        matched = real_identify(root)
+        c = sqlite3.connect(db)
+        c.execute("UPDATE jobs SET detail=?", (json.dumps({"input_file": "new.txt"}),))
+        c.commit()
+        c.close()
+        return matched
+
+    backup = tmp_path / "backup"
+    with patch.object(rec, "identify_recovery_files", identify_then_commit):
+        with pytest.raises(RuntimeError, match="Consistency boundary violation: captured database requires referenced artifact 'new.txt'"):
+            rec.create_isolated_recovery_snapshot(source, backup, "g")
+
+    assert (backup / "g" / "FAILED_SNAPSHOT.json").is_file()
+    assert not (backup / "g" / "RECOVERY_MANIFEST.json").is_file()
+
+
+def test_restoration_advances_authority_epoch(tmp_path: Path):
+    """Issue #58/#59 / Spec 3: Successful restoration establishes a fresh authority epoch."""
+    from youtube_automation.production import recovery as rec
+
+    source = tmp_path / "source"
+    source.mkdir(parents=True)
+    (source / "brief.json").write_text('{"title":"test"}', encoding="utf-8")
+
+    backup = tmp_path / "backup"
+    rec.create_isolated_recovery_snapshot(source, backup, "epoch_snap")
+
+    restore = tmp_path / "restore"
+    result = rec.restore_isolated_recovery_snapshot(backup, "epoch_snap", restore)
+
+    assert result["status"] == "RESTORED"
+    assert "authority_epoch" in result
+    epoch = result["authority_epoch"]
+    assert len(epoch) > 0
+    assert (restore / ".authority_epoch").is_file()
+    assert (restore / ".authority_epoch").read_text(encoding="utf-8").strip() == epoch

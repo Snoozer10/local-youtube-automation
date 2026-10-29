@@ -12,6 +12,8 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -82,6 +84,7 @@ class AuthorityResolution:
     schema_generation: int
     is_maintenance_excluded: bool
     maintenance_reason: str = ""
+    authority_epoch: str = ""
 
 
 def discover_authority(
@@ -168,6 +171,26 @@ def discover_authority(
             f"Registered authority database at {target_path} is missing on disk; "
             f"refusing silent empty replacement to preserve historical state"
         )
+    elif source_type == "DEFAULT" and not target_path.exists():
+        root = default_root or Path(__file__).resolve().parents[3]
+        enrollment_marker = root / ".authority_enrolled.json"
+        if enrollment_marker.is_file():
+            raise MissingAuthorityError(
+                f"Default authority database at {target_path} is missing on disk after prior enrollment; "
+                f"refusing silent empty replacement to preserve historical state"
+            )
+
+    if target_path.exists() and source_type == "DEFAULT":
+        root = default_root or Path(__file__).resolve().parents[3]
+        enrollment_marker = root / ".authority_enrolled.json"
+        if not enrollment_marker.is_file():
+            try:
+                enrollment_marker.write_text(
+                    json.dumps({"authority_path": str(target_path)}),
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
 
     # 4. Check for Incompatible Schema Generation
     if generation < MINIMUM_SCHEMA_GENERATION or generation > MAXIMUM_SCHEMA_GENERATION:
@@ -195,12 +218,47 @@ def discover_authority(
         except OSError as err:
             raise DamagedAuthorityError(f"Cannot read authority database at {target_path}: {err}") from err
 
+        # Verify schema identity: reject foreign or unrecognized databases lacking the required jobs table
+        try:
+            uri = f"{target_path.resolve().as_uri()}?mode=ro&immutable=1"
+            with closing(sqlite3.connect(uri, uri=True)) as chk_conn:
+                tables = [r[0] for r in chk_conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+                if tables and "jobs" not in tables:
+                    raise IncompatibleAuthorityError(
+                        f"Foreign or unrecognized database schema at {target_path} (tables: {tables}); "
+                        f"missing required jobs table"
+                    )
+        except IncompatibleAuthorityError:
+            raise
+        except Exception:
+            pass
+
+    # Discover or derive active authority epoch
+    epoch_file = target_path.parent / ".authority_epoch"
+    auth_epoch = ""
+    if epoch_file.is_file():
+        try:
+            auth_epoch = epoch_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            pass
+    if not auth_epoch:
+        receipt_file = target_path.parent / "RESTORATION_RECEIPT.json"
+        if receipt_file.is_file():
+            try:
+                r_data = json.loads(receipt_file.read_text(encoding="utf-8"))
+                auth_epoch = str(r_data.get("authority_epoch", ""))
+            except Exception:
+                pass
+    if not auth_epoch and target_path.exists():
+        auth_epoch = "init-epoch"
+
     return AuthorityResolution(
         database_path=target_path,
         source=source_type,
         schema_generation=generation,
         is_maintenance_excluded=maint_mode,
         maintenance_reason=maint_reason,
+        authority_epoch=auth_epoch,
     )
 
 

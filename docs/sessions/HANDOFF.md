@@ -437,6 +437,59 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
   9. `probe_late_wal`: Late WAL transition returns `UNSUPPORTED_WAL`, zero sidecars created.
 - Focused test suite: 193 passed in 17.02s (17 affected modules + new unit regressions across all 7 findings).
 
+### Known Remaining Limitations & Stop Point (PR #74 Initial Head)
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Renewed Review Corrections), 2026-10-29
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Verified PR #74 head before renewed review batch: `97f9b3dd2db6f6201b5925ad4b993e0c5cb91d59`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial per platform discovery limitations.
+
+### Done
+1. **Cleanup ownership (#58 / Standards S1)**:
+   - When destination containment violation is detected upon opening a leaf, file handle is closed, but `dest_path.unlink()` is strictly omitted. Unlinking unverified outside pathnames risks destroying competing concurrent work or external files. `FAILED_RESTORATION_{id}.json` is recorded, and `RuntimeError` is raised with competing files intact.
+
+2. **Source-preserving logical inspection (#58 / Standards S2)**:
+   - In `expand_recovery_closure` and `create_isolated_recovery_snapshot`, replaced direct source database connections with private isolated `tempfile.TemporaryDirectory()` copies across all SQLite layouts (including WAL headers without sidecars and existing WAL+SHM).
+   - Live source operational set remains completely untouched: zero sidecars created, zero readmarks modified.
+
+3. **One generation for closure and capture (#58 / Standards S3)**:
+   - Enforced logical generation closure: after copying databases to `snapshot_dir`, the captured database copies are queried to verify that all referenced canonical media and document artifacts exist in the snapshot closure.
+   - Concurrent reference updates committed after closure discovery are caught and rejected with `RuntimeError("Consistency boundary violation: captured database requires referenced artifact ... not present in snapshot generation")`, preserving `FAILED_SNAPSHOT.json`.
+
+4. **DEFAULT authority lifecycle (#59 / Spec 1)**:
+   - Extended lifecycle identity tracking to default authorities: durable enrollment is recorded in `(root / ".authority_enrolled.json")`.
+   - When `source_type == "DEFAULT"` and the database file is absent after prior enrollment, raises `MissingAuthorityError` instead of silently bootstrapping an empty replacement.
+
+5. **Legacy versus foreign databases (#59 / Spec 2)**:
+   - Enforced non-mutating schema identity check before constructor writes in both `discover_authority()` and `Ledger.__init__()`: if an existing database has tables but lacks the required `jobs` table (e.g. `unrelated_private_state` under `user_version = 0`), it is rejected with `IncompatibleAuthorityError` without modifying headers, tables, or sidecars.
+
+6. **Fresh authority identity after restoration (#59/#58 / Spec 3)**:
+   - Implemented authority epoch boundary across restorations: `restore_isolated_recovery_snapshot` generates a fresh UUID epoch stored in `(target_restore_dir / ".authority_epoch")` and recorded in `RESTORATION_RECEIPT.json`.
+   - Active leases bind their creation epoch; `publication_guard()` checks that the lease's epoch matches the current active authority epoch. Old leases held across restoration fail closed with `StaleFencingGenerationError`.
+
+7. **Consistent status inspection (#55/#56 / Spec 4)**:
+   - Added `_is_database_busy()` checks before and immediately after status query execution in `observe_ledger()`, detecting active rollback journals (`{db}-journal`) and Windows exclusive byte locks.
+   - Status CLI honestly reports `status="BUSY"` (`Ledger Status: UNAVAILABLE (database busy)`) without dirty reads of uncommitted cache-spilled pages or phantom successes.
+
+### Verification
+- Replayed all 7 renewed audit probe classes in isolated synthetic fixtures:
+  1. `cleanup_race`: Junction escape detected, competitor's newer file preserved (`newer_file_exists_after: true`, `created_empty_evidence_preserved: true`), `FAILED_RESTORATION_j.json` preserved.
+  2. `source_observation`: Snapshots on `wal_header_no_sidecars` and `wal_with_existing_shm` completed with `source_changed: false` and `transient_source_changed: false`.
+  3. `closure_generation`: Concurrent committed reference change rejected with `Consistency boundary violation`, `FAILED_SNAPSHOT.json` preserved.
+  4. `spec_probe (default)`: Missing previously used default authority raises `MissingAuthorityError`, zero replacement created.
+  5. `spec_probe (foreign)`: Foreign `user_version=0` database rejected with `IncompatibleAuthorityError`, zero tables added, source unchanged.
+  6. `restore_epoch`: Pre-restore lease attempting publication after same-path restoration rejected with `StaleFencingGenerationError`, publication denied.
+  7. `observer_dirty_read`: Writer executing `BEGIN EXCLUSIVE` after lock probe results in `reported_uncommitted_success: false`, `reported_populated: false`, committed state counts intact.
+- Focused test suite: 201 passed in 19.39s (17 affected modules, exit 0).
+- Static analysis: `ruff check src/` passed with 0 errors.
+
 ### Known Remaining Limitations & Stop Point
 - Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
 - Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
