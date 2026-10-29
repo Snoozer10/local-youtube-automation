@@ -23,12 +23,13 @@ def mock_operational_runtime(tmp_path: Path) -> Path:
 
     # 1. Active SQLite database in WAL mode with real data
     db_path = rt / "adaptive.sqlite3"
-    with sqlite3.connect(db_path.as_posix()) as conn:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("CREATE TABLE jobs (key TEXT PRIMARY KEY, state TEXT, fence INT)")
-        conn.execute("INSERT INTO jobs VALUES ('video_001', 'COMPLETED', 1)")
-        conn.execute("INSERT INTO jobs VALUES ('video_002', 'RUNNING', 2)")
-        conn.commit()
+    conn = sqlite3.connect(db_path.as_posix())
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("CREATE TABLE jobs (key TEXT PRIMARY KEY, state TEXT, fence INT)")
+    conn.execute("INSERT INTO jobs VALUES ('video_001', 'COMPLETED', 1)")
+    conn.execute("INSERT INTO jobs VALUES ('video_002', 'RUNNING', 2)")
+    conn.commit()
+    conn.close()
 
     # 2. Sidecars and locks
     (rt / "run.lock").write_text("process_pid=9999", encoding="utf-8")
