@@ -222,18 +222,36 @@ def discover_authority(
                             pass
                 with closing(sqlite3.connect(chk_db)) as chk_conn:
                     tables = [r[0] for r in chk_conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-                    if tables:
-                        if "jobs" not in tables:
+                    user_tables = {t for t in tables if not t.startswith("sqlite_")}
+                    if user_tables:
+                        if "jobs" not in user_tables:
                             raise IncompatibleAuthorityError(
-                                f"Foreign or unrecognized database schema at {target_path} (tables: {tables}); "
+                                f"Foreign or unrecognized database schema at {target_path} (tables: {sorted(user_tables)}); "
                                 f"missing required jobs table"
                             )
+                        unrecognized = sorted(user_tables - {"jobs", "events"})
+                        if unrecognized:
+                            raise IncompatibleAuthorityError(
+                                f"Foreign or unrecognized database schema at {target_path} (tables: {sorted(user_tables)}); "
+                                f"unrecognized tables present: {unrecognized}"
+                            )
                         cols = {r[1] for r in chk_conn.execute("PRAGMA table_info(jobs)").fetchall()}
-                        if "key" not in cols:
+                        required_obs = {"key", "state", "attempts", "fence", "detail"}
+                        if not required_obs.issubset(cols):
+                            missing = sorted(required_obs - cols)
                             raise IncompatibleAuthorityError(
                                 f"Foreign or unrecognized schema in jobs table at {target_path}: "
-                                f"missing required column 'key' (columns: {cols})"
+                                f"missing required columns: {missing} (found: {sorted(cols)})"
                             )
+                        if "events" in user_tables:
+                            ev_cols = {r[1] for r in chk_conn.execute("PRAGMA table_info(events)").fetchall()}
+                            required_events = {"id", "at", "key", "state", "detail"}
+                            if not required_events.issubset(ev_cols):
+                                missing = sorted(required_events - ev_cols)
+                                raise IncompatibleAuthorityError(
+                                    f"Foreign or unrecognized schema in events table at {target_path}: "
+                                    f"missing required columns: {missing} (found: {sorted(ev_cols)})"
+                                )
         except IncompatibleAuthorityError:
             raise
         except Exception as err:

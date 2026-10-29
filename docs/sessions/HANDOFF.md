@@ -551,3 +551,47 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
 - Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
 - Stop point: Stop for review of PR #74 follow-up corrections. Do NOT merge without explicit user authorization.
+
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Batch 3 Review Corrections), 2026-10-30
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Verified PR #74 head before Batch 3 review corrections: `5f4a8a6e2dc92817bd5de49ad50f0a4ca9eab363`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial.
+
+### Done
+1. **Complete captured recovery closure (#58 / Standards S1)**:
+   - In `create_isolated_recovery_snapshot` Step 2, expanded the logical generation validator into a recursive transitive closure check: validates references from captured databases and transitively traverses all captured JSON documents (`briefs`, `plans`, `timelines`) within `snapshot_dir`.
+   - Any referenced artifact missing from `snapshot_dir` (e.g. when a JSON document is modified after initial discovery to point to a new input file) raises `RuntimeError`, records `FAILED_SNAPSHOT.json` to preserve failure evidence, and prevents publishing an incomplete manifest.
+   - Restorations from incomplete snapshots fail closed. Verified via `test_recovery_closure_transitive_json_reference_change_refused`.
+
+2. **Complete schema admission before writable initialization (#59 / Spec R1)**:
+   - In `authority.py` (`discover_authority()`) and `ledger.py` (`Ledger.__init__()`), candidate databases are inspected in an isolated temporary directory before any source writes, table creation, or journal-mode modifications.
+   - Any unrecognized user tables (outside `{"jobs", "events"}`) raise `IncompatibleAuthorityError`.
+   - For observation/discovery: `jobs` must contain at least the observation schema `{"key", "state", "attempts", "fence", "detail"}`.
+   - For writable execution: `Ledger.__init__` requires all 8 columns `{"key", "recipe", "state", "fence", "owner", "expires", "attempts", "detail"}` and verifies `events` columns `{"id", "at", "key", "state", "detail"}` if present.
+   - Partial schemas (e.g. `jobs(key TEXT)`) are rejected with `IncompatibleAuthorityError` with `source_changed: false` and no `events` table created. Verified via `test_partial_jobs_key_only_schema_rejected_without_writes`.
+
+3. **Coherent durable-stage claim identity across all claim paths (#58/#59 / Spec R2)**:
+   - In `durable_stage()`, moved authority epoch resolution (`claim_epoch = ledger.get_authority_epoch()`) to occur before executing `ledger.claim_stage(...)`, matching `leased_resource`.
+   - Restorations occurring during or after stage claim execution leave the claim bound to the prior epoch. Upon publication, `publication_guard()` compares `lease_epoch` against the active authority epoch, detects the discrepancy, raises `StaleFencingGenerationError`, and rejects publication. Verified via `test_durable_stage_epoch_bind_race_invalidates_old_claim`.
+
+4. **Preexisting Gap Disposition: Same-ID Concurrent Snapshot Overwrite (#58)**:
+   - Maintained visible disposition: concurrent snapshot invocations specifying identical snapshot IDs predate this PR at master baseline `66c0e29ec63b79ebc4d55aef832e1a4b474364e1`. Documented as an architectural limitation under #58 to be hardened in future batches; does not demonstrate complete #58 acceptance.
+
+### Verification
+- Replayed executable Batch 3 reproducers:
+  1. `standards/additional_recovery_probe`: stable WAL succeeds; post-discovery JSON reference change refuses with `FAILED_SNAPSHOT.json` and zero incomplete manifest published.
+  2. `spec/schema_admission_probe_v2`: `key_only` and `foreign_wal` both fail closed with `IncompatibleAuthorityError`, `source_changed: false`, and `tables_in_isolated_copy: ["jobs"]` (no `events` table added).
+  3. `spec/durable_edge_probe`: `foreign_jobs_key_only` and `foreign_wal_schema` rejected; `claim_to_epoch_bind_race` rejected in `publication_guard` with `StaleFencingGenerationError` and no stale publication file written.
+  4. `default_status_probe_v2`: reports `POPULATED` with `created: []` and `db_unchanged: true`.
+- Focused test suite (17 modules, 210 items): 210 passed in 24.23s (exit 0).
+- Static analysis: `ruff check src/ tests/` clean (0 errors).
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Stop point: Stop for independent review of PR #74 Batch 3 corrections. Do NOT merge without explicit user authorization.

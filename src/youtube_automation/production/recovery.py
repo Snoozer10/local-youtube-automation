@@ -658,13 +658,17 @@ def create_isolated_recovery_snapshot(
                     f"refusing capture to prevent mixed-generation inconsistency"
                 )
 
-        # Step 2: Enforce logical generation closure: verify that all references required by the captured databases exist in the snapshot closure
+        # Step 2: Enforce logical generation closure: verify that all references required by the captured databases
+        # and captured documents exist in the snapshot closure (transitive closure).
         media_extensions = {".wav", ".mp3", ".mp4", ".png", ".jpg", ".jpeg", ".webp"}
         doc_extensions = {".txt", ".json", ".md"}
         valid_extensions = media_extensions | doc_extensions
         captured_rel_paths = {entry.relative_path for entry in file_entries}
+        inspected_docs: set[str] = set()
+        pending_refs: list[tuple[str, str]] = []
+
+        # 1. Collect references from captured databases (inspecting isolated copy with committed WAL)
         for dest_path, _spec in db_entries:
-            captured_refs: list[str] = []
             with tempfile.TemporaryDirectory() as inspect_tmp:
                 inspect_db = Path(inspect_tmp) / dest_path.name
                 shutil.copyfile(dest_path, inspect_db)
@@ -690,25 +694,61 @@ def create_isolated_recovery_snapshot(
                                         val_s = val.strip()
                                         if val_s.startswith("{") or val_s.startswith("["):
                                             try:
-                                                captured_refs.extend(_extract_references(json.loads(val_s)))
+                                                for ref in _extract_references(json.loads(val_s)):
+                                                    pending_refs.append(("captured database", ref))
                                             except Exception:
-                                                captured_refs.append(val)
+                                                pending_refs.append(("captured database", val))
                                         else:
-                                            captured_refs.append(val)
-            for ref in captured_refs:
-                ref = ref.strip()
-                if not ref or len(ref) > 260:
-                    continue
-                ref_p = Path(ref)
-                if ref_p.suffix.lower() not in valid_extensions:
-                    continue
-                if not ref_p.is_absolute():
-                    ref_posix = ref_p.as_posix()
-                    if ref_posix not in captured_rel_paths and not (snapshot_dir / ref_p).is_file():
-                        raise RuntimeError(
-                            f"Consistency boundary violation: captured database requires referenced artifact {ref!r} "
-                            f"not present in snapshot generation; concurrent modification detected"
-                        )
+                                            pending_refs.append(("captured database", val))
+
+        # 2. Collect references from captured JSON documents
+        for entry in file_entries:
+            if entry.relative_path.lower().endswith(".json") and not Path(entry.relative_path).name.startswith("RECOVERY_MANIFEST"):
+                doc_file = snapshot_dir / entry.relative_path
+                if doc_file.is_file() and entry.relative_path not in inspected_docs:
+                    inspected_docs.add(entry.relative_path)
+                    try:
+                        content = doc_file.read_text(encoding="utf-8")
+                        parsed = json.loads(content)
+                        for ref in _extract_references(parsed):
+                            pending_refs.append((f"captured document {entry.relative_path}", ref))
+                    except json.JSONDecodeError:
+                        pass
+                    except Exception as exc:
+                        raise RuntimeError(f"Failed extracting references from captured document {entry.relative_path}: {exc}") from exc
+
+        # 3. Transitively validate all references
+        while pending_refs:
+            source_desc, ref = pending_refs.pop(0)
+            ref = ref.strip()
+            if not ref or len(ref) > 260:
+                continue
+            ref_p = Path(ref)
+            if ref_p.suffix.lower() not in valid_extensions:
+                continue
+            if ref_p.is_absolute():
+                continue
+            ref_posix = ref_p.as_posix()
+            target_in_snapshot = snapshot_dir / ref_p
+            if ref_posix not in captured_rel_paths and not target_in_snapshot.is_file():
+                raise RuntimeError(
+                    f"Consistency boundary violation: {source_desc} requires referenced artifact {ref!r} "
+                    f"not present in snapshot generation; concurrent modification detected"
+                )
+
+            # If referenced artifact is a JSON document, traverse its references as well
+            if ref_p.suffix.lower() == ".json" and ref_posix not in inspected_docs:
+                inspected_docs.add(ref_posix)
+                if target_in_snapshot.is_file():
+                    try:
+                        content = target_in_snapshot.read_text(encoding="utf-8")
+                        parsed = json.loads(content)
+                        for nested_ref in _extract_references(parsed):
+                            pending_refs.append((f"captured document {ref_posix}", nested_ref))
+                    except json.JSONDecodeError:
+                        pass
+                    except Exception as exc:
+                        raise RuntimeError(f"Failed extracting references from captured document {ref_posix}: {exc}") from exc
 
         # Step 3: Verify database integrity on the backup copies in isolated backup storage
         for dest_path, _spec in db_entries:

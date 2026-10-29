@@ -585,3 +585,111 @@ def test_claim_to_epoch_bind_race_invalidates_old_claim(tmp_path: Path, monkeypa
             with ledger.leased_resource(db, "browser"):
                 with ledger.publication_guard():
                     pass
+
+
+def test_partial_jobs_key_only_schema_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec R1: Partial jobs(key TEXT) layout must be rejected before writable initialization or events table creation."""
+    import hashlib
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "key-only"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE jobs(key TEXT)")
+    c.execute("INSERT INTO jobs VALUES(?)", ("owned foreign record",))
+    c.commit()
+    c.close()
+
+    def snap_dir(p: Path) -> dict[str, str]:
+        return {x.name: hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.is_file()}
+
+    before = snap_dir(d)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="missing required columns"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after = snap_dir(d)
+    assert before == after, "Public operation mutated source database files before rejection"
+
+    # Also test direct Ledger constructor rejection without writes
+    with pytest.raises(IncompatibleAuthorityError, match="missing required columns"):
+        ledger.Ledger(db)
+
+    after_direct = snap_dir(d)
+    assert before == after_direct, "Direct Ledger constructor mutated source database files before rejection"
+
+    # Verify tables in an isolated copy: events table must NOT have been created
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        q = sqlite3.connect(target)
+        tables = [v[0] for v in q.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        q.close()
+    assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
+
+
+def test_durable_stage_epoch_bind_race_invalidates_old_claim(tmp_path: Path, monkeypatch):
+    """Issue #58/#59 / Spec R2: A restoration occurring during durable_stage claim must invalidate publication."""
+    import gc
+    import sqlite3
+    from unittest.mock import patch
+
+    from youtube_automation.production import authority, ledger, recovery
+    from youtube_automation.production.authority import StaleFencingGenerationError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "stage-bind-race"
+    live = d / "authority"
+    live.mkdir(parents=True)
+    backup = d / "backup"
+    backup.mkdir()
+    quarantine = d / "old"
+    quarantine.mkdir()
+    db = live / "adaptive.sqlite3"
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    ledger.Ledger(db)
+    real_claim = ledger.Ledger.claim_stage
+    restored = False
+    event = {}
+
+    def claim_then_restore(self, *args, **kwargs):
+        nonlocal restored
+        fence = real_claim(self, *args, **kwargs)
+        if not restored:
+            restored = True
+            c = sqlite3.connect(db)
+            c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            c.close()
+            recovery.create_isolated_recovery_snapshot(live, backup, "bound")
+            authority.set_maintenance_mode(live, True, "epoch-bind race")
+            gc.collect()
+            for p in list(live.iterdir()):
+                if p.is_file() and p.name != "MAINTENANCE.lock":
+                    p.rename(quarantine / p.name)
+            result = recovery.restore_isolated_recovery_snapshot(backup, "bound", live)
+            event.update({"restore_status": result["status"], "restored_epoch": result["authority_epoch"]})
+            authority.set_maintenance_mode(live, False)
+        return fence
+
+    publication_entered = False
+    with patch.object(ledger.Ledger, "claim_stage", claim_then_restore):
+        with pytest.raises(StaleFencingGenerationError, match="Stale authority epoch"):
+            with ledger.durable_stage(db, "stage:write", "recipe-v1") as execute:
+                assert execute
+                with ledger.publication_guard():
+                    publication_entered = True
+
+    assert not publication_entered, "Stale stage claim must not be permitted to enter publication_guard"
+    assert event.get("restore_status") == "RESTORED"
+

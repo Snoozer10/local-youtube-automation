@@ -226,16 +226,32 @@ class Ledger:
                                 pass
                     with closing(sqlite3.connect(chk_db)) as chk_conn:
                         tables = [r[0] for r in chk_conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-                        if tables:
-                            if "jobs" not in tables:
+                        user_tables = {t for t in tables if not t.startswith("sqlite_")}
+                        if user_tables:
+                            if "jobs" not in user_tables:
                                 raise IncompatibleAuthorityError(
-                                    f"Foreign or unrecognized database schema at {p} (tables: {tables}); missing required jobs table"
+                                    f"Foreign or unrecognized database schema at {p} (tables: {sorted(user_tables)}); missing required jobs table"
+                                )
+                            unrecognized = sorted(user_tables - {"jobs", "events"})
+                            if unrecognized:
+                                raise IncompatibleAuthorityError(
+                                    f"Foreign or unrecognized database schema at {p} (tables: {sorted(user_tables)}); unrecognized tables present: {unrecognized}"
                                 )
                             cols = {r[1] for r in chk_conn.execute("PRAGMA table_info(jobs)").fetchall()}
-                            if "key" not in cols:
+                            required_jobs = {"key", "recipe", "state", "fence", "owner", "expires", "attempts", "detail"}
+                            if not required_jobs.issubset(cols):
+                                missing = sorted(required_jobs - cols)
                                 raise IncompatibleAuthorityError(
-                                    f"Foreign or unrecognized schema in jobs table at {p}: missing required column 'key' (columns: {cols})"
+                                    f"Foreign or partial schema in jobs table at {p}: missing required columns: {missing} (found: {sorted(cols)})"
                                 )
+                            if "events" in user_tables:
+                                ev_cols = {r[1] for r in chk_conn.execute("PRAGMA table_info(events)").fetchall()}
+                                required_events = {"id", "at", "key", "state", "detail"}
+                                if not required_events.issubset(ev_cols):
+                                    missing = sorted(required_events - ev_cols)
+                                    raise IncompatibleAuthorityError(
+                                        f"Foreign or partial schema in events table at {p}: missing required columns: {missing} (found: {sorted(ev_cols)})"
+                                    )
             except IncompatibleAuthorityError:
                 raise
             except Exception as err:
@@ -597,6 +613,7 @@ def durable_stage(
     database.parent.mkdir(parents=True, exist_ok=True)
     ledger = Ledger(database)
     owner = str(uuid.uuid4())
+    claim_epoch = ledger.get_authority_epoch()
     decision = ledger.claim_stage(
         key,
         recipe,
@@ -617,7 +634,6 @@ def durable_stage(
     stage_detail = detail or {}
     stage_name = str(stage_detail.get("stage") or key)
     run_dir = stage_detail.get("run")
-    claim_epoch = ledger.get_authority_epoch()
     with _maintained_claim(
         ledger,
         key,
