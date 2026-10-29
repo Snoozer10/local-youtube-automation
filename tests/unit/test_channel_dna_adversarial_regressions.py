@@ -331,27 +331,10 @@ def test_external_seconds_budget_exceeded_leaves_study_partial(tmp_path: Path):
 
 def test_representative_appropriate_media_bundle_into_guidance(tmp_path: Path):
     """F8 / #46-#48: Bounded valid representative offline media bundle derives observable guidance."""
-    import io
-    import wave
-
-    # Real 1x1 valid PNG image bytes
-    png_bytes = (
-        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00"
-        b"\x00\x1f\x15c4\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x00\x05\xfe\x02\xfe\xa7V\xfe\xae"
-        b"\x00\x00\x00\x00IEND\xaeB`\x82"
-    )
-
-    # Real RIFF WAV audio bytes generated via stdlib wave module
-    wav_io = io.BytesIO()
-    with wave.open(wav_io, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(44100)
-        wf.writeframes(b"\x00\x00" * 4410)  # 100ms of valid audio
-    wav_bytes = wav_io.getvalue()
-
-    # Valid MP4 container header
-    mp4_bytes = b"\x00\x00\x00\x1cftypisom\x00\x00\x02\x00isomiso2mp41\x00\x00\x00\x08free\x00\x00\x00\x08mdat"
+    media_dir = Path(__file__).resolve().parents[1] / "fixtures" / "media"
+    png_bytes = (media_dir / "sample_thumb.png").read_bytes()
+    wav_bytes = (media_dir / "sample_audio.wav").read_bytes()
+    mp4_bytes = (media_dir / "sample_clip.mp4").read_bytes()
 
     sdir = tmp_path / "study_representative"
     col = StudyCollector(sdir)
@@ -361,15 +344,15 @@ def test_representative_appropriate_media_bundle_into_guidance(tmp_path: Path):
     st = col.add_evidence(st, "v1", "transcript", b"Documentary narrative transcript 1", evidence_id="ev_t1")
     st = col.add_evidence(st, "v2", "transcript", b"Documentary narrative transcript 2", evidence_id="ev_t2")
 
-    # Visual frame and motion clip (#46)
-    st = col.add_evidence(st, "v1", "frame", png_bytes, examined_range=(0.0, 5.0), evidence_id="ev_frame")
-    st = col.add_evidence(st, "v2", "clip", mp4_bytes, examined_range=(10.0, 20.0), duration_sec=10.0, evidence_id="ev_clip")
+    # Visual frame and motion clip (#46) - verified playable 2.0s progressive clip
+    st = col.add_evidence(st, "v1", "frame", png_bytes, examined_range=(0.0, 2.0), duration_sec=2.0, evidence_id="ev_frame")
+    st = col.add_evidence(st, "v2", "clip", mp4_bytes, examined_range=(0.0, 2.0), duration_sec=2.0, evidence_id="ev_clip")
 
-    # Audio (#47)
-    st = col.add_evidence(st, "v1", "audio", wav_bytes, examined_range=(0.0, 10.0), duration_sec=10.0, evidence_id="ev_audio1")
-    st = col.add_evidence(st, "v2", "audio", wav_bytes, examined_range=(0.0, 10.0), duration_sec=10.0, evidence_id="ev_audio2")
+    # Audio (#47) - verified playable 2.0s 44.1kHz WAV audio
+    st = col.add_evidence(st, "v1", "audio", wav_bytes, examined_range=(0.0, 2.0), duration_sec=2.0, evidence_id="ev_audio1")
+    st = col.add_evidence(st, "v2", "audio", wav_bytes, examined_range=(0.0, 2.0), duration_sec=2.0, evidence_id="ev_audio2")
 
-    # Packaging thumbnail and title (#48)
+    # Packaging thumbnail and title (#48) - 64x64 navy PNG thumbnail
     st = col.add_evidence(st, "v1", "thumbnail", png_bytes, evidence_id="ev_thumb1")
     st = col.add_evidence(st, "v2", "thumbnail", png_bytes, evidence_id="ev_thumb2")
     st = col.add_evidence(st, "v1", "title", b"Why Formations Evolved", evidence_id="ev_title1")
@@ -381,17 +364,17 @@ def test_representative_appropriate_media_bundle_into_guidance(tmp_path: Path):
     st = col.record_core_trait(st, "tone_register", "Serious documentary Khaleeji", ["v1", "v2"], ["ev_t1", "ev_t2"], "Audio/narrative delivery")
     st = col.record_core_trait(st, "narrative_structure", "Hook, problem, mechanical analysis, outcome", ["v1", "v2"], ["ev_t1", "ev_t2"], "Story arc")
 
-    # Multimodal guidance traits
-    st = col.record_core_trait(st, "visual_motion", "Rule-of-thirds historical portrait framing", ["v1", "v2"], ["ev_frame", "ev_clip"], "Slow linear pans")
-    st = col.record_core_trait(st, "soundtrack", "Acoustic oud ambient underbed", ["v1", "v2"], ["ev_audio1", "ev_audio2"], "Muted under voice")
-    st = col.record_core_trait(st, "packaging", "Question hook title, high contrast figure", ["v1", "v2"], ["ev_thumb1", "ev_thumb2", "ev_title1", "ev_title2"], "Bold white typography")
+    # Multimodal guidance traits derived from validated media observations
+    st = col.record_core_trait(st, "visual_motion", "320x240 progressive framing, 10fps linear pacing", ["v1", "v2"], ["ev_frame", "ev_clip"], "H.264 video analysis (2.0s duration)")
+    st = col.record_core_trait(st, "soundtrack", "44.1kHz mono acoustic underbed, 2.0s cadence", ["v1", "v2"], ["ev_audio1", "ev_audio2"], "PCM waveform analysis (2.0s duration)")
+    st = col.record_core_trait(st, "packaging", "Question hook title, high contrast navy figure", ["v1", "v2"], ["ev_thumb1", "ev_thumb2", "ev_title1", "ev_title2"], "Bold white typography on navy background")
 
     assert st.status == StudyStatus.CORE_READY
     prof = derive_production_profile(st)
 
-    assert prof.visual_guidance["composition"] == "Rule-of-thirds historical portrait framing"
-    assert prof.audio_guidance["treatment"] == "Acoustic oud ambient underbed"
-    assert prof.packaging_guidance["packaging_rules"] == "Question hook title, high contrast figure"
+    assert prof.visual_guidance["composition"] == "320x240 progressive framing, 10fps linear pacing"
+    assert prof.audio_guidance["treatment"] == "44.1kHz mono acoustic underbed, 2.0s cadence"
+    assert prof.packaging_guidance["packaging_rules"] == "Question hook title, high contrast navy figure"
     assert prof.provenance["visual_guidance"] == "evidence_derived"
     assert prof.provenance["audio_guidance"] == "evidence_derived"
 
