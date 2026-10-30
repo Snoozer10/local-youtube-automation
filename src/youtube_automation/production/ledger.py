@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
+import tempfile
 import threading
 import time
 import uuid
@@ -16,7 +18,7 @@ from typing import Any, Literal
 
 from youtube_automation.core import failure_record
 
-_Lease = tuple["Ledger", str, str, int]
+_Lease = tuple[Any, ...]
 _active_leases: ContextVar[tuple[_Lease, ...]] = ContextVar(
     "production_leases", default=()
 )
@@ -53,13 +55,79 @@ _unpatched_resource_database = resource_database
 def publication_guard() -> Iterator[None]:
     """Serialize short publications across direct callers and every claim ledger."""
     active = _active_leases.get()
-    publication_path = resource_database().resolve()
+    from youtube_automation.production.authority import (
+        MaintenanceExclusionError,
+        StaleFencingGenerationError,
+    )
+    try:
+        publication_path = resource_database().resolve()
+        epoch_file = publication_path.parent / ".authority_epoch"
+        current_epoch = ""
+        if epoch_file.is_file():
+            try:
+                current_epoch = epoch_file.read_text(encoding="utf-8").strip()
+            except OSError:
+                pass
+        if not current_epoch:
+            receipt_file = publication_path.parent / "RESTORATION_RECEIPT.json"
+            if receipt_file.is_file():
+                try:
+                    r_data = json.loads(receipt_file.read_text(encoding="utf-8"))
+                    current_epoch = str(r_data.get("authority_epoch", ""))
+                except Exception:
+                    pass
+        if not current_epoch:
+            current_epoch = "init-epoch"
+    except Exception as exc:
+        for item in active:
+            auth_domain = item[4] if len(item) > 4 else None
+            if auth_domain is not None:
+                raise StaleFencingGenerationError(
+                    f"Authority cutover detected: lease was acquired under authority {auth_domain} "
+                    f"but current authority has changed or is unavailable: {exc}"
+                ) from exc
+        raise
+
+    # Enforce maintenance exclusion at publication boundary
+    maint_lock = publication_path.parent / "MAINTENANCE.lock"
+    if maint_lock.is_file():
+        try:
+            maint_reason = maint_lock.read_text(encoding="utf-8").strip() or "Active MAINTENANCE.lock present"
+        except OSError:
+            maint_reason = "Active MAINTENANCE.lock present"
+        raise MaintenanceExclusionError(
+            f"Authority at {publication_path} is currently locked for maintenance: {maint_reason}"
+        )
+
     nested = _publication_scope.get()
     if nested is not None:
         if nested != (str(publication_path), active):
             raise RuntimeError("Nested publication cannot change its lease or database domain")
         yield
         return
+
+    # Reject leases that were acquired under stale authority or before cutover
+    for item in active:
+        claim_ledger = item[0]
+        auth_domain = item[4] if len(item) > 4 else None
+        if auth_domain is not None and Path(auth_domain).resolve() != publication_path:
+            raise StaleFencingGenerationError(
+                f"Authority cutover detected: lease was acquired under authority {auth_domain} "
+                f"but current authority has changed to {publication_path}; publication rejected"
+            )
+        lease_db = Path(claim_ledger.path).resolve()
+        lease_epoch = item[5] if len(item) > 5 else None
+        if auth_domain is not None and lease_db == Path(auth_domain).resolve() and lease_db != publication_path:
+            raise StaleFencingGenerationError(
+                f"Authority cutover detected: active lease database {lease_db} "
+                f"does not match current authority {publication_path}; publication rejected"
+            )
+        if lease_epoch and current_epoch and lease_epoch != current_epoch:
+            raise StaleFencingGenerationError(
+                f"Stale authority epoch: lease was acquired under epoch {lease_epoch} "
+                f"but current authority epoch is {current_epoch} (restoration occurred); publication rejected"
+            )
+
     databases = {str(Path(item[0].path).resolve()) for item in active}
     if len(databases) > 1:
         raise RuntimeError("Nested production leases must share one ledger")
@@ -77,7 +145,8 @@ def publication_guard() -> Iterator[None]:
         token = _publication_scope.set((str(publication_path), active))
         try:
             now = time.time()
-            for _, resource, owner, fence in active:
+            for item in active:
+                resource, owner, fence = item[1], item[2], item[3]
                 row = claims.execute("SELECT * FROM jobs WHERE key=?", (resource,)).fetchone()
                 if (row is None or row["owner"] != owner or row["fence"] != fence
                         or row["state"] != "RUNNING" or row["expires"] <= now):
@@ -96,8 +165,74 @@ def publication_guard() -> Iterator[None]:
 
 
 class Ledger:
+    def get_authority_epoch(self) -> str:
+        p = Path(self.path).resolve()
+        epoch_file = p.parent / ".authority_epoch"
+        if epoch_file.is_file():
+            try:
+                val = epoch_file.read_text(encoding="utf-8").strip()
+                if val:
+                    return val
+            except OSError:
+                pass
+        receipt_file = p.parent / "RESTORATION_RECEIPT.json"
+        if receipt_file.is_file():
+            try:
+                r_data = json.loads(receipt_file.read_text(encoding="utf-8"))
+                val = str(r_data.get("authority_epoch", "")).strip()
+                if val:
+                    return val
+            except Exception:
+                pass
+        return "init-epoch"
+
     def __init__(self, path: str | Path):
         self.path = str(path)
+        self.generation: int = 1
+        p = Path(self.path)
+
+        # 1. Maintenance exclusion check BEFORE any connection or writes
+        self._check_maintenance()
+
+        # 2. Schema compatibility validation
+        if p.is_file():
+            try:
+                with p.open("rb") as f:
+                    h = f.read(100)
+                    if len(h) >= 100:
+                        self.generation = int.from_bytes(h[60:64], "big") or 1
+                        if self.generation > 1:
+                            from youtube_automation.production.authority import (
+                                IncompatibleAuthorityError,
+                            )
+
+                            raise IncompatibleAuthorityError(
+                                f"Database user_version {self.generation} exceeds maximum supported schema generation 1"
+                            )
+            except OSError:
+                pass
+
+            from youtube_automation.production.authority import (
+                IncompatibleAuthorityError,
+                validate_authority_schema,
+            )
+            try:
+                with tempfile.TemporaryDirectory() as chk_tmp:
+                    chk_db = Path(chk_tmp) / p.name
+                    shutil.copyfile(p, chk_db)
+                    for s_ext in ["-wal", "-shm"]:
+                        s_file = p.with_name(f"{p.name}{s_ext}")
+                        if s_file.exists():
+                            try:
+                                shutil.copyfile(s_file, Path(chk_tmp) / s_file.name)
+                            except OSError:
+                                pass
+                    with closing(sqlite3.connect(chk_db)) as chk_conn:
+                        validate_authority_schema(chk_conn, p, require_execution=True)
+            except IncompatibleAuthorityError:
+                raise
+            except Exception as err:
+                raise IncompatibleAuthorityError(f"Failed to inspect authority database schema at {p}: {err}") from err
         with self.connection() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript("""
@@ -109,6 +244,26 @@ class Ledger:
                   id INTEGER PRIMARY KEY, at REAL NOT NULL, key TEXT NOT NULL,
                   state TEXT NOT NULL, detail TEXT NOT NULL);
             """)
+        if p.name == "adaptive.sqlite3" and p.parent.name == ".runtime":
+            enroll_file = p.parent.parent / ".authority_enrolled.json"
+            if not enroll_file.is_file():
+                try:
+                    enroll_file.write_text(json.dumps({"authority_path": str(p.resolve())}), encoding="utf-8")
+                except OSError:
+                    pass
+
+    def _check_maintenance(self) -> None:
+        """Reject operations if maintenance mode is active on this ledger."""
+        maintenance_lock = Path(self.path).parent / "MAINTENANCE.lock"
+        if maintenance_lock.is_file():
+            try:
+                reason = maintenance_lock.read_text(encoding="utf-8").strip() or "Active MAINTENANCE.lock present"
+            except OSError:
+                reason = "Active MAINTENANCE.lock present"
+            from youtube_automation.production.authority import MaintenanceExclusionError
+            raise MaintenanceExclusionError(
+                f"Authority at {self.path} is currently locked for maintenance: {reason}"
+            )
 
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
@@ -120,6 +275,7 @@ class Ledger:
     def claim(
         self, key: str, recipe: str, owner: str, *, seconds: float = 60, now: float | None = None
     ) -> int | None:
+        self._check_maintenance()
         now = time.time() if now is None else now
         if seconds <= 0:
             raise ValueError("Lease duration must be positive")
@@ -174,6 +330,7 @@ class Ledger:
         force: bool = False,
         now: float | None = None,
     ) -> StageClaim:
+        self._check_maintenance()
         now = time.time() if now is None else now
         if seconds <= 0 or max_attempts <= 0:
             raise ValueError("Lease duration and maximum attempts must be positive")
@@ -211,7 +368,9 @@ class Ledger:
                     )
                     conn.commit()
                     return StageClaim("BLOCKED")
-                fence = int(row["fence"]) + 1
+                from youtube_automation.production.authority import validate_fencing_generation
+                current_fence = int(row["fence"])
+                fence = validate_fencing_generation(current_fence, current_fence + 1)
                 conn.execute(
                     "UPDATE jobs SET recipe=?,state='RUNNING',fence=?,owner=?,expires=?,attempts=attempts+1 WHERE key=?",
                     (recipe, fence, owner, now + seconds, key),
@@ -327,6 +486,7 @@ def _maintained_claim(
     *,
     seconds: float,
     detail: dict[str, Any] | None = None,
+    auth_epoch: str | None = None,
 ) -> Iterator[None]:
     active = _active_leases.get()
     ledger_path = str(Path(ledger.path).resolve())
@@ -347,7 +507,10 @@ def _maintained_claim(
     thread.start()
     state = "SUCCEEDED"
     terminal_detail = dict(detail or {})
-    token = _active_leases.set(active + ((ledger, key, owner, fence),))
+    auth_domain = str(resource_database().resolve())
+    if auth_epoch is None:
+        auth_epoch = ledger.get_authority_epoch()
+    token = _active_leases.set(active + ((ledger, key, owner, fence, auth_domain, auth_epoch),))
     try:
         yield
         if failures:
@@ -381,10 +544,11 @@ def leased_resource(path: str | Path, resource: str) -> Iterator[None]:
     database.parent.mkdir(parents=True, exist_ok=True)
     ledger = Ledger(database)
     owner = str(uuid.uuid4())
+    claim_epoch = ledger.get_authority_epoch()
     fence = ledger.claim(resource, "resource-v1", owner)
     if fence is None:
         raise RuntimeError(f"Resource is busy: {resource}")
-    with _maintained_claim(ledger, resource, owner, fence, seconds=60):
+    with _maintained_claim(ledger, resource, owner, fence, seconds=60, auth_epoch=claim_epoch):
         yield
 
 
@@ -426,6 +590,7 @@ def durable_stage(
     database.parent.mkdir(parents=True, exist_ok=True)
     ledger = Ledger(database)
     owner = str(uuid.uuid4())
+    claim_epoch = ledger.get_authority_epoch()
     decision = ledger.claim_stage(
         key,
         recipe,
@@ -453,6 +618,7 @@ def durable_stage(
         decision.fence,
         seconds=60,
         detail=detail,
+        auth_epoch=claim_epoch,
     ):
         with failure_record.capture(stage_name, run_dir=run_dir):
             yield True

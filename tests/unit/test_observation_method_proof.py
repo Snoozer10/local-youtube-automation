@@ -298,8 +298,9 @@ def test_post_second_check_wal_transition_refused_without_sidecars(tmp_path: Pat
 
     assert decision.status == "UNSUPPORTED_WAL"
     assert decision.supported is False
-    # Observer must NEVER delete writer's sidecars:
-    assert race.with_name(f"{race.name}-wal").exists()
+    # Observer must NOT create sidecars on late WAL transition:
+    assert not race.with_name(f"{race.name}-shm").exists()
+    assert not race.with_name(f"{race.name}-wal").exists()
 
 
 def test_concurrent_writer_wal_and_committed_rows_preserved_without_deletion(tmp_path: Path) -> None:

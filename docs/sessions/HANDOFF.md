@@ -387,3 +387,393 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - `ledger_observation.py`: Unowned sidecar cleanup deleted concurrent writer's WAL/SHM when observer encountered WAL transition. Resolved by eliminating sidecar cleanup entirely; observer cleanly refuses without unlinking.
 - `recovery.py`: Opening live source SQLite database with `mode=ro` created `-shm` sidecar and checkpointed WAL, altering source SHA256. Resolved by using direct binary file streaming from source.
 - `recovery.py`: Memory-mapped SQLite connections to `-shm` during integrity checks blocked subsequent writes with `OSError: [Errno 22] Invalid argument`. Resolved by decoupling file copying from integrity checks and using `immutable=1` URI mode.
+
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Renewal), 2026-10-29
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Verified PR #74 head before this batch: `c207dffc1447275390883de20873253d370ab7a6`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial per platform discovery limitations.
+
+### Done
+1. **Coherent committed recovery (#58)**:
+   - Added preflight checks forbidding snapshots while active rollback journals (`{db}-journal`) exist.
+   - Enforced destination copy hash validation (`dest_sha == pre_sha == curr_sha`) and immediate post-copy check for transient journal appearance. Uncommitted cache spills and rollback/ABA mutations are detected and refused with `RuntimeError` rather than restoring uncommitted dirty pages. Preserved failure evidence (`FAILED_SNAPSHOT.json`).
+
+2. **Complete logical-state closure (#58)**:
+   - Fixed `_extract_references` in `src/youtube_automation/production/recovery.py` to extract string elements inside lists (e.g. `required_evidence: ["appendix.md"]`).
+   - Restored committed WAL job inspection: decoupled SQLite queries from `immutable=1` (which blinded WAL frames), enabling discovery of committed WAL jobs and referenced files (e.g. `voice.mp3`, `spoken.txt`) without mutating the source.
+   - Truthfully derived `project_run_id` from committed jobs table across both rollback and WAL layouts.
+
+3. **Authority admission before writes (#59)**:
+   - Distinguished first-time enrollment (unconfigured default initial bootstrap) from missing registered authority (`source_type in ("ENV", "CONFIG")`), raising `MissingAuthorityError` on missing registered files to prevent silent empty replacement.
+   - Enforced schema generation bounds (`[MINIMUM_SCHEMA_GENERATION, MAXIMUM_SCHEMA_GENERATION] = [1, 1]`) in both `discover_authority()` and `Ledger.__init__()`, rejecting foreign/future schemas (e.g. `user_version=999`) before modifying tables or headers.
+   - Enforced maintenance exclusion check at the start of `Ledger.__init__()` before acquiring connections or executing PRAGMA statements, preserving rollback header bytes (`0101`).
+
+4. **Safe status reporting (#55, #56)**:
+   - Routed `AuthorityError` in `cli.main(['status', ...])` through `failure_record.project_safe_message`, projecting maintenance and authority errors to bounded diagnostics (e.g. `[authority/resolution] MaintenanceExclusionError`).
+   - Completely sanitized credential canaries (`Bearer sk-...`) and private prose from public stdout.
+
+5. **Genuinely non-mutating observation (#55, #56)**:
+   - Connected rollback database inspection in `observe_ledger` with `mode=ro&immutable=1`, preventing SQLite C engine from creating `-shm` or `-wal` sidecars under concurrent WAL transition races.
+   - Retained non-mutating Windows exclusive lock detection via byte-range probing at the SQLite lock offset (`msvcrt.locking` on 1GB mark), correctly returning `status="BUSY"` when an exclusive transaction is active without blocking or mutating.
+
+6. **Restoration containment through publication (#58)**:
+   - Enforced containment validation through the write phase: re-verifying resolved destination path immediately upon leaf open (`open("xb")`) before writing bytes.
+   - Detected Windows directory junction rebinding, immediately closing and unlinking escaped leaves, recording `FAILED_RESTORATION_{id}.json`, and raising `RuntimeError`.
+
+### Verification
+- Replayed all 9 independent audit probe classes in isolated synthetic fixtures:
+  1. `probe_aba`: Snapshot refused with `Consistency boundary violation`, uncommitted spill rejected, `FAILED_SNAPSHOT.json` preserved.
+  2. `probe_wal_closure`: Committed WAL job discovered, `voice.mp3` restored, truthful `project_run_id: "episode-A"`.
+  3. `probe_junction`: Junction escape caught, outside target unmodified, `FAILED_RESTORATION_j.json` preserved.
+  4. `probe_configured_missing`: Missing registered authority raises `MissingAuthorityError`, zero replacement created, claim refused.
+  5. `probe_list_closure`: List string reference `appendix.md` extracted and restored.
+  6. `probe_compatibility`: `user_version=999` rejected before initialization, 0 tables created.
+  7. `probe_status_privacy`: Bearer canary and prose sanitized from stdout, zero leaks.
+  8. `probe_maintenance_init`: `Ledger` instantiation under maintenance raises `MaintenanceExclusionError`, header bytes unchanged `0101`.
+  9. `probe_late_wal`: Late WAL transition returns `UNSUPPORTED_WAL`, zero sidecars created.
+- Focused test suite: 193 passed in 17.02s (17 affected modules + new unit regressions across all 7 findings).
+
+### Known Remaining Limitations & Stop Point (PR #74 Initial Head)
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Renewed Review Corrections), 2026-10-29
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Verified PR #74 head before renewed review batch: `97f9b3dd2db6f6201b5925ad4b993e0c5cb91d59`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial per platform discovery limitations.
+
+### Done
+1. **Cleanup ownership (#58 / Standards S1)**:
+   - When destination containment violation is detected upon opening a leaf, file handle is closed, but `dest_path.unlink()` is strictly omitted. Unlinking unverified outside pathnames risks destroying competing concurrent work or external files. `FAILED_RESTORATION_{id}.json` is recorded, and `RuntimeError` is raised with competing files intact.
+
+2. **Source-preserving logical inspection (#58 / Standards S2)**:
+   - In `expand_recovery_closure` and `create_isolated_recovery_snapshot`, replaced direct source database connections with private isolated `tempfile.TemporaryDirectory()` copies across all SQLite layouts (including WAL headers without sidecars and existing WAL+SHM).
+   - Live source operational set remains completely untouched: zero sidecars created, zero readmarks modified.
+
+3. **One generation for closure and capture (#58 / Standards S3)**:
+   - Enforced logical generation closure: after copying databases to `snapshot_dir`, the captured database copies are queried to verify that all referenced canonical media and document artifacts exist in the snapshot closure.
+   - Concurrent reference updates committed after closure discovery are caught and rejected with `RuntimeError("Consistency boundary violation: captured database requires referenced artifact ... not present in snapshot generation")`, preserving `FAILED_SNAPSHOT.json`.
+
+4. **DEFAULT authority lifecycle (#59 / Spec 1)**:
+   - Extended lifecycle identity tracking to default authorities: durable enrollment is recorded in `(root / ".authority_enrolled.json")`.
+   - When `source_type == "DEFAULT"` and the database file is absent after prior enrollment, raises `MissingAuthorityError` instead of silently bootstrapping an empty replacement.
+
+5. **Legacy versus foreign databases (#59 / Spec 2)**:
+   - Enforced non-mutating schema identity check before constructor writes in both `discover_authority()` and `Ledger.__init__()`: if an existing database has tables but lacks the required `jobs` table (e.g. `unrelated_private_state` under `user_version = 0`), it is rejected with `IncompatibleAuthorityError` without modifying headers, tables, or sidecars.
+
+6. **Fresh authority identity after restoration (#59/#58 / Spec 3)**:
+   - Implemented authority epoch boundary across restorations: `restore_isolated_recovery_snapshot` generates a fresh UUID epoch stored in `(target_restore_dir / ".authority_epoch")` and recorded in `RESTORATION_RECEIPT.json`.
+   - Active leases bind their creation epoch; `publication_guard()` checks that the lease's epoch matches the current active authority epoch. Old leases held across restoration fail closed with `StaleFencingGenerationError`.
+
+7. **Consistent status inspection (#55/#56 / Spec 4)**:
+   - Added `_is_database_busy()` checks before and immediately after status query execution in `observe_ledger()`, detecting active rollback journals (`{db}-journal`) and Windows exclusive byte locks.
+   - Status CLI honestly reports `status="BUSY"` (`Ledger Status: UNAVAILABLE (database busy)`) without dirty reads of uncommitted cache-spilled pages or phantom successes.
+
+### Verification
+- Replayed all 7 renewed audit probe classes in isolated synthetic fixtures:
+  1. `cleanup_race`: Junction escape detected, competitor's newer file preserved (`newer_file_exists_after: true`, `created_empty_evidence_preserved: true`), `FAILED_RESTORATION_j.json` preserved.
+  2. `source_observation`: Snapshots on `wal_header_no_sidecars` and `wal_with_existing_shm` completed with `source_changed: false` and `transient_source_changed: false`.
+  3. `closure_generation`: Concurrent committed reference change rejected with `Consistency boundary violation`, `FAILED_SNAPSHOT.json` preserved.
+  4. `spec_probe (default)`: Missing previously used default authority raises `MissingAuthorityError`, zero replacement created.
+  5. `spec_probe (foreign)`: Foreign `user_version=0` database rejected with `IncompatibleAuthorityError`, zero tables added, source unchanged.
+  6. `restore_epoch`: Pre-restore lease attempting publication after same-path restoration rejected with `StaleFencingGenerationError`, publication denied.
+  7. `observer_dirty_read`: Writer executing `BEGIN EXCLUSIVE` after lock probe results in `reported_uncommitted_success: false`, `reported_populated: false`, committed state counts intact.
+- Focused test suite: 201 passed in 19.39s (17 affected modules, exit 0).
+- Static analysis: `ruff check src/` passed with 0 errors.
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Stop point: Stop for review of PR #74 renewed corrections. Do NOT merge without explicit user consent.
+
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Follow-Up Review Corrections), 2026-10-29
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Verified PR #74 head before follow-up review batch: `78d90494878c98b2eda853772231f098adb31268`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial per platform discovery limitations.
+
+### Done
+1. **Recovery closure validation with committed WAL (#58 / Standards S1)**:
+   - In `create_isolated_recovery_snapshot` steps 2 and 3, eliminated `immutable=1` when validating the captured database in isolated storage; SQLite was explicitly ignoring WAL sidecars under `immutable=1`, causing snapshots to accept databases with uncaptured referenced files committed to WAL.
+   - Captured database and existing sidecars are inspected via an isolated temporary directory copy without `immutable=1`, qualifying logical generation closure and integrity across all committed WAL frames.
+   - Concurrently committed references in WAL after discovery are detected, failing closed with `RuntimeError` and recording `FAILED_SNAPSHOT.json`.
+
+2. **Database admission and foreign schema rejection (#59 / Spec R1)**:
+   - In `discover_authority()` and `Ledger.__init__()`, replaced main-file-only inspection with isolated temporary copy inspection including `-wal` and `-shm` sidecars, verifying all tables and schema structure before constructor writes, table creation, or journal mode changes.
+   - Enforced schema qualification on `jobs`: table must contain required `key` column. Foreign databases (e.g. `jobs(unrelated TEXT)` or foreign WAL schemas lacking `jobs`) raise `IncompatibleAuthorityError` with zero mutation to source files, headers, or sidecars. Uncertain inspection fails closed.
+
+3. **Claim/epoch coherence (#58/#59 / Spec R2)**:
+   - Bound authority epoch to claim issuance time in `leased_resource`: captured `claim_epoch = ledger.get_authority_epoch()` before executing `ledger.claim()`, passing `auth_epoch` into `_maintained_claim`.
+   - In `publication_guard()`, verified that the lease's recorded epoch matches the active database's current authority epoch. Restorations occurring between claim execution and lease registration invalidate the old claim with `StaleFencingGenerationError`.
+
+4. **Non-mutating status observation (#55/#56 / Spec R3)**:
+   - Removed `.authority_enrolled.json` creation from `discover_authority()`. Observation of default authority is strictly passive: reports `POPULATED` or `EMPTY` with zero writes to directory entries or database files.
+   - Authorized enrollment is strictly reserved for write-path initialization in `Ledger.__init__()`.
+
+5. **Committed status truth boundary (#55/#56 / Spec R4)**:
+   - In `observe_ledger()`, reinforced the observation boundary: checking `_is_database_busy()` before query preparation, before row fetching, and after row fetching.
+   - Tracked database file modification timestamp (`st_mtime_ns`) and file size across query execution; concurrent writer transactions that spill uncommitted dirty pages and roll back are caught, returning `ObservationDecision(status="BUSY", message="Database is locked by another process or has an active transaction", rows=[], supported=False)` and preventing uncommitted `[SUCCEEDED]` displays.
+
+6. **CI Gate & Test Linting Fix**:
+   - Fixed 7 ruff import-order and unused-import errors in `tests/unit/test_cross_checkout_authority.py` and `tests/unit/test_production_status_cli.py`, satisfying CI run 40828412443 requirements.
+
+7. **Preexisting Gap Disposition: Same-ID Concurrent Snapshot Overwrite (#58)**:
+   - Evaluated `standards/SNAPSHOT_RACE_RESULTS.json` demonstrating check-then-mkdir race when two snapshots use the same ID.
+   - Identified that this behavior predates PR #74 and is present at baseline `66c0e29ec63b79ebc4d55aef832e1a4b474364e1`. Classified as a preexisting architectural limitation under #58 to be hardened with atomic reservation in future batches; distinct from introduced regressions.
+
+### Verification
+- Replayed all executable reproducers from the follow-up review:
+  1. `wal_closure_generation_probe`: WAL committed reference change detected and refused with `Consistency boundary violation`, snapshot fails closed.
+  2. `spec/edge_probe (foreign_jobs_name)`: `jobs(unrelated TEXT)` rejected with `IncompatibleAuthorityError`, 0 tables added, source unchanged.
+  3. `spec/edge_probe (foreign_wal_schema)`: Foreign WAL-only schema rejected with `IncompatibleAuthorityError`, 0 tables added.
+  4. `spec/edge_probe (claim_to_epoch_bind_race)`: Restoration between claim and epoch bind rejected in `publication_guard` with `StaleFencingGenerationError`.
+  5. `default_status_probe_v2`: Default status CLI reports `POPULATED` with `created: []` (zero files created).
+  6. `observer_dirty_read_probe_v3`: Spilled writer rolling back reports `UNAVAILABLE (database busy)` with `reported_uncommitted_success: false`.
+- Maintained all 7 prior passing cases: `cleanup_race`, `closure_generation`, `source_observation`, `spec_probe`, `restore_epoch`.
+- Focused test suite: 207 passed in 23.59s (17 modules, exit 0).
+- Static analysis: `ruff check src/ tests/` clean (0 errors).
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Stop point: Stop for review of PR #74 follow-up corrections. Do NOT merge without explicit user authorization.
+
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Batch 3 Review Corrections), 2026-10-30
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Verified PR #74 head before Batch 3 review corrections: `5f4a8a6e2dc92817bd5de49ad50f0a4ca9eab363`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial.
+
+### Done
+1. **Complete captured recovery closure (#58 / Standards S1)**:
+   - In `create_isolated_recovery_snapshot` Step 2, expanded the logical generation validator into a recursive transitive closure check: validates references from captured databases and transitively traverses all captured JSON documents (`briefs`, `plans`, `timelines`) within `snapshot_dir`.
+   - Any referenced artifact missing from `snapshot_dir` (e.g. when a JSON document is modified after initial discovery to point to a new input file) raises `RuntimeError`, records `FAILED_SNAPSHOT.json` to preserve failure evidence, and prevents publishing an incomplete manifest.
+   - Restorations from incomplete snapshots fail closed. Verified via `test_recovery_closure_transitive_json_reference_change_refused`.
+
+2. **Complete schema admission before writable initialization (#59 / Spec R1)**:
+   - In `authority.py` (`discover_authority()`) and `ledger.py` (`Ledger.__init__()`), candidate databases are inspected in an isolated temporary directory before any source writes, table creation, or journal-mode modifications.
+   - Any unrecognized user tables (outside `{"jobs", "events"}`) raise `IncompatibleAuthorityError`.
+   - For observation/discovery: `jobs` must contain at least the observation schema `{"key", "state", "attempts", "fence", "detail"}`.
+   - For writable execution: `Ledger.__init__` requires all 8 columns `{"key", "recipe", "state", "fence", "owner", "expires", "attempts", "detail"}` and verifies `events` columns `{"id", "at", "key", "state", "detail"}` if present.
+   - Partial schemas (e.g. `jobs(key TEXT)`) are rejected with `IncompatibleAuthorityError` with `source_changed: false` and no `events` table created. Verified via `test_partial_jobs_key_only_schema_rejected_without_writes`.
+
+3. **Coherent durable-stage claim identity across all claim paths (#58/#59 / Spec R2)**:
+   - In `durable_stage()`, moved authority epoch resolution (`claim_epoch = ledger.get_authority_epoch()`) to occur before executing `ledger.claim_stage(...)`, matching `leased_resource`.
+   - Restorations occurring during or after stage claim execution leave the claim bound to the prior epoch. Upon publication, `publication_guard()` compares `lease_epoch` against the active authority epoch, detects the discrepancy, raises `StaleFencingGenerationError`, and rejects publication. Verified via `test_durable_stage_epoch_bind_race_invalidates_old_claim`.
+
+4. **Preexisting Gap Disposition: Same-ID Concurrent Snapshot Overwrite (#58)**:
+   - Maintained visible disposition: concurrent snapshot invocations specifying identical snapshot IDs predate this PR at master baseline `66c0e29ec63b79ebc4d55aef832e1a4b474364e1`. Documented as an architectural limitation under #58 to be hardened in future batches; does not demonstrate complete #58 acceptance.
+
+### Verification
+- Replayed executable Batch 3 reproducers:
+  1. `standards/additional_recovery_probe`: stable WAL succeeds; post-discovery JSON reference change refuses with `FAILED_SNAPSHOT.json` and zero incomplete manifest published.
+  2. `spec/schema_admission_probe_v2`: `key_only` and `foreign_wal` both fail closed with `IncompatibleAuthorityError`, `source_changed: false`, and `tables_in_isolated_copy: ["jobs"]` (no `events` table added).
+  3. `spec/durable_edge_probe`: `foreign_jobs_key_only` and `foreign_wal_schema` rejected; `claim_to_epoch_bind_race` rejected in `publication_guard` with `StaleFencingGenerationError` and no stale publication file written.
+  4. `default_status_probe_v2`: reports `POPULATED` with `created: []` and `db_unchanged: true`.
+- Focused test suite (17 modules, 210 items): 210 passed in 24.23s (exit 0).
+- Static analysis: `ruff check src/ tests/` clean (0 errors).
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Stop point: Stop for independent review of PR #74 Batch 3 corrections. Do NOT merge without explicit user authorization.
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Batch 4 Review Corrections), 2026-10-30
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Verified PR #74 head before Batch 4 review corrections: `dba02c860770c535acf7924483699a027caf37c3`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial.
+
+### Done
+1. **Consistent recovery-reference handling (#58 / Standards S1)**:
+   - In `create_isolated_recovery_snapshot` Step 2 (transitive closure validation), removed skip of absolute references.
+   - Contained absolute references inside `runtime_root` are mapped to their canonical captured relative identities: `rel_p = (runtime_root_resolved / ref_p).resolve().relative_to(runtime_root_resolved)`.
+   - Transitive closure validation checks captured bytes in `snapshot_dir` and manifest entries for all referenced items, and traverses referenced JSON documents recursively. Missing artifacts cause snapshot capture to fail closed, recording `FAILED_SNAPSHOT.json` with zero incomplete manifest published.
+   - Public regression: `test_recovery_closure_contained_absolute_reference_change_refused` in `tests/unit/test_operational_recovery.py`.
+
+2. **Structural schema qualification before writes (#59 / Spec R1)**:
+   - Implemented unified `validate_authority_schema` in `authority.py` and called before writes in `discover_authority()` and `Ledger.__init__()`.
+   - Checks structural properties on isolated temporary copies prior to source writes:
+     - Enforces key uniqueness on `jobs`: column `key` must be the sole PRIMARY KEY or have a single-column UNIQUE index/constraint.
+     - Enforces required defaults on columns inserted without explicit values: `fence`, `attempts`, and `detail` must have default values defined; any NOT NULL column outside `{"key", "recipe", "state"}` must have a default value defined.
+     - Databases missing key uniqueness or required defaults fail closed with `IncompatibleAuthorityError` with `source_changed: false`, zero WAL mode changes, and zero `events` table creations.
+   - Public regressions: `test_jobs_missing_defaults_rejected_without_writes` and `test_jobs_missing_key_uniqueness_rejected_without_writes` in `tests/unit/test_cross_checkout_authority.py`.
+
+3. **Reconciled PR Description & Closing Directives**:
+   - Removed premature auto-closing directives (`Closes #55, #56, #58, #59`) from PR #74 description.
+   - Explicitly documented that target issues #55, #56, #58, #59 and parent #31 remain strictly OPEN awaiting human campaign acceptance.
+   - Kept preexisting same-ID snapshot overwrite limitation visible under #58 and separate from introduced regressions.
+
+### Verification
+- Replayed executable Batch 4 review reproducers:
+  1. `standards/absolute_closure_probe.py`: post-discovery change to contained absolute reference fails closed with `RuntimeError: Consistency boundary violation: ...`, records `FAILED_SNAPSHOT.json`, and restores nothing.
+  2. `spec/schema_constraint_probe.py`:
+     - `missing_defaults`: fails closed with `IncompatibleAuthorityError`, `source_changed: false`, 0 events added.
+     - `missing_primary_key`: fails closed with `IncompatibleAuthorityError`, `source_changed: false`, 0 events added.
+- Preserved all passing cases from Batches 1, 2, and 3: WAL recovery, source preservation, competitor cleanup, epoch invalidation, non-mutating status.
+- Focused test suite (17 modules, 213 items): 213 passed in 26.15s (exit 0).
+- Static analysis: `ruff check src/ tests/` clean (0 errors).
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Preexisting same-ID concurrent snapshot overwrite remains deferred under #58.
+- Stop point: Stop for independent review of PR #74 Batch 4 corrections. Do NOT merge PR #74 or start another campaign batch without explicit user authorization.
+
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Batch 5 Review Corrections), 2026-10-30
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Reviewed Batch 5 PR #74 head: `ab1c54dbddac7248dfe9637f767c80fa9c9ae4cc`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial.
+
+### Done
+1. **Effective insertion defaults qualification before writes (#59 / Spec R1)**:
+   - In `validate_authority_schema` in `src/youtube_automation/production/authority.py`, updated default value analysis to reject ineffective defaults: `_is_ineffective_default` identifies `None` as well as SQL literal metadata strings evaluating to NULL (`"NULL"`, `"(NULL)"`).
+   - Any column with `NOT NULL` outside `{"key", "recipe", "state"}` or any required default column (`fence`, `attempts`, `detail`) defined with `DEFAULT NULL` or missing defaults is rejected before source writes.
+   - Added bounded functional qualification on the isolated temporary copy: executes `INSERT INTO jobs(key, recipe, state) VALUES(...)` within a rollback savepoint, ensuring SQLite evaluates effective defaults without constraint errors and produces non-null numeric values for `fence` and `attempts` and string values for `detail`.
+   - Public regression: `test_jobs_null_defaults_rejected_without_writes` in `tests/unit/test_cross_checkout_authority.py`.
+
+2. **Unconditional resource-key uniqueness qualification (#59 / Spec R1)**:
+   - In `validate_authority_schema`, checked the `partial` flag (`idx[4]`) in `PRAGMA index_list(jobs)`: partial unique indexes (such as `failed_keys_only ... WHERE state='FAILED'`) are explicitly skipped and rejected as insufficient for global resource key uniqueness.
+   - Added bounded functional qualification on the isolated temporary copy: attempts inserting a second row with the same key and state `'RUNNING'` within the rollback savepoint. If the second insert does not raise `sqlite3.IntegrityError`, the candidate is rejected with `IncompatibleAuthorityError` for failing global key uniqueness across states.
+   - Public regression: `test_jobs_partial_unique_index_rejected_without_writes` in `tests/unit/test_cross_checkout_authority.py`.
+   - Positive control: `test_supported_unconditional_unique_index_initializes_and_claims` demonstrates that supported schemas with unconditional single-column unique indexes on `key` initialize and claim stages/leases correctly.
+
+3. **Preserved Invariants & Preexisting Limitations**:
+   - Maintained all previous Batch 1–4 fixes: recovery transitive closure, contained absolute reference canonical mapping, WAL frame inspection, non-mutating status, epoch invalidation on restoration race, and junction cleanup ownership.
+   - Preexisting same-ID concurrent snapshot overwrite limitation remains visible under #58; full #58 acceptance remains outstanding.
+   - PR #74 description closing directives remain omitted (keeping #55/#56/#58/#59 and #31 open).
+
+### Verification
+- Replayed executable Batch 5 review reproducer `spec/schema_semantic_probe.py`:
+  1. `null_defaults`: fails closed with `IncompatibleAuthorityError: Foreign or incompatible schema in jobs table at ...: missing required default value for column 'fence'`, `source_changed: false`, `tables_in_isolated_copy: ["jobs"]` (no `events` table added), `claim_entered: false`.
+  2. `partial_unique`: fails closed with `IncompatibleAuthorityError: Foreign or incompatible schema in jobs table at ...: missing primary key or unique constraint on key (unconditional key uniqueness required)`, `source_changed: false`, `tables_in_isolated_copy: ["jobs"]` (no `events` table added), `claims: []` (no duplicate rows).
+- Focused test suite (17 modules, 216 items): 216 passed in 26.45s (exit 0).
+- Static analysis: `ruff check src/ tests/` clean (0 errors).
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Preexisting same-ID concurrent snapshot overwrite remains deferred under #58.
+- Stop point: Stop for independent review of PR #74 Batch 5 corrections. Do NOT merge PR #74 or start another campaign batch without explicit user authorization.
+
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Batch 6 Review Corrections), 2026-10-30
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Reviewed Batch 6 PR #74 head: `7faf7b1275e7a51d6886cf4210290b4d463389e3`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial.
+
+### Done
+1. **Canonical Claim Lifecycle Qualification Before Writes (#59 / Spec R1)**:
+   - In `validate_authority_schema` in `src/youtube_automation/production/authority.py`, updated functional qualification to verify the actual canonical claim lifecycle within a rollback savepoint on the isolated candidate copy:
+     - Step 1: Initial `PENDING` insert with unsupplied defaults; asserts valid numeric integer defaults for `fence` and `attempts` and string values for `detail`.
+     - Step 2: Canonical transition to `RUNNING` state via `UPDATE jobs SET recipe=?, state='RUNNING', fence=?, owner=?, expires=?, attempts=attempts+1 WHERE key=?` and verifies `rowcount == 1`.
+     - Step 3: Canonical event recording for `RUNNING` via `INSERT INTO events(at, key, state, detail) VALUES(?, ?, 'RUNNING', ?)`. Ensures `events` table compatibility prior to execution.
+     - Step 4: Unconditional key uniqueness across states: inserts duplicate key rows under valid states (`PENDING` and `RUNNING`). Rejects candidate if duplicate key insertion succeeds or if error is not specifically a `UNIQUE` / `PRIMARY KEY` violation on `key` (preventing arbitrary CHECK constraint failures from being misconstrued as uniqueness proof).
+     - Step 5: Canonical finish transition to terminal states (`SUCCEEDED`, `FAILED`) and terminal event recordings.
+   - Public regression: `test_jobs_restricted_state_check_rejected_without_writes` in `tests/unit/test_cross_checkout_authority.py`.
+
+2. **Eliminated Error-Message Substring Bypasses (#59 / Spec R1 / Standards)**:
+   - Removed `if "readonly" in str(err).lower(): pass` from `sqlite3.OperationalError` handling in `validate_authority_schema`.
+   - Any `sqlite3.Error` during schema qualification (such as unsupported functions like `DEFAULT (readonly())`, syntax errors, or constraint errors) immediately raises `IncompatibleAuthorityError` and aborts admission before any writes, table creations, or journal alterations on the source database.
+   - Public regression: `test_jobs_unsupported_default_function_rejected_without_writes` in `tests/unit/test_cross_checkout_authority.py`.
+
+3. **Preserved Invariants & Preexisting Limitations**:
+   - Maintained all previous Batch 1–5 fixes: recovery transitive closure, contained absolute reference canonical mapping, WAL frame inspection, non-mutating status, epoch invalidation on restoration race, junction cleanup ownership, and ineffective default rejection.
+   - Preexisting same-ID concurrent snapshot overwrite limitation remains visible under #58; full #58 acceptance remains outstanding.
+   - PR #74 description closing directives remain omitted (keeping #55/#56/#58/#59 and #31 open).
+
+### Verification
+- Replayed executable Batch 6 review reproducers:
+  1. `spec/claim_behavior_probe.py`:
+     - `supported_primary`: initialized, claimed, SUCCEEDED, source changed as authorized positive control.
+     - `supported_unique`: initialized, claimed, SUCCEEDED, source changed as authorized positive control.
+     - `pending_only`: fails closed with `IncompatibleAuthorityError: Foreign or incompatible schema in jobs table at ...: functional claim qualification failed: CHECK constraint failed: state IN ('PENDING')`, `source_changed: false`, `tables_in_isolated_copy: ["jobs"]` (no `events` table created), `claim_entered: false`.
+  2. `standards/readonly_error_probe.py`:
+     - `resolved: false`, `claim_entered: false`, fails closed with `IncompatibleAuthorityError: Foreign or incompatible schema in jobs table at ...: functional claim qualification failed: unknown function: readonly()`, `source_changed: false`, `tables_in_isolated_copy: ["jobs"]` (no `events` table created).
+- Replayed Batch 5 `spec/schema_semantic_probe.py` (`null_defaults` and `partial_unique` continue to fail closed with `source_changed: false`).
+- Focused test suite (17 modules, 218 items): 218 passed in 26.55s (exit 0).
+- Static analysis: `ruff check src/ tests/` clean (0 errors).
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Preexisting same-ID concurrent snapshot overwrite remains deferred under #58.
+- Stop point: Stop for independent review of PR #74 Batch 6 corrections. Do NOT merge PR #74 or start another campaign batch without explicit user authorization.
+
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Batch 7 Review Corrections), 2026-10-30
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Reviewed Batch 7 PR #74 head: `cf9f7e970d33812ffcfecf760714a32b81e5fa78`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial.
+
+### Done
+1. **Independent Terminal State Qualification from RUNNING (#59 / Spec R1)**:
+   - In `validate_authority_schema` in `src/youtube_automation/production/authority.py`, corrected the terminal finish qualification step:
+     - Replaced sequential transition (`RUNNING -> SUCCEEDED -> FAILED`) with independent qualifications of `SUCCEEDED` and `FAILED` branches directly from `state='RUNNING'`.
+     - Each terminal state is tested within an isolated branch savepoint (`_qual_term_{terminal_state}_*`) so the success test cannot change the starting state or mutate rows for the failed test.
+     - Employs the canonical finish predicate: `UPDATE jobs SET state=?, detail='{}', expires=NULL WHERE key=? AND owner=? AND fence=? AND state='RUNNING' AND expires>?` matching `Ledger.finish()`.
+     - Confirms required terminal event insertion for each branch (`INSERT INTO events(at, key, state, detail) VALUES(?, ?, ?, '{}')`).
+     - Schemas with triggers or constraints preventing canonical failed finish (e.g. `WHEN OLD.state='RUNNING' AND NEW.state='FAILED' SELECT RAISE(ABORT, ...)`) fail closed during qualification before source writes.
+   - Public regressions:
+     - `test_jobs_rejecting_failed_finish_rejected_without_writes` in `tests/unit/test_cross_checkout_authority.py`: asserts candidate rejecting `RUNNING -> FAILED` fails closed with `IncompatibleAuthorityError` before source bytes, tables, or sidecars change.
+     - `test_supported_schema_failed_lease_records_failed_and_propagates_error`: asserts supported schema under failed lease records `FAILED` with `['RUNNING', 'FAILED']` events and propagates original body exception without masking.
+
+2. **Preserved Invariants & Preexisting Limitations**:
+   - Maintained all previous Batch 1–6 fixes: recovery transitive closure, contained absolute reference canonical mapping, WAL frame inspection, non-mutating status, epoch invalidation on restoration race, junction cleanup ownership, ineffective default rejection, and functional claim lifecycle qualification.
+   - Preexisting same-ID concurrent snapshot overwrite limitation remains visible under #58; full #58 acceptance remains outstanding.
+   - PR #74 description closing directives remain omitted (keeping #55/#56/#58/#59 and #31 open).
+
+### Verification
+- Replayed executable Batch 7 review reproducers:
+  1. `standards/failed_finish_probe.py`:
+     - Candidate rejecting `RUNNING -> FAILED` fails closed with `IncompatibleAuthorityError: Foreign or incompatible schema in jobs table at ...: functional claim qualification failed: canonical failed finish rejected`.
+     - `resolved: false`, `entered: false`, `source_changed: false` (SHA256 identical), `jobs: []`, `events: []`, `tables: ["events", "jobs"]`.
+  2. `spec/failed_finish_probe.py`:
+     - Replay confirms identical refusal before source changes, no entered lease, and no rows or events added.
+  3. Positive controls:
+     - `supported_failed_lease`: genuine failed lease enters, propagates `ValueError("synthetic body failure")` (context None), transitions job to `FAILED`, and records `['RUNNING', 'FAILED']` events.
+     - `supported_succeeded_lease`: genuine successful lease enters, completes normally, transitions job to `SUCCEEDED`, and records `['RUNNING', 'SUCCEEDED']` events.
+- Replayed all prior reproducers (Batch 6 `pending_only` and `readonly()`; Batch 5 `null_defaults` and `partial_unique`); all continue to fail closed with `source_changed: false`.
+- Focused test suite (17 modules, 220 items): 220 passed in 28.16s (exit 0).
+- Static analysis: `ruff check src/ tests/` clean (0 errors).
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Preexisting same-ID concurrent snapshot overwrite remains deferred under #58.
+- Stop point: Stop for independent review of PR #74 Batch 7 corrections. Do NOT merge PR #74 or start another campaign batch without explicit user authorization.
+

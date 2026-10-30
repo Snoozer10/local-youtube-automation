@@ -12,15 +12,24 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import shutil
 import sqlite3
+import tempfile
+import uuid
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
 MINIMUM_SCHEMA_GENERATION = 1
+MAXIMUM_SCHEMA_GENERATION = 1
 
 
 class AuthorityError(Exception):
     """Base exception for resource authority failures."""
+
+
+class MissingAuthorityError(AuthorityError):
+    """Raised when a registered or configured authority database is missing on disk, requiring recovery rather than silent replacement."""
 
 
 class AmbiguousAuthorityError(AuthorityError):
@@ -78,6 +87,226 @@ class AuthorityResolution:
     schema_generation: int
     is_maintenance_excluded: bool
     maintenance_reason: str = ""
+    authority_epoch: str = ""
+
+
+def validate_authority_schema(
+    conn: sqlite3.Connection,
+    target_path: Path | str,
+    *,
+    require_execution: bool = False,
+) -> None:
+    """Validate that candidate database schema conforms to supported invariants before any writes."""
+    tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    user_tables = {t for t in tables if not t.startswith("sqlite_")}
+    if not user_tables:
+        return
+
+    if "jobs" not in user_tables:
+        raise IncompatibleAuthorityError(
+            f"Foreign or unrecognized database schema at {target_path} (tables: {sorted(user_tables)}); "
+            f"missing required jobs table"
+        )
+    unrecognized = sorted(user_tables - {"jobs", "events"})
+    if unrecognized:
+        raise IncompatibleAuthorityError(
+            f"Foreign or unrecognized database schema at {target_path} (tables: {sorted(user_tables)}); "
+            f"unrecognized tables present: {unrecognized}"
+        )
+
+    cols_info = conn.execute("PRAGMA table_info(jobs)").fetchall()
+    cols = {r[1] for r in cols_info}
+    if require_execution:
+        required_cols = {"key", "recipe", "state", "fence", "owner", "expires", "attempts", "detail"}
+        if not required_cols.issubset(cols):
+            missing = sorted(required_cols - cols)
+            raise IncompatibleAuthorityError(
+                f"Foreign or partial schema in jobs table at {target_path}: "
+                f"missing required columns: {missing} (found: {sorted(cols)})"
+            )
+    else:
+        required_obs = {"key", "state", "attempts", "fence", "detail"}
+        if not required_obs.issubset(cols):
+            missing = sorted(required_obs - cols)
+            raise IncompatibleAuthorityError(
+                f"Foreign or unrecognized schema in jobs table at {target_path}: "
+                f"missing required columns: {missing} (found: {sorted(cols)})"
+            )
+
+    pk_cols = [r[1] for r in cols_info if r[5] > 0]
+    has_unique_key = (pk_cols == ["key"])
+    if not has_unique_key:
+        for idx in conn.execute("PRAGMA index_list(jobs)").fetchall():
+            unique = bool(idx[2])
+            is_partial = bool(idx[4]) if len(idx) > 4 else False
+            if unique and not is_partial:
+                idx_cols = [r[2] for r in conn.execute(f"PRAGMA index_info('{idx[1]}')").fetchall()]
+                if idx_cols == ["key"]:
+                    has_unique_key = True
+                    break
+    if not has_unique_key:
+        raise IncompatibleAuthorityError(
+            f"Foreign or incompatible schema in jobs table at {target_path}: "
+            f"missing primary key or unique constraint on key (unconditional key uniqueness required)"
+        )
+
+    if "events" in user_tables:
+        ev_cols = {r[1] for r in conn.execute("PRAGMA table_info(events)").fetchall()}
+        required_events = {"id", "at", "key", "state", "detail"}
+        if not required_events.issubset(ev_cols):
+            missing = sorted(required_events - ev_cols)
+            err_kind = "partial" if require_execution else "unrecognized"
+            raise IncompatibleAuthorityError(
+                f"Foreign or {err_kind} schema in events table at {target_path}: "
+                f"missing required columns: {missing} (found: {sorted(ev_cols)})"
+            )
+
+    def _is_ineffective_default(val: Any) -> bool:
+        if val is None:
+            return True
+        val_str = str(val).strip().upper()
+        return val_str in ("NULL", "(NULL)")
+
+    if require_execution or {"recipe", "state", "fence", "attempts", "detail"}.issubset(cols):
+        col_defaults = {r[1]: r[4] for r in cols_info}
+        col_notnull = {r[1]: r[3] for r in cols_info}
+        for req_dflt_col in ["fence", "attempts", "detail"]:
+            if req_dflt_col in cols and _is_ineffective_default(col_defaults.get(req_dflt_col)):
+                raise IncompatibleAuthorityError(
+                    f"Foreign or incompatible schema in jobs table at {target_path}: "
+                    f"missing required default value for column {req_dflt_col!r}"
+                )
+        for col_name, notnull in col_notnull.items():
+            if col_name not in {"key", "recipe", "state"} and notnull == 1 and _is_ineffective_default(col_defaults.get(col_name)):
+                raise IncompatibleAuthorityError(
+                    f"Foreign or incompatible schema in jobs table at {target_path}: "
+                    f"column {col_name!r} is NOT NULL but lacks a default value"
+                )
+
+        # Ensure events table exists on isolated candidate copy for event write qualification
+        if "events" not in user_tables:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS events ("
+                "id INTEGER PRIMARY KEY, at REAL NOT NULL, key TEXT NOT NULL, "
+                "state TEXT NOT NULL, detail TEXT NOT NULL)"
+            )
+
+        # Functional qualification of canonical claim lifecycle on isolated candidate connection
+        sp_name = f"_schema_qual_{uuid.uuid4().hex[:8]}"
+        canary_key = f"__schema_probe_{uuid.uuid4().hex}__"
+        canary_owner = f"__probe_owner_{uuid.uuid4().hex[:8]}__"
+        canary_recipe = "__probe_recipe__"
+        canary_now = 1000000.0
+        try:
+            conn.execute(f"SAVEPOINT {sp_name}")
+            try:
+                # 1. Verify insertion with unsupplied defaults (PENDING state)
+                conn.execute(
+                    "INSERT INTO jobs(key, recipe, state) VALUES(?, ?, 'PENDING')",
+                    (canary_key, canary_recipe),
+                )
+                probe_row = conn.execute(
+                    "SELECT fence, attempts, detail FROM jobs WHERE key=?",
+                    (canary_key,),
+                ).fetchone()
+                if probe_row is None or probe_row[0] is None or probe_row[1] is None or probe_row[2] is None:
+                    raise IncompatibleAuthorityError(
+                        f"Foreign or incompatible schema in jobs table at {target_path}: "
+                        f"insertion defaults produced NULL in required execution columns"
+                    )
+                try:
+                    fence_val = int(probe_row[0])
+                    int(probe_row[1])
+                except (ValueError, TypeError) as err:
+                    raise IncompatibleAuthorityError(
+                        f"Foreign or incompatible schema in jobs table at {target_path}: "
+                        f"numeric default values cannot be parsed as integers: {err}"
+                    ) from err
+
+                # 2. Verify canonical claim transition to RUNNING and event write
+                proposed_fence = fence_val + 1
+                upd = conn.execute(
+                    "UPDATE jobs SET recipe=?, state='RUNNING', fence=?, owner=?, expires=?, attempts=attempts+1 WHERE key=?",
+                    (canary_recipe, proposed_fence, canary_owner, canary_now + 60.0, canary_key),
+                )
+                if upd.rowcount != 1:
+                    raise IncompatibleAuthorityError(
+                        f"Foreign or incompatible schema in jobs table at {target_path}: "
+                        f"claim update to RUNNING state failed (updated {upd.rowcount} rows)"
+                    )
+                conn.execute(
+                    "INSERT INTO events(at, key, state, detail) VALUES(?, ?, 'RUNNING', ?)",
+                    (canary_now, canary_key, json.dumps({"fence": proposed_fence, "owner": canary_owner})),
+                )
+
+                # 3. Verify unconditional key uniqueness across states
+                for test_state in ["PENDING", "RUNNING"]:
+                    dup_allowed = False
+                    dup_error = ""
+                    try:
+                        conn.execute(
+                            "INSERT INTO jobs(key, recipe, state) VALUES(?, ?, ?)",
+                            (canary_key, canary_recipe, test_state),
+                        )
+                        dup_allowed = True
+                    except sqlite3.IntegrityError as err:
+                        dup_error = str(err)
+
+                    if dup_allowed:
+                        raise IncompatibleAuthorityError(
+                            f"Foreign or incompatible schema in jobs table at {target_path}: "
+                            f"key column is not unconditionally unique across states "
+                            f"(permitted duplicate row with state={test_state!r} while existing row is RUNNING)"
+                        )
+
+                    dup_err_lower = dup_error.lower()
+                    is_unique_violation = (
+                        ("unique" in dup_err_lower or "primary key" in dup_err_lower)
+                        and "key" in dup_err_lower
+                    )
+                    if not is_unique_violation or "check constraint" in dup_err_lower:
+                        raise IncompatibleAuthorityError(
+                            f"Foreign or incompatible schema in jobs table at {target_path}: "
+                            f"uniqueness check for key failed with non-unique constraint error: {dup_error}"
+                        )
+
+                # 4. Verify canonical finish transitions to terminal states (SUCCEEDED, FAILED)
+                # independently from RUNNING, using actual finish predicates and event writes.
+                for terminal_state in ["SUCCEEDED", "FAILED"]:
+                    branch_sp = f"_qual_term_{terminal_state.lower()}_{uuid.uuid4().hex[:6]}"
+                    conn.execute(f"SAVEPOINT {branch_sp}")
+                    try:
+                        fin = conn.execute(
+                            "UPDATE jobs SET state=?, detail='{}', expires=NULL "
+                            "WHERE key=? AND owner=? AND fence=? AND state='RUNNING' AND expires>?",
+                            (terminal_state, canary_key, canary_owner, proposed_fence, canary_now),
+                        )
+                        if fin.rowcount != 1:
+                            raise IncompatibleAuthorityError(
+                                f"Foreign or incompatible schema in jobs table at {target_path}: "
+                                f"finish transition from RUNNING to {terminal_state} state failed (updated {fin.rowcount} rows)"
+                            )
+                        conn.execute(
+                            "INSERT INTO events(at, key, state, detail) VALUES(?, ?, ?, '{}')",
+                            (canary_now + 1.0, canary_key, terminal_state),
+                        )
+                    finally:
+                        try:
+                            conn.execute(f"ROLLBACK TO {branch_sp}")
+                            conn.execute(f"RELEASE {branch_sp}")
+                        except sqlite3.Error:
+                            pass
+
+            finally:
+                conn.execute(f"ROLLBACK TO {sp_name}")
+                conn.execute(f"RELEASE {sp_name}")
+        except IncompatibleAuthorityError:
+            raise
+        except sqlite3.Error as err:
+            raise IncompatibleAuthorityError(
+                f"Foreign or incompatible schema in jobs table at {target_path}: "
+                f"functional claim qualification failed: {err}"
+            ) from err
 
 
 def discover_authority(
@@ -137,6 +366,8 @@ def discover_authority(
     else:
         root = default_root or Path(__file__).resolve().parents[3]
         target_path = (root / ".runtime" / "adaptive.sqlite3").resolve()
+        if not target_path.exists() and (root / "adaptive.sqlite3").exists():
+            target_path = (root / "adaptive.sqlite3").resolve()
         source_type = "DEFAULT"
         generation = MINIMUM_SCHEMA_GENERATION
         maint_mode = False
@@ -156,38 +387,84 @@ def discover_authority(
             f"Authority at {target_path} is currently locked for maintenance: {maint_reason}"
         )
 
-    # 3. Check for Incompatible Schema Generation
-    if generation < MINIMUM_SCHEMA_GENERATION:
+    # 3. Check for Missing Registered Authority (Enrollment vs Recovery)
+    if source_type in ("ENV", "CONFIG") and not target_path.exists():
+        raise MissingAuthorityError(
+            f"Registered authority database at {target_path} is missing on disk; "
+            f"refusing silent empty replacement to preserve historical state"
+        )
+    elif source_type == "DEFAULT" and not target_path.exists():
+        root = default_root or Path(__file__).resolve().parents[3]
+        enrollment_marker = root / ".authority_enrolled.json"
+        if enrollment_marker.is_file():
+            raise MissingAuthorityError(
+                f"Default authority database at {target_path} is missing on disk after prior enrollment; "
+                f"refusing silent empty replacement to preserve historical state"
+            )
+
+    # 4. Check for Incompatible Schema Generation
+    if generation < MINIMUM_SCHEMA_GENERATION or generation > MAXIMUM_SCHEMA_GENERATION:
         raise IncompatibleAuthorityError(
-            f"Authority schema generation {generation} is incompatible with required minimum {MINIMUM_SCHEMA_GENERATION}"
+            f"Authority schema generation {generation} is incompatible with required minimum {MINIMUM_SCHEMA_GENERATION} "
+            f"(supported range [{MINIMUM_SCHEMA_GENERATION}, {MAXIMUM_SCHEMA_GENERATION}])"
         )
 
-    # 4. Check for Physical Database Damage if file exists
+    # 5. Check for Physical Database Damage and Compatibility if file exists (strictly non-mutating)
     if target_path.exists():
         if target_path.stat().st_size < 100:
             raise DamagedAuthorityError(f"Authority database at {target_path} is truncated or damaged (<100 bytes)")
         try:
             with target_path.open("rb") as f:
-                header = f.read(16)
-                if header != b"SQLite format 3\x00":
+                header = f.read(100)
+                if len(header) < 100 or header[:16] != b"SQLite format 3\x00":
                     raise DamagedAuthorityError(f"Authority file at {target_path} is not a valid SQLite database")
+                # SQLite header offset 60-64 stores user_version as a 4-byte big-endian integer
+                db_version = int.from_bytes(header[60:64], "big")
+                if db_version > 0 and (db_version < MINIMUM_SCHEMA_GENERATION or db_version > MAXIMUM_SCHEMA_GENERATION):
+                    raise IncompatibleAuthorityError(
+                        f"Database user_version {db_version} is incompatible with supported range "
+                        f"[{MINIMUM_SCHEMA_GENERATION}, {MAXIMUM_SCHEMA_GENERATION}]"
+                    )
         except OSError as err:
             raise DamagedAuthorityError(f"Cannot read authority database at {target_path}: {err}") from err
 
-        # Verify integrity of database tables
+        # Verify schema identity: reject foreign or unrecognized databases lacking the required jobs table or columns
         try:
-            with sqlite3.connect(f"file:{target_path.as_posix()}?mode=ro", uri=True) as conn:
-                row = conn.execute("PRAGMA integrity_check").fetchone()
-                if not row or row[0] != "ok":
-                    raise DamagedAuthorityError(f"Integrity check failed for authority database: {row}")
-                # Check user_version compatibility if set
-                db_version = conn.execute("PRAGMA user_version").fetchone()[0]
-                if db_version > 0 and db_version < MINIMUM_SCHEMA_GENERATION:
-                    raise IncompatibleAuthorityError(
-                        f"Database user_version {db_version} is less than required minimum {MINIMUM_SCHEMA_GENERATION}"
-                    )
-        except sqlite3.DatabaseError as err:
-            raise DamagedAuthorityError(f"Authority database failed connection integrity: {err}") from err
+            with tempfile.TemporaryDirectory() as chk_tmp:
+                chk_db = Path(chk_tmp) / target_path.name
+                shutil.copyfile(target_path, chk_db)
+                for s_ext in ["-wal", "-shm"]:
+                    s_file = target_path.with_name(f"{target_path.name}{s_ext}")
+                    if s_file.exists():
+                        try:
+                            shutil.copyfile(s_file, Path(chk_tmp) / s_file.name)
+                        except OSError:
+                            pass
+                with closing(sqlite3.connect(chk_db)) as chk_conn:
+                    validate_authority_schema(chk_conn, target_path, require_execution=False)
+        except IncompatibleAuthorityError:
+            raise
+        except Exception as err:
+            raise IncompatibleAuthorityError(f"Failed to inspect authority database schema at {target_path}: {err}") from err
+
+    # Discover or derive active authority epoch
+    epoch_file = target_path.parent / ".authority_epoch"
+    auth_epoch = ""
+    if epoch_file.is_file():
+        try:
+            auth_epoch = epoch_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            pass
+    if not auth_epoch:
+        receipt_file = target_path.parent / "RESTORATION_RECEIPT.json"
+        if receipt_file.is_file():
+            try:
+                r_data = json.loads(receipt_file.read_text(encoding="utf-8"))
+                auth_epoch = str(r_data.get("authority_epoch", ""))
+            except Exception:
+                pass
+    if not auth_epoch and target_path.exists():
+        auth_epoch = "init-epoch"
 
     return AuthorityResolution(
         database_path=target_path,
@@ -195,6 +472,7 @@ def discover_authority(
         schema_generation=generation,
         is_maintenance_excluded=maint_mode,
         maintenance_reason=maint_reason,
+        authority_epoch=auth_epoch,
     )
 
 

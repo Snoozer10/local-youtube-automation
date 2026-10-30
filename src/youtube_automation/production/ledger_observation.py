@@ -102,8 +102,33 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
             supported=False,
         )
 
-    # Connect strictly in read-only mode via URI for rollback journal databases
-    uri = f"{target.as_uri()}?mode=ro"
+    def _is_database_busy() -> bool:
+        if target.with_name(f"{target.name}-journal").exists():
+            return True
+        try:
+            import msvcrt
+            with target.open("rb") as f:
+                f.seek(1073741824)
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 512)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 512)
+        except (OSError, PermissionError):
+            return True
+        except Exception:
+            pass
+        return False
+
+    # Check for active exclusive locks or rollback transactions (AC 4: locked/busy database returns BUSY)
+    if _is_database_busy():
+        return ObservationDecision(
+            status="BUSY",
+            message="Database is locked by another process",
+            rows=[],
+            supported=False,
+        )
+
+    # Connect strictly in read-only immutable mode via URI for rollback journal databases
+    # immutable=1 guarantees that SQLite never creates or touches sidecars even under concurrent WAL transition
+    uri = f"{target.as_uri()}?mode=ro&immutable=1"
     conn = None
     try:
         conn = sqlite3.connect(uri, uri=True, timeout=busy_timeout_ms / 1000.0)
@@ -168,6 +193,21 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
                 supported=False,
             )
 
+        pre_mtime_ns = target.stat().st_mtime_ns if target.exists() else 0
+        pre_size = target.stat().st_size if target.exists() else 0
+
+        # Verify busy state before query execution: active rollback journal or exclusive lock
+        if _is_database_busy():
+            del cur
+            conn.close()
+            conn = None
+            return ObservationDecision(
+                status="BUSY",
+                message="Database is locked by another process or has an active transaction",
+                rows=[],
+                supported=False,
+            )
+
         cur.execute("SELECT key, state, attempts, fence, detail FROM jobs ORDER BY key")
         if _check_wal_envelope():
             del cur
@@ -180,7 +220,35 @@ def observe_ledger(path: str | Path | os.PathLike[str], *, busy_timeout_ms: int 
                 supported=False,
             )
 
+        # Verify busy state before fetching rows: prevent dirty reads if transaction started during query setup
+        if _is_database_busy():
+            del cur
+            conn.close()
+            conn = None
+            return ObservationDecision(
+                status="BUSY",
+                message="Database is locked by another process or has an active transaction",
+                rows=[],
+                supported=False,
+            )
+
         rows = [dict(row) for row in cur.fetchall()]
+
+        # Re-verify busy state and file stability after fetching rows:
+        # If an exclusive writer was active, rolled back, or modified database pages concurrently,
+        # observation cannot be certified consistent (avoids dirty read of spilled uncommitted pages)
+        curr_mtime_ns = target.stat().st_mtime_ns if target.exists() else 0
+        curr_size = target.stat().st_size if target.exists() else 0
+        if _is_database_busy() or curr_mtime_ns != pre_mtime_ns or curr_size != pre_size:
+            del cur
+            conn.close()
+            conn = None
+            return ObservationDecision(
+                status="BUSY",
+                message="Database is locked by another process or has an active transaction",
+                rows=[],
+                supported=False,
+            )
 
         if not rows:
             return ObservationDecision(

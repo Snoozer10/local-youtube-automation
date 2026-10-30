@@ -218,3 +218,948 @@ def test_generate_authority_qualification_receipt(mock_shared_database: Path, tm
 
     assert receipt_file.is_file()
     assert receipt["demonstrated_properties"]["cross_checkout_convergent_discovery"] is True
+
+
+def test_cached_client_maintenance_exclusion(tmp_path: Path, monkeypatch):
+    """Issue #59: Cached Ledger clients cannot claim stages or leases during maintenance."""
+    from youtube_automation.production import ledger
+
+    db_path = tmp_path / "maintenance_test" / "adaptive.sqlite3"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db_path))
+
+    cached_ledger = ledger.Ledger(db_path)
+    # Pre-maintenance claim succeeds
+    decision = cached_ledger.claim_stage("stage:pre", "recipe", "worker_1")
+    assert decision.state == "CLAIMED"
+
+    # Engage maintenance lock
+    set_maintenance_mode(db_path.parent, enabled=True, reason="Scheduled storage migration")
+
+    # Cached client now rejects claim and claim_stage
+    with pytest.raises(MaintenanceExclusionError, match="currently locked for maintenance"):
+        cached_ledger.claim_stage("stage:post", "recipe", "worker_1")
+
+    with pytest.raises(MaintenanceExclusionError, match="currently locked for maintenance"):
+        cached_ledger.claim("resource:task", "recipe", "worker_1")
+
+    # Release maintenance lock
+    set_maintenance_mode(db_path.parent, enabled=False)
+    decision_after = cached_ledger.claim_stage("stage:post", "recipe", "worker_1")
+    assert decision_after.state == "CLAIMED"
+
+
+def test_old_lease_publication_rejected_after_authority_cutover(tmp_path: Path, monkeypatch):
+    """Issue #59: An active lease acquired on an old authority cannot enter publication_guard after cutover."""
+    from youtube_automation.production import ledger
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    old_db = tmp_path / "cutover_old" / "adaptive.sqlite3"
+    new_db = tmp_path / "cutover_new" / "adaptive.sqlite3"
+    old_db.parent.mkdir(parents=True, exist_ok=True)
+    new_db.parent.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(old_db))
+
+    entered = False
+    with pytest.raises(StaleFencingGenerationError, match="Authority cutover detected"):
+        with ledger.leased_resource(old_db, "browser"):
+            # Authority pointer cuts over to new database during the active lease
+            monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(new_db))
+            with ledger.publication_guard():
+                entered = True
+    assert entered is False
+
+
+def test_missing_registered_authority_rejected_without_silent_replacement(tmp_path: Path, monkeypatch):
+    """Issue #59 / Track A D2: Missing registered authority must raise MissingAuthorityError and refuse silent empty replacement."""
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import MissingAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    db = tmp_path / "adaptive.sqlite3"
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    # Initial setup
+    init_ledger = ledger.Ledger(db)
+    with init_ledger.connection() as c:
+        c.execute("INSERT INTO jobs(key,recipe,state,detail) VALUES('preserved-history','recipe','SUCCEEDED','{}')")
+
+    # Rename original to simulate missing registered authority
+    preserved = tmp_path / "preserved-original.sqlite3"
+    db.rename(preserved)
+
+    entered = False
+    with pytest.raises(MissingAuthorityError, match="refusing silent empty replacement"):
+        with ledger.leased_resource(ledger.resource_database(), "browser"):
+            entered = True
+
+    assert entered is False
+    assert not db.exists(), "Empty replacement database must not be silently created"
+    assert preserved.is_file(), "Original preserved database must remain intact"
+
+
+def test_foreign_future_schema_version_rejected_before_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Track A D2/D3: Unsupported newer schema generations (e.g. user_version 999) must be rejected before initialization."""
+    import sqlite3
+
+    from youtube_automation.production import authority, ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    db = tmp_path / "future.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE future_private_state(payload TEXT)")
+    c.execute("PRAGMA user_version=999")
+    c.commit()
+    c.close()
+
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="exceeds maximum supported schema generation|is incompatible with supported range"):
+        authority.discover_authority()
+
+    with pytest.raises(IncompatibleAuthorityError, match="exceeds maximum supported schema generation"):
+        ledger.Ledger(db)
+
+    # Verify no tables were created or state modified
+    c = sqlite3.connect(db)
+    tables = [row[0] for row in c.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+    uv = c.execute("PRAGMA user_version").fetchone()[0]
+    c.close()
+
+    assert tables == ["future_private_state"]
+    assert uv == 999
+
+
+def test_maintenance_exclusion_blocks_ledger_writes_before_initialization(tmp_path: Path, monkeypatch):
+    """Issue #59: Maintenance exclusion must block Ledger initialization before changing journal mode or running DDL."""
+    import sqlite3
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import MaintenanceExclusionError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    db = tmp_path / "maint_db.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute("PRAGMA journal_mode=DELETE")
+    c.executescript("CREATE TABLE jobs(key TEXT PRIMARY KEY, recipe TEXT, state TEXT, fence INT DEFAULT 0, owner TEXT, expires REAL, attempts INT DEFAULT 0, detail TEXT DEFAULT '{}');")
+    c.commit()
+    c.close()
+
+    before_mode = db.read_bytes()[18:20].hex()
+    (tmp_path / "MAINTENANCE.lock").write_text("scheduled maintenance", encoding="utf-8")
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(MaintenanceExclusionError, match="locked for maintenance"):
+        with ledger.leased_resource(db, "browser"):
+            pass
+
+    after_mode = db.read_bytes()[18:20].hex()
+    assert before_mode == after_mode == "0101", "Journal mode must remain unchanged DELETE (0101) under maintenance"
+
+
+def test_lost_previously_used_default_authority_rejected(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec 1: A previously used default authority that disappears must raise MissingAuthorityError rather than creating empty replacement."""
+    import gc
+
+    from youtube_automation.production import authority, ledger
+    from youtube_automation.production.authority import MissingAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    monkeypatch.delenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", raising=False)
+
+    repo = tmp_path / "default_repo"
+    (repo / ".runtime").mkdir(parents=True)
+    monkeypatch.setattr(authority, "__file__", str(repo / "src" / "youtube_automation" / "production" / "authority.py"))
+
+    p = ledger.resource_database()
+    with ledger.leased_resource(p, "historical-browser"):
+        pass
+
+    assert p.is_file()
+    gc.collect()
+
+    preserved = tmp_path / "preserved"
+    preserved.mkdir()
+    for f in list(p.parent.iterdir()):
+        if f.is_file():
+            f.rename(preserved / f.name)
+
+    assert not p.exists()
+
+    with pytest.raises(MissingAuthorityError, match="missing on disk after prior enrollment"):
+        resolved = ledger.resource_database()
+        with ledger.leased_resource(resolved, "replacement-browser"):
+            pass
+
+    assert not p.exists(), "Empty replacement database must not be silently created"
+
+
+def test_foreign_version_zero_database_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec 2: Foreign SQLite database with user_version=0 lacking jobs table must be rejected without writes."""
+    import hashlib
+    import sqlite3
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    p = tmp_path / "foreign" / "adaptive.sqlite3"
+    p.parent.mkdir(parents=True)
+
+    c = sqlite3.connect(p)
+    c.execute("CREATE TABLE unrelated_private_state(id INTEGER PRIMARY KEY, value TEXT)")
+    c.execute("INSERT INTO unrelated_private_state(value) VALUES (?)", ("kept synthetic state",))
+    c.commit()
+    c.close()
+
+    before_hash = hashlib.sha256(p.read_bytes()).hexdigest()
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(p))
+
+    with pytest.raises(IncompatibleAuthorityError, match="Foreign or unrecognized database schema"):
+        resolved = ledger.resource_database()
+        with ledger.leased_resource(resolved, "browser"):
+            pass
+
+    after_hash = hashlib.sha256(p.read_bytes()).hexdigest()
+    assert before_hash == after_hash, "Foreign database must not be modified"
+
+    c = sqlite3.connect(p)
+    tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+    version = c.execute("PRAGMA user_version").fetchone()[0]
+    c.close()
+
+    assert tables == ["unrelated_private_state"]
+    assert version == 0
+
+
+def test_pre_restore_lease_cannot_publish_after_same_path_restoration(tmp_path: Path, monkeypatch):
+    """Issue #59/#58 / Spec 3: A pre-restore lease cannot publish into authority path after restoration."""
+    import gc
+    import sqlite3
+
+    from youtube_automation.production import authority, ledger, recovery
+    from youtube_automation.production.authority import StaleFencingGenerationError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    live = tmp_path / "authority"
+    live.mkdir()
+    storage = tmp_path / "backups"
+    storage.mkdir()
+    quarantine = tmp_path / "quarantine"
+    quarantine.mkdir()
+    db = live / "adaptive.sqlite3"
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    ledger.Ledger(db)
+
+    with pytest.raises(StaleFencingGenerationError, match="Stale authority epoch"):
+        with ledger.leased_resource(db, "browser"):
+            c = sqlite3.connect(db)
+            c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            c.close()
+            recovery.create_isolated_recovery_snapshot(live, storage, "snap")
+            gc.collect()
+            authority.set_maintenance_mode(live, True, "restore maintenance")
+            for pf in list(live.iterdir()):
+                if pf.is_file() and pf.name != "MAINTENANCE.lock":
+                    pf.rename(quarantine / pf.name)
+            recovery.restore_isolated_recovery_snapshot(storage, "snap", live)
+            authority.set_maintenance_mode(live, False)
+            with ledger.publication_guard():
+                pass
+
+
+def test_foreign_jobs_table_wrong_columns_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec R1: Foreign table named 'jobs' with unrelated columns must raise IncompatibleAuthorityError."""
+    import hashlib
+    import sqlite3
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "foreign-jobs"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE jobs(unrelated TEXT)")
+    c.execute("INSERT INTO jobs VALUES(?)", ("owned foreign record",))
+    c.commit()
+    c.close()
+
+    before_sha = hashlib.sha256(db.read_bytes()).hexdigest()
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="Foreign or unrecognized schema in jobs table"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after_sha = hashlib.sha256(db.read_bytes()).hexdigest()
+    assert before_sha == after_sha
+
+    c = sqlite3.connect(db)
+    tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+    c.close()
+    assert tables == ["jobs"]
+
+
+def test_foreign_wal_schema_without_jobs_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec R1: Uncheckpointed foreign schema in WAL must be inspected and rejected without writes."""
+    import sqlite3
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "foreign-wal"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA wal_autocheckpoint=0")
+    c.execute("CREATE TABLE unrelated_private_state(value TEXT)")
+    c.execute("INSERT INTO unrelated_private_state VALUES(?)", ("owned foreign record",))
+    c.commit()
+    c.close()
+
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="missing required jobs table"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    c = sqlite3.connect(db)
+    tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+    c.close()
+    assert tables == ["unrelated_private_state"]
+
+
+def test_claim_to_epoch_bind_race_invalidates_old_claim(tmp_path: Path, monkeypatch):
+    """Issue #58/#59 / Spec R2: A restoration occurring between claim issuance and epoch binding must invalidate old claim."""
+    import gc
+    import sqlite3
+    from unittest.mock import patch
+
+    from youtube_automation.production import authority, ledger, recovery
+    from youtube_automation.production.authority import StaleFencingGenerationError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "bind-race"
+    live = d / "authority"
+    live.mkdir(parents=True)
+    backup = d / "backup"
+    backup.mkdir()
+    quarantine = d / "old"
+    quarantine.mkdir()
+    db = live / "adaptive.sqlite3"
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    ledger.Ledger(db)
+    real_claim = ledger.Ledger.claim
+    restored = False
+
+    def claim_then_restore(self, *args, **kwargs):
+        nonlocal restored
+        fence = real_claim(self, *args, **kwargs)
+        if not restored:
+            restored = True
+            c = sqlite3.connect(db)
+            c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            c.close()
+            recovery.create_isolated_recovery_snapshot(live, backup, "bound")
+            authority.set_maintenance_mode(live, True, "epoch-bind race")
+            gc.collect()
+            for p in list(live.iterdir()):
+                if p.is_file() and p.name != "MAINTENANCE.lock":
+                    p.rename(quarantine / p.name)
+            recovery.restore_isolated_recovery_snapshot(backup, "bound", live)
+            authority.set_maintenance_mode(live, False)
+        return fence
+
+    with patch.object(ledger.Ledger, "claim", claim_then_restore):
+        with pytest.raises(StaleFencingGenerationError, match="Stale authority epoch"):
+            with ledger.leased_resource(db, "browser"):
+                with ledger.publication_guard():
+                    pass
+
+
+def test_partial_jobs_key_only_schema_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec R1: Partial jobs(key TEXT) layout must be rejected before writable initialization or events table creation."""
+    import hashlib
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "key-only"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE jobs(key TEXT)")
+    c.execute("INSERT INTO jobs VALUES(?)", ("owned foreign record",))
+    c.commit()
+    c.close()
+
+    def snap_dir(p: Path) -> dict[str, str]:
+        return {x.name: hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.is_file()}
+
+    before = snap_dir(d)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="missing required columns"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after = snap_dir(d)
+    assert before == after, "Public operation mutated source database files before rejection"
+
+    # Also test direct Ledger constructor rejection without writes
+    with pytest.raises(IncompatibleAuthorityError, match="missing required columns"):
+        ledger.Ledger(db)
+
+    after_direct = snap_dir(d)
+    assert before == after_direct, "Direct Ledger constructor mutated source database files before rejection"
+
+    # Verify tables in an isolated copy: events table must NOT have been created
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        q = sqlite3.connect(target)
+        tables = [v[0] for v in q.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        q.close()
+    assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
+
+
+def test_jobs_restricted_state_check_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Batch 6: Candidate with CHECK(state IN ('PENDING')) must fail closed before writes."""
+    import hashlib
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "pending-only"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute(
+        "CREATE TABLE jobs("
+        "key TEXT PRIMARY KEY,recipe TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN ('PENDING')),"
+        "fence INTEGER NOT NULL DEFAULT 0,owner TEXT,expires REAL,"
+        "attempts INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '{}')"
+    )
+    c.commit()
+    c.close()
+
+    def snap_dir(p: Path) -> dict[str, str]:
+        return {x.name: hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.is_file()}
+
+    before = snap_dir(d)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="functional claim qualification failed: CHECK constraint failed"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after = snap_dir(d)
+    assert before == after, "Public operation mutated source database files before rejection"
+
+    # Direct Ledger constructor also fails closed without writes
+    with pytest.raises(IncompatibleAuthorityError, match="functional claim qualification failed: CHECK constraint failed"):
+        ledger.Ledger(db)
+
+    after_direct = snap_dir(d)
+    assert before == after_direct, "Direct Ledger constructor mutated source database files before rejection"
+
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        q = sqlite3.connect(target)
+        tables = [v[0] for v in q.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        rows = q.execute("SELECT * FROM jobs").fetchall()
+        q.close()
+    assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
+    assert rows == [], f"Unexpected rows found in candidate database: {rows}"
+
+
+def test_jobs_unsupported_default_function_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Batch 6: Candidate with DEFAULT(readonly()) must fail closed before writes."""
+    import hashlib
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "readonly-error"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute(
+        "CREATE TABLE jobs("
+        "key TEXT PRIMARY KEY,recipe TEXT NOT NULL,state TEXT NOT NULL,"
+        "fence INTEGER NOT NULL DEFAULT (readonly()),owner TEXT,expires REAL,"
+        "attempts INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '{}')"
+    )
+    c.commit()
+    c.close()
+
+    def snap_dir(p: Path) -> dict[str, str]:
+        return {x.name: hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.is_file()}
+
+    before = snap_dir(d)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="functional claim qualification failed: unknown function"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after = snap_dir(d)
+    assert before == after, "Public operation mutated source database files before rejection"
+
+    # Direct Ledger constructor also fails closed without writes
+    with pytest.raises(IncompatibleAuthorityError, match="functional claim qualification failed: unknown function"):
+        ledger.Ledger(db)
+
+    after_direct = snap_dir(d)
+    assert before == after_direct, "Direct Ledger constructor mutated source database files before rejection"
+
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        q = sqlite3.connect(target)
+        tables = [v[0] for v in q.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        rows = q.execute("SELECT * FROM jobs").fetchall()
+        q.close()
+    assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
+    assert rows == [], f"Unexpected rows found in candidate database: {rows}"
+
+
+def test_jobs_rejecting_failed_finish_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Batch 7: Candidate rejecting RUNNING -> FAILED finish must fail closed before writes."""
+    import hashlib
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "failed-finish-rejected"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute(
+        "CREATE TABLE jobs("
+        "key TEXT PRIMARY KEY,recipe TEXT NOT NULL,state TEXT NOT NULL,"
+        "fence INTEGER NOT NULL DEFAULT 0,owner TEXT,expires REAL,"
+        "attempts INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '{}')"
+    )
+    c.execute(
+        "CREATE TABLE events(id INTEGER PRIMARY KEY,at REAL NOT NULL,key TEXT NOT NULL,state TEXT NOT NULL,detail TEXT NOT NULL)"
+    )
+    c.execute(
+        "CREATE TRIGGER reject_failed_finish BEFORE UPDATE OF state ON jobs "
+        "WHEN OLD.state='RUNNING' AND NEW.state='FAILED' "
+        "BEGIN SELECT RAISE(ABORT,'canonical failed finish rejected'); END"
+    )
+    c.commit()
+    c.close()
+
+    def snap_dir(p: Path) -> dict[str, str]:
+        return {x.name: hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.is_file()}
+
+    before = snap_dir(d)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="canonical failed finish rejected"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "synthetic-failed-resource"):
+            pass
+
+    after = snap_dir(d)
+    assert before == after, "Public operation mutated source database files before rejection"
+
+    # Direct Ledger constructor also fails closed without writes
+    with pytest.raises(IncompatibleAuthorityError, match="canonical failed finish rejected"):
+        ledger.Ledger(db)
+
+    after_direct = snap_dir(d)
+    assert before == after_direct, "Direct Ledger constructor mutated source database files before rejection"
+
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        q = sqlite3.connect(target)
+        tables = [v[0] for v in q.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        rows = q.execute("SELECT * FROM jobs").fetchall()
+        events = q.execute("SELECT * FROM events").fetchall()
+        q.close()
+    assert tables == ["events", "jobs"], f"Unexpected tables found in candidate database: {tables}"
+    assert rows == [], f"Unexpected rows found in candidate database: {rows}"
+    assert events == [], f"Unexpected event rows found in candidate database: {events}"
+
+
+def test_supported_schema_failed_lease_records_failed_and_propagates_error(tmp_path: Path, monkeypatch):
+    """Issue #59 / Batch 7: Supported schema under failed lease records FAILED and propagates body error."""
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "supported-failed-lease"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute(
+        "CREATE TABLE jobs("
+        "key TEXT PRIMARY KEY,recipe TEXT NOT NULL,state TEXT NOT NULL,"
+        "fence INTEGER NOT NULL DEFAULT 0,owner TEXT,expires REAL,"
+        "attempts INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '{}')"
+    )
+    c.execute(
+        "CREATE TABLE events(id INTEGER PRIMARY KEY,at REAL NOT NULL,key TEXT NOT NULL,state TEXT NOT NULL,detail TEXT NOT NULL)"
+    )
+    c.commit()
+    c.close()
+
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+    p = ledger.resource_database()
+
+    with pytest.raises(ValueError, match="synthetic body failure"):
+        with ledger.leased_resource(p, "synthetic-failed-resource"):
+            raise ValueError("synthetic body failure")
+
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        for ext in ["-wal", "-shm"]:
+            side = Path(str(db) + ext)
+            if side.is_file():
+                shutil.copyfile(side, Path(inspect_tmp) / side.name)
+        q = sqlite3.connect(target)
+        jobs = q.execute("SELECT key,state,attempts FROM jobs").fetchall()
+        events = [v[0] for v in q.execute("SELECT state FROM events ORDER BY id").fetchall()]
+        q.close()
+
+    assert jobs == [("synthetic-failed-resource", "FAILED", 1)]
+    assert events == ["RUNNING", "FAILED"]
+
+
+
+def test_jobs_null_defaults_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec R1: Candidate with NOT NULL DEFAULT NULL on required fields must fail closed before writes."""
+    import hashlib
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "null-defaults"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute(
+        "CREATE TABLE jobs("
+        "key TEXT PRIMARY KEY,recipe TEXT NOT NULL,state TEXT NOT NULL,"
+        "fence INTEGER NOT NULL DEFAULT NULL,owner TEXT,expires REAL,"
+        "attempts INTEGER NOT NULL DEFAULT NULL,detail TEXT NOT NULL DEFAULT NULL)"
+    )
+    c.commit()
+    c.close()
+
+    def snap_dir(p: Path) -> dict[str, str]:
+        return {x.name: hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.is_file()}
+
+    before = snap_dir(d)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="missing required default value for column 'fence'"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after = snap_dir(d)
+    assert before == after, "Public operation mutated source database files before rejection"
+
+    # Direct Ledger constructor also fails closed without writes
+    with pytest.raises(IncompatibleAuthorityError, match="missing required default value for column 'fence'"):
+        ledger.Ledger(db)
+
+    after_direct = snap_dir(d)
+    assert before == after_direct, "Direct Ledger constructor mutated source database files before rejection"
+
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        q = sqlite3.connect(target)
+        tables = [v[0] for v in q.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        rows = q.execute("SELECT * FROM jobs").fetchall()
+        q.close()
+    assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
+    assert rows == [], f"Unexpected rows found in candidate database: {rows}"
+
+
+def test_jobs_partial_unique_index_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec R1: Candidate with partial unique index on key must fail closed before writes."""
+    import hashlib
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "partial-unique"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute(
+        "CREATE TABLE jobs("
+        "key TEXT,recipe TEXT NOT NULL,state TEXT NOT NULL,"
+        "fence INTEGER NOT NULL DEFAULT 0,owner TEXT,expires REAL,"
+        "attempts INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '{}')"
+    )
+    c.execute("CREATE UNIQUE INDEX failed_keys_only ON jobs(key) WHERE state='FAILED'")
+    c.commit()
+    c.close()
+
+    def snap_dir(p: Path) -> dict[str, str]:
+        return {x.name: hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.is_file()}
+
+    before = snap_dir(d)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="missing primary key or unique constraint on key"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after = snap_dir(d)
+    assert before == after, "Public operation mutated source database files before rejection"
+
+    # Direct Ledger constructor also fails closed without writes
+    with pytest.raises(IncompatibleAuthorityError, match="missing primary key or unique constraint on key"):
+        ledger.Ledger(db)
+
+    after_direct = snap_dir(d)
+    assert before == after_direct, "Direct Ledger constructor mutated source database files before rejection"
+
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        q = sqlite3.connect(target)
+        tables = [v[0] for v in q.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        rows = q.execute("SELECT * FROM jobs").fetchall()
+        q.close()
+    assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
+    assert rows == [], f"Unexpected rows found in candidate database: {rows}"
+
+
+def test_supported_unconditional_unique_index_initializes_and_claims(tmp_path: Path, monkeypatch):
+    """Issue #59: Supported compatible schema with unconditional UNIQUE index initializes and claims properly."""
+    import sqlite3
+
+    from youtube_automation.production import ledger
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "unconditional-unique"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute(
+        "CREATE TABLE jobs("
+        "key TEXT,recipe TEXT NOT NULL,state TEXT NOT NULL,"
+        "fence INTEGER NOT NULL DEFAULT 0,owner TEXT,expires REAL,"
+        "attempts INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '{}')"
+    )
+    c.execute("CREATE UNIQUE INDEX idx_unconditional_key ON jobs(key)")
+    c.commit()
+    c.close()
+
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+    p = ledger.resource_database()
+    with ledger.leased_resource(p, "browser"):
+        pass
+
+    client = ledger.Ledger(p)
+    decision = client.claim_stage("stage:render", "recipe_1", "worker_1")
+    assert decision.state == "CLAIMED"
+    assert decision.fence == 1
+
+
+
+def test_durable_stage_epoch_bind_race_invalidates_old_claim(tmp_path: Path, monkeypatch):
+    """Issue #58/#59 / Spec R2: A restoration occurring during durable_stage claim must invalidate publication."""
+    import gc
+    import sqlite3
+    from unittest.mock import patch
+
+    from youtube_automation.production import authority, ledger, recovery
+    from youtube_automation.production.authority import StaleFencingGenerationError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "stage-bind-race"
+    live = d / "authority"
+    live.mkdir(parents=True)
+    backup = d / "backup"
+    backup.mkdir()
+    quarantine = d / "old"
+    quarantine.mkdir()
+    db = live / "adaptive.sqlite3"
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    ledger.Ledger(db)
+    real_claim = ledger.Ledger.claim_stage
+    restored = False
+    event = {}
+
+    def claim_then_restore(self, *args, **kwargs):
+        nonlocal restored
+        fence = real_claim(self, *args, **kwargs)
+        if not restored:
+            restored = True
+            c = sqlite3.connect(db)
+            c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            c.close()
+            recovery.create_isolated_recovery_snapshot(live, backup, "bound")
+            authority.set_maintenance_mode(live, True, "epoch-bind race")
+            gc.collect()
+            for p in list(live.iterdir()):
+                if p.is_file() and p.name != "MAINTENANCE.lock":
+                    p.rename(quarantine / p.name)
+            result = recovery.restore_isolated_recovery_snapshot(backup, "bound", live)
+            event.update({"restore_status": result["status"], "restored_epoch": result["authority_epoch"]})
+            authority.set_maintenance_mode(live, False)
+        return fence
+
+    publication_entered = False
+    with patch.object(ledger.Ledger, "claim_stage", claim_then_restore):
+        with pytest.raises(StaleFencingGenerationError, match="Stale authority epoch"):
+            with ledger.durable_stage(db, "stage:write", "recipe-v1") as execute:
+                assert execute
+                with ledger.publication_guard():
+                    publication_entered = True
+
+    assert not publication_entered, "Stale stage claim must not be permitted to enter publication_guard"
+    assert event.get("restore_status") == "RESTORED"
+
+def test_jobs_missing_defaults_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec R1: All-column jobs table missing required defaults must fail closed before writes."""
+    import hashlib
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "missing-defaults"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE jobs(key TEXT PRIMARY KEY,recipe TEXT NOT NULL,state TEXT NOT NULL,fence INTEGER NOT NULL,owner TEXT,expires REAL,attempts INTEGER NOT NULL,detail TEXT NOT NULL)")
+    c.commit()
+    c.close()
+
+    def snap_dir(p: Path) -> dict[str, str]:
+        return {x.name: hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.is_file()}
+
+    before = snap_dir(d)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="missing required default value for column 'fence'"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after = snap_dir(d)
+    assert before == after, "Public operation mutated source database files before rejection"
+
+    # Direct Ledger constructor also fails closed without writes
+    with pytest.raises(IncompatibleAuthorityError, match="missing required default value for column 'fence'"):
+        ledger.Ledger(db)
+
+    after_direct = snap_dir(d)
+    assert before == after_direct, "Direct Ledger constructor mutated source database files before rejection"
+
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        q = sqlite3.connect(target)
+        tables = [v[0] for v in q.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        q.close()
+    assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
+
+
+def test_jobs_missing_key_uniqueness_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec R1: All-column jobs table missing primary key / key uniqueness must fail closed before writes."""
+    import hashlib
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "missing-pk"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE jobs(key TEXT,recipe TEXT NOT NULL,state TEXT NOT NULL,fence INTEGER NOT NULL DEFAULT 0,owner TEXT,expires REAL,attempts INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '{}')")
+    c.commit()
+    c.close()
+
+    def snap_dir(p: Path) -> dict[str, str]:
+        return {x.name: hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.is_file()}
+
+    before = snap_dir(d)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="missing primary key or unique constraint on key"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after = snap_dir(d)
+    assert before == after, "Public operation mutated source database files before rejection"
+
+    # Direct Ledger constructor also fails closed without writes
+    with pytest.raises(IncompatibleAuthorityError, match="missing primary key or unique constraint on key"):
+        ledger.Ledger(db)
+
+    after_direct = snap_dir(d)
+    assert before == after_direct, "Direct Ledger constructor mutated source database files before rejection"
+
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        q = sqlite3.connect(target)
+        tables = [v[0] for v in q.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        q.close()
+    assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
+
