@@ -270,34 +270,32 @@ def validate_authority_schema(
                             f"uniqueness check for key failed with non-unique constraint error: {dup_error}"
                         )
 
-                # 4. Verify canonical finish transition to terminal states (SUCCEEDED, FAILED) and event writes
-                fin = conn.execute(
-                    "UPDATE jobs SET state='SUCCEEDED', detail='{}', expires=NULL WHERE key=? AND owner=? AND fence=? AND state='RUNNING'",
-                    (canary_key, canary_owner, proposed_fence),
-                )
-                if fin.rowcount != 1:
-                    raise IncompatibleAuthorityError(
-                        f"Foreign or incompatible schema in jobs table at {target_path}: "
-                        f"finish transition to SUCCEEDED state failed (updated {fin.rowcount} rows)"
-                    )
-                conn.execute(
-                    "INSERT INTO events(at, key, state, detail) VALUES(?, ?, 'SUCCEEDED', '{}')",
-                    (canary_now + 1.0, canary_key),
-                )
-
-                fail_upd = conn.execute(
-                    "UPDATE jobs SET state='FAILED', detail='{}', expires=NULL WHERE key=?",
-                    (canary_key,),
-                )
-                if fail_upd.rowcount != 1:
-                    raise IncompatibleAuthorityError(
-                        f"Foreign or incompatible schema in jobs table at {target_path}: "
-                        f"transition to FAILED state failed (updated {fail_upd.rowcount} rows)"
-                    )
-                conn.execute(
-                    "INSERT INTO events(at, key, state, detail) VALUES(?, ?, 'FAILED', '{}')",
-                    (canary_now + 2.0, canary_key),
-                )
+                # 4. Verify canonical finish transitions to terminal states (SUCCEEDED, FAILED)
+                # independently from RUNNING, using actual finish predicates and event writes.
+                for terminal_state in ["SUCCEEDED", "FAILED"]:
+                    branch_sp = f"_qual_term_{terminal_state.lower()}_{uuid.uuid4().hex[:6]}"
+                    conn.execute(f"SAVEPOINT {branch_sp}")
+                    try:
+                        fin = conn.execute(
+                            "UPDATE jobs SET state=?, detail='{}', expires=NULL "
+                            "WHERE key=? AND owner=? AND fence=? AND state='RUNNING' AND expires>?",
+                            (terminal_state, canary_key, canary_owner, proposed_fence, canary_now),
+                        )
+                        if fin.rowcount != 1:
+                            raise IncompatibleAuthorityError(
+                                f"Foreign or incompatible schema in jobs table at {target_path}: "
+                                f"finish transition from RUNNING to {terminal_state} state failed (updated {fin.rowcount} rows)"
+                            )
+                        conn.execute(
+                            "INSERT INTO events(at, key, state, detail) VALUES(?, ?, ?, '{}')",
+                            (canary_now + 1.0, canary_key, terminal_state),
+                        )
+                    finally:
+                        try:
+                            conn.execute(f"ROLLBACK TO {branch_sp}")
+                            conn.execute(f"RELEASE {branch_sp}")
+                        except sqlite3.Error:
+                            pass
 
             finally:
                 conn.execute(f"ROLLBACK TO {sp_name}")

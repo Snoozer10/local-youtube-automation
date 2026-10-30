@@ -730,3 +730,50 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - Preexisting same-ID concurrent snapshot overwrite remains deferred under #58.
 - Stop point: Stop for independent review of PR #74 Batch 6 corrections. Do NOT merge PR #74 or start another campaign batch without explicit user authorization.
 
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Batch 7 Review Corrections), 2026-10-30
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Reviewed Batch 7 PR #74 head: `cf9f7e970d33812ffcfecf760714a32b81e5fa78`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial.
+
+### Done
+1. **Independent Terminal State Qualification from RUNNING (#59 / Spec R1)**:
+   - In `validate_authority_schema` in `src/youtube_automation/production/authority.py`, corrected the terminal finish qualification step:
+     - Replaced sequential transition (`RUNNING -> SUCCEEDED -> FAILED`) with independent qualifications of `SUCCEEDED` and `FAILED` branches directly from `state='RUNNING'`.
+     - Each terminal state is tested within an isolated branch savepoint (`_qual_term_{terminal_state}_*`) so the success test cannot change the starting state or mutate rows for the failed test.
+     - Employs the canonical finish predicate: `UPDATE jobs SET state=?, detail='{}', expires=NULL WHERE key=? AND owner=? AND fence=? AND state='RUNNING' AND expires>?` matching `Ledger.finish()`.
+     - Confirms required terminal event insertion for each branch (`INSERT INTO events(at, key, state, detail) VALUES(?, ?, ?, '{}')`).
+     - Schemas with triggers or constraints preventing canonical failed finish (e.g. `WHEN OLD.state='RUNNING' AND NEW.state='FAILED' SELECT RAISE(ABORT, ...)`) fail closed during qualification before source writes.
+   - Public regressions:
+     - `test_jobs_rejecting_failed_finish_rejected_without_writes` in `tests/unit/test_cross_checkout_authority.py`: asserts candidate rejecting `RUNNING -> FAILED` fails closed with `IncompatibleAuthorityError` before source bytes, tables, or sidecars change.
+     - `test_supported_schema_failed_lease_records_failed_and_propagates_error`: asserts supported schema under failed lease records `FAILED` with `['RUNNING', 'FAILED']` events and propagates original body exception without masking.
+
+2. **Preserved Invariants & Preexisting Limitations**:
+   - Maintained all previous Batch 1–6 fixes: recovery transitive closure, contained absolute reference canonical mapping, WAL frame inspection, non-mutating status, epoch invalidation on restoration race, junction cleanup ownership, ineffective default rejection, and functional claim lifecycle qualification.
+   - Preexisting same-ID concurrent snapshot overwrite limitation remains visible under #58; full #58 acceptance remains outstanding.
+   - PR #74 description closing directives remain omitted (keeping #55/#56/#58/#59 and #31 open).
+
+### Verification
+- Replayed executable Batch 7 review reproducers:
+  1. `standards/failed_finish_probe.py`:
+     - Candidate rejecting `RUNNING -> FAILED` fails closed with `IncompatibleAuthorityError: Foreign or incompatible schema in jobs table at ...: functional claim qualification failed: canonical failed finish rejected`.
+     - `resolved: false`, `entered: false`, `source_changed: false` (SHA256 identical), `jobs: []`, `events: []`, `tables: ["events", "jobs"]`.
+  2. `spec/failed_finish_probe.py`:
+     - Replay confirms identical refusal before source changes, no entered lease, and no rows or events added.
+  3. Positive controls:
+     - `supported_failed_lease`: genuine failed lease enters, propagates `ValueError("synthetic body failure")` (context None), transitions job to `FAILED`, and records `['RUNNING', 'FAILED']` events.
+     - `supported_succeeded_lease`: genuine successful lease enters, completes normally, transitions job to `SUCCEEDED`, and records `['RUNNING', 'SUCCEEDED']` events.
+- Replayed all prior reproducers (Batch 6 `pending_only` and `readonly()`; Batch 5 `null_defaults` and `partial_unique`); all continue to fail closed with `source_changed: false`.
+- Focused test suite (17 modules, 220 items): 220 passed in 28.16s (exit 0).
+- Static analysis: `ruff check src/ tests/` clean (0 errors).
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Preexisting same-ID concurrent snapshot overwrite remains deferred under #58.
+- Stop point: Stop for independent review of PR #74 Batch 7 corrections. Do NOT merge PR #74 or start another campaign batch without explicit user authorization.
+
