@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import sys
 from pathlib import Path
 
 import pytest
@@ -1371,4 +1372,99 @@ def test_archive_interrupted_snapshot_fails_closed_on_receipt_write_failure(
     # Verify snapshot_dir was NOT moved and partial data is still in place
     assert attempt_dir.exists()
     assert (attempt_dir / "partial.bin").read_bytes() == b"crucial evidence"
+
+
+def test_validate_recovery_id_rejects_dos_reserved_device_names(mock_operational_runtime: Path, tmp_path: Path):
+    from youtube_automation.production.recovery import (
+        _validate_recovery_id,
+        archive_interrupted_snapshot,
+        create_isolated_recovery_snapshot,
+    )
+    backups = tmp_path / "backups"
+    reserved_samples = ["CON", "con", "Con", "PRN", "prn", "AUX", "aux", "NUL", "nul", "COM1", "com9", "LPT1", "lpt9"]
+    for name in reserved_samples:
+        with pytest.raises(ValueError, match="reserved Windows DOS device name"):
+            _validate_recovery_id(name)
+        with pytest.raises(ValueError, match="reserved Windows DOS device name"):
+            create_isolated_recovery_snapshot(mock_operational_runtime, backups, name)
+        with pytest.raises(ValueError, match="reserved Windows DOS device name"):
+            archive_interrupted_snapshot(backups, name)
+
+    # Substrings and valid non-reserved names are permitted
+    for valid_name in ["snapshot_con", "aux_channel", "COM10", "LPT0", "null_rec"]:
+        _validate_recovery_id(valid_name)
+
+
+def test_archive_interrupted_snapshot_refuses_when_active_lock_held_even_without_snapshot_dir(tmp_path: Path):
+    from youtube_automation.production.recovery import (
+        _acquire_snapshot_lock,
+        archive_interrupted_snapshot,
+    )
+    backups = tmp_path / "backups"
+    active_id = "active_no_dir"
+    lock_path = backups / f".{active_id}.lock"
+
+    # Process A holds lock before snapshot dir exists
+    with _acquire_snapshot_lock(lock_path, active_id):
+        # Process B must fail fast with FileExistsError, not return None
+        with pytest.raises(FileExistsError, match="actively owned"):
+            archive_interrupted_snapshot(backups, active_id)
+
+    # When lock is released and dir does not exist, returns None
+    assert archive_interrupted_snapshot(backups, active_id) is None
+
+
+def test_acquire_snapshot_lock_filters_errno_and_tears_down_resources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import errno
+
+    from youtube_automation.production.recovery import (
+        _acquire_snapshot_lock,
+        _active_snapshot_locks,
+    )
+
+    lock_file = tmp_path / ".test_filter.lock"
+
+    # 1. ENOLCK must re-raise OSError, not FileExistsError
+    def mock_locking_enolck(fd, mode, nbytes):
+        raise OSError(errno.ENOLCK, "No record locks available")
+
+    if sys.platform == "win32":
+        monkeypatch.setattr("msvcrt.locking", mock_locking_enolck, raising=False)
+    else:
+        monkeypatch.setattr("fcntl.flock", mock_locking_enolck, raising=False)
+
+    with pytest.raises(OSError) as excinfo:
+        with _acquire_snapshot_lock(lock_file, "test_filter"):
+            pass
+    assert excinfo.value.errno == errno.ENOLCK
+    assert lock_file.resolve() not in _active_snapshot_locks
+
+    # 2. BaseException cleanup
+    def mock_locking_interrupt(fd, mode, nbytes):
+        raise KeyboardInterrupt("Simulated Ctrl-C")
+
+    if sys.platform == "win32":
+        monkeypatch.setattr("msvcrt.locking", mock_locking_interrupt, raising=False)
+    else:
+        monkeypatch.setattr("fcntl.flock", mock_locking_interrupt, raising=False)
+
+    with pytest.raises(KeyboardInterrupt):
+        with _acquire_snapshot_lock(lock_file, "test_filter"):
+            pass
+    assert lock_file.resolve() not in _active_snapshot_locks
+
+
+def test_set_maintenance_mode_idempotent_unlink(tmp_path: Path):
+    from youtube_automation.production.authority import set_maintenance_mode
+    auth_dir = tmp_path / "authority"
+    auth_dir.mkdir(parents=True)
+
+    # Unlinking nonexistent lock succeeds without error
+    set_maintenance_mode(auth_dir, enabled=False)
+    # Consecutive disengages succeed idempotently
+    set_maintenance_mode(auth_dir, enabled=True, reason="maintenance")
+    assert (auth_dir / "MAINTENANCE.lock").is_file()
+    set_maintenance_mode(auth_dir, enabled=False)
+    set_maintenance_mode(auth_dir, enabled=False)
+    assert not (auth_dir / "MAINTENANCE.lock").exists()
 

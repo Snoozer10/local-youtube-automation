@@ -122,3 +122,30 @@ def test_simulated_top_sources_selection():
     mock_page = MagicMock()
     selected = engine.select_top_sources(mock_page, max_sources=10)
     assert selected == 10
+
+
+def test_discover_engine_unconfigured_external_skill_fails_gracefully(tmp_path):
+    """Asserts NotebookLMUnavailableError is raised when external skill scripts are absent."""
+    from youtube_automation.prompts.notebooklm_client import NotebookLMUnavailableError
+
+    empty_skill_dir = tmp_path / "fake_skill"
+    empty_skill_dir.mkdir()
+    engine = NotebookLMDiscoverEngine(mock_mode=False, skill_dir=empty_skill_dir)
+
+    with pytest.raises(NotebookLMUnavailableError, match="External notebooklm skill script not found|patchright is required"):
+        engine.execute_batch()
+
+
+def test_notebooklm_client_missing_runner_raises_unavailable_error(tmp_path):
+    """Asserts NotebookLMUnavailableError is raised when runner script is absent."""
+    from youtube_automation.prompts.notebooklm_client import (
+        NotebookLMClient,
+        NotebookLMUnavailableError,
+    )
+
+    empty_skill_dir = tmp_path / "fake_skill"
+    empty_skill_dir.mkdir()
+    client = NotebookLMClient(skill_dir=empty_skill_dir, mock_mode=False)
+
+    with pytest.raises(NotebookLMUnavailableError, match="External notebooklm skill runner script not found"):
+        client.query("What is prompt engineering?", bypass_cache=True)

@@ -16,11 +16,14 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
 import sys
 import time
 from pathlib import Path
 from typing import Any, Literal
+
+from youtube_automation.prompts.notebooklm_client import NotebookLMUnavailableError
 
 logger = logging.getLogger("NotebookLMDiscover")
 
@@ -159,12 +162,25 @@ class NotebookLMDiscoverEngine:
         headless: bool = True,
         mock_mode: bool = False,
         timeout_seconds: int = 180,
+        skill_dir: str | Path | None = None,
     ):
         self.notebook_url = notebook_url
         self.headless = headless
         self.mock_mode = mock_mode
         self.timeout_seconds = timeout_seconds
         self.max_source_ceiling = 300
+        if skill_dir:
+            self.skill_dir = Path(skill_dir).resolve()
+        elif os.environ.get("NOTEBOOKLM_SKILL_DIR"):
+            self.skill_dir = Path(os.environ["NOTEBOOKLM_SKILL_DIR"]).resolve()
+        else:
+            home = Path.home()
+            candidates = [
+                home / ".gemini" / "antigravity-cli" / "skills" / "notebooklm",
+                home / ".gemini" / "config" / "skills" / "notebooklm",
+                home / ".gemini" / "skills" / "notebooklm",
+            ]
+            self.skill_dir = next((c for c in candidates if c.is_dir()), candidates[-1])
 
     def count_sources(self, page: Any) -> int:
         """Determines active source count in the notebook from sidebar and header."""
@@ -435,13 +451,32 @@ class NotebookLMDiscoverEngine:
             }
 
         # Live Playwright execution
-        from patchright.sync_api import sync_playwright
+        try:
+            from patchright.sync_api import sync_playwright
+        except ImportError as exc:
+            raise NotebookLMUnavailableError(
+                "patchright is required for live execution but is not installed. "
+                "Install patchright or run with mock_mode=True."
+            ) from exc
 
-        # Import skill BrowserFactory
-        home = Path.home()
-        skill_scripts = home / ".gemini" / "skills" / "notebooklm" / "scripts"
-        sys.path.insert(0, str(skill_scripts))
-        from browser_utils import BrowserFactory
+        # Safe verification of external skill runner before path insertion
+        skill_scripts = self.skill_dir / "scripts"
+        browser_utils_script = skill_scripts / "browser_utils.py"
+        if not browser_utils_script.is_file():
+            raise NotebookLMUnavailableError(
+                f"External notebooklm skill script not found at '{browser_utils_script}'. "
+                "The notebooklm skill is not installed or enabled in the host environment."
+            )
+
+        skill_scripts_str = str(skill_scripts.resolve())
+        if skill_scripts_str not in sys.path:
+            sys.path.insert(0, skill_scripts_str)
+        try:
+            from browser_utils import BrowserFactory
+        except ImportError as exc:
+            raise NotebookLMUnavailableError(
+                f"Failed to import BrowserFactory from '{browser_utils_script}': {exc}"
+            ) from exc
 
         playwright = sync_playwright().start()
         context = None

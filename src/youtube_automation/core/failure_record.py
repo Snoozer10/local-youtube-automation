@@ -111,6 +111,23 @@ _CANARY_OR_PROSE_RE = re.compile(
 _CREDENTIAL_RAW_RE = re.compile(
     r"(?i)\b(?:password|passwd|secret|api[_-]?key|bearer|token)\b\s*[:=]\s*(?!\[redacted\])\S+"
 )
+_DISALLOWED_DIAGNOSTIC_CHARS_RE = re.compile(
+    r"[^\u0020-\u007E\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]"
+)
+_DIAGNOSTIC_ARABIC_KEYS = {
+    "cue", "cues",
+    "narrator", "narrator_cue", "narratorcue",
+    "audio_cue", "audiocue",
+    "director_cue", "directorcue",
+    "dialect", "voice",
+    "chapter", "chapter_cue", "chaptercue",
+    "scene", "line", "lines",
+    "term", "terms", "vocabulary",
+    "phrase", "phrases",
+    "arabic_term", "arabicterm",
+    "script_line", "scriptline",
+    "title",
+}
 _BOUNDED_OPERATIONAL_PATTERNS = [
     re.compile(r"(?i)^BrowserType\.connect_over_cdp:\s*Timeout\s+\d+ms\s+exceeded$"),
     re.compile(r"(?i)^Page\.goto:\s*Timeout\s+\d+ms\s+exceeded$"),
@@ -531,7 +548,7 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
             if header_values or parent_sensitive or key_name in sensitive:
                 return "[redacted]"
             cleaned = _clean(value[:4096], limit=300)
-            if any(ord(c) > 126 for c in cleaned) or re.search(r"(?i)\bcanary\b", cleaned):
+            if _DISALLOWED_DIAGNOSTIC_CHARS_RE.search(cleaned) or re.search(r"(?i)\bcanary\b", cleaned):
                 return "[redacted]"
             if is_known_issue:
                 if key_name == "id":
@@ -584,6 +601,13 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
             }:
                 if re.fullmatch(r"^[a-zA-Z0-9_\-.:/]{1,80}$", cleaned):
                     return cleaned
+            if key_name in _DIAGNOSTIC_ARABIC_KEYS:
+                if (
+                    not _CANARY_OR_PROSE_RE.search(cleaned)
+                    and not _CREDENTIAL_RAW_RE.search(cleaned)
+                    and len(cleaned) <= 160
+                ):
+                    return cleaned
             return "[redacted]"
         if isinstance(value, dict):
             result = {}
@@ -630,7 +654,7 @@ def sanitize_record(record: dict[str, Any]) -> dict[str, Any]:
         if parent_sensitive:
             return "[redacted]"
         str_val = _clean(str(value)[:4096], limit=300)
-        if any(ord(c) > 126 for c in str_val) or re.search(r"(?i)\bcanary\b", str_val):
+        if _DISALLOWED_DIAGNOSTIC_CHARS_RE.search(str_val) or re.search(r"(?i)\bcanary\b", str_val):
             return "[redacted]"
         return str_val
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import enum
+import errno
 import hashlib
 import json
 import os
@@ -505,10 +506,19 @@ def identify_recovery_files(runtime_root: Path) -> list[tuple[Path, RecoveryItem
     return expand_recovery_closure(runtime_root, matched)
 
 
+_WINDOWS_DOS_RESERVED_NAMES: frozenset[str] = frozenset({
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+})
+
+
 def _validate_recovery_id(recovery_id: str) -> None:
     """Validate that recovery_id is safe and strictly alphanumeric/hyphen/underscore."""
     if not isinstance(recovery_id, str) or not re.match(r"^[a-zA-Z0-9_\-]{1,64}$", recovery_id):
         raise ValueError(f"Invalid recovery_id: {recovery_id!r}")
+    if recovery_id.upper() in _WINDOWS_DOS_RESERVED_NAMES:
+        raise ValueError(f"Invalid recovery_id: {recovery_id!r} is a reserved Windows DOS device name")
 
 
 _active_snapshot_locks: set[Path] = set()
@@ -543,18 +553,22 @@ def _acquire_snapshot_lock(lock_path: Path, recovery_id: str):
             try:
                 msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
             except OSError as err:
-                raise FileExistsError(
-                    f"Recovery snapshot attempt for {recovery_id} is actively owned by another process"
-                ) from err
+                if err.errno in (errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK):
+                    raise FileExistsError(
+                        f"Recovery snapshot attempt for {recovery_id} is actively owned by another process"
+                    ) from err
+                raise
         else:
             import fcntl
             try:
                 fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except OSError as err:
-                raise FileExistsError(
-                    f"Recovery snapshot attempt for {recovery_id} is actively owned by another process"
-                ) from err
-    except Exception:
+                if err.errno in (errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK):
+                    raise FileExistsError(
+                        f"Recovery snapshot attempt for {recovery_id} is actively owned by another process"
+                    ) from err
+                raise
+    except BaseException:
         with _snapshot_locks_mutex:
             _active_snapshot_locks.discard(lock_path)
         if f is not None:
@@ -569,23 +583,25 @@ def _acquire_snapshot_lock(lock_path: Path, recovery_id: str):
     finally:
         try:
             if f is not None:
-                if sys.platform == "win32":
-                    import msvcrt
-                    f.seek(0)
-                    try:
-                        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
-                    except OSError:
-                        pass
-                else:
-                    import fcntl
-                    try:
-                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                    except OSError:
-                        pass
                 try:
-                    f.close()
-                except OSError:
-                    pass
+                    if sys.platform == "win32":
+                        import msvcrt
+                        try:
+                            f.seek(0)
+                            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+                        except OSError:
+                            pass
+                    else:
+                        import fcntl
+                        try:
+                            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                        except OSError:
+                            pass
+                finally:
+                    try:
+                        f.close()
+                    except OSError:
+                        pass
         finally:
             with _snapshot_locks_mutex:
                 _active_snapshot_locks.discard(lock_path)
@@ -676,15 +692,6 @@ def archive_interrupted_snapshot(
     lock_path = (backup_storage / f".{recovery_id}.lock").resolve()
     if not lock_path.is_relative_to(backup_storage):
         raise ValueError(f"Lock path escapes backup storage: {recovery_id!r}")
-
-    if not snapshot_dir.exists():
-        return None
-
-    manifest_path = snapshot_dir / "RECOVERY_MANIFEST.json"
-    if manifest_path.is_file():
-        raise FileExistsError(
-            f"Cannot archive completed recovery snapshot {recovery_id}; completed snapshots are immutable"
-        )
 
     with _acquire_snapshot_lock(lock_path, recovery_id):
         return _archive_interrupted_dir(backup_storage, recovery_id, snapshot_dir)
