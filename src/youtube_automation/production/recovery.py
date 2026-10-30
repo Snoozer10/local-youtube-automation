@@ -9,14 +9,19 @@ Covers accepted Track A requirements D4 and D5:
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import enum
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
+import sys
+import threading
 import time
+from collections.abc import Callable
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -500,33 +505,198 @@ def identify_recovery_files(runtime_root: Path) -> list[tuple[Path, RecoveryItem
     return expand_recovery_closure(runtime_root, matched)
 
 
-def create_isolated_recovery_snapshot(
-    runtime_root: Path,
-    backup_storage: Path,
-    recovery_id: str,
-) -> Path:
-    """Create a verified point-in-time recovery snapshot without mutating live production state.
-
-    Uses byte-level file preservation without opening SQLite connections against the live source,
-    guaranteeing 0 byte changes, 0 sidecar creations, and 0 directory mutations in source.
-    """
-    import re
-    if not re.match(r"^[a-zA-Z0-9_\-]{1,64}$", recovery_id):
+def _validate_recovery_id(recovery_id: str) -> None:
+    """Validate that recovery_id is safe and strictly alphanumeric/hyphen/underscore."""
+    if not isinstance(recovery_id, str) or not re.match(r"^[a-zA-Z0-9_\-]{1,64}$", recovery_id):
         raise ValueError(f"Invalid recovery_id: {recovery_id!r}")
 
-    runtime_root = runtime_root.resolve()
+
+_active_snapshot_locks: set[Path] = set()
+_snapshot_locks_mutex = threading.Lock()
+
+
+@contextlib.contextmanager
+def _acquire_snapshot_lock(lock_path: Path, recovery_id: str):
+    """Acquire exclusive non-blocking file lock across processes and threads.
+
+    Guarantees that two concurrent attempts for the same snapshot ID produce
+    exactly one owner. Losing attempts fail fast with FileExistsError without
+    modifying or touching any snapshot files.
+    """
+    _validate_recovery_id(recovery_id)
+    lock_path = lock_path.resolve()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with _snapshot_locks_mutex:
+        if lock_path in _active_snapshot_locks:
+            raise FileExistsError(
+                f"Recovery snapshot attempt for {recovery_id} is actively owned by another thread"
+            )
+        _active_snapshot_locks.add(lock_path)
+
+    f = None
+    try:
+        f = open(lock_path, "a+b")
+        if sys.platform == "win32":
+            import msvcrt
+            f.seek(0)
+            try:
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as err:
+                raise FileExistsError(
+                    f"Recovery snapshot attempt for {recovery_id} is actively owned by another process"
+                ) from err
+        else:
+            import fcntl
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as err:
+                raise FileExistsError(
+                    f"Recovery snapshot attempt for {recovery_id} is actively owned by another process"
+                ) from err
+    except Exception:
+        with _snapshot_locks_mutex:
+            _active_snapshot_locks.discard(lock_path)
+        if f is not None:
+            try:
+                f.close()
+            except OSError:
+                pass
+        raise
+
+    try:
+        yield f
+    finally:
+        try:
+            if f is not None:
+                if sys.platform == "win32":
+                    import msvcrt
+                    f.seek(0)
+                    try:
+                        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+                    except OSError:
+                        pass
+                else:
+                    import fcntl
+                    try:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                    except OSError:
+                        pass
+                try:
+                    f.close()
+                except OSError:
+                    pass
+        finally:
+            with _snapshot_locks_mutex:
+                _active_snapshot_locks.discard(lock_path)
+
+
+def _archive_interrupted_dir(
+    backup_storage: Path,
+    recovery_id: str,
+    snapshot_dir: Path,
+) -> Path | None:
+    if not snapshot_dir.exists():
+        return None
+
+    manifest_path = snapshot_dir / "RECOVERY_MANIFEST.json"
+    if manifest_path.is_file():
+        raise FileExistsError(
+            f"Cannot archive completed recovery snapshot {recovery_id}; completed snapshots are immutable"
+        )
+
+    ts = int(time.time())
+    archive_dir = (backup_storage / f"{recovery_id}.interrupted.{ts}").resolve()
+    idx = 1
+    while archive_dir.exists():
+        archive_dir = (backup_storage / f"{recovery_id}.interrupted.{ts}_{idx}").resolve()
+        idx += 1
+
+    if not archive_dir.is_relative_to(backup_storage) or archive_dir == backup_storage:
+        raise ValueError(f"Archive directory escapes backup storage: {archive_dir}")
+
+    interrupted_receipt = {
+        "status": "INTERRUPTED_ARCHIVED",
+        "recovery_id": recovery_id,
+        "archived_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "original_path": str(snapshot_dir),
+        "archive_path": str(archive_dir),
+    }
+    receipt_bytes = json.dumps(interrupted_receipt, indent=2).encode("utf-8")
+
+    primary_receipt = snapshot_dir / "INTERRUPTED_RECEIPT.json"
+    target_receipt: Path | None = None
+    if not primary_receipt.exists():
+        try:
+            with primary_receipt.open("xb") as rf:
+                rf.write(receipt_bytes)
+                rf.flush()
+                os.fsync(rf.fileno())
+            target_receipt = primary_receipt
+        except FileExistsError:
+            pass  # Fall through to timestamped receipt to retain existing bytes
+
+    if target_receipt is None:
+        # Retain preexisting historical receipt bytes; write distinct exclusive operation receipt
+        retry_idx = 0
+        while True:
+            suffix = f".{ts}" if retry_idx == 0 else f".{ts}_{retry_idx}"
+            cand = snapshot_dir / f"INTERRUPTED_RECEIPT{suffix}.json"
+            try:
+                with cand.open("xb") as rf:
+                    rf.write(receipt_bytes)
+                    rf.flush()
+                    os.fsync(rf.fileno())
+                target_receipt = cand
+                break
+            except FileExistsError:
+                retry_idx += 1
+
+    shutil.move(str(snapshot_dir), str(archive_dir))
+    return archive_dir
+
+
+def archive_interrupted_snapshot(
+    backup_storage: Path,
+    recovery_id: str,
+) -> Path | None:
+    """Explicitly archive an interrupted snapshot attempt, preserving all evidence.
+
+    Refuses if:
+    - recovery_id is invalid or attempts traversal / namespace escape.
+    - Snapshot already completed (RECOVERY_MANIFEST.json present); completed snapshots are immutable.
+    - An attempt is actively running (lock actively held).
+    """
+    _validate_recovery_id(recovery_id)
     backup_storage = backup_storage.resolve()
-    snapshot_dir = backup_storage / recovery_id
+    snapshot_dir = (backup_storage / recovery_id).resolve()
+    if not snapshot_dir.is_relative_to(backup_storage) or snapshot_dir == backup_storage:
+        raise ValueError(f"Snapshot directory escapes backup storage: {recovery_id!r}")
 
-    if snapshot_dir.exists():
-        manifest_path = snapshot_dir / "RECOVERY_MANIFEST.json"
-        if manifest_path.is_file():
-            raise FileExistsError(f"Recovery snapshot {recovery_id} already exists with completed manifest")
-        raise FileExistsError(f"Recovery snapshot directory {snapshot_dir} already exists")
+    lock_path = (backup_storage / f".{recovery_id}.lock").resolve()
+    if not lock_path.is_relative_to(backup_storage):
+        raise ValueError(f"Lock path escapes backup storage: {recovery_id!r}")
 
-    matched_items = identify_recovery_files(runtime_root)
-    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    if not snapshot_dir.exists():
+        return None
 
+    manifest_path = snapshot_dir / "RECOVERY_MANIFEST.json"
+    if manifest_path.is_file():
+        raise FileExistsError(
+            f"Cannot archive completed recovery snapshot {recovery_id}; completed snapshots are immutable"
+        )
+
+    with _acquire_snapshot_lock(lock_path, recovery_id):
+        return _archive_interrupted_dir(backup_storage, recovery_id, snapshot_dir)
+
+
+def _capture_snapshot_contents(
+    runtime_root: Path,
+    snapshot_dir: Path,
+    recovery_id: str,
+    matched_items: list[tuple[Path, RecoveryItemSpec]],
+    _sync_hook: Callable[[str], None] | None = None,
+) -> Path:
     file_entries: list[RecoveryFileEntry] = []
 
     # Bind truthful authority metadata into manifest
@@ -798,7 +968,16 @@ def create_isolated_recovery_snapshot(
         manifest_path = snapshot_dir / "RECOVERY_MANIFEST.json"
         tmp_manifest = snapshot_dir / ".RECOVERY_MANIFEST.tmp"
         tmp_manifest.write_text(json.dumps(manifest_data, indent=2), encoding="utf-8")
+
+        if _sync_hook is not None:
+            _sync_hook("before_manifest_publish")
+
         os.replace(str(tmp_manifest), str(manifest_path))
+
+        try:
+            (snapshot_dir / ".ATTEMPT.json").unlink(missing_ok=True)
+        except OSError:
+            pass
 
         return manifest_path
 
@@ -814,9 +993,102 @@ def create_isolated_recovery_snapshot(
             }
             fail_manifest = snapshot_dir / "FAILED_SNAPSHOT.json"
             fail_manifest.write_text(json.dumps(fail_record, indent=2), encoding="utf-8")
+            try:
+                (snapshot_dir / ".ATTEMPT.json").unlink(missing_ok=True)
+            except OSError:
+                pass
         except Exception:
             pass
         raise
+
+
+def create_isolated_recovery_snapshot(
+    runtime_root: Path,
+    backup_storage: Path,
+    recovery_id: str,
+    *,
+    recover_interrupted: bool = False,
+    _sync_hook: Callable[[str], None] | None = None,
+) -> Path:
+    """Create a verified point-in-time recovery snapshot without mutating live production state.
+
+    Uses byte-level file preservation without opening SQLite connections against the live source,
+    guaranteeing 0 byte changes, 0 sidecar creations, and 0 directory mutations in source.
+
+    Concurrency and safety guarantees (Issue #58):
+    - Exclusive ownership established before creating or modifying any snapshot files.
+    - Two concurrent attempts on same recovery_id produce exactly one owner; loser refuses without
+      mutating winner's files, manifest, receipts, or failure evidence.
+    - Completed snapshots refuse conflicting reuse without modifying existing bytes.
+    - Interrupted attempts retain evidence; refuses overwrite unless explicit recover_interrupted=True.
+    - Manifest is published atomically only after all closure and integrity checks pass.
+    """
+    _validate_recovery_id(recovery_id)
+
+    runtime_root = runtime_root.resolve()
+    backup_storage = backup_storage.resolve()
+    snapshot_dir = (backup_storage / recovery_id).resolve()
+    if not snapshot_dir.is_relative_to(backup_storage) or snapshot_dir == backup_storage:
+        raise ValueError(f"Snapshot directory escapes backup storage: {recovery_id!r}")
+
+    lock_path = (backup_storage / f".{recovery_id}.lock").resolve()
+    if not lock_path.is_relative_to(backup_storage):
+        raise ValueError(f"Lock path escapes backup storage: {recovery_id!r}")
+
+    # Pre-check without acquiring lock (fast path for existing completed or unrecovered snapshots)
+    if snapshot_dir.exists():
+        manifest_path = snapshot_dir / "RECOVERY_MANIFEST.json"
+        if manifest_path.is_file():
+            raise FileExistsError(f"Recovery snapshot {recovery_id} already exists with completed manifest")
+        if not recover_interrupted:
+            fail_path = snapshot_dir / "FAILED_SNAPSHOT.json"
+            if fail_path.is_file():
+                raise FileExistsError(
+                    f"Recovery snapshot {recovery_id} already exists with recorded failure evidence; refusing overwrite"
+                )
+            raise FileExistsError(f"Recovery snapshot directory {snapshot_dir} already exists")
+
+    backup_storage.mkdir(parents=True, exist_ok=True)
+
+    with _acquire_snapshot_lock(lock_path, recovery_id):
+        if _sync_hook is not None:
+            _sync_hook("after_lock_acquired")
+
+        # In-lock check: ensure state did not change while waiting
+        if snapshot_dir.exists():
+            manifest_path = snapshot_dir / "RECOVERY_MANIFEST.json"
+            if manifest_path.is_file():
+                raise FileExistsError(f"Recovery snapshot {recovery_id} already exists with completed manifest")
+            if not recover_interrupted:
+                fail_path = snapshot_dir / "FAILED_SNAPSHOT.json"
+                if fail_path.is_file():
+                    raise FileExistsError(
+                        f"Recovery snapshot {recovery_id} already exists with recorded failure evidence; refusing overwrite"
+                    )
+                raise FileExistsError(f"Recovery snapshot directory {snapshot_dir} already exists")
+
+            # Explicit recovery requested: archive prior interrupted attempt
+            _archive_interrupted_dir(backup_storage, recovery_id, snapshot_dir)
+
+        snapshot_dir.mkdir(parents=True, exist_ok=False)
+
+        # Record attempt ownership marker inside the snapshot directory
+        attempt_record = {
+            "status": "IN_PROGRESS",
+            "recovery_id": recovery_id,
+            "pid": os.getpid(),
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        (snapshot_dir / ".ATTEMPT.json").write_text(json.dumps(attempt_record, indent=2), encoding="utf-8")
+
+        matched_items = identify_recovery_files(runtime_root)
+        return _capture_snapshot_contents(
+            runtime_root=runtime_root,
+            snapshot_dir=snapshot_dir,
+            recovery_id=recovery_id,
+            matched_items=matched_items,
+            _sync_hook=_sync_hook,
+        )
 
 
 def restore_isolated_recovery_snapshot(
@@ -832,9 +1104,12 @@ def restore_isolated_recovery_snapshot(
     - Destination already has a RESTORATION_RECEIPT.json (protects prior evidence).
     - Destination files already exist with differing content (protects newer resumed work).
     """
+    _validate_recovery_id(recovery_id)
     backup_storage = backup_storage.resolve()
     target_restore_dir = target_restore_dir.resolve()
-    snapshot_dir = backup_storage / recovery_id
+    snapshot_dir = (backup_storage / recovery_id).resolve()
+    if not snapshot_dir.is_relative_to(backup_storage) or snapshot_dir == backup_storage:
+        raise ValueError(f"Snapshot directory escapes backup storage: {recovery_id!r}")
     manifest_path = snapshot_dir / "RECOVERY_MANIFEST.json"
 
     if not manifest_path.is_file():

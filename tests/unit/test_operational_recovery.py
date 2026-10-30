@@ -957,3 +957,418 @@ def test_recovery_closure_contained_absolute_reference_change_refused(tmp_path: 
     assert "brief.json requires referenced artifact" in fail_data["error_message"]
     assert repr(str(new.resolve())) in fail_data["error_message"]
 
+
+# ==============================================================================
+# Issue #58: Snapshot Concurrency & Same-ID Protection Regressions
+# ==============================================================================
+
+
+def test_snapshot_concurrency_deterministic_two_competing_attempts(
+    mock_operational_runtime: Path,
+    tmp_path: Path,
+):
+    """Issue #58: Two concurrent attempts using same snapshot ID produce exactly one owner.
+    Losing attempt refuses without modifying the winner's files, manifest, receipts, or failure evidence.
+    """
+    import hashlib
+    import threading
+
+    backup_storage = tmp_path / "backups"
+    recovery_id = "competing_same_id_01"
+
+    attempt1_acquired = threading.Event()
+    attempt2_finished = threading.Event()
+    attempt2_error: list[Exception] = []
+    attempt1_result: list[Path] = []
+    attempt1_error: list[Exception] = []
+
+    def sync_hook(phase: str):
+        if phase == "after_lock_acquired":
+            attempt1_acquired.set()
+            attempt2_finished.wait(timeout=5.0)
+
+    def run_attempt1():
+        try:
+            res = create_isolated_recovery_snapshot(
+                runtime_root=mock_operational_runtime,
+                backup_storage=backup_storage,
+                recovery_id=recovery_id,
+                _sync_hook=sync_hook,
+            )
+            attempt1_result.append(res)
+        except Exception as exc:
+            attempt1_error.append(exc)
+
+    def run_attempt2():
+        attempt1_acquired.wait(timeout=5.0)
+        try:
+            create_isolated_recovery_snapshot(
+                runtime_root=mock_operational_runtime,
+                backup_storage=backup_storage,
+                recovery_id=recovery_id,
+            )
+        except Exception as exc:
+            attempt2_error.append(exc)
+        finally:
+            attempt2_finished.set()
+
+    t1 = threading.Thread(target=run_attempt1)
+    t2 = threading.Thread(target=run_attempt2)
+
+    t1.start()
+    t2.start()
+
+    t2.join(timeout=10.0)
+    t1.join(timeout=10.0)
+
+    # 1. Losing attempt must fail fast with FileExistsError indicating active ownership
+    assert len(attempt2_error) == 1, f"Expected 1 error for attempt 2, got {attempt2_error}"
+    assert isinstance(attempt2_error[0], FileExistsError)
+    assert "actively owned" in str(attempt2_error[0])
+
+    # 2. Winning attempt must succeed
+    assert len(attempt1_error) == 0, f"Attempt 1 unexpectedly failed: {attempt1_error}"
+    assert len(attempt1_result) == 1
+    manifest_path = attempt1_result[0]
+    assert manifest_path.is_file()
+
+    # 3. Winning directory must NOT have FAILED_SNAPSHOT.json written by losing attempt
+    snapshot_dir = backup_storage / recovery_id
+    assert not (snapshot_dir / "FAILED_SNAPSHOT.json").exists(), (
+        "Losing attempt polluted winning snapshot directory with FAILED_SNAPSHOT.json"
+    )
+
+    # 4. Manifest integrity check
+    manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload = {k: v for k, v in manifest_data.items() if k != "manifest_sha256"}
+    computed_sha = hashlib.sha256(json.dumps(payload, indent=2).encode("utf-8")).hexdigest()
+    assert manifest_data["manifest_sha256"] == computed_sha
+
+
+def test_snapshot_concurrency_multiprocess_competing_attempts(
+    mock_operational_runtime: Path,
+    tmp_path: Path,
+):
+    """Issue #58: Cross-process concurrent attempts produce exactly one owner; loser fails fast."""
+    import subprocess
+    import sys
+    import time
+
+    src_path = Path(__file__).resolve().parents[2] / "src"
+
+    backup_storage = tmp_path / "backups"
+    recovery_id = "multiprocess_snap_01"
+    marker_dir = tmp_path / "markers"
+    marker_dir.mkdir(parents=True)
+    acquired_marker = marker_dir / "acquired.txt"
+    release_marker = marker_dir / "release.txt"
+
+    code_p1 = f"""
+import sys
+sys.path.insert(0, r"{src_path}")
+import time
+from pathlib import Path
+from youtube_automation.production.recovery import create_isolated_recovery_snapshot
+
+def hook(phase):
+    if phase == "after_lock_acquired":
+        Path(r"{acquired_marker}").write_text("ok", encoding="utf-8")
+        while not Path(r"{release_marker}").exists():
+            time.sleep(0.05)
+
+create_isolated_recovery_snapshot(
+    runtime_root=Path(r"{mock_operational_runtime}"),
+    backup_storage=Path(r"{backup_storage}"),
+    recovery_id="{recovery_id}",
+    _sync_hook=hook,
+)
+"""
+
+    code_p2 = f"""
+import sys
+sys.path.insert(0, r"{src_path}")
+from pathlib import Path
+from youtube_automation.production.recovery import create_isolated_recovery_snapshot
+
+create_isolated_recovery_snapshot(
+    runtime_root=Path(r"{mock_operational_runtime}"),
+    backup_storage=Path(r"{backup_storage}"),
+    recovery_id="{recovery_id}",
+)
+"""
+
+    p1 = subprocess.Popen([sys.executable, "-c", code_p1], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    try:
+        for _ in range(100):
+            if acquired_marker.exists():
+                break
+            time.sleep(0.05)
+        assert acquired_marker.exists(), "Process 1 failed to acquire lock in time"
+
+        res_p2 = subprocess.run([sys.executable, "-c", code_p2], capture_output=True, text=True)
+        assert res_p2.returncode != 0
+        assert "FileExistsError" in res_p2.stderr
+        assert "actively owned" in res_p2.stderr
+
+    finally:
+        release_marker.write_text("go", encoding="utf-8")
+        _stdout1, stderr1 = p1.communicate(timeout=10.0)
+        assert p1.returncode == 0, f"Process 1 failed: {stderr1}"
+
+    snap_dir = backup_storage / recovery_id
+    assert (snap_dir / "RECOVERY_MANIFEST.json").is_file()
+    assert not (snap_dir / "FAILED_SNAPSHOT.json").exists()
+
+
+def test_snapshot_refuses_reuse_of_completed_snapshot_without_mutation(
+    mock_operational_runtime: Path,
+    tmp_path: Path,
+):
+    """Issue #58: Completed snapshots refuse conflicting reuse without modifying existing bytes."""
+    backup_storage = tmp_path / "backups"
+    recovery_id = "completed_reuse_01"
+
+    manifest_path = create_isolated_recovery_snapshot(mock_operational_runtime, backup_storage, recovery_id)
+    assert manifest_path.is_file()
+
+    snap_dir = backup_storage / recovery_id
+    before_files = {}
+    for f in sorted(snap_dir.rglob("*")):
+        if f.is_file():
+            before_files[f.relative_to(snap_dir)] = (f.stat().st_size, compute_sha256(f))
+
+    with pytest.raises(FileExistsError, match="Recovery snapshot completed_reuse_01 already exists with completed manifest"):
+        create_isolated_recovery_snapshot(mock_operational_runtime, backup_storage, recovery_id)
+
+    after_files = {}
+    for f in sorted(snap_dir.rglob("*")):
+        if f.is_file():
+            after_files[f.relative_to(snap_dir)] = (f.stat().st_size, compute_sha256(f))
+
+    assert before_files == after_files, "Completed snapshot files mutated on refused reuse"
+
+
+def test_snapshot_refuses_overwrite_of_prior_failed_snapshot_evidence(
+    mock_operational_runtime: Path,
+    tmp_path: Path,
+):
+    """Issue #58: Failed snapshot attempts preserve failure evidence and refuse overwrite without explicit recovery."""
+    backup_storage = tmp_path / "backups"
+    recovery_id = "failed_reuse_01"
+    snap_dir = backup_storage / recovery_id
+    snap_dir.mkdir(parents=True)
+
+    fail_file = snap_dir / "FAILED_SNAPSHOT.json"
+    fail_file.write_text(json.dumps({"status": "FAILED", "reason": "prior_simulated_failure"}, indent=2), encoding="utf-8")
+    before_sha = compute_sha256(fail_file)
+
+    with pytest.raises(FileExistsError, match="Recovery snapshot failed_reuse_01 already exists with recorded failure evidence"):
+        create_isolated_recovery_snapshot(mock_operational_runtime, backup_storage, recovery_id, recover_interrupted=False)
+
+    after_sha = compute_sha256(fail_file)
+    assert before_sha == after_sha, "Failure evidence was mutated during refused attempt"
+
+
+def test_snapshot_interrupted_attempt_refuses_by_default_and_preserves_evidence(
+    mock_operational_runtime: Path,
+    tmp_path: Path,
+):
+    """Issue #58: Interrupted attempt directory refuses overwrite by default and retains partial files."""
+    backup_storage = tmp_path / "backups"
+    recovery_id = "interrupted_reuse_01"
+    snap_dir = backup_storage / recovery_id
+    snap_dir.mkdir(parents=True)
+
+    partial_file = snap_dir / "partial_db.sqlite3"
+    partial_file.write_text("interrupted_binary_data", encoding="utf-8")
+    attempt_meta = snap_dir / ".ATTEMPT.json"
+    attempt_meta.write_text(json.dumps({"status": "IN_PROGRESS", "pid": 11111}), encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="Recovery snapshot directory .* already exists"):
+        create_isolated_recovery_snapshot(mock_operational_runtime, backup_storage, recovery_id, recover_interrupted=False)
+
+    assert partial_file.read_text(encoding="utf-8") == "interrupted_binary_data"
+    assert attempt_meta.is_file()
+
+
+def test_snapshot_explicit_recovery_archives_interrupted_evidence(
+    mock_operational_runtime: Path,
+    tmp_path: Path,
+):
+    """Issue #58: Explicit recovery archives interrupted evidence into timestamped directory and completes new snapshot."""
+    backup_storage = tmp_path / "backups"
+    recovery_id = "interrupted_archive_01"
+    snap_dir = backup_storage / recovery_id
+    snap_dir.mkdir(parents=True)
+
+    partial_file = snap_dir / "partial_db.sqlite3"
+    partial_file.write_text("interrupted_binary_data", encoding="utf-8")
+
+    manifest_p = create_isolated_recovery_snapshot(
+        runtime_root=mock_operational_runtime,
+        backup_storage=backup_storage,
+        recovery_id=recovery_id,
+        recover_interrupted=True,
+    )
+    assert manifest_p.is_file()
+
+    archives = list(backup_storage.glob(f"{recovery_id}.interrupted.*"))
+    assert len(archives) == 1, f"Expected 1 archive directory, found: {archives}"
+    archive_dir = archives[0]
+
+    assert (archive_dir / "partial_db.sqlite3").is_file()
+    assert (archive_dir / "partial_db.sqlite3").read_text(encoding="utf-8") == "interrupted_binary_data"
+    assert (archive_dir / "INTERRUPTED_RECEIPT.json").is_file()
+
+    receipt_data = json.loads((archive_dir / "INTERRUPTED_RECEIPT.json").read_text(encoding="utf-8"))
+    assert receipt_data["status"] == "INTERRUPTED_ARCHIVED"
+    assert receipt_data["recovery_id"] == recovery_id
+
+    new_snap = backup_storage / recovery_id
+    assert (new_snap / "RECOVERY_MANIFEST.json").is_file()
+    assert not (new_snap / "partial_db.sqlite3").exists()
+
+
+def test_archive_interrupted_snapshot_refuses_completed_and_active(
+    mock_operational_runtime: Path,
+    tmp_path: Path,
+):
+    """Issue #58: archive_interrupted_snapshot refuses on completed or actively locked snapshots."""
+    from youtube_automation.production.recovery import (
+        _acquire_snapshot_lock,
+        archive_interrupted_snapshot,
+    )
+
+    backup_storage = tmp_path / "backups"
+
+    completed_id = "completed_no_archive"
+    create_isolated_recovery_snapshot(mock_operational_runtime, backup_storage, completed_id)
+    with pytest.raises(FileExistsError, match="Cannot archive completed recovery snapshot"):
+        archive_interrupted_snapshot(backup_storage, completed_id)
+
+    active_id = "active_no_archive"
+    active_dir = backup_storage / active_id
+    active_dir.mkdir(parents=True)
+    lock_path = backup_storage / f".{active_id}.lock"
+
+    with _acquire_snapshot_lock(lock_path, active_id):
+        with pytest.raises(FileExistsError, match="actively owned"):
+            archive_interrupted_snapshot(backup_storage, active_id)
+
+
+def test_archive_interrupted_snapshot_refuses_invalid_traversal_and_absolute_ids(
+    mock_operational_runtime: Path,
+    tmp_path: Path,
+):
+    """Issue #58: archive_interrupted_snapshot refuses invalid, traversal, and absolute IDs without escaping."""
+    from youtube_automation.production.recovery import archive_interrupted_snapshot
+
+    case = tmp_path / "containment_case"
+    backups = case / "backups"
+    outside = case / "outside"
+    backups.mkdir(parents=True)
+    outside.mkdir(parents=True)
+
+    protected_file = outside / "protected.txt"
+    protected_file.write_bytes(b"preserve outside snapshot namespace\n")
+    before_sha = compute_sha256(protected_file)
+
+    # 1. Directory traversal ID must be refused
+    with pytest.raises(ValueError, match="Invalid recovery_id"):
+        archive_interrupted_snapshot(backups, "../outside")
+
+    # 2. Absolute path ID must be refused
+    with pytest.raises(ValueError, match="Invalid recovery_id"):
+        archive_interrupted_snapshot(backups, str(outside.resolve()))
+
+    # 3. Separator and invalid character IDs must be refused
+    for invalid_id in ("../../escaped", "sub/nested", "with space", "", ".", "..", "invalid*char"):
+        with pytest.raises(ValueError, match="Invalid recovery_id"):
+            archive_interrupted_snapshot(backups, invalid_id)
+
+    # 4. Verify outside directory, files, and hashes are completely untouched
+    assert outside.exists()
+    assert protected_file.is_file()
+    assert compute_sha256(protected_file) == before_sha
+    assert protected_file.read_bytes() == b"preserve outside snapshot namespace\n"
+    assert not (outside / "INTERRUPTED_RECEIPT.json").exists()
+    assert not (case / ".outside.lock").exists()
+
+    # 5. Verify create_isolated_recovery_snapshot also refuses traversal and absolute IDs
+    with pytest.raises(ValueError, match="Invalid recovery_id"):
+        create_isolated_recovery_snapshot(mock_operational_runtime, backups, "../outside")
+    with pytest.raises(ValueError, match="Invalid recovery_id"):
+        create_isolated_recovery_snapshot(mock_operational_runtime, backups, str(outside.resolve()))
+
+
+def test_archive_interrupted_snapshot_preserves_preexisting_receipt_and_partial_data(
+    tmp_path: Path,
+):
+    """Issue #58: archive_interrupted_snapshot preserves historical receipt bytes and partial data on retry."""
+    from youtube_automation.production.recovery import archive_interrupted_snapshot
+
+    backups = tmp_path / "backups"
+    attempt_dir = backups / "interrupted_retry"
+    attempt_dir.mkdir(parents=True)
+
+    historical_receipt_bytes = b'{"status":"INTERRUPTED_ARCHIVED","original_receipt":"preserve-me"}\r\n'
+    (attempt_dir / "INTERRUPTED_RECEIPT.json").write_bytes(historical_receipt_bytes)
+    (attempt_dir / ".ATTEMPT.json").write_text('{"status":"IN_PROGRESS","pid":12345}', encoding="utf-8")
+    (attempt_dir / "partial.bin").write_bytes(b"partial evidence bytes")
+
+    historical_sha = compute_sha256(attempt_dir / "INTERRUPTED_RECEIPT.json")
+
+    archived_dir = archive_interrupted_snapshot(backups, "interrupted_retry")
+    assert archived_dir is not None
+    assert archived_dir.is_dir()
+    assert not attempt_dir.exists()
+
+    # Verify original INTERRUPTED_RECEIPT.json bytes are preserved exactly
+    archived_orig_receipt = archived_dir / "INTERRUPTED_RECEIPT.json"
+    assert archived_orig_receipt.is_file()
+    assert archived_orig_receipt.read_bytes() == historical_receipt_bytes
+    assert compute_sha256(archived_orig_receipt) == historical_sha
+
+    # Verify partial data and attempt evidence are preserved
+    assert (archived_dir / "partial.bin").read_bytes() == b"partial evidence bytes"
+    assert (archived_dir / ".ATTEMPT.json").is_file()
+
+    # Verify a distinct operation receipt was written for this archive run
+    distinct_receipts = list(archived_dir.glob("INTERRUPTED_RECEIPT.*.json"))
+    assert len(distinct_receipts) >= 1
+    new_receipt = json.loads(distinct_receipts[0].read_text(encoding="utf-8"))
+    assert new_receipt["status"] == "INTERRUPTED_ARCHIVED"
+    assert new_receipt["recovery_id"] == "interrupted_retry"
+    assert new_receipt["archive_path"] == str(archived_dir)
+
+
+def test_archive_interrupted_snapshot_fails_closed_on_receipt_write_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Issue #58: archive_interrupted_snapshot fails closed and does not move snapshot if receipt write fails."""
+    from youtube_automation.production.recovery import archive_interrupted_snapshot
+
+    backups = tmp_path / "backups"
+    attempt_dir = backups / "failed_receipt_attempt"
+    attempt_dir.mkdir(parents=True)
+    (attempt_dir / "partial.bin").write_bytes(b"crucial evidence")
+
+    # Monkeypatch Path.open to fail when writing any receipt
+    real_open = Path.open
+
+    def failing_open(self: Path, *args, **kwargs):
+        if "INTERRUPTED_RECEIPT" in self.name:
+            raise OSError("Simulated disk write failure for receipt")
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", failing_open)
+
+    with pytest.raises(OSError, match="Simulated disk write failure"):
+        archive_interrupted_snapshot(backups, "failed_receipt_attempt")
+
+    # Verify snapshot_dir was NOT moved and partial data is still in place
+    assert attempt_dir.exists()
+    assert (attempt_dir / "partial.bin").read_bytes() == b"crucial evidence"
+
