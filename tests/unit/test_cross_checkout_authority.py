@@ -638,6 +638,119 @@ def test_partial_jobs_key_only_schema_rejected_without_writes(tmp_path: Path, mo
     assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
 
 
+def test_jobs_restricted_state_check_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Batch 6: Candidate with CHECK(state IN ('PENDING')) must fail closed before writes."""
+    import hashlib
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "pending-only"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute(
+        "CREATE TABLE jobs("
+        "key TEXT PRIMARY KEY,recipe TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN ('PENDING')),"
+        "fence INTEGER NOT NULL DEFAULT 0,owner TEXT,expires REAL,"
+        "attempts INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '{}')"
+    )
+    c.commit()
+    c.close()
+
+    def snap_dir(p: Path) -> dict[str, str]:
+        return {x.name: hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.is_file()}
+
+    before = snap_dir(d)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="functional claim qualification failed: CHECK constraint failed"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after = snap_dir(d)
+    assert before == after, "Public operation mutated source database files before rejection"
+
+    # Direct Ledger constructor also fails closed without writes
+    with pytest.raises(IncompatibleAuthorityError, match="functional claim qualification failed: CHECK constraint failed"):
+        ledger.Ledger(db)
+
+    after_direct = snap_dir(d)
+    assert before == after_direct, "Direct Ledger constructor mutated source database files before rejection"
+
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        q = sqlite3.connect(target)
+        tables = [v[0] for v in q.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        rows = q.execute("SELECT * FROM jobs").fetchall()
+        q.close()
+    assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
+    assert rows == [], f"Unexpected rows found in candidate database: {rows}"
+
+
+def test_jobs_unsupported_default_function_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Batch 6: Candidate with DEFAULT(readonly()) must fail closed before writes."""
+    import hashlib
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "readonly-error"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute(
+        "CREATE TABLE jobs("
+        "key TEXT PRIMARY KEY,recipe TEXT NOT NULL,state TEXT NOT NULL,"
+        "fence INTEGER NOT NULL DEFAULT (readonly()),owner TEXT,expires REAL,"
+        "attempts INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '{}')"
+    )
+    c.commit()
+    c.close()
+
+    def snap_dir(p: Path) -> dict[str, str]:
+        return {x.name: hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.is_file()}
+
+    before = snap_dir(d)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="functional claim qualification failed: unknown function"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after = snap_dir(d)
+    assert before == after, "Public operation mutated source database files before rejection"
+
+    # Direct Ledger constructor also fails closed without writes
+    with pytest.raises(IncompatibleAuthorityError, match="functional claim qualification failed: unknown function"):
+        ledger.Ledger(db)
+
+    after_direct = snap_dir(d)
+    assert before == after_direct, "Direct Ledger constructor mutated source database files before rejection"
+
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        q = sqlite3.connect(target)
+        tables = [v[0] for v in q.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        rows = q.execute("SELECT * FROM jobs").fetchall()
+        q.close()
+    assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
+    assert rows == [], f"Unexpected rows found in candidate database: {rows}"
+
+
+
 def test_jobs_null_defaults_rejected_without_writes(tmp_path: Path, monkeypatch):
     """Issue #59 / Spec R1: Candidate with NOT NULL DEFAULT NULL on required fields must fail closed before writes."""
     import hashlib

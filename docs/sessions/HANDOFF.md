@@ -681,3 +681,52 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
 - Preexisting same-ID concurrent snapshot overwrite remains deferred under #58.
 - Stop point: Stop for independent review of PR #74 Batch 5 corrections. Do NOT merge PR #74 or start another campaign batch without explicit user authorization.
+
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Batch 6 Review Corrections), 2026-10-30
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Reviewed Batch 6 PR #74 head: `7faf7b1275e7a51d6886cf4210290b4d463389e3`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial.
+
+### Done
+1. **Canonical Claim Lifecycle Qualification Before Writes (#59 / Spec R1)**:
+   - In `validate_authority_schema` in `src/youtube_automation/production/authority.py`, updated functional qualification to verify the actual canonical claim lifecycle within a rollback savepoint on the isolated candidate copy:
+     - Step 1: Initial `PENDING` insert with unsupplied defaults; asserts valid numeric integer defaults for `fence` and `attempts` and string values for `detail`.
+     - Step 2: Canonical transition to `RUNNING` state via `UPDATE jobs SET recipe=?, state='RUNNING', fence=?, owner=?, expires=?, attempts=attempts+1 WHERE key=?` and verifies `rowcount == 1`.
+     - Step 3: Canonical event recording for `RUNNING` via `INSERT INTO events(at, key, state, detail) VALUES(?, ?, 'RUNNING', ?)`. Ensures `events` table compatibility prior to execution.
+     - Step 4: Unconditional key uniqueness across states: inserts duplicate key rows under valid states (`PENDING` and `RUNNING`). Rejects candidate if duplicate key insertion succeeds or if error is not specifically a `UNIQUE` / `PRIMARY KEY` violation on `key` (preventing arbitrary CHECK constraint failures from being misconstrued as uniqueness proof).
+     - Step 5: Canonical finish transition to terminal states (`SUCCEEDED`, `FAILED`) and terminal event recordings.
+   - Public regression: `test_jobs_restricted_state_check_rejected_without_writes` in `tests/unit/test_cross_checkout_authority.py`.
+
+2. **Eliminated Error-Message Substring Bypasses (#59 / Spec R1 / Standards)**:
+   - Removed `if "readonly" in str(err).lower(): pass` from `sqlite3.OperationalError` handling in `validate_authority_schema`.
+   - Any `sqlite3.Error` during schema qualification (such as unsupported functions like `DEFAULT (readonly())`, syntax errors, or constraint errors) immediately raises `IncompatibleAuthorityError` and aborts admission before any writes, table creations, or journal alterations on the source database.
+   - Public regression: `test_jobs_unsupported_default_function_rejected_without_writes` in `tests/unit/test_cross_checkout_authority.py`.
+
+3. **Preserved Invariants & Preexisting Limitations**:
+   - Maintained all previous Batch 1–5 fixes: recovery transitive closure, contained absolute reference canonical mapping, WAL frame inspection, non-mutating status, epoch invalidation on restoration race, junction cleanup ownership, and ineffective default rejection.
+   - Preexisting same-ID concurrent snapshot overwrite limitation remains visible under #58; full #58 acceptance remains outstanding.
+   - PR #74 description closing directives remain omitted (keeping #55/#56/#58/#59 and #31 open).
+
+### Verification
+- Replayed executable Batch 6 review reproducers:
+  1. `spec/claim_behavior_probe.py`:
+     - `supported_primary`: initialized, claimed, SUCCEEDED, source changed as authorized positive control.
+     - `supported_unique`: initialized, claimed, SUCCEEDED, source changed as authorized positive control.
+     - `pending_only`: fails closed with `IncompatibleAuthorityError: Foreign or incompatible schema in jobs table at ...: functional claim qualification failed: CHECK constraint failed: state IN ('PENDING')`, `source_changed: false`, `tables_in_isolated_copy: ["jobs"]` (no `events` table created), `claim_entered: false`.
+  2. `standards/readonly_error_probe.py`:
+     - `resolved: false`, `claim_entered: false`, fails closed with `IncompatibleAuthorityError: Foreign or incompatible schema in jobs table at ...: functional claim qualification failed: unknown function: readonly()`, `source_changed: false`, `tables_in_isolated_copy: ["jobs"]` (no `events` table created).
+- Replayed Batch 5 `spec/schema_semantic_probe.py` (`null_defaults` and `partial_unique` continue to fail closed with `source_changed: false`).
+- Focused test suite (17 modules, 218 items): 218 passed in 26.55s (exit 0).
+- Static analysis: `ruff check src/ tests/` clean (0 errors).
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Preexisting same-ID concurrent snapshot overwrite remains deferred under #58.
+- Stop point: Stop for independent review of PR #74 Batch 6 corrections. Do NOT merge PR #74 or start another campaign batch without explicit user authorization.
+

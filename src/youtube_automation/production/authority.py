@@ -150,6 +150,17 @@ def validate_authority_schema(
             f"missing primary key or unique constraint on key (unconditional key uniqueness required)"
         )
 
+    if "events" in user_tables:
+        ev_cols = {r[1] for r in conn.execute("PRAGMA table_info(events)").fetchall()}
+        required_events = {"id", "at", "key", "state", "detail"}
+        if not required_events.issubset(ev_cols):
+            missing = sorted(required_events - ev_cols)
+            err_kind = "partial" if require_execution else "unrecognized"
+            raise IncompatibleAuthorityError(
+                f"Foreign or {err_kind} schema in events table at {target_path}: "
+                f"missing required columns: {missing} (found: {sorted(ev_cols)})"
+            )
+
     def _is_ineffective_default(val: Any) -> bool:
         if val is None:
             return True
@@ -172,16 +183,27 @@ def validate_authority_schema(
                     f"column {col_name!r} is NOT NULL but lacks a default value"
                 )
 
-        # Functional qualification on isolated candidate connection
+        # Ensure events table exists on isolated candidate copy for event write qualification
+        if "events" not in user_tables:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS events ("
+                "id INTEGER PRIMARY KEY, at REAL NOT NULL, key TEXT NOT NULL, "
+                "state TEXT NOT NULL, detail TEXT NOT NULL)"
+            )
+
+        # Functional qualification of canonical claim lifecycle on isolated candidate connection
         sp_name = f"_schema_qual_{uuid.uuid4().hex[:8]}"
         canary_key = f"__schema_probe_{uuid.uuid4().hex}__"
+        canary_owner = f"__probe_owner_{uuid.uuid4().hex[:8]}__"
+        canary_recipe = "__probe_recipe__"
+        canary_now = 1000000.0
         try:
             conn.execute(f"SAVEPOINT {sp_name}")
             try:
-                # 1. Verify insertion with unsupplied defaults
+                # 1. Verify insertion with unsupplied defaults (PENDING state)
                 conn.execute(
-                    "INSERT INTO jobs(key, recipe, state) VALUES(?, '__probe_recipe__', 'PENDING')",
-                    (canary_key,),
+                    "INSERT INTO jobs(key, recipe, state) VALUES(?, ?, 'PENDING')",
+                    (canary_key, canary_recipe),
                 )
                 probe_row = conn.execute(
                     "SELECT fence, attempts, detail FROM jobs WHERE key=?",
@@ -193,7 +215,7 @@ def validate_authority_schema(
                         f"insertion defaults produced NULL in required execution columns"
                     )
                 try:
-                    int(probe_row[0])
+                    fence_val = int(probe_row[0])
                     int(probe_row[1])
                 except (ValueError, TypeError) as err:
                     raise IncompatibleAuthorityError(
@@ -201,56 +223,92 @@ def validate_authority_schema(
                         f"numeric default values cannot be parsed as integers: {err}"
                     ) from err
 
-                # 2. Verify unconditional key uniqueness across states
-                duplicate_allowed = False
-                try:
-                    conn.execute(
-                        "INSERT INTO jobs(key, recipe, state) VALUES(?, '__probe_recipe__', 'RUNNING')",
-                        (canary_key,),
-                    )
-                    duplicate_allowed = True
-                except sqlite3.IntegrityError:
-                    pass
-
-                if duplicate_allowed:
+                # 2. Verify canonical claim transition to RUNNING and event write
+                proposed_fence = fence_val + 1
+                upd = conn.execute(
+                    "UPDATE jobs SET recipe=?, state='RUNNING', fence=?, owner=?, expires=?, attempts=attempts+1 WHERE key=?",
+                    (canary_recipe, proposed_fence, canary_owner, canary_now + 60.0, canary_key),
+                )
+                if upd.rowcount != 1:
                     raise IncompatibleAuthorityError(
                         f"Foreign or incompatible schema in jobs table at {target_path}: "
-                        f"key column is not unconditionally unique across states"
+                        f"claim update to RUNNING state failed (updated {upd.rowcount} rows)"
                     )
+                conn.execute(
+                    "INSERT INTO events(at, key, state, detail) VALUES(?, ?, 'RUNNING', ?)",
+                    (canary_now, canary_key, json.dumps({"fence": proposed_fence, "owner": canary_owner})),
+                )
+
+                # 3. Verify unconditional key uniqueness across states
+                for test_state in ["PENDING", "RUNNING"]:
+                    dup_allowed = False
+                    dup_error = ""
+                    try:
+                        conn.execute(
+                            "INSERT INTO jobs(key, recipe, state) VALUES(?, ?, ?)",
+                            (canary_key, canary_recipe, test_state),
+                        )
+                        dup_allowed = True
+                    except sqlite3.IntegrityError as err:
+                        dup_error = str(err)
+
+                    if dup_allowed:
+                        raise IncompatibleAuthorityError(
+                            f"Foreign or incompatible schema in jobs table at {target_path}: "
+                            f"key column is not unconditionally unique across states "
+                            f"(permitted duplicate row with state={test_state!r} while existing row is RUNNING)"
+                        )
+
+                    dup_err_lower = dup_error.lower()
+                    is_unique_violation = (
+                        ("unique" in dup_err_lower or "primary key" in dup_err_lower)
+                        and "key" in dup_err_lower
+                    )
+                    if not is_unique_violation or "check constraint" in dup_err_lower:
+                        raise IncompatibleAuthorityError(
+                            f"Foreign or incompatible schema in jobs table at {target_path}: "
+                            f"uniqueness check for key failed with non-unique constraint error: {dup_error}"
+                        )
+
+                # 4. Verify canonical finish transition to terminal states (SUCCEEDED, FAILED) and event writes
+                fin = conn.execute(
+                    "UPDATE jobs SET state='SUCCEEDED', detail='{}', expires=NULL WHERE key=? AND owner=? AND fence=? AND state='RUNNING'",
+                    (canary_key, canary_owner, proposed_fence),
+                )
+                if fin.rowcount != 1:
+                    raise IncompatibleAuthorityError(
+                        f"Foreign or incompatible schema in jobs table at {target_path}: "
+                        f"finish transition to SUCCEEDED state failed (updated {fin.rowcount} rows)"
+                    )
+                conn.execute(
+                    "INSERT INTO events(at, key, state, detail) VALUES(?, ?, 'SUCCEEDED', '{}')",
+                    (canary_now + 1.0, canary_key),
+                )
+
+                fail_upd = conn.execute(
+                    "UPDATE jobs SET state='FAILED', detail='{}', expires=NULL WHERE key=?",
+                    (canary_key,),
+                )
+                if fail_upd.rowcount != 1:
+                    raise IncompatibleAuthorityError(
+                        f"Foreign or incompatible schema in jobs table at {target_path}: "
+                        f"transition to FAILED state failed (updated {fail_upd.rowcount} rows)"
+                    )
+                conn.execute(
+                    "INSERT INTO events(at, key, state, detail) VALUES(?, ?, 'FAILED', '{}')",
+                    (canary_now + 2.0, canary_key),
+                )
+
             finally:
                 conn.execute(f"ROLLBACK TO {sp_name}")
                 conn.execute(f"RELEASE {sp_name}")
         except IncompatibleAuthorityError:
             raise
-        except sqlite3.IntegrityError as err:
-            raise IncompatibleAuthorityError(
-                f"Foreign or incompatible schema in jobs table at {target_path}: "
-                f"functional insertion qualification failed: {err}"
-            ) from err
-        except sqlite3.OperationalError as err:
-            if "readonly" in str(err).lower():
-                pass
-            else:
-                raise IncompatibleAuthorityError(
-                    f"Foreign or incompatible schema in jobs table at {target_path}: "
-                    f"database operational error during schema qualification: {err}"
-                ) from err
         except sqlite3.Error as err:
             raise IncompatibleAuthorityError(
                 f"Foreign or incompatible schema in jobs table at {target_path}: "
-                f"database error during schema qualification: {err}"
+                f"functional claim qualification failed: {err}"
             ) from err
-
-    if "events" in user_tables:
-        ev_cols = {r[1] for r in conn.execute("PRAGMA table_info(events)").fetchall()}
-        required_events = {"id", "at", "key", "state", "detail"}
-        if not required_events.issubset(ev_cols):
-            missing = sorted(required_events - ev_cols)
-            err_kind = "partial" if require_execution else "unrecognized"
-            raise IncompatibleAuthorityError(
-                f"Foreign or {err_kind} schema in events table at {target_path}: "
-                f"missing required columns: {missing} (found: {sorted(ev_cols)})"
-            )
 
 
 def discover_authority(
