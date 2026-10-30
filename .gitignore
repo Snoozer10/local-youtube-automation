@@ -131,3 +131,7 @@ apm_modules/
 .playwright-mcp/
 
 docs/sessions/*.md
+
+
+# Workspace Topology & Guide (Local operator & AI acknowledgments)
+WORKSPACE_ROLES.md
