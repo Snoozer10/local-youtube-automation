@@ -640,3 +640,44 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
 - Preexisting same-ID concurrent snapshot overwrite remains deferred under #58.
 - Stop point: Stop for independent review of PR #74 Batch 4 corrections. Do NOT merge PR #74 or start another campaign batch without explicit user authorization.
+
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Batch 5 Review Corrections), 2026-10-30
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Reviewed Batch 5 PR #74 head: `ab1c54dbddac7248dfe9637f767c80fa9c9ae4cc`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial.
+
+### Done
+1. **Effective insertion defaults qualification before writes (#59 / Spec R1)**:
+   - In `validate_authority_schema` in `src/youtube_automation/production/authority.py`, updated default value analysis to reject ineffective defaults: `_is_ineffective_default` identifies `None` as well as SQL literal metadata strings evaluating to NULL (`"NULL"`, `"(NULL)"`).
+   - Any column with `NOT NULL` outside `{"key", "recipe", "state"}` or any required default column (`fence`, `attempts`, `detail`) defined with `DEFAULT NULL` or missing defaults is rejected before source writes.
+   - Added bounded functional qualification on the isolated temporary copy: executes `INSERT INTO jobs(key, recipe, state) VALUES(...)` within a rollback savepoint, ensuring SQLite evaluates effective defaults without constraint errors and produces non-null numeric values for `fence` and `attempts` and string values for `detail`.
+   - Public regression: `test_jobs_null_defaults_rejected_without_writes` in `tests/unit/test_cross_checkout_authority.py`.
+
+2. **Unconditional resource-key uniqueness qualification (#59 / Spec R1)**:
+   - In `validate_authority_schema`, checked the `partial` flag (`idx[4]`) in `PRAGMA index_list(jobs)`: partial unique indexes (such as `failed_keys_only ... WHERE state='FAILED'`) are explicitly skipped and rejected as insufficient for global resource key uniqueness.
+   - Added bounded functional qualification on the isolated temporary copy: attempts inserting a second row with the same key and state `'RUNNING'` within the rollback savepoint. If the second insert does not raise `sqlite3.IntegrityError`, the candidate is rejected with `IncompatibleAuthorityError` for failing global key uniqueness across states.
+   - Public regression: `test_jobs_partial_unique_index_rejected_without_writes` in `tests/unit/test_cross_checkout_authority.py`.
+   - Positive control: `test_supported_unconditional_unique_index_initializes_and_claims` demonstrates that supported schemas with unconditional single-column unique indexes on `key` initialize and claim stages/leases correctly.
+
+3. **Preserved Invariants & Preexisting Limitations**:
+   - Maintained all previous Batch 1–4 fixes: recovery transitive closure, contained absolute reference canonical mapping, WAL frame inspection, non-mutating status, epoch invalidation on restoration race, and junction cleanup ownership.
+   - Preexisting same-ID concurrent snapshot overwrite limitation remains visible under #58; full #58 acceptance remains outstanding.
+   - PR #74 description closing directives remain omitted (keeping #55/#56/#58/#59 and #31 open).
+
+### Verification
+- Replayed executable Batch 5 review reproducer `spec/schema_semantic_probe.py`:
+  1. `null_defaults`: fails closed with `IncompatibleAuthorityError: Foreign or incompatible schema in jobs table at ...: missing required default value for column 'fence'`, `source_changed: false`, `tables_in_isolated_copy: ["jobs"]` (no `events` table added), `claim_entered: false`.
+  2. `partial_unique`: fails closed with `IncompatibleAuthorityError: Foreign or incompatible schema in jobs table at ...: missing primary key or unique constraint on key (unconditional key uniqueness required)`, `source_changed: false`, `tables_in_isolated_copy: ["jobs"]` (no `events` table added), `claims: []` (no duplicate rows).
+- Focused test suite (17 modules, 216 items): 216 passed in 26.45s (exit 0).
+- Static analysis: `ruff check src/ tests/` clean (0 errors).
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Preexisting same-ID concurrent snapshot overwrite remains deferred under #58.
+- Stop point: Stop for independent review of PR #74 Batch 5 corrections. Do NOT merge PR #74 or start another campaign batch without explicit user authorization.

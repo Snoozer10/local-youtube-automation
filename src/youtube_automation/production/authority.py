@@ -15,6 +15,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import uuid
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -136,7 +137,9 @@ def validate_authority_schema(
     has_unique_key = (pk_cols == ["key"])
     if not has_unique_key:
         for idx in conn.execute("PRAGMA index_list(jobs)").fetchall():
-            if idx[2]:  # unique == 1
+            unique = bool(idx[2])
+            is_partial = bool(idx[4]) if len(idx) > 4 else False
+            if unique and not is_partial:
                 idx_cols = [r[2] for r in conn.execute(f"PRAGMA index_info('{idx[1]}')").fetchall()]
                 if idx_cols == ["key"]:
                     has_unique_key = True
@@ -144,24 +147,99 @@ def validate_authority_schema(
     if not has_unique_key:
         raise IncompatibleAuthorityError(
             f"Foreign or incompatible schema in jobs table at {target_path}: "
-            f"missing primary key or unique constraint on key"
+            f"missing primary key or unique constraint on key (unconditional key uniqueness required)"
         )
+
+    def _is_ineffective_default(val: Any) -> bool:
+        if val is None:
+            return True
+        val_str = str(val).strip().upper()
+        return val_str in ("NULL", "(NULL)")
 
     if require_execution or {"recipe", "state", "fence", "attempts", "detail"}.issubset(cols):
         col_defaults = {r[1]: r[4] for r in cols_info}
         col_notnull = {r[1]: r[3] for r in cols_info}
         for req_dflt_col in ["fence", "attempts", "detail"]:
-            if col_defaults.get(req_dflt_col) is None:
+            if req_dflt_col in cols and _is_ineffective_default(col_defaults.get(req_dflt_col)):
                 raise IncompatibleAuthorityError(
                     f"Foreign or incompatible schema in jobs table at {target_path}: "
                     f"missing required default value for column {req_dflt_col!r}"
                 )
         for col_name, notnull in col_notnull.items():
-            if col_name not in {"key", "recipe", "state"} and notnull == 1 and col_defaults.get(col_name) is None:
+            if col_name not in {"key", "recipe", "state"} and notnull == 1 and _is_ineffective_default(col_defaults.get(col_name)):
                 raise IncompatibleAuthorityError(
                     f"Foreign or incompatible schema in jobs table at {target_path}: "
                     f"column {col_name!r} is NOT NULL but lacks a default value"
                 )
+
+        # Functional qualification on isolated candidate connection
+        sp_name = f"_schema_qual_{uuid.uuid4().hex[:8]}"
+        canary_key = f"__schema_probe_{uuid.uuid4().hex}__"
+        try:
+            conn.execute(f"SAVEPOINT {sp_name}")
+            try:
+                # 1. Verify insertion with unsupplied defaults
+                conn.execute(
+                    "INSERT INTO jobs(key, recipe, state) VALUES(?, '__probe_recipe__', 'PENDING')",
+                    (canary_key,),
+                )
+                probe_row = conn.execute(
+                    "SELECT fence, attempts, detail FROM jobs WHERE key=?",
+                    (canary_key,),
+                ).fetchone()
+                if probe_row is None or probe_row[0] is None or probe_row[1] is None or probe_row[2] is None:
+                    raise IncompatibleAuthorityError(
+                        f"Foreign or incompatible schema in jobs table at {target_path}: "
+                        f"insertion defaults produced NULL in required execution columns"
+                    )
+                try:
+                    int(probe_row[0])
+                    int(probe_row[1])
+                except (ValueError, TypeError) as err:
+                    raise IncompatibleAuthorityError(
+                        f"Foreign or incompatible schema in jobs table at {target_path}: "
+                        f"numeric default values cannot be parsed as integers: {err}"
+                    ) from err
+
+                # 2. Verify unconditional key uniqueness across states
+                duplicate_allowed = False
+                try:
+                    conn.execute(
+                        "INSERT INTO jobs(key, recipe, state) VALUES(?, '__probe_recipe__', 'RUNNING')",
+                        (canary_key,),
+                    )
+                    duplicate_allowed = True
+                except sqlite3.IntegrityError:
+                    pass
+
+                if duplicate_allowed:
+                    raise IncompatibleAuthorityError(
+                        f"Foreign or incompatible schema in jobs table at {target_path}: "
+                        f"key column is not unconditionally unique across states"
+                    )
+            finally:
+                conn.execute(f"ROLLBACK TO {sp_name}")
+                conn.execute(f"RELEASE {sp_name}")
+        except IncompatibleAuthorityError:
+            raise
+        except sqlite3.IntegrityError as err:
+            raise IncompatibleAuthorityError(
+                f"Foreign or incompatible schema in jobs table at {target_path}: "
+                f"functional insertion qualification failed: {err}"
+            ) from err
+        except sqlite3.OperationalError as err:
+            if "readonly" in str(err).lower():
+                pass
+            else:
+                raise IncompatibleAuthorityError(
+                    f"Foreign or incompatible schema in jobs table at {target_path}: "
+                    f"database operational error during schema qualification: {err}"
+                ) from err
+        except sqlite3.Error as err:
+            raise IncompatibleAuthorityError(
+                f"Foreign or incompatible schema in jobs table at {target_path}: "
+                f"database error during schema qualification: {err}"
+            ) from err
 
     if "events" in user_tables:
         ev_cols = {r[1] for r in conn.execute("PRAGMA table_info(events)").fetchall()}

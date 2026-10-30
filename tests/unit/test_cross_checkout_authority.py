@@ -638,6 +638,152 @@ def test_partial_jobs_key_only_schema_rejected_without_writes(tmp_path: Path, mo
     assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
 
 
+def test_jobs_null_defaults_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec R1: Candidate with NOT NULL DEFAULT NULL on required fields must fail closed before writes."""
+    import hashlib
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "null-defaults"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute(
+        "CREATE TABLE jobs("
+        "key TEXT PRIMARY KEY,recipe TEXT NOT NULL,state TEXT NOT NULL,"
+        "fence INTEGER NOT NULL DEFAULT NULL,owner TEXT,expires REAL,"
+        "attempts INTEGER NOT NULL DEFAULT NULL,detail TEXT NOT NULL DEFAULT NULL)"
+    )
+    c.commit()
+    c.close()
+
+    def snap_dir(p: Path) -> dict[str, str]:
+        return {x.name: hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.is_file()}
+
+    before = snap_dir(d)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="missing required default value for column 'fence'"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after = snap_dir(d)
+    assert before == after, "Public operation mutated source database files before rejection"
+
+    # Direct Ledger constructor also fails closed without writes
+    with pytest.raises(IncompatibleAuthorityError, match="missing required default value for column 'fence'"):
+        ledger.Ledger(db)
+
+    after_direct = snap_dir(d)
+    assert before == after_direct, "Direct Ledger constructor mutated source database files before rejection"
+
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        q = sqlite3.connect(target)
+        tables = [v[0] for v in q.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        rows = q.execute("SELECT * FROM jobs").fetchall()
+        q.close()
+    assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
+    assert rows == [], f"Unexpected rows found in candidate database: {rows}"
+
+
+def test_jobs_partial_unique_index_rejected_without_writes(tmp_path: Path, monkeypatch):
+    """Issue #59 / Spec R1: Candidate with partial unique index on key must fail closed before writes."""
+    import hashlib
+    import shutil
+    import sqlite3
+    import tempfile
+
+    from youtube_automation.production import ledger
+    from youtube_automation.production.authority import IncompatibleAuthorityError
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "partial-unique"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute(
+        "CREATE TABLE jobs("
+        "key TEXT,recipe TEXT NOT NULL,state TEXT NOT NULL,"
+        "fence INTEGER NOT NULL DEFAULT 0,owner TEXT,expires REAL,"
+        "attempts INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '{}')"
+    )
+    c.execute("CREATE UNIQUE INDEX failed_keys_only ON jobs(key) WHERE state='FAILED'")
+    c.commit()
+    c.close()
+
+    def snap_dir(p: Path) -> dict[str, str]:
+        return {x.name: hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.is_file()}
+
+    before = snap_dir(d)
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+
+    with pytest.raises(IncompatibleAuthorityError, match="missing primary key or unique constraint on key"):
+        p = ledger.resource_database()
+        with ledger.leased_resource(p, "browser"):
+            pass
+
+    after = snap_dir(d)
+    assert before == after, "Public operation mutated source database files before rejection"
+
+    # Direct Ledger constructor also fails closed without writes
+    with pytest.raises(IncompatibleAuthorityError, match="missing primary key or unique constraint on key"):
+        ledger.Ledger(db)
+
+    after_direct = snap_dir(d)
+    assert before == after_direct, "Direct Ledger constructor mutated source database files before rejection"
+
+    with tempfile.TemporaryDirectory() as inspect_tmp:
+        target = Path(inspect_tmp) / db.name
+        shutil.copyfile(db, target)
+        q = sqlite3.connect(target)
+        tables = [v[0] for v in q.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        rows = q.execute("SELECT * FROM jobs").fetchall()
+        q.close()
+    assert tables == ["jobs"], f"Unexpected tables found in candidate database: {tables}"
+    assert rows == [], f"Unexpected rows found in candidate database: {rows}"
+
+
+def test_supported_unconditional_unique_index_initializes_and_claims(tmp_path: Path, monkeypatch):
+    """Issue #59: Supported compatible schema with unconditional UNIQUE index initializes and claims properly."""
+    import sqlite3
+
+    from youtube_automation.production import ledger
+
+    monkeypatch.setattr(ledger, "resource_database", ledger._unpatched_resource_database)
+    d = tmp_path / "unconditional-unique"
+    d.mkdir()
+    db = d / "adaptive.sqlite3"
+    c = sqlite3.connect(db)
+    c.execute(
+        "CREATE TABLE jobs("
+        "key TEXT,recipe TEXT NOT NULL,state TEXT NOT NULL,"
+        "fence INTEGER NOT NULL DEFAULT 0,owner TEXT,expires REAL,"
+        "attempts INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '{}')"
+    )
+    c.execute("CREATE UNIQUE INDEX idx_unconditional_key ON jobs(key)")
+    c.commit()
+    c.close()
+
+    monkeypatch.setenv("YOUTUBE_AUTOMATION_AUTHORITY_DB", str(db))
+    p = ledger.resource_database()
+    with ledger.leased_resource(p, "browser"):
+        pass
+
+    client = ledger.Ledger(p)
+    decision = client.claim_stage("stage:render", "recipe_1", "worker_1")
+    assert decision.state == "CLAIMED"
+    assert decision.fence == 1
+
+
+
 def test_durable_stage_epoch_bind_race_invalidates_old_claim(tmp_path: Path, monkeypatch):
     """Issue #58/#59 / Spec R2: A restoration occurring during durable_stage claim must invalidate publication."""
     import gc
