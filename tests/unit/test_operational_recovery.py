@@ -1256,3 +1256,119 @@ def test_archive_interrupted_snapshot_refuses_completed_and_active(
         with pytest.raises(FileExistsError, match="actively owned"):
             archive_interrupted_snapshot(backup_storage, active_id)
 
+
+def test_archive_interrupted_snapshot_refuses_invalid_traversal_and_absolute_ids(
+    mock_operational_runtime: Path,
+    tmp_path: Path,
+):
+    """Issue #58: archive_interrupted_snapshot refuses invalid, traversal, and absolute IDs without escaping."""
+    from youtube_automation.production.recovery import archive_interrupted_snapshot
+
+    case = tmp_path / "containment_case"
+    backups = case / "backups"
+    outside = case / "outside"
+    backups.mkdir(parents=True)
+    outside.mkdir(parents=True)
+
+    protected_file = outside / "protected.txt"
+    protected_file.write_bytes(b"preserve outside snapshot namespace\n")
+    before_sha = compute_sha256(protected_file)
+
+    # 1. Directory traversal ID must be refused
+    with pytest.raises(ValueError, match="Invalid recovery_id"):
+        archive_interrupted_snapshot(backups, "../outside")
+
+    # 2. Absolute path ID must be refused
+    with pytest.raises(ValueError, match="Invalid recovery_id"):
+        archive_interrupted_snapshot(backups, str(outside.resolve()))
+
+    # 3. Separator and invalid character IDs must be refused
+    for invalid_id in ("../../escaped", "sub/nested", "with space", "", ".", "..", "invalid*char"):
+        with pytest.raises(ValueError, match="Invalid recovery_id"):
+            archive_interrupted_snapshot(backups, invalid_id)
+
+    # 4. Verify outside directory, files, and hashes are completely untouched
+    assert outside.exists()
+    assert protected_file.is_file()
+    assert compute_sha256(protected_file) == before_sha
+    assert protected_file.read_bytes() == b"preserve outside snapshot namespace\n"
+    assert not (outside / "INTERRUPTED_RECEIPT.json").exists()
+    assert not (case / ".outside.lock").exists()
+
+    # 5. Verify create_isolated_recovery_snapshot also refuses traversal and absolute IDs
+    with pytest.raises(ValueError, match="Invalid recovery_id"):
+        create_isolated_recovery_snapshot(mock_operational_runtime, backups, "../outside")
+    with pytest.raises(ValueError, match="Invalid recovery_id"):
+        create_isolated_recovery_snapshot(mock_operational_runtime, backups, str(outside.resolve()))
+
+
+def test_archive_interrupted_snapshot_preserves_preexisting_receipt_and_partial_data(
+    tmp_path: Path,
+):
+    """Issue #58: archive_interrupted_snapshot preserves historical receipt bytes and partial data on retry."""
+    from youtube_automation.production.recovery import archive_interrupted_snapshot
+
+    backups = tmp_path / "backups"
+    attempt_dir = backups / "interrupted_retry"
+    attempt_dir.mkdir(parents=True)
+
+    historical_receipt_bytes = b'{"status":"INTERRUPTED_ARCHIVED","original_receipt":"preserve-me"}\r\n'
+    (attempt_dir / "INTERRUPTED_RECEIPT.json").write_bytes(historical_receipt_bytes)
+    (attempt_dir / ".ATTEMPT.json").write_text('{"status":"IN_PROGRESS","pid":12345}', encoding="utf-8")
+    (attempt_dir / "partial.bin").write_bytes(b"partial evidence bytes")
+
+    historical_sha = compute_sha256(attempt_dir / "INTERRUPTED_RECEIPT.json")
+
+    archived_dir = archive_interrupted_snapshot(backups, "interrupted_retry")
+    assert archived_dir is not None
+    assert archived_dir.is_dir()
+    assert not attempt_dir.exists()
+
+    # Verify original INTERRUPTED_RECEIPT.json bytes are preserved exactly
+    archived_orig_receipt = archived_dir / "INTERRUPTED_RECEIPT.json"
+    assert archived_orig_receipt.is_file()
+    assert archived_orig_receipt.read_bytes() == historical_receipt_bytes
+    assert compute_sha256(archived_orig_receipt) == historical_sha
+
+    # Verify partial data and attempt evidence are preserved
+    assert (archived_dir / "partial.bin").read_bytes() == b"partial evidence bytes"
+    assert (archived_dir / ".ATTEMPT.json").is_file()
+
+    # Verify a distinct operation receipt was written for this archive run
+    distinct_receipts = list(archived_dir.glob("INTERRUPTED_RECEIPT.*.json"))
+    assert len(distinct_receipts) >= 1
+    new_receipt = json.loads(distinct_receipts[0].read_text(encoding="utf-8"))
+    assert new_receipt["status"] == "INTERRUPTED_ARCHIVED"
+    assert new_receipt["recovery_id"] == "interrupted_retry"
+    assert new_receipt["archive_path"] == str(archived_dir)
+
+
+def test_archive_interrupted_snapshot_fails_closed_on_receipt_write_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Issue #58: archive_interrupted_snapshot fails closed and does not move snapshot if receipt write fails."""
+    from youtube_automation.production.recovery import archive_interrupted_snapshot
+
+    backups = tmp_path / "backups"
+    attempt_dir = backups / "failed_receipt_attempt"
+    attempt_dir.mkdir(parents=True)
+    (attempt_dir / "partial.bin").write_bytes(b"crucial evidence")
+
+    # Monkeypatch Path.open to fail when writing any receipt
+    real_open = Path.open
+
+    def failing_open(self: Path, *args, **kwargs):
+        if "INTERRUPTED_RECEIPT" in self.name:
+            raise OSError("Simulated disk write failure for receipt")
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", failing_open)
+
+    with pytest.raises(OSError, match="Simulated disk write failure"):
+        archive_interrupted_snapshot(backups, "failed_receipt_attempt")
+
+    # Verify snapshot_dir was NOT moved and partial data is still in place
+    assert attempt_dir.exists()
+    assert (attempt_dir / "partial.bin").read_bytes() == b"crucial evidence"
+

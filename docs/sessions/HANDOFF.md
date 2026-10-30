@@ -777,3 +777,35 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - Preexisting same-ID concurrent snapshot overwrite remains deferred under #58.
 - Stop point: Stop for independent review of PR #74 Batch 7 corrections. Do NOT merge PR #74 or start another campaign batch without explicit user authorization.
 
+## Issue #58 Snapshot Concurrency Protection (PR #75)
+
+### Review Findings & Corrections
+1. **Archive Namespace Containment (P1)**:
+   - Added canonical `_validate_recovery_id(recovery_id: str)` enforcing `^[a-zA-Z0-9_\-]{1,64}$`.
+   - Enforced resolved path containment (`is_relative_to(backup_storage)` and `!= backup_storage`) in `archive_interrupted_snapshot`, `create_isolated_recovery_snapshot`, and `restore_isolated_recovery_snapshot` before acquiring locks or touching candidate directories.
+   - Replayed `spec/probe_archive_escape_02.py` logic: `../outside` fails with `ValueError: Invalid recovery_id: '../outside'`, outside tree remains untouched (`outside_untouched=True`), no lock or receipt created outside backup storage.
+   - Added `test_archive_interrupted_snapshot_refuses_invalid_traversal_and_absolute_ids` in `tests/unit/test_operational_recovery.py`.
+
+2. **Historical Receipt Preservation (P1)**:
+   - Updated `_archive_interrupted_dir` to never overwrite existing `INTERRUPTED_RECEIPT.json`. Preexisting receipt bytes and hashes are preserved exactly.
+   - Writes distinct exclusive operation receipt (`INTERRUPTED_RECEIPT.<ts>.json` or `INTERRUPTED_RECEIPT.<ts>_<idx>.json`) using exclusive write mode (`xb`), flushing and syncing to disk.
+   - Fails closed on receipt persistence errors; if receipt creation raises `OSError`, exception propagates and directory move is aborted.
+   - Replayed `receipt_preservation_probe.py` logic: confirms `prior_receipt_preserved=True`, `partial_preserved=True`, and distinct operation receipt written.
+   - Added `test_archive_interrupted_snapshot_preserves_preexisting_receipt_and_partial_data` and `test_archive_interrupted_snapshot_fails_closed_on_receipt_write_failure`.
+
+3. **PR Metadata & Closing Directives (P1)**:
+   - Replaced PR #75 description negation prose with non-closing sentence: `Issues remaining open: #31, #39, #55, #56, #58, #59. Full #58 and campaign acceptance remain separate.`
+   - Verified GitHub GraphQL `closingIssuesReferences` is empty `[]`.
+
+4. **Production Architecture Contract (P2)**:
+   - Updated `src/youtube_automation/production/AGENTS.md` under `## Ownership` to document `recovery.py` ownership, lock mutual exclusion, same-ID refusal, archive namespace containment, receipt preservation, and opt-in recovery.
+   - Maintained operational execution state in session handoff without duplicating master campaign plan.
+
+### Verification
+- Targeted reproducers:
+  - Archive escape reproducer: `refused=True`, `exception_type="ValueError"`, `source_exists=True`, `outside_untouched=True`.
+  - Receipt preservation reproducer: `prior_receipt_preserved=True`, `partial_preserved=True`, `distinct_operation_receipts=["INTERRUPTED_RECEIPT.<ts>.json"]`.
+- Unit test suite: 36 passed in `tests/unit/test_operational_recovery.py`.
+- Nine affected safety & recovery modules: 142 passed in 17.64s.
+- Linter: `ruff check src/ tests/unit/` clean (0 errors).
+

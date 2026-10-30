@@ -15,6 +15,7 @@ import enum
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import sys
@@ -504,6 +505,12 @@ def identify_recovery_files(runtime_root: Path) -> list[tuple[Path, RecoveryItem
     return expand_recovery_closure(runtime_root, matched)
 
 
+def _validate_recovery_id(recovery_id: str) -> None:
+    """Validate that recovery_id is safe and strictly alphanumeric/hyphen/underscore."""
+    if not isinstance(recovery_id, str) or not re.match(r"^[a-zA-Z0-9_\-]{1,64}$", recovery_id):
+        raise ValueError(f"Invalid recovery_id: {recovery_id!r}")
+
+
 _active_snapshot_locks: set[Path] = set()
 _snapshot_locks_mutex = threading.Lock()
 
@@ -516,6 +523,7 @@ def _acquire_snapshot_lock(lock_path: Path, recovery_id: str):
     exactly one owner. Losing attempts fail fast with FileExistsError without
     modifying or touching any snapshot files.
     """
+    _validate_recovery_id(recovery_id)
     lock_path = lock_path.resolve()
     lock_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -598,11 +606,14 @@ def _archive_interrupted_dir(
         )
 
     ts = int(time.time())
-    archive_dir = backup_storage / f"{recovery_id}.interrupted.{ts}"
+    archive_dir = (backup_storage / f"{recovery_id}.interrupted.{ts}").resolve()
     idx = 1
     while archive_dir.exists():
-        archive_dir = backup_storage / f"{recovery_id}.interrupted.{ts}_{idx}"
+        archive_dir = (backup_storage / f"{recovery_id}.interrupted.{ts}_{idx}").resolve()
         idx += 1
+
+    if not archive_dir.is_relative_to(backup_storage) or archive_dir == backup_storage:
+        raise ValueError(f"Archive directory escapes backup storage: {archive_dir}")
 
     interrupted_receipt = {
         "status": "INTERRUPTED_ARCHIVED",
@@ -611,11 +622,35 @@ def _archive_interrupted_dir(
         "original_path": str(snapshot_dir),
         "archive_path": str(archive_dir),
     }
-    receipt_file = snapshot_dir / "INTERRUPTED_RECEIPT.json"
-    try:
-        receipt_file.write_text(json.dumps(interrupted_receipt, indent=2), encoding="utf-8")
-    except OSError:
-        pass
+    receipt_bytes = json.dumps(interrupted_receipt, indent=2).encode("utf-8")
+
+    primary_receipt = snapshot_dir / "INTERRUPTED_RECEIPT.json"
+    target_receipt: Path | None = None
+    if not primary_receipt.exists():
+        try:
+            with primary_receipt.open("xb") as rf:
+                rf.write(receipt_bytes)
+                rf.flush()
+                os.fsync(rf.fileno())
+            target_receipt = primary_receipt
+        except FileExistsError:
+            pass  # Fall through to timestamped receipt to retain existing bytes
+
+    if target_receipt is None:
+        # Retain preexisting historical receipt bytes; write distinct exclusive operation receipt
+        retry_idx = 0
+        while True:
+            suffix = f".{ts}" if retry_idx == 0 else f".{ts}_{retry_idx}"
+            cand = snapshot_dir / f"INTERRUPTED_RECEIPT{suffix}.json"
+            try:
+                with cand.open("xb") as rf:
+                    rf.write(receipt_bytes)
+                    rf.flush()
+                    os.fsync(rf.fileno())
+                target_receipt = cand
+                break
+            except FileExistsError:
+                retry_idx += 1
 
     shutil.move(str(snapshot_dir), str(archive_dir))
     return archive_dir
@@ -628,12 +663,19 @@ def archive_interrupted_snapshot(
     """Explicitly archive an interrupted snapshot attempt, preserving all evidence.
 
     Refuses if:
+    - recovery_id is invalid or attempts traversal / namespace escape.
     - Snapshot already completed (RECOVERY_MANIFEST.json present); completed snapshots are immutable.
     - An attempt is actively running (lock actively held).
     """
+    _validate_recovery_id(recovery_id)
     backup_storage = backup_storage.resolve()
-    snapshot_dir = backup_storage / recovery_id
-    lock_path = backup_storage / f".{recovery_id}.lock"
+    snapshot_dir = (backup_storage / recovery_id).resolve()
+    if not snapshot_dir.is_relative_to(backup_storage) or snapshot_dir == backup_storage:
+        raise ValueError(f"Snapshot directory escapes backup storage: {recovery_id!r}")
+
+    lock_path = (backup_storage / f".{recovery_id}.lock").resolve()
+    if not lock_path.is_relative_to(backup_storage):
+        raise ValueError(f"Lock path escapes backup storage: {recovery_id!r}")
 
     if not snapshot_dir.exists():
         return None
@@ -981,14 +1023,17 @@ def create_isolated_recovery_snapshot(
     - Interrupted attempts retain evidence; refuses overwrite unless explicit recover_interrupted=True.
     - Manifest is published atomically only after all closure and integrity checks pass.
     """
-    import re
-    if not re.match(r"^[a-zA-Z0-9_\-]{1,64}$", recovery_id):
-        raise ValueError(f"Invalid recovery_id: {recovery_id!r}")
+    _validate_recovery_id(recovery_id)
 
     runtime_root = runtime_root.resolve()
     backup_storage = backup_storage.resolve()
-    snapshot_dir = backup_storage / recovery_id
-    lock_path = backup_storage / f".{recovery_id}.lock"
+    snapshot_dir = (backup_storage / recovery_id).resolve()
+    if not snapshot_dir.is_relative_to(backup_storage) or snapshot_dir == backup_storage:
+        raise ValueError(f"Snapshot directory escapes backup storage: {recovery_id!r}")
+
+    lock_path = (backup_storage / f".{recovery_id}.lock").resolve()
+    if not lock_path.is_relative_to(backup_storage):
+        raise ValueError(f"Lock path escapes backup storage: {recovery_id!r}")
 
     # Pre-check without acquiring lock (fast path for existing completed or unrecovered snapshots)
     if snapshot_dir.exists():
@@ -1059,9 +1104,12 @@ def restore_isolated_recovery_snapshot(
     - Destination already has a RESTORATION_RECEIPT.json (protects prior evidence).
     - Destination files already exist with differing content (protects newer resumed work).
     """
+    _validate_recovery_id(recovery_id)
     backup_storage = backup_storage.resolve()
     target_restore_dir = target_restore_dir.resolve()
-    snapshot_dir = backup_storage / recovery_id
+    snapshot_dir = (backup_storage / recovery_id).resolve()
+    if not snapshot_dir.is_relative_to(backup_storage) or snapshot_dir == backup_storage:
+        raise ValueError(f"Snapshot directory escapes backup storage: {recovery_id!r}")
     manifest_path = snapshot_dir / "RECOVERY_MANIFEST.json"
 
     if not manifest_path.is_file():
