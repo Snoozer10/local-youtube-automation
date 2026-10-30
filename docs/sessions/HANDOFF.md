@@ -595,3 +595,48 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
 - Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
 - Stop point: Stop for independent review of PR #74 Batch 3 corrections. Do NOT merge without explicit user authorization.
+
+## Architecture-Renewal Database-Safety Corrective Batch (PR #74 Batch 4 Review Corrections), 2026-10-30
+
+### Current Identity & PR Status
+- Reviewed baseline: `66c0e29ec63b79ebc4d55aef832e1a4b474364e1` on `master`.
+- Verified PR #74 head before Batch 4 review corrections: `dba02c860770c535acf7924483699a027caf37c3`.
+- Active PR: [PR #74](https://github.com/Snoozer10/local-youtube-automation/pull/74) on branch `fix/database-safety-renewal`.
+- Active Scope: Bounded database-safety issues #55/#56, #58, #59. Parent #31 remains strictly OPEN. Issue #39 remains separately partial.
+
+### Done
+1. **Consistent recovery-reference handling (#58 / Standards S1)**:
+   - In `create_isolated_recovery_snapshot` Step 2 (transitive closure validation), removed skip of absolute references.
+   - Contained absolute references inside `runtime_root` are mapped to their canonical captured relative identities: `rel_p = (runtime_root_resolved / ref_p).resolve().relative_to(runtime_root_resolved)`.
+   - Transitive closure validation checks captured bytes in `snapshot_dir` and manifest entries for all referenced items, and traverses referenced JSON documents recursively. Missing artifacts cause snapshot capture to fail closed, recording `FAILED_SNAPSHOT.json` with zero incomplete manifest published.
+   - Public regression: `test_recovery_closure_contained_absolute_reference_change_refused` in `tests/unit/test_operational_recovery.py`.
+
+2. **Structural schema qualification before writes (#59 / Spec R1)**:
+   - Implemented unified `validate_authority_schema` in `authority.py` and called before writes in `discover_authority()` and `Ledger.__init__()`.
+   - Checks structural properties on isolated temporary copies prior to source writes:
+     - Enforces key uniqueness on `jobs`: column `key` must be the sole PRIMARY KEY or have a single-column UNIQUE index/constraint.
+     - Enforces required defaults on columns inserted without explicit values: `fence`, `attempts`, and `detail` must have default values defined; any NOT NULL column outside `{"key", "recipe", "state"}` must have a default value defined.
+     - Databases missing key uniqueness or required defaults fail closed with `IncompatibleAuthorityError` with `source_changed: false`, zero WAL mode changes, and zero `events` table creations.
+   - Public regressions: `test_jobs_missing_defaults_rejected_without_writes` and `test_jobs_missing_key_uniqueness_rejected_without_writes` in `tests/unit/test_cross_checkout_authority.py`.
+
+3. **Reconciled PR Description & Closing Directives**:
+   - Removed premature auto-closing directives (`Closes #55, #56, #58, #59`) from PR #74 description.
+   - Explicitly documented that target issues #55, #56, #58, #59 and parent #31 remain strictly OPEN awaiting human campaign acceptance.
+   - Kept preexisting same-ID snapshot overwrite limitation visible under #58 and separate from introduced regressions.
+
+### Verification
+- Replayed executable Batch 4 review reproducers:
+  1. `standards/absolute_closure_probe.py`: post-discovery change to contained absolute reference fails closed with `RuntimeError: Consistency boundary violation: ...`, records `FAILED_SNAPSHOT.json`, and restores nothing.
+  2. `spec/schema_constraint_probe.py`:
+     - `missing_defaults`: fails closed with `IncompatibleAuthorityError`, `source_changed: false`, 0 events added.
+     - `missing_primary_key`: fails closed with `IncompatibleAuthorityError`, `source_changed: false`, 0 events added.
+- Preserved all passing cases from Batches 1, 2, and 3: WAL recovery, source preservation, competitor cleanup, epoch invalidation, non-mutating status.
+- Focused test suite (17 modules, 213 items): 213 passed in 26.15s (exit 0).
+- Static analysis: `ruff check src/ tests/` clean (0 errors).
+
+### Known Remaining Limitations & Stop Point
+- Issue #39 remains separately OPEN / PARTIAL per documented platform discovery boundaries (Codex <0.160 selection limits).
+- Findings #46–#48/#50 (offline media evidence bundle) and #37 (documentation glossary routing) remain deferred to separate follow-up batches.
+- Parent #31 remains strictly OPEN pending demonstrated human campaign acceptance.
+- Preexisting same-ID concurrent snapshot overwrite remains deferred under #58.
+- Stop point: Stop for independent review of PR #74 Batch 4 corrections. Do NOT merge PR #74 or start another campaign batch without explicit user authorization.

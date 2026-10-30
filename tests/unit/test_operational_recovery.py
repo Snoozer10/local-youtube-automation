@@ -915,3 +915,45 @@ def test_recovery_closure_transitive_json_reference_change_refused(tmp_path: Pat
     assert fail_data["status"] == "FAILED"
     assert "brief.json requires referenced artifact 'new.txt'" in fail_data["error_message"]
 
+def test_recovery_closure_contained_absolute_reference_change_refused(tmp_path: Path) -> None:
+    """Issue #58 / Standards S1: Post-discovery change to contained absolute reference must be rejected.
+    Contained absolute references map to canonical captured relative identities and are validated recursively."""
+    from unittest.mock import patch
+
+    from youtube_automation.production import recovery as rec
+
+    source = tmp_path / "source"
+    source.mkdir(parents=True)
+    db_path = source / "adaptive.sqlite3"
+    old = source / "old.txt"
+    new = source / "new.txt"
+    old.write_text("old retained input", encoding="utf-8")
+    new.write_text("new required input", encoding="utf-8")
+    (source / "brief.json").write_text(json.dumps({"input_file": str(old.resolve())}), encoding="utf-8")
+
+    c = sqlite3.connect(db_path)
+    c.execute("CREATE TABLE jobs(key TEXT PRIMARY KEY, recipe TEXT, detail TEXT)")
+    c.execute("INSERT INTO jobs VALUES(?, ?, ?)", ("episode-A", "recipe", json.dumps({"brief": "brief.json"})))
+    c.commit()
+    c.close()
+
+    real_identify = rec.identify_recovery_files
+
+    def identify_then_change(root):
+        matched = real_identify(root)
+        (source / "brief.json").write_text(json.dumps({"input_file": str(new.resolve())}), encoding="utf-8")
+        return matched
+
+    backup = tmp_path / "backup"
+    with patch.object(rec, "identify_recovery_files", identify_then_change):
+        with pytest.raises(RuntimeError, match="Consistency boundary violation: captured document brief.json requires referenced artifact"):
+            rec.create_isolated_recovery_snapshot(source, backup, "absolute_inconsistent")
+
+    snap_dir = backup / "absolute_inconsistent"
+    assert (snap_dir / "FAILED_SNAPSHOT.json").is_file()
+    assert not (snap_dir / "RECOVERY_MANIFEST.json").is_file()
+    fail_data = json.loads((snap_dir / "FAILED_SNAPSHOT.json").read_text(encoding="utf-8"))
+    assert fail_data["status"] == "FAILED"
+    assert "brief.json requires referenced artifact" in fail_data["error_message"]
+    assert repr(str(new.resolve())) in fail_data["error_message"]
+

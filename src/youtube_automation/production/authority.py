@@ -89,6 +89,92 @@ class AuthorityResolution:
     authority_epoch: str = ""
 
 
+def validate_authority_schema(
+    conn: sqlite3.Connection,
+    target_path: Path | str,
+    *,
+    require_execution: bool = False,
+) -> None:
+    """Validate that candidate database schema conforms to supported invariants before any writes."""
+    tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    user_tables = {t for t in tables if not t.startswith("sqlite_")}
+    if not user_tables:
+        return
+
+    if "jobs" not in user_tables:
+        raise IncompatibleAuthorityError(
+            f"Foreign or unrecognized database schema at {target_path} (tables: {sorted(user_tables)}); "
+            f"missing required jobs table"
+        )
+    unrecognized = sorted(user_tables - {"jobs", "events"})
+    if unrecognized:
+        raise IncompatibleAuthorityError(
+            f"Foreign or unrecognized database schema at {target_path} (tables: {sorted(user_tables)}); "
+            f"unrecognized tables present: {unrecognized}"
+        )
+
+    cols_info = conn.execute("PRAGMA table_info(jobs)").fetchall()
+    cols = {r[1] for r in cols_info}
+    if require_execution:
+        required_cols = {"key", "recipe", "state", "fence", "owner", "expires", "attempts", "detail"}
+        if not required_cols.issubset(cols):
+            missing = sorted(required_cols - cols)
+            raise IncompatibleAuthorityError(
+                f"Foreign or partial schema in jobs table at {target_path}: "
+                f"missing required columns: {missing} (found: {sorted(cols)})"
+            )
+    else:
+        required_obs = {"key", "state", "attempts", "fence", "detail"}
+        if not required_obs.issubset(cols):
+            missing = sorted(required_obs - cols)
+            raise IncompatibleAuthorityError(
+                f"Foreign or unrecognized schema in jobs table at {target_path}: "
+                f"missing required columns: {missing} (found: {sorted(cols)})"
+            )
+
+    pk_cols = [r[1] for r in cols_info if r[5] > 0]
+    has_unique_key = (pk_cols == ["key"])
+    if not has_unique_key:
+        for idx in conn.execute("PRAGMA index_list(jobs)").fetchall():
+            if idx[2]:  # unique == 1
+                idx_cols = [r[2] for r in conn.execute(f"PRAGMA index_info('{idx[1]}')").fetchall()]
+                if idx_cols == ["key"]:
+                    has_unique_key = True
+                    break
+    if not has_unique_key:
+        raise IncompatibleAuthorityError(
+            f"Foreign or incompatible schema in jobs table at {target_path}: "
+            f"missing primary key or unique constraint on key"
+        )
+
+    if require_execution or {"recipe", "state", "fence", "attempts", "detail"}.issubset(cols):
+        col_defaults = {r[1]: r[4] for r in cols_info}
+        col_notnull = {r[1]: r[3] for r in cols_info}
+        for req_dflt_col in ["fence", "attempts", "detail"]:
+            if col_defaults.get(req_dflt_col) is None:
+                raise IncompatibleAuthorityError(
+                    f"Foreign or incompatible schema in jobs table at {target_path}: "
+                    f"missing required default value for column {req_dflt_col!r}"
+                )
+        for col_name, notnull in col_notnull.items():
+            if col_name not in {"key", "recipe", "state"} and notnull == 1 and col_defaults.get(col_name) is None:
+                raise IncompatibleAuthorityError(
+                    f"Foreign or incompatible schema in jobs table at {target_path}: "
+                    f"column {col_name!r} is NOT NULL but lacks a default value"
+                )
+
+    if "events" in user_tables:
+        ev_cols = {r[1] for r in conn.execute("PRAGMA table_info(events)").fetchall()}
+        required_events = {"id", "at", "key", "state", "detail"}
+        if not required_events.issubset(ev_cols):
+            missing = sorted(required_events - ev_cols)
+            err_kind = "partial" if require_execution else "unrecognized"
+            raise IncompatibleAuthorityError(
+                f"Foreign or {err_kind} schema in events table at {target_path}: "
+                f"missing required columns: {missing} (found: {sorted(ev_cols)})"
+            )
+
+
 def discover_authority(
     env_override: str | Path | None = None,
     config_path: Path | None = None,
@@ -221,37 +307,7 @@ def discover_authority(
                         except OSError:
                             pass
                 with closing(sqlite3.connect(chk_db)) as chk_conn:
-                    tables = [r[0] for r in chk_conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-                    user_tables = {t for t in tables if not t.startswith("sqlite_")}
-                    if user_tables:
-                        if "jobs" not in user_tables:
-                            raise IncompatibleAuthorityError(
-                                f"Foreign or unrecognized database schema at {target_path} (tables: {sorted(user_tables)}); "
-                                f"missing required jobs table"
-                            )
-                        unrecognized = sorted(user_tables - {"jobs", "events"})
-                        if unrecognized:
-                            raise IncompatibleAuthorityError(
-                                f"Foreign or unrecognized database schema at {target_path} (tables: {sorted(user_tables)}); "
-                                f"unrecognized tables present: {unrecognized}"
-                            )
-                        cols = {r[1] for r in chk_conn.execute("PRAGMA table_info(jobs)").fetchall()}
-                        required_obs = {"key", "state", "attempts", "fence", "detail"}
-                        if not required_obs.issubset(cols):
-                            missing = sorted(required_obs - cols)
-                            raise IncompatibleAuthorityError(
-                                f"Foreign or unrecognized schema in jobs table at {target_path}: "
-                                f"missing required columns: {missing} (found: {sorted(cols)})"
-                            )
-                        if "events" in user_tables:
-                            ev_cols = {r[1] for r in chk_conn.execute("PRAGMA table_info(events)").fetchall()}
-                            required_events = {"id", "at", "key", "state", "detail"}
-                            if not required_events.issubset(ev_cols):
-                                missing = sorted(required_events - ev_cols)
-                                raise IncompatibleAuthorityError(
-                                    f"Foreign or unrecognized schema in events table at {target_path}: "
-                                    f"missing required columns: {missing} (found: {sorted(ev_cols)})"
-                                )
+                    validate_authority_schema(chk_conn, target_path, require_execution=False)
         except IncompatibleAuthorityError:
             raise
         except Exception as err:

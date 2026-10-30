@@ -212,7 +212,10 @@ class Ledger:
             except OSError:
                 pass
 
-            from youtube_automation.production.authority import IncompatibleAuthorityError
+            from youtube_automation.production.authority import (
+                IncompatibleAuthorityError,
+                validate_authority_schema,
+            )
             try:
                 with tempfile.TemporaryDirectory() as chk_tmp:
                     chk_db = Path(chk_tmp) / p.name
@@ -225,33 +228,7 @@ class Ledger:
                             except OSError:
                                 pass
                     with closing(sqlite3.connect(chk_db)) as chk_conn:
-                        tables = [r[0] for r in chk_conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-                        user_tables = {t for t in tables if not t.startswith("sqlite_")}
-                        if user_tables:
-                            if "jobs" not in user_tables:
-                                raise IncompatibleAuthorityError(
-                                    f"Foreign or unrecognized database schema at {p} (tables: {sorted(user_tables)}); missing required jobs table"
-                                )
-                            unrecognized = sorted(user_tables - {"jobs", "events"})
-                            if unrecognized:
-                                raise IncompatibleAuthorityError(
-                                    f"Foreign or unrecognized database schema at {p} (tables: {sorted(user_tables)}); unrecognized tables present: {unrecognized}"
-                                )
-                            cols = {r[1] for r in chk_conn.execute("PRAGMA table_info(jobs)").fetchall()}
-                            required_jobs = {"key", "recipe", "state", "fence", "owner", "expires", "attempts", "detail"}
-                            if not required_jobs.issubset(cols):
-                                missing = sorted(required_jobs - cols)
-                                raise IncompatibleAuthorityError(
-                                    f"Foreign or partial schema in jobs table at {p}: missing required columns: {missing} (found: {sorted(cols)})"
-                                )
-                            if "events" in user_tables:
-                                ev_cols = {r[1] for r in chk_conn.execute("PRAGMA table_info(events)").fetchall()}
-                                required_events = {"id", "at", "key", "state", "detail"}
-                                if not required_events.issubset(ev_cols):
-                                    missing = sorted(required_events - ev_cols)
-                                    raise IncompatibleAuthorityError(
-                                        f"Foreign or partial schema in events table at {p}: missing required columns: {missing} (found: {sorted(ev_cols)})"
-                                    )
+                        validate_authority_schema(chk_conn, p, require_execution=True)
             except IncompatibleAuthorityError:
                 raise
             except Exception as err:

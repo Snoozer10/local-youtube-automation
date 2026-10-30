@@ -718,6 +718,7 @@ def create_isolated_recovery_snapshot(
                         raise RuntimeError(f"Failed extracting references from captured document {entry.relative_path}: {exc}") from exc
 
         # 3. Transitively validate all references
+        runtime_root_resolved = runtime_root.resolve()
         while pending_refs:
             source_desc, ref = pending_refs.pop(0)
             ref = ref.strip()
@@ -726,29 +727,34 @@ def create_isolated_recovery_snapshot(
             ref_p = Path(ref)
             if ref_p.suffix.lower() not in valid_extensions:
                 continue
-            if ref_p.is_absolute():
+            try:
+                target = (runtime_root_resolved / ref_p).resolve()
+            except Exception:
                 continue
-            ref_posix = ref_p.as_posix()
-            target_in_snapshot = snapshot_dir / ref_p
-            if ref_posix not in captured_rel_paths and not target_in_snapshot.is_file():
+            if not target.is_relative_to(runtime_root_resolved):
+                continue
+            rel_p = target.relative_to(runtime_root_resolved)
+            rel_posix = rel_p.as_posix()
+            target_in_snapshot = snapshot_dir / rel_p
+            if rel_posix not in captured_rel_paths and not target_in_snapshot.is_file():
                 raise RuntimeError(
                     f"Consistency boundary violation: {source_desc} requires referenced artifact {ref!r} "
                     f"not present in snapshot generation; concurrent modification detected"
                 )
 
             # If referenced artifact is a JSON document, traverse its references as well
-            if ref_p.suffix.lower() == ".json" and ref_posix not in inspected_docs:
-                inspected_docs.add(ref_posix)
+            if rel_p.suffix.lower() == ".json" and rel_posix not in inspected_docs:
+                inspected_docs.add(rel_posix)
                 if target_in_snapshot.is_file():
                     try:
                         content = target_in_snapshot.read_text(encoding="utf-8")
                         parsed = json.loads(content)
                         for nested_ref in _extract_references(parsed):
-                            pending_refs.append((f"captured document {ref_posix}", nested_ref))
+                            pending_refs.append((f"captured document {rel_posix}", nested_ref))
                     except json.JSONDecodeError:
                         pass
                     except Exception as exc:
-                        raise RuntimeError(f"Failed extracting references from captured document {ref_posix}: {exc}") from exc
+                        raise RuntimeError(f"Failed extracting references from captured document {rel_posix}: {exc}") from exc
 
         # Step 3: Verify database integrity on the backup copies in isolated backup storage
         for dest_path, _spec in db_entries:
