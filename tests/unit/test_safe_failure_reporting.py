@@ -307,3 +307,43 @@ def test_unlabelled_private_prose_and_nested_details_are_strictly_redacted(
     assert rec is not None
     assert "Orion" not in json.dumps(rec)
     assert "Secret memo text" not in json.dumps(rec)
+
+
+def test_arabic_diagnostics_and_narrator_cues_preserved_while_canaries_redacted():
+    """Verify Arabic cues and Khaleeji vocabulary are preserved in diagnostic fields,
+    while canaries, credentials, and non-Arabic/binary characters are redacted."""
+    raw_record = {
+        "stage": "tts",
+        "exception": "TTSProviderError",
+        "message": "Quota exhausted",
+        "extra": {
+            "narrator": "طارق",
+            "cue": "[نبرة حماسية] (وقفة درامية)",
+            "term": "گاعد چذي وايد",
+            "phrase": "السَّلَامُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ",
+            # Should be redacted:
+            "canary_cue": "وقفة درامية canary_test",
+            "secret_cue": "وقفة password=supersecret123",
+            "binary_cue": "وقفة\x00درامية",
+            "emoji_cue": "وقفة درامية 🔥",
+            "foreign_cue": "وقفة привет",
+            "prompt": "نص البرومبت السري",
+        },
+    }
+
+    sanitized = fr.sanitize_record(raw_record)
+    extra = sanitized["extra"]
+
+    # 1. Preserved legitimate Arabic fields:
+    assert extra["narrator"] == "طارق"
+    assert extra["cue"] == "[نبرة حماسية] (وقفة درامية)"
+    assert extra["term"] == "گاعد چذي وايد"
+    assert "السَّلَامُ عَلَيْكُمْ" in extra["phrase"]
+
+    # 2. Strictly redacted fields:
+    assert extra["canary_cue"] == "[redacted]"
+    assert extra["secret_cue"] == "[redacted]"
+    assert extra["binary_cue"] == "[redacted]"
+    assert extra["emoji_cue"] == "[redacted]"
+    assert extra["foreign_cue"] == "[redacted]"
+    assert extra["prompt"] == "[redacted]"

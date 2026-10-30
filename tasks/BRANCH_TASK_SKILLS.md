@@ -14,9 +14,14 @@ Skills remain installed and are invoked explicitly as needed. Twenty unrelated/i
 Two useful skills were fetched in project scope; 22 already installed skills were reused. Hash drift requires review before updating the root lock. Auxiliary scripts/assets need their own review and pins before execution; the active catalog pins SKILL.md files.
 
 - Do not run bulk skill updates or setup installers that restore archived packs. Review intended changes against the root lock and preserve upstream installer provenance before any restoration.
+
+> [!NOTE]
+> **Host Skill Names & Local Surface Convention**:
+> The `.agents/` workspace directory is gitignored by project convention and host-provided / local-only. The skill identifiers listed below represent host skill names in your platform environment (Claude Code, Antigravity, or Codex) rather than committed repository files. Where relative links (`../.agents/skills/<name>/SKILL.md`) appear, they indicate where local workspace skills resolve when installed on disk; if absent in your worktree, agents should invoke the corresponding host skill from the active platform catalog (or `.claude/skills/`).
+
 ## Branch task bindings
 
-| Task | Project skill files to load | Why |
+| Task | Bound host skills (local / platform catalog) | Why |
 |---|---|---|
 | <a id="a1"></a>**A1** | [systematic-debugging](../.agents/skills/systematic-debugging/SKILL.md), [windows-desktop-e2e](../.agents/skills/windows-desktop-e2e/SKILL.md), [verification-before-completion](../.agents/skills/verification-before-completion/SKILL.md) | Diagnose owned-window failure from evidence before a bounded live handshake. |
 | <a id="a2"></a>**A2** | [windows-desktop-e2e](../.agents/skills/windows-desktop-e2e/SKILL.md), [test-driven-development](../.agents/skills/test-driven-development/SKILL.md), [test-guard](../.agents/skills/test-guard/SKILL.md) | Implement owned-window safety with isolated native API fixtures. |

@@ -1,4 +1,4 @@
-Status note — 2026-10-26: [#31](https://github.com/Snoozer10/local-youtube-automation/issues/31) remains the renewal parent. #36 guidance and #23/#24–#30 compilation are integrated; PR #53 delivered the navigation batch, while #37 stays open. #32–#35 policy decisions are closed. See the existing [roadmap reconciliation](architecture-renewal-plan.md#reconciliation--2026-10-26) for remaining #37–#50 work, native dependencies and uncovered Track A lifecycle requirements. This local status amendment does not publish a new spec or alter the tracker’s historical parent body.
+Status note — 2026-10-30: [#31](https://github.com/Snoozer10/local-youtube-automation/issues/31) remains the renewal parent. Child issues #37–#50 and Track A issues #54–#56, #58, #59 are CLOSED with verified receipts. Issue #45 is resolved via approved Option A offline substitution. See [roadmap reconciliation](architecture-renewal-plan.md#reconciliation--2026-10-26) for completed work and Track A lifecycle verification. This local status amendment does not publish a new spec or alter the tracker’s historical parent body.
 
 ## Problem Statement
 
@@ -55,7 +55,7 @@ Then use a bounded Channel DNA workflow as the first feature-level architecture 
 39. As an operator, I want the workflow to reuse existing jobs, recipes, checkpoints, invalidation rules, and publication controls, so that Channel DNA fits the current pipeline contracts.
 40. As an operator, I want each affected stage’s inputs, outputs, owner, idempotency, retry, invalidation, and recovery behavior recorded, so that I can understand and resume interrupted work.
 41. As an operator, I want incomplete evidence, failed stages, and resumable work to remain inspectable, so that I can recover from interrupted local runs.
-42. As an operator, I want a successful bounded live Windows REA integration test before Channel DNA implementation is considered complete, so that the adapter is proven in the target environment.
+42. As an operator, I want a successful bounded live Windows REA integration test before Channel DNA implementation is considered complete, so that the adapter is proven in the target environment. *(Operational Amendment: Satisfied for renewal campaign via approved Option A offline study pilot substitution; see Testing Decisions and Issue #45).*
 43. As a maintainer, I want baseline measures captured before scoped changes and compared afterward, so that improvements can be assessed without inventing targets.
 44. As an operator, I want provider, browser, editorial, preview, and publication gates preserved, so that architecture changes do not bypass existing controls.
 45. As a maintainer, I want research and delegation proportional to uncertainty and risk, so that unfamiliar or consequential choices receive evidence without burdening straightforward local changes.
@@ -94,6 +94,15 @@ Then use a bounded Channel DNA workflow as the first feature-level architecture 
 - Exercise error records, routing, skill discovery, cleanup classifications, and stage contracts with focused checks for links, ownership, references, and retention.
 - Before Channel DNA implementation is considered complete, run a bounded live Windows REA evidence-collection test. Before the run, define the selected source and supported capability, maximum duration, sample and attempt bounds, and allowed origins.
 - The live test must record the REA and runtime identity, preserve sanitized source-bound outputs and hashes, consume real REA evidence in a study, and validate meaningful output for the selected capability. Version/help output, mocked output, or a successful launch alone do not satisfy the gate. Failures preserve evidence and do not permit a completion claim.
+
+> [!NOTE]
+> **Operational Amendment: Approved Option A Substitution (Issue #45)**
+> By explicit owner decision (Step 1613, conversation `414c842c-a448-49bc-bf61-0810d4860a3f`), Option A was approved as completing the architecture-renewal campaign scope for Channel DNA without live external Windows REA process execution. In accordance with independent audit findings, the completion gate requirement for live Windows REA evidence collection is formally substituted by:
+> 1. Validated offline reference study pilot and evidence collector (`#43`, `#50`).
+> 2. Genuine playable offline media fixtures: `tests/fixtures/media/sample_clip.mp4` (2.0s 320x240 H.264), `sample_audio.wav` (2.0s 44.1kHz 16-bit mono PCM), and `sample_thumb.png` (64x64 PNG).
+> 3. Adversarial regression test suite (`tests/unit/test_channel_dna_adversarial_regressions.py`) enforcing traceable guidance observations and mandatory physical evidence validation.
+>
+> Offline pilot verification does **NOT** constitute a live Windows REA execution or proof of live external process automation. Live Windows REA execution remains an unexecuted future operational capability.
 - Do not require provider runs for every optional media modality. Keep unsupported optional traits unknown, while missing mandatory evidence prevents activation.
 - Reuse existing production profile, brief compilation, pinning, invalidation, and publication-control tests as prior art. Do not duplicate the unified Video Compilation Engine test scope.
 
@@ -114,7 +123,7 @@ Then use a bounded Channel DNA workflow as the first feature-level architecture 
 - The user’s primary success measure is safer, faster feature changes through fewer regressions, clearer ownership, and faster diagnosis.
 - Reconcile current guidance, task routing, and post-audit changes before implementation. Do not rely on historical audit counts as current measurements.
 - Sample eligibility/bounds and mandatory fields/evidence are settled by #34/#35. Local studies follow those contracts; live Windows REA feasibility/usefulness remains #45 after #43, not a blocker on the local study.
-- A live Windows REA test is a required completion gate for the Channel DNA implementation. Publishing this specification does not run REA, install dependencies, or authorize provider actions.
+- A live Windows REA test was the originally planned completion gate for the Channel DNA implementation. Per the owner's approved Option A substitution (Issue #45), this gate is formally satisfied for renewal campaign completion via the validated offline study pilot and genuine media fixtures (`sample_clip.mp4`, `sample_audio.wav`, `sample_thumb.png`) verified with adversarial regression suites. Live Windows REA execution remains an unexecuted future capability. Publishing this specification does not run REA, install dependencies, or authorize provider actions.
 - The external modernization report and playbook informed the audit, but their historical branch and test claims are not current verification evidence.
 - Profile activation is automatic only after required fields and evidence validate. Partial studies remain available for completion and do not activate.
 - Compilation [#23](https://github.com/Snoozer10/local-youtube-automation/issues/23) and #24–#30 are CLOSED and integrated through PR #52; #36 guidance is CLOSED through PR #51. Reconcile current interfaces and ownership before further changes. Existing preservation, provider, editorial and publication controls remain in force. Track A’s accepted lifecycle policy is recorded in the roadmap crosswalk; its proposed mechanisms are not silently added to #40/#41 or this feature’s acceptance.

@@ -16,6 +16,10 @@ from pathlib import Path
 from youtube_automation.prompts.research_cache import ResearchCache
 
 
+class NotebookLMUnavailableError(RuntimeError):
+    """Raised when external NotebookLM skill is not installed or enabled in host environment."""
+
+
 class NotebookLMClient:
     """Client for executing NotebookLM research queries via skill runner or cache."""
 
@@ -31,9 +35,14 @@ class NotebookLMClient:
         if skill_dir:
             self.skill_dir = Path(skill_dir).resolve()
         else:
-            # Default to standard gemini skills directory
+            # Check candidate host directories before falling back
             home = Path.home()
-            self.skill_dir = home / ".gemini" / "skills" / "notebooklm"
+            candidates = [
+                home / ".gemini" / "antigravity-cli" / "skills" / "notebooklm",
+                home / ".gemini" / "config" / "skills" / "notebooklm",
+                home / ".gemini" / "skills" / "notebooklm",
+            ]
+            self.skill_dir = next((c for c in candidates if c.is_dir()), candidates[-1])
 
         self.runner_script = self.skill_dir / "scripts" / "run.py"
 
@@ -62,8 +71,11 @@ class NotebookLMClient:
             return mock_resp
 
         # 3. Subprocess execution via skill runner
-        if not self.runner_script.exists():
-            raise FileNotFoundError(f"NotebookLM runner not found at: {self.runner_script}")
+        if not self.runner_script.is_file():
+            raise NotebookLMUnavailableError(
+                f"External notebooklm skill runner script not found at '{self.runner_script}'. "
+                "The notebooklm skill is not installed or enabled in the host environment."
+            )
 
         cmd = [
             sys.executable,

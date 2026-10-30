@@ -21,7 +21,7 @@ These instructions are the shared project contract loaded by supported coding ag
 - Follow docs/agents/workflows.md for feature, debugging and release routes, tool routing, proportional research/delegation and configured checks.
 - For any Python source, test or root facade change that enters src/youtube_automation/, first read src/youtube_automation/AGENTS.md and the nearest child contract. This also applies when editing a root facade.
 - docs/agents/AGENTS.md owns engineering-guidance consumers and navigation to issue tracking, triage labels and domain vocabulary. The issue-tracker.md, triage-labels.md and domain.md documents own their named procedures and terms.
-- Use only task-bound project skills from tasks/BRANCH_TASK_SKILLS.md; skill source and archive provenance live in skill-lock.json.
+- Use only task-bound project skills from tasks/BRANCH_TASK_SKILLS.md; skill source and archive provenance live in skill-lock.json. Note that `.agents/skills/` is host-provided / local-only and gitignored by project convention (resolve skills via the active host catalog, e.g. Claude/Antigravity/Codex, or `.claude/skills/`).
 
 ## DOX
 - AGENTS.md files are binding contracts for their subtrees. Each parent states the purpose and ownership of direct children; child files index their own direct contracts.

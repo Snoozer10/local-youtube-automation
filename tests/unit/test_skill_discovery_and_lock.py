@@ -106,9 +106,10 @@ def test_demonstrate_simulated_skill_restoration(tmp_path: Path):
     assert restored_hash == expected_hash, f"Restored skill hash mismatch: {restored_hash} != {expected_hash}"
 
 
-def test_generate_skill_qualification_receipt():
+def test_generate_skill_qualification_receipt(tmp_path: Path):
     """Generate and persist qualification receipt for Issue #39."""
     import hashlib
+    import os
 
     repo_root = Path(__file__).resolve().parents[2]
     skill_lock_path = repo_root / "skill-lock.json"
@@ -117,12 +118,16 @@ def test_generate_skill_qualification_receipt():
     skill_lock = json.loads(skill_lock_path.read_text(encoding="utf-8"))
     skills_lock = json.loads(skills_lock_path.read_text(encoding="utf-8"))
 
+    # Use normalized bytes (LF) for lock manifests to prevent CRLF checkout drift
+    skill_lock_bytes = skill_lock_path.read_text(encoding="utf-8").replace("\r\n", "\n").encode("utf-8")
+    skills_lock_bytes = skills_lock_path.read_text(encoding="utf-8").replace("\r\n", "\n").encode("utf-8")
+
     receipt = {
         "issue": 39,
-        "qualification_status": "QUALIFIED_WITH_RECORDED_PLATFORM_Gaps",
+        "qualification_status": "QUALIFIED_WITH_RECORDED_PLATFORM_GAPS",
         "lock_manifests": {
-            "skill-lock.json": hashlib.sha256(skill_lock_path.read_bytes()).hexdigest(),
-            "skills-lock.json": hashlib.sha256(skills_lock_path.read_bytes()).hexdigest(),
+            "skill-lock.json": hashlib.sha256(skill_lock_bytes).hexdigest(),
+            "skills-lock.json": hashlib.sha256(skills_lock_bytes).hexdigest(),
         },
         "coverage": {
             "task_count": len(skill_lock.get("task_bindings", {})),
@@ -145,10 +150,19 @@ def test_generate_skill_qualification_receipt():
         ],
     }
 
-    evidence_dir = repo_root / "evidence" / "receipts"
-    evidence_dir.mkdir(parents=True, exist_ok=True)
-    receipt_file = evidence_dir / "M2_SKILL_PROVENANCE_QUALIFICATION.json"
-    receipt_file.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
+    serialized_receipt = json.dumps(receipt, indent=2)
+
+    if os.environ.get("GENERATE_RECEIPTS") == "1":
+        evidence_dir = repo_root / "evidence" / "receipts"
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+        receipt_file = evidence_dir / "M2_SKILL_PROVENANCE_QUALIFICATION.json"
+        receipt_file.write_text(serialized_receipt, encoding="utf-8", newline="\n")
+    else:
+        receipt_file = tmp_path / "M2_SKILL_PROVENANCE_QUALIFICATION.json"
+        receipt_file.write_text(serialized_receipt, encoding="utf-8", newline="\n")
+        existing_receipt = repo_root / "evidence" / "receipts" / "M2_SKILL_PROVENANCE_QUALIFICATION.json"
+        if existing_receipt.is_file():
+            assert existing_receipt.stat().st_size > 0
 
     assert receipt_file.is_file()
     assert receipt["coverage"]["task_count"] == 52

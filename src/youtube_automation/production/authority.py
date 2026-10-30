@@ -496,5 +496,4 @@ def set_maintenance_mode(
     if enabled:
         lock_file.write_text(reason, encoding="utf-8")
     else:
-        if lock_file.exists():
-            lock_file.unlink()
+        lock_file.unlink(missing_ok=True)
