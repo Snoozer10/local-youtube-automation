@@ -18,6 +18,17 @@ REQUIRED_SECTIONS = [
     "## 6. Evidence Links",
 ]
 
+VALID_LAYERS = {
+    "os.filesystem",
+    "video.qsv",
+    "audio.pipe",
+    "speech.manifest",
+    "browser.gemini",
+    "pipeline.gate",
+}
+
+VALID_STATUSES = {"resolved", "mitigated", "active", "hypothesis"}
+
 
 def test_legacy_understood_errors_exact_preservation():
     repo_root = Path(__file__).resolve().parents[2]
@@ -104,3 +115,50 @@ def test_representative_error_descriptions_retrieve_case_and_layer():
 
         assert matched_id == expected_id, f"Query '{query}' failed to retrieve {expected_id} (got {matched_id})"
         assert case_data[matched_id]["layer"] == expected_layer, f"Matched case layer mismatch: {case_data[matched_id]['layer']} != {expected_layer}"
+
+
+def test_cases_and_index_bidirectional_sync():
+    """Verify cases are indexed in README, links resolve, and layer/status enums are valid."""
+    repo_root = Path(__file__).resolve().parents[2]
+    error_dir = repo_root / "docs" / "error-solving"
+    readme_text = (error_dir / "README.md").read_text(encoding="utf-8")
+    case_files = sorted((error_dir / "cases").glob("ERR-*.md"))
+
+    assert len(case_files) >= 5, "Expected at least 5 case files"
+
+    for cf in case_files:
+        assert cf.name in readme_text, f"Orphan case file not indexed in README.md: {cf.name}"
+
+        content = cf.read_text(encoding="utf-8")
+        links = re.findall(r"\[.*?\]\(([^)#\s]+)(?:#[^)]*)?\)", content)
+        for link in links:
+            if not link.startswith(("http://", "https://", "mailto:")):
+                target = (cf.parent / link).resolve()
+                assert target.exists(), f"Broken link in {cf.name}: {link}"
+
+        layer_match = re.search(r"- \*\*Responsible Layer\*\*:\s*([a-zA-Z0-9_\-.]+)", content)
+        status_match = re.search(r"- \*\*Status\*\*:\s*([a-zA-Z0-9_\-.]+)", content)
+        assert layer_match, f"Missing Responsible Layer in {cf.name}"
+        assert layer_match.group(1) in VALID_LAYERS, f"Invalid layer '{layer_match.group(1)}' in {cf.name}"
+        assert status_match, f"Missing Status in {cf.name}"
+        assert status_match.group(1) in VALID_STATUSES, f"Invalid status '{status_match.group(1)}' in {cf.name}"
+
+
+def test_legacy_resolution_map_anchors_exist():
+    """Verify all anchors in README.md resolution map physically exist in understood-errors.md."""
+    repo_root = Path(__file__).resolve().parents[2]
+    error_dir = repo_root / "docs" / "error-solving"
+    readme_text = (error_dir / "README.md").read_text(encoding="utf-8")
+    legacy_text = (error_dir / "understood-errors.md").read_text(encoding="utf-8")
+
+    mapped_anchors = re.findall(r"understood-errors\.md#([a-zA-Z0-9_\-]+)", readme_text)
+    assert len(mapped_anchors) >= 5, "Expected at least 5 mapped anchors in README.md"
+
+    headings = re.findall(r"^#{2,4}\s+(.+)$", legacy_text, flags=re.MULTILINE)
+    slugs = set()
+    for h in headings:
+        slug = re.sub(r"[^\w\s-]", "", h.lower()).strip().replace(" ", "-")
+        slugs.add(slug)
+
+    for anchor in mapped_anchors:
+        assert anchor in slugs, f"Resolution map anchor '{anchor}' does not match any heading in understood-errors.md"
