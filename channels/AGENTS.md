@@ -8,7 +8,7 @@
 - Select a profile explicitly before analysis. A script cannot alter channel identity or allowed treatments.
 - `voice: null` means no synthesis voice has been selected. It must block AI Studio synthesis, while a verified source-audio receipt identifies an imported narration episode.
 - Channel styles describe visual grammar, not a fixed episode topic. Claims, historical details and depicted characters still require episode-level review.
-- Version 2 profiles declare positive `visual_directives` and exact `forbidden_motifs`; these affect planning and image prompts. Version 1 profiles remain loadable without silently changing their historical fingerprints.
+- Version 2+ profiles declare positive `visual_directives` and exact `forbidden_motifs`; these affect planning and image prompts. Version 3 profiles support episode visual strategies. Version 1 profiles remain loadable in legacy run snapshots without silently changing their historical fingerprints.
 
 # Work Guidance
 - Keep Professor Yashrah on Achird until the user changes that choice. Prefer a coherent illustrated documentary system over the legacy curly-haired mascot.
@@ -17,7 +17,11 @@
 - New Soldier's Sledger episodes follow current/trending topic research, Gemini script creation, then Gemini refinement before narration and visuals. Source-URL copying is not its intake requirement. `C:\Users\Snoozer\Downloads\YouTube Stuff\Channels\Documentary History\New Project German` contains owner backups for comparison; do not treat a backup as the selected episode or import its narration without a matching script.
 
 # Verification
-- Validate every profile with `load_channel` and check its selected pilot brief hash before downstream work.
+- Validate every profile using the automated contract test suite:
+  ```powershell
+  pytest -q tests/unit/test_channel_profiles.py
+  ```
+- Check selected pilot brief hashes before downstream work.
 
 # Child DOX Index
 - None.
