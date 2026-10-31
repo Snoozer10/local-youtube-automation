@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-10-31T16:57:00.919751+00:00",
+  "reason": "Retirement of legacy_and_utilities dumping ground per issue #40 and codebase cleanup plan",
+  "files": {
+    "inject_json_timestamps.py": {
+      "sha256": "09540416a608006b9af0bac07800f30eac95399d53df8fde91d89c802096c748",
+      "size_bytes": 7200,
+      "original_path": "legacy_and_utilities/inject_json_timestamps.py"
+    },
+    "inject_timestamps.py": {
+      "sha256": "d0a42f63bd7b1e40d1fddd9fb08cd607b83f26f9bebfc502b887956140ea8d60",
+      "size_bytes": 4029,
+      "original_path": "legacy_and_utilities/inject_timestamps.py"
+    },
+    "json_compile_animation_prompt.py": {
+      "sha256": "65b831d8cd52931db4da158f4e36d18fe5ccb02e8970d58e24583c10c7380685",
+      "size_bytes": 4432,
+      "original_path": "legacy_and_utilities/json_compile_animation_prompt.py"
+    },
+    "remove_addons_refined_script.py": {
+      "sha256": "3642652f306bdd14656df81945500ac6c787b79819aafbf237ed5161cf33ce45",
+      "size_bytes": 5088,
+      "original_path": "legacy_and_utilities/remove_addons_refined_script.py"
+    }
+  }
+}
