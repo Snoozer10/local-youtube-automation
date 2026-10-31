@@ -28,10 +28,8 @@ runtime_state.json
 error.log
 
 # Browser Profiles (Contain Auth Cookies/Sessions)
-C:\ChromeDebugProfile
-C:\OperaDebugProfile
-%LOCALAPPDATA%\Google\Chrome\User Data\Default
-%LOCALAPPDATA%\Opera Software\Opera Stable
+/ChromeDebugProfile/
+/OperaDebugProfile/
 
 # Runtime Input (tracked placeholder; local URL edits hidden via skip-worktree)
 youtube_urls.txt
@@ -62,8 +60,11 @@ Desktop.ini
 
 # Tool-Specific Directories
 .agents/
+.claude/
 .gemini/
 .opencode/
+.remember/
+.serena/
 .specify/
 .superpowers/
 graphify-out/
@@ -114,7 +115,7 @@ apm_modules/
 /map_body.md
 /spec.md.test
 /flow_*.png
-/create_shims.py
+create_shims.py
 /tools/dev_scratch/
 /scratch/
 /docs/incidents/
