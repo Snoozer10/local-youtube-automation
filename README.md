@@ -92,7 +92,7 @@ flowchart TD
         H -->|Google Flow / Imagen 3| H1[generated_images/*.png]
         G -->|Concept Extraction| I(8. generate_thumbnail.py)
         I -->|Self-Critique Matrix| I1[thumbnails/title_*_thumbnail.png]
-        H1 --> J(9. fix_timestamps.py / inject_json_timestamps.py)
+        H1 --> J(9. fix_timestamps.py)
         J -->|flow_prompts.json| K(10. compile_video.py)
         E1 -->|Master WAV| K
         K -->|QSV / NVENC / CPU Ken Burns 1440p| L[🎬 youtube_ready_video.mp4]
