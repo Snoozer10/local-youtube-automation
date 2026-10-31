@@ -44,12 +44,30 @@ def test_collect_ast_imports_ignores_dot_dirs(tmp_path: Path) -> None:
     assert "torchaudio" not in imports  # correctly skipped .agents directory
 
 
-def test_audit_dependencies_flags_phantom_deps() -> None:
-    candidates = audit_dependencies(REPO_ROOT)
+def test_audit_dependencies_flags_phantom_deps(tmp_path: Path) -> None:
+    # Create isolated pyproject.toml with phantom and active dependencies
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        """[project]
+name = "test-pkg"
+version = "0.1.0"
+dependencies = [
+    "moviepy>=1.0.3",
+    "pydantic>=2.0.0",
+]
+""",
+        encoding="utf-8",
+    )
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "app.py").write_text("import pydantic\n", encoding="utf-8")
+
+    candidates = audit_dependencies(tmp_path)
     targets = [c["target"] for c in candidates]
-    # moviepy and torchaudio must be flagged as phantom dependencies
+    # moviepy must be flagged because it is not imported in app.py
     assert any("moviepy" in t for t in targets)
-    assert any("torchaudio" in t for t in targets)
+    # pydantic must NOT be flagged because it is imported
+    assert not any("pydantic" in t for t in targets)
 
     for c in candidates:
         assert c["category"] == "phantom_dependency"

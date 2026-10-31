@@ -21,21 +21,17 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "youtube-transcript-api>=1.0.0",
+    "youtube-transcript-api>=1.2.0",
     "playwright>=1.40.0",
     "python-docx>=1.1.0",
     "python-dotenv>=1.0.0",
     "faster-whisper>=1.0.0",
-    "openai-whisper>=20231117",
-    "torch>=2.0.0",
-    "torchaudio>=2.1.0",
     "tqdm>=4.66.0",
     "requests>=2.31.0",
     "psutil>=5.9.0",
     "Pillow>=10.0.0",
     "pytesseract>=0.3.13",
     "pydantic>=2.0.0",
-    "moviepy>=1.0.3",
 ]
 
 [project.scripts]
@@ -52,6 +48,10 @@ dev = [
     "mypy>=1.5.0",
     "pip-audit>=2.6.0",
     "pre-commit>=3.5.0",
+]
+tools = [
+    "torch>=2.0.0",
+    "openai-whisper>=20231117",
 ]
 
 [tool.setuptools]

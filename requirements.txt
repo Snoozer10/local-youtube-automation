@@ -21,14 +21,12 @@ python-docx>=1.1.0              # Word document (.docx) generation for refined s
 faster-whisper>=1.0.0           # CTranslate2 GPU/CPU speech recognition with VAD
 openai-whisper>=20231117        # Fallback Whisper engine for standalone transcription
 torch>=2.0.0                    # Deep learning backend for Whisper CUDA acceleration
-torchaudio>=2.0.0               # Audio processing backend for PyTorch
 
 # ------------------------------------------------------------------------------
 # 4. Image, Media & Video Timeline Processing
 # ------------------------------------------------------------------------------
 Pillow>=10.0.0                  # Image processing, bounding box validation & screenshots
 pytesseract>=0.3.13             # Required full-frame OCR gate for adaptive image acceptance
-moviepy>=2.0.0                  # Secondary/fallback SRT-synced video compositor
 
 # ------------------------------------------------------------------------------
 # 5. CLI, Monitoring & Progress Utilities
