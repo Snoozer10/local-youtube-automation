@@ -8,6 +8,10 @@ Implementation plans, progress checklists and verification records.
 
 - BRANCH_TASK_SKILLS.md maps each branch task and workflow finding to explicitly invoked project skills; root skill-lock.json owns source/hash/archive data. Skill bindings never close task acceptance.
 
+- REMAINING_WORK.md owns the dated user-facing inventory of remaining project work, missing evidence, critique and optional improvements. It links existing task/issue owners and does not replace BRANCH_COMPLETION_MASTER.md acceptance status.
+
+- ANTIGRAVITY_CAMPAIGN.md owns the backlog campaign entry point, task-specific delegation grant, start/pause/resume protocol and operator prompt index. It links the GitHub campaign issue and private checkpoint; existing master/feature acceptance and runtime journals remain authoritative at their scopes.
+
 ## Local Contracts
 - Check tasks only after implementation and verification; distinguish live checks from offline evidence.
 - Link active work from plan.md and todo.md.

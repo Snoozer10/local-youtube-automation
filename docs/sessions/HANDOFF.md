@@ -1,5 +1,41 @@
 # Handoff
 
+## Backlog campaign setup, 2026-11-01
+
+### Done
+- Durable start/pause/resume entrypoint: [tasks/ANTIGRAVITY_CAMPAIGN.md](../../tasks/ANTIGRAVITY_CAMPAIGN.md). Campaign issue #78 owns progress/active reservations; Codex is final reviewer and merge owner. Refresh that issue and Git for the latest setup PR/merge rather than relying on a historical pending line.
+- Initial jobs: #79 is S01 private owner credential disposition; #80 is the first ready offline S02 source-redaction slice; #81 is queued E02 offline CI-selection reconciliation. No Antigravity task/session has been dispatched by setup.
+- The owner selected per-task live allowances: prepare each concrete live task offline, then ask for its exact actions/caps/time/stop conditions. No standing live grant exists; pause/resume/new sessions never reset usage or uncertain outcomes.
+- Created the private checkpoint at C:/Users/Snoozer/teamwork_projects/architecture-renewal-intake/backlog-20261101/HANDOFF.md, an UNGRANTED template and private-config notes. No secrets were provisioned. Sandbox tracked preimages were preserved before a clean fast-forward to the reviewed ECC9097 runtime source; fresh setup checkout/verification details are in .runtime/backlog_setup_20261101/.
+
+### Next
+- After setup integration is verified in issue #78, open the sandbox and use the entrypoint's one-line Start/New Session prompt. Reconcile the private checkpoint and claim #80; reserve exact files/interfaces before editing. Codex feature work stays in its separate lane.
+- For any live pipeline/generation task, first complete the run card, dependency/authority/profile/output checks, and obtain the exact allowance; then retain grant/counters/receipts across pauses. Human acceptance and canonical activation/publication remain distinct.
+
+### Failures & Fixes
+- Sandbox metadata showed no authority override/config: its default lease database is checkout-local and does not establish shared physical-resource coordination. Live authority/profile/process qualification remains a task prerequisite; do not invent a replacement DB or bypass leases.
+- Faster-whisper was absent in the initial sandbox metadata audit. Offline work can proceed where its checks pass; transcription work must resolve that prerequisite in scope. The primary .env was not copied, and the unrelated .serena/project.yml edit is preserved.
+
+Earlier sections retain exact dated history; this entrypoint and newer receipts control campaign resume.
+
+## Current cursor, 2026-11-01
+
+### Done
+- Repair PR #77 is merged; master is ecc90972b4476596ca1c12756b3c7e4cddda9a45. Integration receipt: .runtime/repo_review_integration_20261101/integration/CLOSEOUT.json. Old pending-integration sections below are historical.
+- Created [the remaining project-work inventory](../../tasks/REMAINING_WORK.md) with priorities, dependencies, acceptance conditions, critique and explicit optional/deferred scope. Live GitHub queries returned no open issues or PRs. No task acceptance checkbox or tracker state changed.
+- Prepared [the parallel backlog/feature operating agreement](ANTIGRAVITY_BACKLOG_WORKFLOW.md), including sandbox findings, task-branch/sync/ownership rules and an Antigravity kickoff message. This is a proposal; no external session, branch, push or PR was started.
+- Read-only audit found a credential-shaped value in a tracked historical security report; current revocation is unknown. No value was copied into new documentation, and no credential service was contacted.
+
+### Next
+- Start with S01/S02 private credential disposition and redaction, then reconcile active status records and offline CI/release gaps. Use the inventory IDs and canonical C/D criteria to select one bounded milestone.
+- Professor candidate identity/approval must be reconciled before further delivery work. Preserve existing narration and valid exact-artifact acceptance. Full Professor D1 production remains DEFERRED BY USER.
+
+### Failures & Fixes
+- Some D1 approved-script/D3-validator/full-audio paths are absent in this checkout. Recover original bytes and approval evidence before any resumed full-episode work; do not reconstruct text from summaries.
+- Audit preimages, remote read receipts, safe location-only checks and final documentation verification live under .runtime/remaining_work_audit_20261101/. The unrelated .serena/project.yml edit is preserved.
+
+The sections below retain dated session history and do not override this cursor or newer receipts.
+
 ## Current Phase
 Spec #23 receipt completion verified locally; separate guidance and compilation PR integration is in progress.
 

@@ -1,5 +1,9 @@
 # Historical adaptive visual engine hardening checklist
 
+Current whole-project inventory: [remaining work and critique](REMAINING_WORK.md). Existing acceptance states remain in [the canonical master](BRANCH_COMPLETION_MASTER.md). PR #77 is merged; PR #21 references below belong to the retained historical checklist.
+
+Antigravity execution/resume entry point: [campaign setup and prompts](ANTIGRAVITY_CAMPAIGN.md); Codex remains the final review/integration owner.
+
 Current execution/status: [master](BRANCH_COMPLETION_MASTER.md) and [review fixes](../docs/sessions/REVIEW_FIXES_20261023.md). Current exact-head CI/Codex outcomes belong to PR #21 and its bound receipts; CodeRabbit is USER-SKIPPED by owner instruction for its file limit. The checklist below is historical.
 
 ---
