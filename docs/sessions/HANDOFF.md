@@ -829,3 +829,23 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - CLI regression was confirmed red against baseline in verification/cli_guard_red.log and green after repair. An early Ruff import-order issue was fixed; an initial mypy invocation timed out, then the recorded full strict run passed.
 - Native Python 3.10 was unavailable; fallback behavior was simulated, Python 3.10 grammar parsed, and conditional tomli wheel metadata checked.
 - Git add reported the ignored legacy parent even though the tracked shim staged. Verified the exact staged scope and used tracked-file updates for the remaining commits.
+
+
+## Repair PR Integration Preparation, 2026-11-01
+
+### Done
+- User authorized PR preparation, CI verification and integration for all six repair commits. PR #77: https://github.com/Snoozer10/local-youtube-automation/pull/77, targeting master from fix/repo-review-20261101.
+- Chosen method: merge commit, preserving the six separately useful repair commits and their receipt-referenced hashes. Independent integration review found no blockers across all 19 changed files; all 13 Python source pins match the repair closeout.
+- Fresh frozen source verification at 8f3b024d3ce53e9f925887ae141787556a9ceb17: full tests, 2362 passed and 9 skipped in 617.27s; strict mypy, success in 84 files; workspace Ruff, all checks passed. Commands: venv/Scripts/python.exe -m pytest tests/ -q --tb=short -x; venv/Scripts/python.exe -m mypy --strict src/; venv/Scripts/python.exe -m ruff check . --output-format concise.
+- Actual Python 3.10.20 focused regressions: 115 passed, 1 deselected in 62.49s. Only tests/unit/test_observation_method_proof.py::test_observation_environment_records_exact_runtime is excluded because it explicitly asserts Python >=3.11 for the qualification environment. The initial 115-pass/1-failure run and dependency-setup failures are preserved; no qualification requirement was weakened.
+- Verification logs, exact commands and before/after pins: .runtime/repo_review_integration_20261101/verification/. POSTCHECK.json confirms all 19 tracked repair-file pins, tracked evidence receipt hashes and the existing .serena/project.yml edit were unchanged. Prior wheel/sdist verification remains applicable to the identical runtime source.
+- GitHub reads confirmed #31 and #39 are closed as completed. Their old open/partial handoff entries are historical. No campaign issue was reopened or closed by this integration.
+
+### Next
+- Refresh PR #77 before any integration action; require successful CI for its exact current head. The integration directory .runtime/repo_review_integration_20261101/integration/ contains raw PR/check responses and CLOSEOUT.json, which records the latest integration phase and final commit identities. Preserve the branch and evidence.
+- Recommended subsequent product milestone: resume the Professor pilot with existing narration and fresh human review of the exact preview. Select the current run/media and explicit bounded provider/browser scope before any live stage; this integration does not execute the pilot.
+- Root, source, production, tests and tools ownership contracts remain unchanged during integration because runtime behavior and ownership are unchanged.
+
+### Failures & Fixes
+- GitHub CLI connections intermittently failed or timed out. The user waived the two-strike brake for this chat only; a persistent HTTPS API session using the existing credential succeeded. Raw failures remain in the integration receipts; credentials were never logged.
+- The isolated Python 3.10 environment initially lacked Playwright. Installing the declared test dependency fixed collection; the separate Python >=3.11 qualification assertion remains explicitly outside the compatibility subset.
