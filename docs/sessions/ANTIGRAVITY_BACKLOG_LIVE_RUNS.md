@@ -18,7 +18,7 @@ The coordinator prepares a task-specific request and asks the owner for an exact
 
 An allowance is cumulative for its task/run and does not replenish on pause, resume, new session, branch change or a new chat. Count every initiated live attempt, including retries; record successful, failed-before-send, failed-after-send and uncertain outcomes separately. Never treat an ambiguous transport/UI result as zero usage. Reconcile service receipts or other safe evidence before retrying. An expired grant is unusable. If a pinned input/code/runtime/config/profile/action changes, first test the grant's written validity conditions against fresh evidence; re-ask only for a material scope or pin change covered by those conditions. Do not broaden a grant by interpretation.
 
-If the action cannot be bounded or its send boundary, account/resource ownership, output path, or counter cannot be established offline, stop before the first live action and report the missing evidence. The user decides whether to revise scope or grant.
+If the action itself cannot be bounded, stop and report the missing evidence. The offline run card may request a bounded, zero-send readiness/discovery phase within the same task grant. Record unknown live facts explicitly; perform no probe before approval. Generation begins only after current ownership, profile/model, lease, output, counter and send-boundary checks pass; otherwise stop and preserve evidence. The user decides whether to revise scope or grant.
 
 ## Offline preparation and owner request
 
