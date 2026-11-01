@@ -17,6 +17,11 @@ This page routes readers to current project owners. The map is navigation only. 
 
 For diagnosis, use [engineering workflows](agents/workflows.md) and the [error register](error-solving/understood-errors.md); old case advice needs current-contract verification. Task skill selection belongs to [branch task bindings](../tasks/BRANCH_TASK_SKILLS.md), with provenance in [skill-lock.json](../skill-lock.json). Both prompt trees and root launchers remain supported distribution surfaces.
 
+## Public installation and documentation maintenance
+- [Manual getting started](getting-started.md) provides the Windows setup sequence and distinguishes dependency checks from live production.
+- [AI-assisted setup](agents/setup.md) gives agents the detailed installation and beginner teaching procedure reached from the README copy/paste prompt.
+- [README maintenance](agents/readme-maintenance.md) owns documentation-impact review, badge/claim verification and the offline onboarding check. The header banner under docs/assets/ is illustrative.
+
 ## Document status and disposition
 
 Keep, update and archive describe the document's disposition. They do not authorize a filesystem action. Deferred execution is stated separately. No archive candidate is approved by this map.

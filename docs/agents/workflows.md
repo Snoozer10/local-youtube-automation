@@ -27,6 +27,10 @@ These routes apply the shared root contract. The nearest task and domain contrac
 3. Delegate only independent work that can reduce risk or elapsed time; otherwise work directly. Include explicit ownership, acceptance checks and evidence requirements.
 4. Run the focused test/check while iterating. Run required repository gates once against the frozen tree; documentation-only edits do not need broad suites unless a required check is affected.
 
+## Documentation impact
+- Before closing any change, apply docs/agents/readme-maintenance.md: update affected reader-facing documentation in the same change or state a specific no-impact reason in the PR. Include the README when capabilities, setup, public usage, requirements or important limits change.
+- Run python tools/check_readme.py for public onboarding edits. Review claims against source and examples against the named shell; this offline check does not prove prose accuracy or authorize production.
+
 ## Debugging
 1. Establish the exact symptom, environment, versions and last known-good state. Check docs/error-solving/understood-errors.md before investigating a recorded failure.
 2. Reproduce at the narrowest responsible boundary. Preserve raw receipts, hashes, checkpoints and recoverable state; separate observed facts from hypotheses.

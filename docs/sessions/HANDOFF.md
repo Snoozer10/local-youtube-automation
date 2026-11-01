@@ -1,5 +1,25 @@
 # Handoff
 
+## README and public onboarding, 2026-11-02
+
+### Done
+- Local branch docs/readme-onboarding-20261102 renews the root README with broad niche positioning, source-verified bundled examples, current CI/Python/Beta/MIT badges and the illustrated docs/assets/readme-banner.png header.
+- Short copy/paste prompt routes to docs/agents/setup.md; docs/getting-started.md owns manual installation. docs/agents/readme-maintenance.md, root/local contracts, the PR template, tools/check_readme.py and the separate docs workflow establish documentation-impact review and offline drift checks.
+- Independent review has no blocking findings. Commands observed: tools/check_readme.py passed four public docs; standalone unittest discovery passed eight tests; targeted Ruff and git diff --check passed; explicit canonical pytest unit gate passed 2,344 tests in 366.72 seconds. Six PowerShell examples parsed without execution; workflow YAML parsed; existing venv pip check passed and pip show resolved this checkout.
+- Exact preimages, raw check logs, banner provenance and artifact verification are retained under .runtime/readme_renewal_20261102/. The existing .serena/project.yml edit is unchanged. Production source, configuration, accepted media and the separate backlog workspace were not edited.
+
+### Next
+- Review the README/banner with the owner and publish this local branch through normal PR review when selected. No push, PR, merge, fresh installation or live pipeline qualification was performed. Cold-start setup URLs become usable remotely only after these files reach master.
+- Keep the main software CI selection and previously queued CI-runtime work separate. The docs workflow is not a required branch-protection check until configured by the repository owner.
+
+### Failures & Fixes
+- The first README draft-edit helper stopped before writing on a CRLF anchor mismatch; its retry matched actual line endings. Only the newly inserted root-contract section needed LF correction for git diff --check; original root bytes reconstruct exactly from the retained preimage.
+- Review corrected a PR-body-relative link, clarified non-bundled science.json example paths, and repaired punctuation/duplicate-heading anchor handling with regressions. Uncertain or historical grants in reference guides do not authorize onboarding live work.
+- QMD lexical indexing was refreshed. One bounded core-specs embedding pass completed 27 chunks from nine documents and then reached its session cap; remaining vectors may be pending. Use current lexical/file retrieval until relevant vectors are refreshed. No QMD cleanup was requested or run.
+
+Older entries below retain their dated scope and do not describe the publication status of this README branch.
+
+
 ## Backlog campaign setup, 2026-11-01
 
 ### Done
