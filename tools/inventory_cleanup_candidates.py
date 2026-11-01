@@ -15,10 +15,14 @@ import argparse
 import ast
 import hashlib
 import json
-import os
 import re
 import sys
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 compatibility
+    import tomli as tomllib
+
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -61,8 +65,10 @@ def collect_ast_imports(root_dir: Path, exclude_dirs: set[str] | None = None) ->
 
     imported_modules: set[str] = set()
 
+    root_dir = root_dir.resolve()
     for path in root_dir.rglob("*.py"):
-        if any(part in exclude_dirs or part.startswith(".") for part in path.parts[:-1]):
+        relative_parts = path.relative_to(root_dir).parts[:-1]
+        if any(part in exclude_dirs or part.startswith(".") for part in relative_parts):
             continue
         try:
             content = path.read_text(encoding="utf-8", errors="replace")

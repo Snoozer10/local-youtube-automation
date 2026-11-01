@@ -907,16 +907,19 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("adopt-polished-audio requires all four explicit audio/acceptance path and hash flags")
     if any(adoption_flags) and args.stage != "adopt-polished-audio":
         parser.error("Polished audio acceptance flags apply only to adopt-polished-audio")
-    if args.stage == "adopt-polished-audio":
-        _run_stage_attempt(args, root, database)
-        return
     if args.stage == "status":
-        from .ledger_observation import ObservationDecision, format_ledger_status, observe_ledger
+        from .ledger_observation import (
+            ObservationDecision,
+            ObservationStatus,
+            format_ledger_status,
+            observe_ledger,
+        )
 
         if authority_err is not None:
             from youtube_automation.core import failure_record
 
             err_type = type(authority_err).__name__
+            status_type: ObservationStatus
             if "Damaged" in err_type:
                 status_type = "DAMAGED"
             elif "Missing" in err_type:
@@ -939,12 +942,17 @@ def main(argv: list[str] | None = None) -> None:
                 supported=False,
             )
         else:
+            assert database is not None
             decision = observe_ledger(database)
         print(format_ledger_status(decision))
         return
     if authority_err is not None:
         raise authority_err
     else:
+        assert database is not None
+        if args.stage == "adopt-polished-audio":
+            _run_stage_attempt(args, root, database)
+            return
         if args.stage in {"report", "preview", "approve", "render"} and (root / "visual_budget.json").is_file():
             from .visual_gate import require_visual_audit
 

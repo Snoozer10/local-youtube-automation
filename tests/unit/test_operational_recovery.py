@@ -359,7 +359,8 @@ def test_generate_recovery_qualification_receipt(mock_operational_runtime: Path,
         },
     }
 
-    evidence_dir = Path(__file__).resolve().parents[2] / "evidence" / "receipts"
+    evidence_dir = tmp_path / "evidence" / "receipts"
+    assert evidence_dir.is_relative_to(tmp_path)
     evidence_dir.mkdir(parents=True, exist_ok=True)
     receipt_file = evidence_dir / "M4_RECOVERY_SET_QUALIFICATION.json"
     receipt_file.write_text(json.dumps(receipt, indent=2), encoding="utf-8")

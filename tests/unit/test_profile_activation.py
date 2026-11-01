@@ -1,5 +1,7 @@
 """Tests for Issue #44: Derivation and safe activation of production channel profiles."""
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -140,6 +142,194 @@ def test_atomic_publish_and_activation_and_idempotent_recovery(core_ready_study:
     assert rec["status"] == "RECOVERED_DISCARDED"
     # Prior active revision preserved
     assert mgr.get_active_revision() == profile.revision
+
+
+def test_reactivating_same_derived_profile_preserves_immutable_revision(
+    core_ready_study: Path, tmp_path: Path
+):
+    from unittest.mock import patch
+
+    collector = StudyCollector(core_ready_study)
+    study = collector.load_study()
+    with patch(
+        "youtube_automation.production.profile_activation.time.strftime",
+        side_effect=["2026-11-01T00:00:00Z", "2026-11-01T00:00:01Z"],
+    ):
+        first = derive_production_profile(study, {"voice": "Charon"})
+        retry = derive_production_profile(study, {"voice": "Charon"})
+
+    assert first.revision == retry.revision
+    assert first.created_at != retry.created_at
+
+    manager = ProfileActivationManager(tmp_path / "channel_dna")
+    manager.publish_and_activate(first)
+    revision_file = manager.revisions_dir / first.revision / "profile.json"
+    published_bytes = revision_file.read_bytes()
+    digest_receipt = revision_file.with_name("profile.sha256")
+    assert digest_receipt.read_text(encoding="ascii").strip() == hashlib.sha256(
+        published_bytes
+    ).hexdigest()
+
+    result = manager.publish_and_activate(retry)
+
+    assert result["status"] == "ACTIVATED"
+    assert result["active_revision"] == first.revision
+    assert revision_file.read_bytes() == published_bytes
+    assert manager.load_active_profile().model_dump() == first.model_dump()
+
+    newer_profile = derive_production_profile(study, {"voice": "Achird"})
+    manager.publish_and_activate(newer_profile)
+    result = manager.publish_and_activate(retry)
+
+    assert result["active_revision"] == first.revision
+    assert revision_file.read_bytes() == published_bytes
+    assert manager.load_active_profile().model_dump() == first.model_dump()
+
+
+@pytest.mark.parametrize(
+    ("created_at", "expected_error"),
+    [
+        (None, "Published profile is invalid"),
+        (7, "Published profile is invalid"),
+        ("1999-01-01T00:00:00Z", "Active profile pointer digest mismatch"),
+    ],
+    ids=["missing", "non-string", "tampered-string"],
+)
+def test_reactivation_rejects_tampered_published_timestamp_without_writes(
+    core_ready_study: Path,
+    tmp_path: Path,
+    created_at: str | int | None,
+    expected_error: str,
+):
+    collector = StudyCollector(core_ready_study)
+    profile = derive_production_profile(collector.load_study(), {"voice": "Charon"})
+    manager = ProfileActivationManager(tmp_path / "channel_dna")
+    manager.publish_and_activate(profile)
+
+    revision_file = manager.revisions_dir / profile.revision / "profile.json"
+    stored = json.loads(revision_file.read_text(encoding="utf-8"))
+    if created_at is None:
+        del stored["created_at"]
+    else:
+        stored["created_at"] = created_at
+    tampered_profile_bytes = json.dumps(stored, indent=2).encode("utf-8")
+    revision_file.write_bytes(tampered_profile_bytes)
+    pointer_file = manager.active_pointer_file
+    original_pointer_bytes = pointer_file.read_bytes()
+
+    with pytest.raises(ValueError, match=expected_error):
+        manager.publish_and_activate(profile)
+
+    assert revision_file.read_bytes() == tampered_profile_bytes
+    assert pointer_file.read_bytes() == original_pointer_bytes
+
+
+def test_inactive_revision_retry_rejects_tampered_published_timestamp(
+    core_ready_study: Path, tmp_path: Path
+):
+    collector = StudyCollector(core_ready_study)
+    study = collector.load_study()
+    original = derive_production_profile(study, {"voice": "Charon"})
+    newer = derive_production_profile(study, {"voice": "Achird"})
+    manager = ProfileActivationManager(tmp_path / "channel_dna")
+
+    manager.publish_and_activate(original)
+    manager.publish_and_activate(newer)
+
+    original_file = manager.revisions_dir / original.revision / "profile.json"
+    stored = json.loads(original_file.read_text(encoding="utf-8"))
+    stored["created_at"] = "1999-01-01T00:00:00Z"
+    tampered_bytes = json.dumps(stored, indent=2).encode("utf-8")
+    original_file.write_bytes(tampered_bytes)
+    pointer_before = manager.active_pointer_file.read_bytes()
+
+    with pytest.raises(ValueError, match="(?i)published profile digest"):
+        manager.publish_and_activate(original)
+
+    assert original_file.read_bytes() == tampered_bytes
+    assert manager.active_pointer_file.read_bytes() == pointer_before
+    assert manager.get_active_revision() == newer.revision
+
+
+@pytest.mark.parametrize("receipt_state", ["missing", "tampered"])
+def test_inactive_legacy_revision_without_valid_digest_anchor_fails_closed(
+    core_ready_study: Path, tmp_path: Path, receipt_state: str
+):
+    from unittest.mock import patch
+
+    study = StudyCollector(core_ready_study).load_study()
+    with patch(
+        "youtube_automation.production.profile_activation.time.strftime",
+        return_value="2026-11-01T00:00:00Z",
+    ):
+        original = derive_production_profile(study, {"voice": "Charon"})
+    with patch(
+        "youtube_automation.production.profile_activation.time.strftime",
+        return_value="2026-11-01T00:00:01Z",
+    ):
+        retry = derive_production_profile(study, {"voice": "Charon"})
+
+    manager = ProfileActivationManager(tmp_path / "channel_dna")
+    manager.publish_and_activate(original)
+    manager.publish_and_activate(derive_production_profile(study, {"voice": "Achird"}))
+
+    revision_file = manager.revisions_dir / original.revision / "profile.json"
+    digest_receipt = revision_file.with_name("profile.sha256")
+    assert original.revision == retry.revision
+    assert original.created_at != retry.created_at
+    if receipt_state == "missing":
+        digest_receipt.unlink()
+    else:
+        digest_receipt.write_text("0" * 64 + "\n", encoding="ascii")
+    receipt_bytes = digest_receipt.read_bytes() if digest_receipt.exists() else None
+    pointer_bytes = manager.active_pointer_file.read_bytes()
+
+    with pytest.raises(ValueError, match="(?i)published profile digest"):
+        manager.publish_and_activate(retry)
+
+    if receipt_bytes is None:
+        assert not digest_receipt.exists()
+    else:
+        assert digest_receipt.read_bytes() == receipt_bytes
+    assert revision_file.read_bytes() == original.model_dump_json(indent=2).encode("utf-8")
+    assert manager.active_pointer_file.read_bytes() == pointer_bytes
+
+
+@pytest.mark.parametrize("bootstrap", ["exact_payload", "active_pointer"])
+def test_legacy_active_revision_bootstraps_digest_receipt_from_valid_anchor(
+    core_ready_study: Path, tmp_path: Path, bootstrap: str
+):
+    from unittest.mock import patch
+
+    study = StudyCollector(core_ready_study).load_study()
+    with patch(
+        "youtube_automation.production.profile_activation.time.strftime",
+        return_value="2026-11-01T00:00:00Z",
+    ):
+        original = derive_production_profile(study, {"voice": "Charon"})
+    if bootstrap == "active_pointer":
+        with patch(
+            "youtube_automation.production.profile_activation.time.strftime",
+            return_value="2026-11-01T00:00:01Z",
+        ):
+            candidate = derive_production_profile(study, {"voice": "Charon"})
+    else:
+        candidate = original
+
+    manager = ProfileActivationManager(tmp_path / "channel_dna")
+    manager.publish_and_activate(original)
+    revision_file = manager.revisions_dir / original.revision / "profile.json"
+    published_bytes = revision_file.read_bytes()
+    receipt_file = revision_file.with_name("profile.sha256")
+    receipt_file.unlink()
+
+    result = manager.publish_and_activate(candidate)
+
+    assert result["active_revision"] == original.revision
+    assert revision_file.read_bytes() == published_bytes
+    assert receipt_file.read_text(encoding="ascii").strip() == hashlib.sha256(
+        published_bytes
+    ).hexdigest()
 
 
 def test_brief_binding_pins_active_revision_and_preserves_existing_episodes(core_ready_study: Path, tmp_path: Path):

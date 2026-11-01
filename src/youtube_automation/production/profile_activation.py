@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .contracts import Channel
 from .study import ReferenceStudy, StudyStatus
@@ -41,6 +42,35 @@ def compute_profile_digest(profile_dict: dict[str, Any]) -> str:
     """Compute deterministic SHA-256 digest of canonical profile JSON."""
     raw = json.dumps(profile_dict, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
+
+
+def _ensure_profile_digest_receipt(
+    rev_dir: Path,
+    profile_bytes: bytes,
+    *,
+    may_bootstrap: bool,
+) -> None:
+    """Verify a published profile's immutable byte digest, or safely bootstrap legacy data."""
+    receipt_path = rev_dir / "profile.sha256"
+    byte_digest = hashlib.sha256(profile_bytes).hexdigest()
+    expected_receipt = f"{byte_digest}\n".encode("ascii")
+
+    if receipt_path.exists():
+        if receipt_path.read_bytes() != expected_receipt:
+            raise ValueError("Published profile digest receipt mismatch")
+        return
+
+    if not may_bootstrap:
+        raise ValueError("Inactive legacy profile has no published profile digest receipt")
+
+    try:
+        with receipt_path.open("xb") as receipt:
+            receipt.write(expected_receipt)
+            receipt.flush()
+            os.fsync(receipt.fileno())
+    except FileExistsError:
+        if receipt_path.read_bytes() != expected_receipt:
+            raise ValueError("Published profile digest receipt mismatch") from None
 
 
 def derive_production_profile(
@@ -272,16 +302,61 @@ class ProfileActivationManager:
 
         # 1. Verify revision immutability: refuse to overwrite existing revision with differing content
         if profile_file.is_file():
-            existing_dict = json.loads(profile_file.read_bytes().decode("utf-8"))
+            existing_bytes = profile_file.read_bytes()
+            existing_dict = json.loads(existing_bytes.decode("utf-8"))
+            if not isinstance(existing_dict, dict):
+                raise ValueError("Published profile is invalid: expected a JSON object")
             existing_digest = compute_profile_digest(existing_dict)
+            pointer_matches = False
             if existing_digest != profile_digest:
-                raise ValueError(
-                    f"Revision '{profile.revision}' is immutable and already published with differing content (existing digest {existing_digest} != {profile_digest})"
-                )
+                if not isinstance(existing_dict.get("created_at"), str):
+                    raise ValueError("Published profile is invalid: created_at must be a string")
+                try:
+                    DerivedProductionProfile.model_validate(existing_dict)
+                except ValidationError as exc:
+                    raise ValueError("Published profile is invalid") from exc
+
+                existing_content = dict(existing_dict)
+                candidate_content = dict(profile_dict)
+                existing_content.pop("created_at", None)
+                candidate_content.pop("created_at", None)
+                if existing_content != candidate_content:
+                    raise ValueError(
+                        f"Revision '{profile.revision}' is immutable and already published with differing content (existing digest {existing_digest} != {profile_digest})"
+                    )
+                # A retry may derive the same semantic revision at a later time.
+                # Keep the original published payload and bind activation to its digest.
+                profile_digest = existing_digest
+            if self.active_pointer_file.is_file():
+                pointer = json.loads(self.active_pointer_file.read_text(encoding="utf-8"))
+                if pointer.get("active_revision") == profile.revision:
+                    expected_digest = pointer.get("profile_digest") or pointer.get("digest")
+                    accepted_digests = {
+                        hashlib.sha256(existing_bytes).hexdigest(),
+                        existing_digest,
+                    }
+                    if expected_digest not in accepted_digests:
+                        raise ValueError(
+                            "Active profile pointer digest mismatch for published profile"
+                        )
+                    pointer_matches = True
+            _ensure_profile_digest_receipt(
+                rev_dir,
+                existing_bytes,
+                may_bootstrap=existing_digest == compute_profile_digest(profile_dict)
+                or pointer_matches,
+            )
         else:
+            if (rev_dir / "profile.sha256").exists():
+                raise ValueError("Published profile digest receipt has no profile")
             temp_profile = profile_file.with_suffix(".tmp")
             temp_profile.write_bytes(profile.model_dump_json(indent=2).encode("utf-8"))
             temp_profile.replace(profile_file)
+            _ensure_profile_digest_receipt(
+                rev_dir,
+                profile_file.read_bytes(),
+                may_bootstrap=True,
+            )
 
         # 2. Record journal entry for atomic pointer switch
         journal_data = {

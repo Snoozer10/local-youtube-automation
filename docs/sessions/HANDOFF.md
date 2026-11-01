@@ -809,3 +809,44 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - Nine affected safety & recovery modules: 142 passed in 17.64s.
 - Linter: `ruff check src/ tests/unit/` clean (0 errors).
 
+## Repository Review Repairs, 2026-11-01
+
+### Done
+- Branch: fix/repo-review-20261101. Exact preimages and raw receipts: .runtime/repo_review_repair_20261101T170453Z/.
+- Repaired legacy timestamp CLI/import compatibility, repository-root scanner exclusions, Python 3.10 TOML fallback, immutable profile.sha256 receipts, and test evidence isolation. Durable ownership notes are in root AGENTS.md, tools/AGENTS.md, and src/youtube_automation/production/AGENTS.md; tests/AGENTS.md already requires tmp_path copies for artifact tests.
+- Full suite: venv/Scripts/python.exe -m pytest tests/ -q --tb=short -x — 2362 passed, 9 skipped in 363.67s. Strict mypy: venv/Scripts/python.exe -m mypy --strict src/ — success in 84 files. Workspace Ruff: venv/Scripts/python.exe -m ruff check . --output-format concise — all checks passed. Build: venv/Scripts/python.exe -m build --no-isolation --sdist --wheel --outdir .runtime/repo_review_repair_20261101T170453Z/verification/final_after_gate_repairs/dist — exit 0.
+- After the full run, normalized 12 added CLI lines from CRLF to LF; AST identity and untouched bytes are verified in verification/line_ending_cleanup/PROOF.json. Post-cleanup focused CLI/authority/recovery suite: 91 passed in 14.65s; strict mypy (84 files) and workspace Ruff passed. git diff --check is clean apart from Git autocrlf informational warnings. Results are in verification/line_ending_cleanup/CHECKS.json.
+- Final gate summary records source inputs and tracked evidence unchanged in verification/final_after_gate_repairs/SUMMARY.json. Independent review found no blockers. Existing .serena/project.yml change is preserved. No provider, browser, publication, or release work was done.
+- Final wheel/sdist rebuild passed; packaged runtime modules match final source bytes. Receipt: verification/POST_CLEANUP_BUILD.json.
+- src/youtube_automation/AGENTS.md and tests/AGENTS.md remain unchanged because their existing ownership and evidence-isolation contracts cover these repairs.
+
+### Next
+- Review the local repair commits on fix/repo-review-20261101. No push or merge was requested.
+
+### Failures & Fixes
+- Baseline strict typing at 531da67 exposed six existing issues; fixed iterator typing, observation status aliasing, non-None guards, and authority refusal before polished-audio dispatch. Final strict mypy passed.
+- Full tests exposed M1/M5 canonical receipt writers. Moved their evidence tests to tmp_path, preserved generated receipts, and restored original evidence; the first M1 restore was corrected from the known clean baseline, with RESTORE_CORRECTION.json retained.
+- CLI regression was confirmed red against baseline in verification/cli_guard_red.log and green after repair. An early Ruff import-order issue was fixed; an initial mypy invocation timed out, then the recorded full strict run passed.
+- Native Python 3.10 was unavailable; fallback behavior was simulated, Python 3.10 grammar parsed, and conditional tomli wheel metadata checked.
+- Git add reported the ignored legacy parent even though the tracked shim staged. Verified the exact staged scope and used tracked-file updates for the remaining commits.
+
+
+## Repair PR Integration Preparation, 2026-11-01
+
+### Done
+- User authorized PR preparation, CI verification and integration for all six repair commits. PR #77: https://github.com/Snoozer10/local-youtube-automation/pull/77, targeting master from fix/repo-review-20261101.
+- Chosen method: merge commit, preserving the six separately useful repair commits and their receipt-referenced hashes. Independent integration review found no blockers across all 19 changed files; all 13 Python source pins match the repair closeout.
+- Fresh frozen source verification at 8f3b024d3ce53e9f925887ae141787556a9ceb17: full tests, 2362 passed and 9 skipped in 617.27s; strict mypy, success in 84 files; workspace Ruff, all checks passed. Commands: venv/Scripts/python.exe -m pytest tests/ -q --tb=short -x; venv/Scripts/python.exe -m mypy --strict src/; venv/Scripts/python.exe -m ruff check . --output-format concise.
+- Actual Python 3.10.20 focused regressions: 115 passed, 1 deselected in 62.49s. Only tests/unit/test_observation_method_proof.py::test_observation_environment_records_exact_runtime is excluded because it explicitly asserts Python >=3.11 for the qualification environment. The initial 115-pass/1-failure run and dependency-setup failures are preserved; no qualification requirement was weakened.
+- Verification logs, exact commands and before/after pins: .runtime/repo_review_integration_20261101/verification/. POSTCHECK.json confirms all 19 tracked repair-file pins, tracked evidence receipt hashes and the existing .serena/project.yml edit were unchanged. Prior wheel/sdist verification remains applicable to the identical runtime source.
+- GitHub reads confirmed #31 and #39 are closed as completed. Their old open/partial handoff entries are historical. No campaign issue was reopened or closed by this integration.
+
+### Next
+- Refresh PR #77 before any integration action; require successful CI for its exact current head. The integration directory .runtime/repo_review_integration_20261101/integration/ contains raw PR/check responses and CLOSEOUT.json, which records the latest integration phase and final commit identities. Preserve the branch and evidence.
+- Recommended subsequent product milestone: resume the Professor pilot with existing narration and fresh human review of the exact preview. Select the current run/media and explicit bounded provider/browser scope before any live stage; this integration does not execute the pilot.
+- Root, source, production, tests and tools ownership contracts remain unchanged during integration because runtime behavior and ownership are unchanged.
+
+### Failures & Fixes
+- GitHub CLI connections intermittently failed or timed out. The user waived the two-strike brake for this chat only; a persistent HTTPS API session using the existing credential succeeded. Raw failures remain in the integration receipts; credentials were never logged.
+- The isolated Python 3.10 environment initially lacked Playwright. Installing the declared test dependency fixed collection; the separate Python >=3.11 qualification assertion remains explicitly outside the compatibility subset.
+- Clean-checkout CI run 41336619589 exposed an existing broken ../incidents/ guidance link: the directory contained only ignored local reports. Added only docs/incidents/README.md as a tracked landing page, preserving local reports. The exact failing node is RED without it; the tracked-file projection with only this page added passes all 6 error-case tests. Raw CI failure and projection attempts are preserved under the integration and clean_checkout_fix receipt directories.

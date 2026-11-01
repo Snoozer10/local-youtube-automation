@@ -33,6 +33,9 @@ These instructions are the shared project contract loaded by supported coding ag
 - Report which documents were intentionally left unchanged and why. Name each verification command and its observed result; never claim an unrun check.
 - Keep HANDOFF concise with Done, Next, Failures & Fixes and enough resume context to prevent repeated work.
 
+## Legacy Utility Compatibility
+legacy_and_utilities/inject_json_timestamps.py remains deprecated but preserves its prior CLI contract: use image_timestamps.txt and flow_prompts.json in the current directory when both exist; otherwise use the newest direct subdirectory under youtube_runs/. Its imported helpers get_target_directory, parse_image_timestamps, sanitize_json_content, load_flow_prompts_json, and inject_timestamps remain available.
+
 ## Child DOX Index
 - docs/agents/AGENTS.md: engineering guidance consumers, tracker references, triage labels and shared domain-document navigation.
 - channels/AGENTS.md: saved channel identities and pilot voice/visual policy.

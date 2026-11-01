@@ -505,13 +505,14 @@ def test_native_transient_and_sidecar_creation_prevented_on_layout_transition(tm
     assert "race.sqlite3-wal" not in entries_after
 
 
-def test_generate_qualification_receipt() -> None:
+def test_generate_qualification_receipt(tmp_path: Path) -> None:
     """AC 9 & AC 10: Produce the formal qualification receipt bound to source commit and demonstrated checks."""
     import subprocess
     from datetime import datetime, timezone
 
     repo_root = Path(__file__).resolve().parents[2]
-    receipt_dir = repo_root / "evidence/receipts"
+    receipt_dir = tmp_path / "evidence" / "receipts"
+    assert receipt_dir.is_relative_to(tmp_path)
     receipt_dir.mkdir(parents=True, exist_ok=True)
     receipt_path = receipt_dir / "M1_OBSERVATION_QUALIFICATION.json"
 
