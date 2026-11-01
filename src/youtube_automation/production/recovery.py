@@ -22,10 +22,10 @@ import sqlite3
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from contextlib import closing
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 
 class RecoveryItemCategory(str, enum.Enum):
@@ -526,7 +526,7 @@ _snapshot_locks_mutex = threading.Lock()
 
 
 @contextlib.contextmanager
-def _acquire_snapshot_lock(lock_path: Path, recovery_id: str):
+def _acquire_snapshot_lock(lock_path: Path, recovery_id: str) -> Iterator[BinaryIO]:
     """Acquire exclusive non-blocking file lock across processes and threads.
 
     Guarantees that two concurrent attempts for the same snapshot ID produce
