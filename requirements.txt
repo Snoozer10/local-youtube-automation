@@ -8,6 +8,7 @@
 playwright>=1.40.0              # Chrome/Opera CDP automation for Gemini & AI Studio
 requests>=2.31.0                # HTTP network utilities & Telegram webhook calls
 python-dotenv>=1.0.0            # Dynamic .env configuration management
+tomli>=2.0.1; python_version < "3.11"  # TOML parser fallback for Python 3.10
 
 # ------------------------------------------------------------------------------
 # 2. YouTube Ingestion & Document Processing

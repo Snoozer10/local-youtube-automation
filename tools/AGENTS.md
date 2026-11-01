@@ -12,6 +12,7 @@
 - Manual diagnostic execution requires its concrete bounded scope. A CLI flag or successful import is not a live-action grant.
 - Preserve legacy command-line behavior when moving operational bodies under entrypoint guards; keep dependencies available in the scope that uses them.
 - Artifact auditors verify caller-selected receipts without activating production state.
+- tools/inventory_cleanup_candidates.py supports Python 3.10 through the declared conditional tomli fallback when tomllib is unavailable. AST exclusions apply to path components relative to the supplied repository root, so hidden checkout ancestors do not suppress source scanning.
 
 ## Work Guidance
 - Separate maintained release checks from exploratory diagnostics. Do not run the diagnostics as a generic release test sweep.
