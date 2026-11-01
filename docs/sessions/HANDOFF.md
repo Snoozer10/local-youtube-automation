@@ -809,3 +809,23 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - Nine affected safety & recovery modules: 142 passed in 17.64s.
 - Linter: `ruff check src/ tests/unit/` clean (0 errors).
 
+## Repository Review Repairs, 2026-11-01
+
+### Done
+- Branch: fix/repo-review-20261101. Exact preimages and raw receipts: .runtime/repo_review_repair_20261101T170453Z/.
+- Repaired legacy timestamp CLI/import compatibility, repository-root scanner exclusions, Python 3.10 TOML fallback, immutable profile.sha256 receipts, and test evidence isolation. Durable ownership notes are in root AGENTS.md, tools/AGENTS.md, and src/youtube_automation/production/AGENTS.md; tests/AGENTS.md already requires tmp_path copies for artifact tests.
+- Full suite: venv/Scripts/python.exe -m pytest tests/ -q --tb=short -x — 2362 passed, 9 skipped in 363.67s. Strict mypy: venv/Scripts/python.exe -m mypy --strict src/ — success in 84 files. Workspace Ruff: venv/Scripts/python.exe -m ruff check . --output-format concise — all checks passed. Build: venv/Scripts/python.exe -m build --no-isolation --sdist --wheel --outdir .runtime/repo_review_repair_20261101T170453Z/verification/final_after_gate_repairs/dist — exit 0.
+- After the full run, normalized 12 added CLI lines from CRLF to LF; AST identity and untouched bytes are verified in verification/line_ending_cleanup/PROOF.json. Post-cleanup focused CLI/authority/recovery suite: 91 passed in 14.65s; strict mypy (84 files) and workspace Ruff passed. git diff --check is clean apart from Git autocrlf informational warnings. Results are in verification/line_ending_cleanup/CHECKS.json.
+- Final gate summary records source inputs and tracked evidence unchanged in verification/final_after_gate_repairs/SUMMARY.json. Independent review found no blockers. Existing .serena/project.yml change is preserved. No provider, browser, publication, or release work was done.
+- Final wheel/sdist rebuild passed; packaged runtime modules match final source bytes. Receipt: verification/POST_CLEANUP_BUILD.json.
+- src/youtube_automation/AGENTS.md and tests/AGENTS.md remain unchanged because their existing ownership and evidence-isolation contracts cover these repairs.
+
+### Next
+- Review the local repair commits on fix/repo-review-20261101. No push or merge was requested.
+
+### Failures & Fixes
+- Baseline strict typing at 531da67 exposed six existing issues; fixed iterator typing, observation status aliasing, non-None guards, and authority refusal before polished-audio dispatch. Final strict mypy passed.
+- Full tests exposed M1/M5 canonical receipt writers. Moved their evidence tests to tmp_path, preserved generated receipts, and restored original evidence; the first M1 restore was corrected from the known clean baseline, with RESTORE_CORRECTION.json retained.
+- CLI regression was confirmed red against baseline in verification/cli_guard_red.log and green after repair. An early Ruff import-order issue was fixed; an initial mypy invocation timed out, then the recorded full strict run passed.
+- Native Python 3.10 was unavailable; fallback behavior was simulated, Python 3.10 grammar parsed, and conditional tomli wheel metadata checked.
+- Git add reported the ignored legacy parent even though the tracked shim staged. Verified the exact staged scope and used tracked-file updates for the remaining commits.
