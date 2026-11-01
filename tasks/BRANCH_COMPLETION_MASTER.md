@@ -1,5 +1,9 @@
 # Branch Completion Master
 
+> Antigravity backlog execution/resume now routes through [ANTIGRAVITY_CAMPAIGN.md](ANTIGRAVITY_CAMPAIGN.md) and campaign issue #78. This master retains its acceptance authority; setup and tests do not flip existing C/D checkboxes or supply human/provider approvals.
+
+> Current project overlay, 2026-11-01: repair PR #77 is merged at ecc90972b4476596ca1c12756b3c7e4cddda9a45. See [remaining project work](REMAINING_WORK.md) for the dated whole-project inventory and critique. The PR #21/#22 dashboard below is retained branch-closeout history, not the latest repository integration state. Existing C/D acceptance criteria remain in this master; D1 production remains deferred by the user. The repair integration closeout is .runtime/repo_review_integration_20261101/integration/CLOSEOUT.json.
+
 Current closeout: PR #21 MERGED at `dadd3b5f9c10761689abff1e273d62e78dc70128` with exact reviewed head `9a0c51f15ed509c770d062cac0e92b06bf303ea4` preserved as a parent and an identical file tree. Post-merge CI39876182132 passed. See [merge record](../docs/sessions/MERGE_PR21_20261023.md). CodeRabbit USER-SKIPPED by owner direction.
 
 > Status: PR #21 MERGED / POST-MERGE MASTER VERIFIED / ENGINEERING CLOSEOUT COMPLETE.
