@@ -4,6 +4,18 @@ This context covers reusable channel identity and the visual direction of an ind
 
 ## Language
 
+**Production mode**:
+The pipeline entrypoint and execution pattern selected for a production job. Legacy batch mode supervises queued URL/run processing; Adaptive staged mode executes explicit content-bound stages for one selected run and channel.
+
+**Workflow**:
+The ordered preparation, execution, review and recovery steps followed within a production mode. A mode identifies the execution pattern; its workflow describes how to use it.
+
+**Channel bundle**:
+A user's reusable channel profile together with related configuration and assets. This is an organizational term, not a separate package or installer format. Hand-authored Channel JSON and an activated study-derived profile directory are distinct supported profile sources.
+
+**REA**:
+The external Reverse Engineer Anything project, whose passive browser observations can supply evidence where separately qualified. It is not a synonym for this repository's reference-channel study APIs or a built-in semantic YouTube-channel analyzer. See [channel research and external REA](docs/usage/channel-research.md).
+
 **Channel DNA**:
 A reusable, versioned profile of a channel's identity, audience, editorial voice, visual language, and constraints. It distinguishes observed evidence, inferred traits, and owner preferences, and is separate from any single episode's visual strategy.
 _Avoid_: Episode visual strategy

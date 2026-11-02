@@ -37,6 +37,14 @@ python <tested_script>.py
 - [ ] Documentation updated if behavior changed
 - [ ] Related issues linked
 
+## Documentation impact
+
+- Reader-facing behavior changed, or specific reason there is no impact:
+- README/setup/reference files updated, or why existing instructions remain accurate:
+- Commands, links and claims verified; name checks actually run and any limitations:
+
+See [README maintenance](https://github.com/Snoozer10/local-youtube-automation/blob/master/docs/agents/readme-maintenance.md). Documentation-impact assessment is required even when no documentation edit is needed.
+
 ## Additional Context
 
 Any other information, configuration, or screenshots that help reviewers understand the change.

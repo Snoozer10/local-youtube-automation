@@ -17,6 +17,10 @@ These instructions are the shared project contract loaded by supported coding ag
 - Follow existing domain ownership and interfaces. Repair incrementally for safer feature changes; do not adopt new workspace tooling or replace a subsystem without evidence and an accepted task.
 - Use GLOSSARY.md for shared terms, docs/adr/ for durable architecture decisions and docs/sessions/HANDOFF.md for current session state. Keep platform adapters free of duplicate domain guidance.
 
+## Public documentation
+- README.md owns the project introduction and first-use navigation; docs/getting-started.md owns manual installation. docs/agents/setup.md owns AI-assisted setup, and docs/agents/readme-maintenance.md owns documentation-impact review and offline onboarding checks. docs/assets/readme-banner.png is an illustrative header asset. docs/usage/AGENTS.md owns current public production-mode, channel bundle and reference-research guides; task records remain development material.
+- Before task closeout, assess reader-facing documentation impact. Update affected public guides in the same change or record a specific no-impact reason; follow docs/agents/readme-maintenance.md.
+
 ## Work routing
 - Follow docs/agents/workflows.md for feature, debugging and release routes, tool routing, proportional research/delegation and configured checks.
 - For any Python source, test or root facade change that enters src/youtube_automation/, first read src/youtube_automation/AGENTS.md and the nearest child contract. This also applies when editing a root facade.
@@ -38,6 +42,7 @@ legacy_and_utilities/inject_json_timestamps.py remains deprecated but preserves 
 
 ## Child DOX Index
 - docs/agents/AGENTS.md: engineering guidance consumers, tracker references, triage labels and shared domain-document navigation.
+- docs/usage/AGENTS.md: public adaptive mode, channel bundle creation and REA/reference-study usage guides.
 - channels/AGENTS.md: saved channel identities and pilot voice/visual policy.
 - tasks/AGENTS.md: implementation plans, acceptance contracts and verification evidence; tasks/BRANCH_COMPLETION_MASTER.md owns branch execution status and resume order.
 - src/youtube_automation/AGENTS.md: Python package ownership and runtime contracts; its production child owns adaptive production specifics.

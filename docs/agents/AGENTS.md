@@ -11,6 +11,10 @@ Route shared engineering guidance to its single owner and maintain the navigatio
 - Root `AGENTS.md`: shared contract and routing map.
 - `GEMINI.md` and `CLAUDE.md`: platform imports of root instructions.
 
+## Public onboarding procedures
+- setup.md owns the AI-assisted installation and beginner teaching procedure. It follows root/domain contracts and grants no production actions.
+- readme-maintenance.md owns documentation-impact assessment and the public documentation check procedure. Root README.md owns the introduction; docs/getting-started.md owns manual setup; docs/usage/AGENTS.md owns public production-mode and channel guides.
+
 ## Local Contracts
 - Use GitHub Issues for `Snoozer10/local-youtube-automation` with the configured five triage labels.
 - Keep project terms in root `GLOSSARY.md`; keep architecture decisions in `docs/adr/`.

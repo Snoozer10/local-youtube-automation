@@ -1,5 +1,59 @@
 # Handoff
 
+## README publication, 2026-11-02
+
+### Done
+- The owner reviewed and approved the README/public guides and authorized PR publication and merge after passing checks. PR #84 is the publication record: https://github.com/Snoozer10/local-youtube-automation/pull/84. The branch was published with both reviewed documentation commits; the remote tip was verified against local 0e249105673e3fd948fc8a69b1627f77c6a994e6 before this status-only addition.
+- Fresh publication checks passed: `venv/Scripts/python.exe tools/check_readme.py` (seven documents), standalone `unittest discover -s tests/unit -p test_readme_contract.py -v` (nine tests), targeted `ruff check tools/check_readme.py tests/unit/test_readme_contract.py`, and `git diff --check origin/master...HEAD`. Prior full-unit evidence remains scoped in the entry below; hosted checks must be read for the final PR head before merge.
+- Publication uses a squash merge for the reviewed documentation iterations. Repository master has no enforced status-check/review requirements; both Documentation and Windows CI must still succeed before the authorized merge. CodeRabbit skipped the documentation PR, so that check is not an independent review; the source-based independent review below and owner review remain the performed reviews.
+- Public guides, production code/configuration, banner and the unrelated Serena edit are intentionally unchanged during publication. Exact handoff preimage, PR body and publication receipts are retained under .runtime/readme_publication_20261102_0e24910/.
+
+### Next
+- Refresh PR #84 and current remote master before new work; its current head/checks/merge receipt are authoritative. If merged, continue from the integrated master and do not create another README publication PR. If still open, resolve actionable failures/review findings and require both hosted workflows to pass for its exact head before merging. Owner approval for this publication already exists.
+- The next proposed runtime repair is the documented proofs root-config versus preview run-config mismatch. It is a separate change; this publication grants no live provider, GUI, pipeline or video-upload actions.
+
+### Failures & Fixes
+- A single post-push `git ls-remote` query hit transient github.com DNS failure. A successful GitHub connector comparison independently confirmed that the published branch exactly matched the reviewed local head; no blind push retry or credential changes were needed.
+- QMD retrieval may still have pending vectors; refresh lexical coverage after this status update and use current files/lexical retrieval for resume state.
+
+## Public production guides and README review, 2026-11-02
+
+### Done
+- Addressed the eight README review points: exact Autonomous YouTube Video Production Pipeline title, stronger two-mode introduction, technology badges, implemented features/algorithms, a branched architecture map, and optional example profiles with personal-channel instructions. The existing banner is byte-identical.
+- Added docs/usage/AGENTS.md and the adaptive-mode.md, channel-bundles.md and channel-research.md public guides. Root/local contracts, glossary, documentation map, setup routes and maintenance/checker coverage now point to current public guides rather than the dated developer usage task.
+- Observed checks: `venv/Scripts/python.exe tools/check_readme.py` passed seven documents; `venv/Scripts/python.exe -m unittest discover -s tests/unit -p test_readme_contract.py -v` passed nine tests; `venv/Scripts/python.exe -m pytest -c pyproject.toml tests/unit -q --tb=short -x` passed 2,345 tests in 545.14 seconds; targeted and workspace `venv/Scripts/python.exe -m ruff check .` passed; `git diff --check` and `git diff --cached --check` passed.
+- `.runtime/readme_public_guides_20261102/validate_examples.py` parsed 23 PowerShell blocks without execution, three Python blocks and one JSON block; the exact channel JSON passed load_channel and the synthetic temporary study correctly reported PARTIAL. Independent final review found no blockers at adaptive guide SHA-256 afedbea3f32410d7be8d87a52b063671f5b5c66c81a2e54e3ca8423849a89992. Raw logs, preimages and validation pins remain in that ignored evidence folder.
+- Intentionally unchanged: docs/assets/readme-banner.png (owner request), tasks/adaptive-visual-usage.md (development history), CHANGELOG.md (no release/runtime change), .github/workflows/docs.yml (already invokes the extended checker), production source/configuration and the pre-existing .serena/project.yml edit.
+
+### Next
+- Owner review and normal PR publication when selected on local branch docs/readme-onboarding-20261102. No push, PR, merge, fresh installation, live pipeline/provider/GUI run or Mermaid rendering qualification was performed by this change.
+- A separate runtime follow-up should reconcile proofs using root video_config.txt with preview/render using a run-local override; the guide explicitly limits the current proof/audit example rather than claiming this is solved.
+
+### Failures & Fixes
+- Source review corrected required allowed_treatments in the profile example, derived-profile versus Channel activation semantics, raw-byte receipt versus canonical digest terminology, effective .env TTS model selection, and external REA project versus local offline study APIs. No REA integration/live collector is claimed.
+- Human direction acceptance is a separate complete PowerShell step. Final review caught a dangling conditional across split fences; the parent repaired it, then all 23 PowerShell blocks parsed successfully. Navigation and handoff helpers stopped before the affected write on newline-anchor mismatches, then matched the exact CRLF/mixed prefix; original bytes reconstruct from retained preimages.
+- QMD lexical coverage was refreshed, including the new public-usage scope. Bounded embedding passes completed 29 chunks from four public usage documents and 16 chunks from four core documents. Other vectors remain pending; use current lexical/file retrieval where freshness is unproved. No manual QMD cleanup was run.
+
+## README and public onboarding, 2026-11-02
+
+### Done
+- Local branch docs/readme-onboarding-20261102 renews the root README with broad niche positioning, source-verified bundled examples, current CI/Python/Beta/MIT badges and the illustrated docs/assets/readme-banner.png header.
+- Short copy/paste prompt routes to docs/agents/setup.md; docs/getting-started.md owns manual installation. docs/agents/readme-maintenance.md, root/local contracts, the PR template, tools/check_readme.py and the separate docs workflow establish documentation-impact review and offline drift checks.
+- Independent review has no blocking findings. Commands observed: tools/check_readme.py passed four public docs; standalone unittest discovery passed eight tests; targeted Ruff and git diff --check passed; explicit canonical pytest unit gate passed 2,344 tests in 366.72 seconds. Six PowerShell examples parsed without execution; workflow YAML parsed; existing venv pip check passed and pip show resolved this checkout.
+- Exact preimages, raw check logs, banner provenance and artifact verification are retained under .runtime/readme_renewal_20261102/. The existing .serena/project.yml edit is unchanged. Production source, configuration, accepted media and the separate backlog workspace were not edited.
+
+### Next
+- Review the README/banner with the owner and publish this local branch through normal PR review when selected. No push, PR, merge, fresh installation or live pipeline qualification was performed. Cold-start setup URLs become usable remotely only after these files reach master.
+- Keep the main software CI selection and previously queued CI-runtime work separate. The docs workflow is not a required branch-protection check until configured by the repository owner.
+
+### Failures & Fixes
+- The first README draft-edit helper stopped before writing on a CRLF anchor mismatch; its retry matched actual line endings. Only the newly inserted root-contract section needed LF correction for git diff --check; original root bytes reconstruct exactly from the retained preimage.
+- Review corrected a PR-body-relative link, clarified non-bundled science.json example paths, and repaired punctuation/duplicate-heading anchor handling with regressions. Uncertain or historical grants in reference guides do not authorize onboarding live work.
+- QMD lexical indexing was refreshed. One bounded core-specs embedding pass completed 27 chunks from nine documents and then reached its session cap; remaining vectors may be pending. Use current lexical/file retrieval until relevant vectors are refreshed. No QMD cleanup was requested or run.
+
+Older entries below retain their dated scope and do not describe the publication status of this README branch.
+
+
 ## Backlog campaign setup, 2026-11-01
 
 ### Done
