@@ -1,5 +1,21 @@
 # Handoff
 
+## README publication, 2026-11-02
+
+### Done
+- The owner reviewed and approved the README/public guides and authorized PR publication and merge after passing checks. PR #84 is the publication record: https://github.com/Snoozer10/local-youtube-automation/pull/84. The branch was published with both reviewed documentation commits; the remote tip was verified against local 0e249105673e3fd948fc8a69b1627f77c6a994e6 before this status-only addition.
+- Fresh publication checks passed: `venv/Scripts/python.exe tools/check_readme.py` (seven documents), standalone `unittest discover -s tests/unit -p test_readme_contract.py -v` (nine tests), targeted `ruff check tools/check_readme.py tests/unit/test_readme_contract.py`, and `git diff --check origin/master...HEAD`. Prior full-unit evidence remains scoped in the entry below; hosted checks must be read for the final PR head before merge.
+- Publication uses a squash merge for the reviewed documentation iterations. Repository master has no enforced status-check/review requirements; both Documentation and Windows CI must still succeed before the authorized merge. CodeRabbit skipped the documentation PR, so that check is not an independent review; the source-based independent review below and owner review remain the performed reviews.
+- Public guides, production code/configuration, banner and the unrelated Serena edit are intentionally unchanged during publication. Exact handoff preimage, PR body and publication receipts are retained under .runtime/readme_publication_20261102_0e24910/.
+
+### Next
+- Refresh PR #84 and current remote master before new work; its current head/checks/merge receipt are authoritative. If merged, continue from the integrated master and do not create another README publication PR. If still open, resolve actionable failures/review findings and require both hosted workflows to pass for its exact head before merging. Owner approval for this publication already exists.
+- The next proposed runtime repair is the documented proofs root-config versus preview run-config mismatch. It is a separate change; this publication grants no live provider, GUI, pipeline or video-upload actions.
+
+### Failures & Fixes
+- A single post-push `git ls-remote` query hit transient github.com DNS failure. A successful GitHub connector comparison independently confirmed that the published branch exactly matched the reviewed local head; no blind push retry or credential changes were needed.
+- QMD retrieval may still have pending vectors; refresh lexical coverage after this status update and use current files/lexical retrieval for resume state.
+
 ## Public production guides and README review, 2026-11-02
 
 ### Done
