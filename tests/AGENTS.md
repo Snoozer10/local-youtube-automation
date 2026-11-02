@@ -32,7 +32,7 @@ Offline verification, regression evidence and deterministic test fixtures.
 - Final compilation receipt regressions use the public compiler/fake runner and isolated ledger. Preserve prior valid artifact/receipt pairs across write or rename interruptions; reject stale, malformed, conflicting and tampered evidence plus pairwise audio/video drift. Fixture media copies must carry and verify their corresponding receipt. Fake output bytes distinguish measured media properties and input content.
 
 ## Documentation checker regressions
-- unit/test_readme_contract.py uses temporary repository fixtures and standard-library unittest discovery for the public onboarding checker. It must run without production dependencies, network or production imports; pytest also collects it in the normal unit suite.
+- unit/test_readme_contract.py uses temporary repository fixtures and standard-library unittest discovery for the public onboarding/usage checker, including required public usage-guide coverage. It must run without production dependencies, network or production imports; pytest also collects it in the normal unit suite.
 
 ## Work Guidance
 - Keep fixtures minimal, deterministic and free of secrets or machine-specific session identifiers.

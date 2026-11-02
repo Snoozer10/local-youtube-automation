@@ -14,6 +14,9 @@ PUBLIC_DOCS = (
     "docs/getting-started.md",
     "docs/agents/setup.md",
     "docs/agents/readme-maintenance.md",
+    "docs/usage/adaptive-mode.md",
+    "docs/usage/channel-bundles.md",
+    "docs/usage/channel-research.md",
 )
 INLINE_LINK = re.compile(r"!?\[([^\]]*)\]\(([^)]+)\)")
 ATX_HEADING = re.compile(r"^ {0,3}(#{1,6})\s+(.+?)\s*#*\s*$")

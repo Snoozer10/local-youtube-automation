@@ -39,6 +39,17 @@ class ReadmeContractTests(unittest.TestCase):
 
         self.assertEqual(_heading_anchors(lines), {"a", "a-1", "a-2"})
 
+    def test_missing_public_usage_guide_is_reported(self):
+        self.make_repository()
+        (self.root / "docs/usage/channel-bundles.md").unlink()
+
+        errors = validate_repository(self.root)
+
+        self.assertTrue(
+            any("docs/usage/channel-bundles.md:1: required document is missing" in error
+                for error in errors)
+        )
+
     def test_missing_cross_document_anchor_is_reported(self):
         self.make_repository()
         (self.root / "README.md").write_text(
@@ -117,6 +128,11 @@ class ReadmeContractTests(unittest.TestCase):
         (self.root / "docs/agents/readme-maintenance.md").write_text(
             "# README maintenance\n", encoding="utf-8"
         )
+        (self.root / "docs/usage").mkdir(parents=True)
+        for name in ("adaptive-mode", "channel-bundles", "channel-research"):
+            (self.root / f"docs/usage/{name}.md").write_text(
+                f"# {name}\n", encoding="utf-8"
+            )
         (self.root / ".github/workflows").mkdir(parents=True)
         (self.root / ".github/workflows/ci.yml").write_text(
             "name: ci\n", encoding="utf-8"

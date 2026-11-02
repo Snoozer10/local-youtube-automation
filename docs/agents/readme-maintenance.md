@@ -1,6 +1,6 @@
 # Keep public onboarding accurate
 
-The root README owns the project's introduction and first-use navigation. [Getting started](../getting-started.md) owns the human setup sequence; [AI-assisted setup](setup.md) owns the agent's procedure. This file owns when those surfaces must be reviewed and how to verify them.
+The root README owns the project's introduction and first-use navigation. [Getting started](../getting-started.md) owns the human setup sequence; [AI-assisted setup](setup.md) owns the agent's procedure. The public guides under [docs/usage/](../usage/) own adaptive mode, channel bundles and reference-channel research. This file owns when these surfaces must be reviewed and how to verify them.
 
 ## Assess impact in every change
 
@@ -8,7 +8,7 @@ Before closing a task, compare its public behavior with the README and affected 
 
 | Change | Review these surfaces |
 |---|---|
-| Capabilities, channel/niche scope or production status | README opening, capability table and workflow descriptions |
+| Capabilities, channel/niche scope or production status | README opening, capability table and mode descriptions |
 | Installation, dependencies, supported OS/Python or packaging | README requirements, human setup guide and agent setup procedure |
 | Public commands, flags, inputs, outputs or resume behavior | README examples and the owning operational guide |
 | Configuration defaults, authentication or required applications | Setup guide and owning configuration/reference document |
@@ -24,7 +24,7 @@ For each new or changed claim, identify its source: package metadata, parser, co
 
 Keep instructions runnable in their named shell. For installation commands that would download packages or modify a machine, review their source and report whether a fresh installation was actually exercised. Do not run production merely to validate documentation. Recheck command flags before documenting them.
 
-Use CI status badges tied to real workflow files. Derive compatibility wording from package metadata, and separately identify the actual CI interpreter. Avoid hardcoded provider/model, test-count, coverage or release badges without a maintained source. The banner is a visual introduction, not evidence of performance or a completed video.
+Use CI status badges tied to real workflow files. Derive compatibility wording from package metadata, and separately identify the actual CI interpreter. Technology badges identify shipped dependencies and integrations. Keep changing external model versions in configuration; add a version, test-count, coverage or release badge only when its source is maintained. The banner is a visual introduction, not evidence of performance or a completed video.
 
 ## Run the offline check
 
@@ -35,7 +35,7 @@ python tools/check_readme.py
 python -m unittest discover -s tests/unit -p test_readme_contract.py -v
 ```
 
-The checker covers the README, human setup, agent setup and this maintenance guide. It checks the supported inline-link/heading syntax, local targets, onboarding routing, clone placeholders and selected badge/metadata contracts. It does not access external URLs, establish service availability, execute example commands or prove that prose accurately describes production behavior. A human or independent agent must review those claims.
+The checker covers seven public documents: the README, human setup, agent setup, this maintenance guide, and the adaptive mode, channel bundle and channel research guides. It checks the supported inline-link/heading syntax, local targets, onboarding routing, clone placeholders and selected badge/metadata contracts. It does not access external URLs, establish service availability, execute example commands or prove that prose accurately describes production behavior. A human or independent agent must review those claims.
 
 [The documentation workflow](../../.github/workflows/docs.yml) runs these dependency-free checks on pushes and pull requests targeting master. The main software CI remains separate. A passing documentation check is not a required branch-protection rule until a repository owner configures it as one.
 

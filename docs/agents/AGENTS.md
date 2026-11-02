@@ -13,7 +13,7 @@ Route shared engineering guidance to its single owner and maintain the navigatio
 
 ## Public onboarding procedures
 - setup.md owns the AI-assisted installation and beginner teaching procedure. It follows root/domain contracts and grants no production actions.
-- readme-maintenance.md owns documentation-impact assessment and the README/onboarding check procedure. Root README.md remains the project introduction; docs/getting-started.md owns manual setup.
+- readme-maintenance.md owns documentation-impact assessment and the public documentation check procedure. Root README.md owns the introduction; docs/getting-started.md owns manual setup; docs/usage/AGENTS.md owns public production-mode and channel guides.
 
 ## Local Contracts
 - Use GitHub Issues for `Snoozer10/local-youtube-automation` with the configured five triage labels.

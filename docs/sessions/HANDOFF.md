@@ -1,5 +1,23 @@
 # Handoff
 
+## Public production guides and README review, 2026-11-02
+
+### Done
+- Addressed the eight README review points: exact Autonomous YouTube Video Production Pipeline title, stronger two-mode introduction, technology badges, implemented features/algorithms, a branched architecture map, and optional example profiles with personal-channel instructions. The existing banner is byte-identical.
+- Added docs/usage/AGENTS.md and the adaptive-mode.md, channel-bundles.md and channel-research.md public guides. Root/local contracts, glossary, documentation map, setup routes and maintenance/checker coverage now point to current public guides rather than the dated developer usage task.
+- Observed checks: `venv/Scripts/python.exe tools/check_readme.py` passed seven documents; `venv/Scripts/python.exe -m unittest discover -s tests/unit -p test_readme_contract.py -v` passed nine tests; `venv/Scripts/python.exe -m pytest -c pyproject.toml tests/unit -q --tb=short -x` passed 2,345 tests in 545.14 seconds; targeted and workspace `venv/Scripts/python.exe -m ruff check .` passed; `git diff --check` and `git diff --cached --check` passed.
+- `.runtime/readme_public_guides_20261102/validate_examples.py` parsed 23 PowerShell blocks without execution, three Python blocks and one JSON block; the exact channel JSON passed load_channel and the synthetic temporary study correctly reported PARTIAL. Independent final review found no blockers at adaptive guide SHA-256 afedbea3f32410d7be8d87a52b063671f5b5c66c81a2e54e3ca8423849a89992. Raw logs, preimages and validation pins remain in that ignored evidence folder.
+- Intentionally unchanged: docs/assets/readme-banner.png (owner request), tasks/adaptive-visual-usage.md (development history), CHANGELOG.md (no release/runtime change), .github/workflows/docs.yml (already invokes the extended checker), production source/configuration and the pre-existing .serena/project.yml edit.
+
+### Next
+- Owner review and normal PR publication when selected on local branch docs/readme-onboarding-20261102. No push, PR, merge, fresh installation, live pipeline/provider/GUI run or Mermaid rendering qualification was performed by this change.
+- A separate runtime follow-up should reconcile proofs using root video_config.txt with preview/render using a run-local override; the guide explicitly limits the current proof/audit example rather than claiming this is solved.
+
+### Failures & Fixes
+- Source review corrected required allowed_treatments in the profile example, derived-profile versus Channel activation semantics, raw-byte receipt versus canonical digest terminology, effective .env TTS model selection, and external REA project versus local offline study APIs. No REA integration/live collector is claimed.
+- Human direction acceptance is a separate complete PowerShell step. Final review caught a dangling conditional across split fences; the parent repaired it, then all 23 PowerShell blocks parsed successfully. Navigation and handoff helpers stopped before the affected write on newline-anchor mismatches, then matched the exact CRLF/mixed prefix; original bytes reconstruct from retained preimages.
+- QMD lexical coverage was refreshed, including the new public-usage scope. Bounded embedding passes completed 29 chunks from four public usage documents and 16 chunks from four core documents. Other vectors remain pending; use current lexical/file retrieval where freshness is unproved. No manual QMD cleanup was run.
+
 ## README and public onboarding, 2026-11-02
 
 ### Done

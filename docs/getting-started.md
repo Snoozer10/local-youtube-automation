@@ -79,7 +79,7 @@ Other configuration has separate owners:
 
 The adaptive workflow can use a run-local `video_config.txt`. Inspect the selected run's configuration rather than assuming the repository default will apply.
 
-Browser stages use authenticated web sessions through Chrome DevTools Protocol, or CDP. Use the project's owned-profile and shared-resource procedures before connecting. Sign in yourself when prompted; keep your everyday browser profile separate. See [channel selection](../tasks/adaptive-visual-usage.md#select-identity-before-analysis) and the applicable contracts before connecting. Dated session notes and historical allowances in reference documents do not authorize actions on your machine.
+Browser stages use authenticated web sessions through Chrome DevTools Protocol, or CDP. Use the project's owned-profile and shared-resource procedures before connecting. Sign in yourself when prompted; keep your everyday browser profile separate. See [adaptive browser and resource instructions](usage/adaptive-mode.md) and the applicable contracts before connecting. Dated session notes and historical allowances in reference documents do not authorize actions on your machine.
 
 ## 5. Verify installation before production
 
@@ -92,9 +92,9 @@ Browser stages use authenticated web sessions through Chrome DevTools Protocol, 
 
 Do not use `python run_agency.py` as an installation test. It begins real pipeline work.
 
-## 6. Choose a production workflow
+## 6. Choose a production mode
 
-### Legacy batch workflow
+### Legacy batch mode
 
 The legacy supervisor takes source URLs from `youtube_urls.txt`, translates them, then processes run folders through its configured stages. Inspect that file and existing run folders before starting, because the batch can include more than one video.
 
@@ -106,13 +106,13 @@ After configuring applications, account access and the intended scope, start it 
 
 This command can contact services and perform media work. Outputs and per-run state are stored under `youtube_runs/`. It is not a tutorial-sized dry run.
 
-### Adaptive staged workflow
+### Adaptive staged mode
 
-Use [the adaptive usage guide's run instructions](../tasks/adaptive-visual-usage.md#new-raw-script-run) for explicit run and channel selection. It separates analysis, writing, narration, shot planning, assets, preview, review and rendering. Read the current command requirements before invoking a stage.
+Follow [the public adaptive mode guide](usage/adaptive-mode.md) for explicit run and channel selection. It separates analysis, writing, narration, shot planning, assets, preview, review and rendering. Read the current command requirements before invoking a stage.
 
 Channel identity and episode subject are separate. The supplied profiles illustrate different languages and content styles. A source-audio channel with a null synthesis voice must not be sent through TTS. New niches need their own suitable profile and output review; broad configurability does not establish validation of every niche.
 
-The older usage guide uses illustrative paths such as `channels/science.json` and `youtube_runs/pilot-science`; those are not bundled ready-to-run inputs. Replace them with a suitable existing profile and your prepared run directory before copying commands. The bundled profiles are:
+The bundled profiles below are optional examples for trying the system. Use a suitable profile with your own prepared inputs, or follow [the channel bundle guide](usage/channel-bundles.md) to create and validate your own:
 
 | Profile | Example content | Language and narration |
 |---|---|---|

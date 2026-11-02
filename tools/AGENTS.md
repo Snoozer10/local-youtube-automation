@@ -15,7 +15,7 @@
 - tools/inventory_cleanup_candidates.py supports Python 3.10 through the declared conditional tomli fallback when tomllib is unavailable. AST exclusions apply to path components relative to the supplied repository root, so hidden checkout ancestors do not suppress source scanning.
 
 ## Public onboarding checker
-- check_readme.py owns the dependency-free offline README/onboarding check. Imports are inert; it reads selected public documents and metadata without network, browser, provider or production-package execution. It checks the supported Markdown subset and selected routing/metadata contracts, not factual prose or live readiness.
+- check_readme.py owns the dependency-free offline README/onboarding/usage check. Imports are inert; it reads selected public documents and metadata without network, browser, provider or production-package execution. It checks the supported Markdown subset and selected routing/metadata contracts, not factual prose or live readiness.
 - The separate .github/workflows/docs.yml workflow invokes this checker and its standard-library regression suite; software CI selection remains owned by its existing workflow.
 
 ## Work Guidance

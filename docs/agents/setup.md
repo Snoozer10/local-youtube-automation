@@ -80,6 +80,6 @@ Cover these points:
 - How to perform their first selected task, with approval needed before live actions.
 - How to review results, pause safely, resume the same run and report a redacted failure.
 
-For example, explain the pipeline as script preparation, voice/audio, visuals, then video assembly. Explain that legacy batch and adaptive staged production have different entrypoints. Link [the staged usage guide](../../tasks/adaptive-visual-usage.md) for exact commands instead of inventing a universal one-command tutorial.
+For example, explain the pipeline as script preparation, voice/audio, visuals, then video assembly. Explain Legacy batch mode and Adaptive staged mode with their different entrypoints. Use [the public adaptive guide](../usage/adaptive-mode.md) for exact commands and [the channel bundle guide](../usage/channel-bundles.md) for personal profiles. Development task records are not public usage instructions.
 
 Keep the first explanation short enough to follow. Offer deeper details only where useful. End with the next concrete step the person can take, not a blanket claim that everything works.
