@@ -40,7 +40,7 @@
 **Evidence:**
 ```ini
 # gemini_model.txt:16-17
-TELEGRAM_BOT_TOKEN=8932913661:AAG-HJFJcx_hXAID76B7huEXUHsMrfp57j4
+TELEGRAM_BOT_TOKEN=[redacted]
 TELEGRAM_CHAT_ID=1487991308
 ```
 
