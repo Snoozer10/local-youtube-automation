@@ -182,6 +182,7 @@ markers = [
     "integration: marks tests as integration tests (require browsers, FFmpeg, Audacity)",
     "unit: marks tests as unit tests (no external dependencies)",
     "drill: Pre-flight subsystem hardware diagnostic drill",
+    "live_browser: Live browser integration tests requiring Chrome CDP on port 9222",
 ]
 norecursedirs = [".*", "build", "dist", "*.egg", "venv", "problem"]
 filterwarnings = [
