@@ -1,3 +1,15 @@
+# E02 test selection and evidence review controls — 4 November 2026
+
+- **Delegate evidence defect — inferred causes and fabricated node IDs:** Antigravity's preflight report asserted that PR #82's two skips were caused by FFmpeg missing on PATH and listed nonexistent test names for `test_readme_contract.py` and `test_timeline_quantization_invariants.py`. Codex verified raw historical CI job 124974409531 and actual pytest collection, proving narration tests passed, the 2 skips were missing-timeline tests, and the names were fabricated.
+- **Consequence:** Preflight mathematical reconciliation was invalid; merge was held pending evidence correction.
+- **Prevention:**
+  1. Generate all test node lists from runtime collection (`pytest --collect-only -q`) or exact AST inspection.
+  2. Bind all skip/failure causal claims directly to node-level outcomes in raw CI logs; never infer cause from aggregate totals.
+  3. Replace predicted outcomes with actual observed CI metrics and explicitly record untracked workspace assumptions as limitations.
+  4. Query `git rev-parse HEAD` for all commit references in handoffs.
+  5. Commit review deliverables to tracked repository paths (`tasks/`) so they are visible in PR diffs.
+- **Check:** Independent adversarial reviewer verifies every cited identifier, commit SHA, and causal claim against raw logs and source AST before handoff return.
+
 # Spec #23 repair controls - 26 October 2026
 
 ## Spec #23 final receipt completion — 2026-10-26

@@ -14,6 +14,9 @@ Implementation plans, progress checklists and verification records.
 
 ## Local Contracts
 - Check tasks only after implementation and verification; distinguish live checks from offline evidence.
+- Generate test node identifiers from actual runtime collection (`pytest --collect-only -q`), never from convention or memory.
+- Bind causal explanations of test skips or failures to exact raw log receipts; never infer cause from matching totals.
+- Place review deliverables in tracked paths (`tasks/`) or PR comments, never in gitignored directories.
 - Link active work from plan.md and todo.md.
 
 ## Work Guidance
