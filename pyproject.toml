@@ -177,6 +177,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+pythonpath = ["src", ".", "tests"]
 addopts = "-v --strict-markers --tb=short"
 markers = [
     "integration: marks tests as integration tests (require browsers, FFmpeg, Audacity)",
