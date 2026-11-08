@@ -55,7 +55,7 @@ def validate_image_file(file_path: str, min_size_kb: int = 20) -> bool:
                 pass
 
             img.verify()
-            return w > 100 and h > 100
+            return bool(w > 100 and h > 100)
     except Exception:
         pass  # Tier 2 file op: corrupt/truncated file returns False, falls to header check
 

@@ -9,7 +9,7 @@ from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
 from types import GenericAlias
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import Field, create_model, field_validator, model_serializer, model_validator
 
@@ -623,7 +623,7 @@ def _episode_semantic_models(
         return value
 
     validators = {"episode_visual_mode": field_validator("visual_mode")(require_episode_mode)}
-    mode_field = (VisualMode, Field(json_schema_extra={"enum": list(visual_modes)}))
+    mode_field: Any = (VisualMode, Field(json_schema_extra={"enum": list(visual_modes)}))
     intent_model = create_model(
         "SemanticShotIntent",
         __base__=SemanticShotIntent,
@@ -639,17 +639,17 @@ def _episode_semantic_models(
     batch_model = create_model(
         "SemanticShotBatch",
         __base__=SemanticShotBatch,
-        shots=(GenericAlias(list, intent_model), Field(min_length=1, max_length=40)),
+        shots=cast(Any, (GenericAlias(list, intent_model), Field(min_length=1, max_length=40))),
     )
     replacement_model = create_model(
         "SemanticReplacement",
         __base__=SemanticReplacement,
-        shots=(GenericAlias(list, intent_model), Field(min_length=1, max_length=40)),
+        shots=cast(Any, (GenericAlias(list, intent_model), Field(min_length=1, max_length=40))),
     )
     patch_model = create_model(
         "SemanticShotPatch",
         __base__=SemanticShotPatch,
-        replacements=(GenericAlias(list, replacement_model), Field(min_length=1, max_length=40)),
+        replacements=cast(Any, (GenericAlias(list, replacement_model), Field(min_length=1, max_length=40))),
     )
     return batch_model, patch_model, content_model
 
@@ -668,9 +668,12 @@ def _exact_semantic_repair_batch_model(
     return create_model(
         "SemanticRepairBatch",
         __base__=SemanticRepairBatch,
-        shots=(
-            GenericAlias(list, content_model),
-            Field(min_length=required_count, max_length=required_count),
+        shots=cast(
+            Any,
+            (
+                GenericAlias(list, content_model),
+                Field(min_length=required_count, max_length=required_count),
+            ),
         ),
     )
 
