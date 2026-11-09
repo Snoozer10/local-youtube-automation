@@ -323,6 +323,14 @@ def test_legacy_active_revision_bootstraps_digest_receipt_from_valid_anchor(
     receipt_file = revision_file.with_name("profile.sha256")
     receipt_file.unlink()
 
+    if bootstrap == "exact_payload":
+        # Isolate exact-payload trust anchor: make target revision inactive
+        # by activating a distinct revision, proving exact payload alone bootstraps receipt
+        competing = derive_production_profile(study, {"voice": "Achird"})
+        manager.publish_and_activate(competing)
+        assert manager.get_active_revision() == competing.revision
+        assert manager.get_active_revision() != original.revision
+
     result = manager.publish_and_activate(candidate)
 
     assert result["active_revision"] == original.revision
