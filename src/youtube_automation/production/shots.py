@@ -10,9 +10,9 @@ from functools import lru_cache
 from pathlib import Path
 from types import GenericAlias
 from typing import Any, Literal, cast
-from typing_extensions import TypeForm
 
 from pydantic import Field, create_model, field_validator, model_serializer, model_validator
+from typing_extensions import TypeForm
 
 from youtube_automation.core.utils import atomic_write_json
 

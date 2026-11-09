@@ -117,7 +117,7 @@ Preimages were archived into private ignored storage prior to modification:
 |---|---|---|---|
 | `.github/workflows/ci.yml` | `5436ee61059879d21ba97d11e4b76e377af0701641f8f40b3ce2a02190bb2154` | `f90070e5c15276536f5020d286204d31f883e930c3503a1f88a1a2a1b82f6cef` | Pure LF (`\n`) |
 | `src/youtube_automation/visuals/image_extractor.py` | `45f5452f7486796e2b7fa25e89c9340b34cc5364eab2ceee7115c532d36cf5a5` | `69fada00a8aa658ef202ed13e2b8ddab60ea5ac73cdc4295c47cc5755ade78eb` | CRLF (`\r\n`) |
-| `src/youtube_automation/production/shots.py` | `93aae183eaeafe959a9fd4b5843fc5c021d33bf1bd2b5aa323fbc9fe1cc34852` | `e4569edf69bb77fbda4d8e45a272ec717748d9a8574c60da3531014693863044` | CRLF (`\r\n`) |
+| `src/youtube_automation/production/shots.py` | `93aae183eaeafe959a9fd4b5843fc5c021d33bf1bd2b5aa323fbc9fe1cc34852` | `27170277cb0ea5cf98e7ce07547af9f4257e990deb8928896a99e1c6f08c5988` | CRLF (`\r\n`) |
 | `src/youtube_automation/production/assets.py` | `2fe47e65bdbf677c73a1fd25f08159624ea4f140df265886ade0623b4ad17199` | `591b72d7fd47cec82463a6b18a1f2cd43f3e67aec6a39945be676e905c192726` | CRLF (`\r\n`) |
 | `requirements-dev.txt` | `0a2d8d43cf6ed7a3088053d4e9a07a3e58c287a36fcbffdefea1defce270991e` | `bf46d83c3db792dbdcaf3eb455ff27e31c8748d49c9d2915749f0d9dd51b14bf` | CRLF (`\r\n`) |
 
