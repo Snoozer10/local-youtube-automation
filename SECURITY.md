@@ -95,7 +95,7 @@ To help us triage and remediate the issue quickly, please provide:
 - **Defense**:
   - **Gitignored Environment Variables**: All active credentials are read from `.env` or system environment variables. Plaintext secret files (such as historical `gemini_model.txt`) are excluded from tracking and hardcoded in `.gitignore`.
   - **Local Browser Session Authentication**: Browser automation for Gemini and Google Flow operates directly against local loopback browser profiles on the operator's machine without third-party credential proxies.
-  - **Encrypted Telegram Alerting**: When optional Telegram alerting is enabled, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are transmitted outbound over encrypted HTTPS directly to the official Telegram Bot API endpoint (`https://api.telegram.org`) with strict timeout bounds and console log redaction to prevent token leakage.
+  - **Encrypted Telegram Alerting**: When optional Telegram alerting is enabled, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are transmitted outbound over encrypted HTTPS directly to the official Telegram Bot API endpoint (`https://api.telegram.org`) with a strict four-second timeout bound.
 
 ---
 

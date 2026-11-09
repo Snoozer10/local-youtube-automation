@@ -23,7 +23,7 @@ This report documents the implementation and verification of **Task S05 (Issue #
    - Replaced references to deprecated `-filter_complex_script` in `SECURITY.md:58,76` with active production file-backed arguments (`-/filter_complex <filter_script_path>` and file-backed concat manifests `-f concat -safe 0 -i <concat_path>`), conforming to modern FFmpeg and `src/youtube_automation/video/compiler.py`.
 4. **Accurate Credential Storage & Transmission Boundary**:
    - Eliminated the contradictory and factually incorrect assertion in `SECURITY.md:98` that "zero third-party API keys or cloud service tokens are ever stored or transmitted over external networks."
-   - Explicitly clarified that when optional Telegram alerting is enabled, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` loaded from gitignored `.env` are transmitted outbound over encrypted HTTPS directly to the official Telegram Bot API endpoint (`https://api.telegram.org`) with console log redaction and timeout bounds.
+   - Explicitly clarified that when optional Telegram alerting is enabled, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` loaded from gitignored `.env` are transmitted outbound over encrypted HTTPS directly to the official Telegram Bot API endpoint (`https://api.telegram.org`) with a strict four-second timeout bound.
 5. **Historical Security Documentation Context & Dating**:
    - Added contextual notices to `docs/security_analysis/threat_model.md` and `docs/security_analysis/remediation_guide.md` dating their baseline assessments to 2026-07-16 and establishing that current repository contracts and controls take precedence over historical recommendations.
 
@@ -79,7 +79,7 @@ This report documents the implementation and verification of **Task S05 (Issue #
   - `src/youtube_automation/core/utils.py:685-694`: `_dispatch_telegram(bot_token, chat_id, message)` formats `url = f"https://api.telegram.org/bot{bot_token}/sendMessage"` and dispatches an HTTPS POST request via `urllib.request.urlopen(req, timeout=4)`.
   - `src/youtube_automation/core/utils.py:696-705`: `send_telegram_notification(message)` reads `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` via `get_config_value(...)` and spawns a daemon dispatch thread.
 - **Reconciliation**:
-  Separated local browser session authentication (which runs strictly over loopback CDP without third-party proxies) from encrypted Telegram alerting (which sends outbound HTTPS requests containing `TELEGRAM_BOT_TOKEN` directly to `https://api.telegram.org` with timeout bounds and log redaction). Replaced `gemini_model.txt` with standard gitignored `.env` guidance.
+  Separated local browser session authentication (which runs strictly over loopback CDP without third-party proxies) from encrypted Telegram alerting (which sends outbound HTTPS requests containing `TELEGRAM_BOT_TOKEN` directly to `https://api.telegram.org` with a strict four-second timeout bound). Replaced `gemini_model.txt` with standard gitignored `.env` guidance.
 
 ### 2.5 Historical Threat Model & Remediation Guide Alignment
 - **Location**: `docs/security_analysis/threat_model.md:1-12` and `docs/security_analysis/remediation_guide.md:1-10`.
@@ -99,7 +99,7 @@ This report documents the implementation and verification of **Task S05 (Issue #
      - `threat_model.md.orig`: SHA-256 `1fd5b3e67339d8c8499e80e6a6968fc3b82a56c42798ca80a3f9d5959161d5c2`
      - `remediation_guide.md.orig`: SHA-256 `29633c6885e578523be7e1ec78959cfa6aba4fa466fc9b79d22acc433b46aff9`
 3. **Modified Blob Hashes**:
-   - `SECURITY.md`: SHA-256 `1c12459be4b6f0545d800031c92b08f96b24fe2d647cf5a9efd883a0afabc992`
+   - `SECURITY.md`: SHA-256 `b2d00af44cf7a1165788ddaa9f1627cf6e8c479175247c26ffb5ebcaf892fdc7`
    - `docs/security_analysis/threat_model.md`: SHA-256 `e3023265bb7a915bc4bc1183ad07ce4d790150e1e910a3a916dbe0bb9479daf2`
    - `docs/security_analysis/remediation_guide.md`: SHA-256 `772b9780db4666592149579e82f6cb709ced21ef70c5f093c3eade8019715203`
 
