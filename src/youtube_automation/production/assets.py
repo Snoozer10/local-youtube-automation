@@ -59,7 +59,7 @@ def validate_background(path: str | Path) -> tuple[int, int]:
         raise RuntimeError("Required background OCR is unavailable; asset remains unverified")
     if boxes:
         raise ValueError("Generated background contains detected text")
-    return size
+    return int(size[0]), int(size[1])
 
 
 def recipe(shot: Shot, brief: Brief, reference_hash: str | None, character_hashes: dict[str, str] | None = None) -> str:

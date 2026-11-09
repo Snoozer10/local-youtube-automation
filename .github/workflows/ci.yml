@@ -38,7 +38,13 @@ jobs:
           python -m playwright install --with-deps
 
       - name: Quality gate (linting)
-        run: ruff check tests/unit tests/integration
+        run: ruff check .
 
-      - name: Run unit tests
+      - name: Quality gate (strict typing)
+        run: python -m mypy --strict src/
+
+      - name: Run offline tests
         run: python -m pytest tests/unit tests/integration -c pyproject.toml -v -m "not live_browser" --cov=. --cov-report=xml
+
+      - name: Package build check
+        run: python -m build --no-isolation --sdist --wheel

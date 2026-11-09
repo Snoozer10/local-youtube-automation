@@ -38,6 +38,11 @@ pip-audit>=2.7.0                # Audits installed dependencies against known Py
 bandit>=1.7.8                   # Static security analyzer (flags unsafe subprocess & shell risks)
 
 # ------------------------------------------------------------------------------
-# 5. Git Hooks & Workflow Automation
+# 5. Packaging & Distribution Verification
+# ------------------------------------------------------------------------------
+build>=1.0.0                    # Standard PEP 517 build frontend for sdist and wheel verification
+
+# ------------------------------------------------------------------------------
+# 6. Git Hooks & Workflow Automation
 # ------------------------------------------------------------------------------
 pre-commit>=3.7.0               # Git pre-commit hooks manager for formatting and linting
