@@ -22,10 +22,9 @@ We actively maintain and provide security updates for the following versions:
 
 **Please do not report security vulnerabilities via public GitHub issues, discussions, or pull requests.**
 
-If you discover a security vulnerability or potential exploit in this repository, please report it through one of the following confidential channels:
+If you discover a security vulnerability or potential exploit in this repository, please report it privately through GitHub Private Vulnerability Reporting:
 
-1. **GitHub Private Vulnerability Reporting (Preferred)**: Navigate to the **Security** tab of this repository $\rightarrow$ **Advisories** $\rightarrow$ Click **"Report a vulnerability"**. This routes your disclosure privately to repository maintainers with end-to-end encryption and coordinated disclosure tooling.
-2. **Maintainer Security Contact**: If private vulnerability reporting is unavailable, reach out directly to the repository maintainer through private GitHub channels or documented profile security contacts. Do not submit disclosures to unverified placeholder email addresses.
+- **GitHub Private Vulnerability Reporting**: Navigate to the **Security** tab of this repository $\rightarrow$ **Advisories** $\rightarrow$ Click **"Report a vulnerability"**. This routes your disclosure privately to repository maintainers through GitHub's coordinated vulnerability disclosure workflow.
 
 ### What to Include in Your Disclosure
 

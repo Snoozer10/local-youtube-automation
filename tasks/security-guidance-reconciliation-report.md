@@ -14,7 +14,8 @@ This report documents the implementation and verification of **Task S05 (Issue #
 
 ### Core Reconciled Items:
 1. **Confidential Reporting Channel**:
-   - Replaced unverified placeholder email address `security@yourproject.org` in `SECURITY.md:28` with direct instructions for GitHub Private Vulnerability Reporting and maintainer private communication.
+   - Replaced unverified placeholder email address `security@yourproject.org` in `SECURITY.md:28` with direct instructions for verified GitHub Private Vulnerability Reporting (`https://github.com/Snoozer10/local-youtube-automation/security/advisories` -> "Report a vulnerability").
+   - Removed inaccurate "end-to-end encryption" claim and eliminated unverified secondary maintainer contact fallback.
 2. **Audacity Recovery Data Preservation**:
    - Corrected hazardous prose in `SECURITY.md:83` claiming that `automate_audacity.py` destructively clears Audacity's temporary `SessionData` and `AutoSave` crash directories before opening pipes.
    - Realigned the document with ADR 0005, production `AGENTS.md`, and root `AGENTS.md`, which strictly mandate preservation of crash sessions, recovery journals, and preimages.
@@ -30,13 +31,19 @@ This report documents the implementation and verification of **Task S05 (Issue #
 
 ## 2. Detailed Dissection of Reconciled Surfaces
 
-### 2.1 Vulnerability Reporting Channel (`SECURITY.md:21-29`)
+### 2.1 Vulnerability Reporting Channel (`SECURITY.md:21-28`)
 - **Original Prose**:
   Offered `security@yourproject.org` as a secondary disclosure channel.
 - **Defect**:
   `security@yourproject.org` was an unverified placeholder domain, introducing communication failure risk for security researchers attempting coordinated disclosure.
+- **Verification History & API Audit**:
+  - Initial check by Codex on 2026-11-09 via read-only GitHub API query (`GET /repos/Snoozer10/local-youtube-automation/private-vulnerability-reporting`) returned `{"enabled": false}`.
+  - Required owner decision: Enable Private Vulnerability Reporting in repository settings (`Settings` -> `Code security and analysis` -> `Private vulnerability reporting`).
+  - Owner confirmed enablement; follow-up read-only API check executed on 2026-11-09 (`gh api repos/Snoozer10/local-youtube-automation/private-vulnerability-reporting`) returned `{"enabled": true}`.
 - **Reconciliation**:
-  Clarified that GitHub Private Vulnerability Reporting is the verified primary confidential channel for this repository. If private vulnerability reporting is unavailable, researchers are directed to private GitHub communications or documented profile security contacts, explicitly prohibiting unverified placeholder email submissions.
+  - Standardized disclosure exclusively on GitHub Private Vulnerability Reporting (`https://github.com/Snoozer10/local-youtube-automation/security/advisories` -> "Report a vulnerability").
+  - Removed unverified maintainer contact fallback channel per owner directive.
+  - Removed inaccurate "end-to-end encryption" claim, clarifying that disclosure is routed privately through GitHub's coordinated vulnerability disclosure workflow.
 
 ### 2.2 Audacity Recovery Data Preservation (`SECURITY.md:79-86`)
 - **Original Prose**:
@@ -92,7 +99,7 @@ This report documents the implementation and verification of **Task S05 (Issue #
      - `threat_model.md.orig`: SHA-256 `1fd5b3e67339d8c8499e80e6a6968fc3b82a56c42798ca80a3f9d5959161d5c2`
      - `remediation_guide.md.orig`: SHA-256 `29633c6885e578523be7e1ec78959cfa6aba4fa466fc9b79d22acc433b46aff9`
 3. **Modified Blob Hashes**:
-   - `SECURITY.md`: SHA-256 `079881f0bbf34a66bb26a9ccc561236aeaf13abf13e251374e6f34950a8e9360`
+   - `SECURITY.md`: SHA-256 `1c12459be4b6f0545d800031c92b08f96b24fe2d647cf5a9efd883a0afabc992`
    - `docs/security_analysis/threat_model.md`: SHA-256 `e3023265bb7a915bc4bc1183ad07ce4d790150e1e910a3a916dbe0bb9479daf2`
    - `docs/security_analysis/remediation_guide.md`: SHA-256 `772b9780db4666592149579e82f6cb709ced21ef70c5f093c3eade8019715203`
 
