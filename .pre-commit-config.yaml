@@ -29,6 +29,11 @@ repos:
 
   - repo: local
     hooks:
+      - id: check-secrets
+        name: check secrets and service tokens
+        entry: python tools/check_secrets.py
+        language: system
+        pass_filenames: true
       - id: pytest-unit
         name: pytest (unit tests only)
         entry: pytest
