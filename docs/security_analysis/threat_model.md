@@ -1,8 +1,11 @@
 # Threat Model Assessment
 
 **Project:** YouTube Video Automation Pipeline (Version 4)
-**Audit Date:** 2026-07-16
+**Audit Date:** 2026-07-16 (Historical Baseline)
 **Classification:** CONFIDENTIAL — Internal Security Review
+
+> [!NOTE]
+> **Historical Audit Context (2026-07-16)**: This document records the original baseline security assessment from 2026-07-16. Current operational controls (ADR 0005 Audacity recovery data preservation, `-/filter_complex` file-backed FFmpeg filter graphs, S02 credential disclosure redaction in `secret_audit_report.md` via Issue #80, and `.env` isolation) supersede legacy claims. Credential revocation verification remains tracked under Issue #79.
 
 ---
 
