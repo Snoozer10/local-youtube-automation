@@ -71,38 +71,38 @@ All repairs address typing annotations without altering business logic, schema v
   ```
 
 ### 3.3 `src/youtube_automation/production/shots.py`
-- **Location**: Lines 624, 643, 648, 653, 672 in `_episode_semantic_models` and `_exact_semantic_repair_batch_model`.
+- **Location**: Lines 628, 645, 650, 655, 674 in `_episode_semantic_models` and `_exact_semantic_repair_batch_model`.
 - **Diagnostic**: In Pydantic V2, `create_model` expects field definitions typed as `TypeForm[Any] | tuple[TypeForm[Any], Any]`. Passing `VisualMode` (a `Literal` typing special form) and `GenericAlias(list, model)` without explicit type forms causes mypy strict to flag `[arg-type]` errors on keyword arguments `visual_mode`, `shots`, and `replacements`.
 - **Resolution**:
-  - Imported `cast` from `typing` and `TypeForm` from `typing_extensions` (supported standard runtime import under PEP 747 and Pydantic V2).
+  - Imported `cast` and `TYPE_CHECKING` from `typing`, guarding `from typing_extensions import TypeForm` strictly under `if TYPE_CHECKING:` to preserve the runtime dependency floor.
   - Preserved field-definition tuples as checked 2-tuples `(annotation, FieldInfo)` without erasing the tuple type to `Any`.
-  - Confined casts strictly to the dynamic type expressions:
+  - Confined casts strictly to quoted dynamic type expressions (`cast("TypeForm[Any]", ...)`):
     ```python
-    mode_field = (cast(TypeForm[Any], VisualMode), Field(json_schema_extra={"enum": list(visual_modes)}))
+    mode_field = (cast("TypeForm[Any]", VisualMode), Field(json_schema_extra={"enum": list(visual_modes)}))
     batch_model = create_model(
         "SemanticShotBatch",
         __base__=SemanticShotBatch,
-        shots=(cast(TypeForm[Any], GenericAlias(list, intent_model)), Field(min_length=1, max_length=40)),
+        shots=(cast("TypeForm[Any]", GenericAlias(list, intent_model)), Field(min_length=1, max_length=40)),
     )
     replacement_model = create_model(
         "SemanticReplacement",
         __base__=SemanticReplacement,
-        shots=(cast(TypeForm[Any], GenericAlias(list, intent_model)), Field(min_length=1, max_length=40)),
+        shots=(cast("TypeForm[Any]", GenericAlias(list, intent_model)), Field(min_length=1, max_length=40)),
     )
     patch_model = create_model(
         "SemanticShotPatch",
         __base__=SemanticShotPatch,
-        replacements=(cast(TypeForm[Any], GenericAlias(list, replacement_model)), Field(min_length=1, max_length=40)),
+        replacements=(cast("TypeForm[Any]", GenericAlias(list, replacement_model)), Field(min_length=1, max_length=40)),
     )
     ```
   - In `_exact_semantic_repair_batch_model`:
     ```python
     shots=(
-        cast(TypeForm[Any], GenericAlias(list, content_model)),
+        cast("TypeForm[Any]", GenericAlias(list, content_model)),
         Field(min_length=required_count, max_length=required_count),
     )
     ```
-- **Schema & Invariant Verification**: Verified that JSON schema generation (`model_json_schema()`), aliases, enum restrictions (`enum: list(visual_modes)`), array bounds (`min_length=1, max_length=40`), and exact repair count constraints (`min_length=count, max_length=count`) are fully enforced, with invalid inputs correctly raising `ValidationError`.
+- **Schema & Invariant Verification**: Verified that JSON schema generation (`model_json_schema()`), aliases, enum restrictions (`enum: list(visual_modes)`), array bounds (`min_length=1, max_length=40`), and exact repair count constraints (`min_length=count, max_length=count`) are fully enforced, with invalid inputs correctly raising `ValidationError`. Verified that module import and runtime model generation execute cleanly when `TypeForm` is unavailable.
 - **Regression Verification**: Ran `tests/unit/test_production_shots.py` (82 tests) and `tests/unit/test_production_assets.py` (11 tests). All 93 tests passed cleanly.
 
 ---
@@ -117,7 +117,7 @@ Preimages were archived into private ignored storage prior to modification:
 |---|---|---|---|
 | `.github/workflows/ci.yml` | `5436ee61059879d21ba97d11e4b76e377af0701641f8f40b3ce2a02190bb2154` | `f90070e5c15276536f5020d286204d31f883e930c3503a1f88a1a2a1b82f6cef` | Pure LF (`\n`) |
 | `src/youtube_automation/visuals/image_extractor.py` | `45f5452f7486796e2b7fa25e89c9340b34cc5364eab2ceee7115c532d36cf5a5` | `69fada00a8aa658ef202ed13e2b8ddab60ea5ac73cdc4295c47cc5755ade78eb` | CRLF (`\r\n`) |
-| `src/youtube_automation/production/shots.py` | `93aae183eaeafe959a9fd4b5843fc5c021d33bf1bd2b5aa323fbc9fe1cc34852` | `27170277cb0ea5cf98e7ce07547af9f4257e990deb8928896a99e1c6f08c5988` | CRLF (`\r\n`) |
+| `src/youtube_automation/production/shots.py` | `93aae183eaeafe959a9fd4b5843fc5c021d33bf1bd2b5aa323fbc9fe1cc34852` | `97f406771b2a589982cccef3d3f12a9ecd77e9191c38f1c4fa29cdbf9adcef1f` | CRLF (`\r\n`) |
 | `src/youtube_automation/production/assets.py` | `2fe47e65bdbf677c73a1fd25f08159624ea4f140df265886ade0623b4ad17199` | `591b72d7fd47cec82463a6b18a1f2cd43f3e67aec6a39945be676e905c192726` | CRLF (`\r\n`) |
 | `requirements-dev.txt` | `0a2d8d43cf6ed7a3088053d4e9a07a3e58c287a36fcbffdefea1defce270991e` | `bf46d83c3db792dbdcaf3eb455ff27e31c8748d49c9d2915749f0d9dd51b14bf` | CRLF (`\r\n`) |
 
