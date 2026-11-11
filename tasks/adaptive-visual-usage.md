@@ -1,8 +1,15 @@
 # Adaptive production: staged pilot workflow
 
-## Current A75 closeout status
+> Current status and documentation routes (2026-11-11):
+> - **User-facing production instructions:** Current staged commands, channel bundle setup, and reference-channel research now live in [Adaptive staged mode](../docs/usage/adaptive-mode.md), [Channel profiles and bundles](../docs/usage/channel-bundles.md), and [Channel research and external REA](../docs/usage/channel-research.md) (merged in PR `#84`).
+> - **What shipped on `master`:** Architecture Renewal [#31](https://github.com/Snoozer10/local-youtube-automation/issues/31) and its children (`#32`–`#50`, `#54`–`#56`, `#58`–`#59`) are CLOSED (with `#45` satisfied via Option A offline substitution), [PR #77](https://github.com/Snoozer10/local-youtube-automation/pull/77) (`ecc9097`, 2026-11-01) integrated compatibility and receipt protections, and backlog campaign [#78](https://github.com/Snoozer10/local-youtube-automation/issues/78) shipped security, secret-scanning, public-guide, CI offline-gate (`PR #90`/`#114`/`#115`), and R02 ledger pointer (`PR #116`) updates.
+> - **Where to resume and owner deferrals:** Authoritative `C1`–`C7`/`D1`–`D7` acceptance stays in [BRANCH_COMPLETION_MASTER.md](BRANCH_COMPLETION_MASTER.md), prioritized open work in [REMAINING_WORK.md](REMAINING_WORK.md), campaign workflow in [ANTIGRAVITY_CAMPAIGN.md](ANTIGRAVITY_CAMPAIGN.md), and current session state in [HANDOFF.md](../docs/sessions/HANDOFF.md). **`D1` full Professor episode production remains `DEFERRED BY USER`**, live Windows REA remains unexecuted (`O04`), `P01` still reconciles Professor preview `15ec1c7d...` below against `C1` `ca8e6c98...`, and any live provider/browser/GUI action requires its own bounded owner grant.
 
-## Browser status correction
+## Historical A75 closeout snapshot (2026-10-08)
+
+*Retained 2026-10-08 snapshot; hashes and receipts below are preserved unchanged. Subsequent milestones `B1`–`B5` (accepted Soldier/H10 audio adoption), `C5`/`C6` (Snoozer qualification), `PR #21`/`#22`, closed renewal `#31`, `PR #77`, and campaign `#78` deliveries have since landed on `master`; do not execute the stale "Remaining" items below without checking [REMAINING_WORK.md](REMAINING_WORK.md) and [BRANCH_COMPLETION_MASTER.md](BRANCH_COMPLETION_MASTER.md).*
+
+### Browser status correction (2026-10-08)
 The user-designated PID108264 is now registered and owned under lease for exact Profile2. Registration receipt `dfaec50f50cd98639ed95bf14dac543bcb59afdb80bb29d1653379e1144f2893`; archived old registry SHA `a5fff5aee9cf460ceb521e17a075c28912515351c079f02bbd5ad9f942b5c8a8`, new registry SHA `c2e822ad8fb7c68e43dbc11d2308c769664a021f66671127327f667b88f2bbc4`. One CDP connect passed in 5s; client detached, lease succeeded, Chrome remains alive. No Gemini page, UI readiness, typing, navigation, or send is proven. Next authorized UI work must verify the exact Soldier Flash model before the two already-approved requests; no fresh TTS/Flow/planning cap. BrowserMCP remains unavailable to Codex. Root actors are stopped. Do not repeat browser restart/connection diagnostics.
 - A75 quota: baseline55%+15+5 = ceiling75%, reserve72%; last API71% per receipt `7196c2badb424d09afe854bfd51157a688317efa4908f9bc6e396def872636b3`; reserved closeout, no newer use assumed. No fresh TTS/Flow cap; usage checks at milestones only.
 - Renderer14 output is under `.runtime/codex_allowance_20261008_45_to55/professor_r14/`. Binding and physical03 passed; wrapper exited1 on `manifest.inputs` vs `render_inputs`, so this is not full runner PASS.
@@ -164,15 +171,15 @@ Approval requires a current rendered preview. Version-3 approvals also require t
 - Stop the active process before maintenance. Preserve the run, receipts and prior `active_master.json` to restore an earlier accepted generation; never rename unrelated assets to satisfy a receipt.
 - Returning to the legacy workflow means using a separate legacy run without `episode_brief.json`. Do not remove the brief to force adaptive artifacts through legacy stages.
 
-## Remaining rollout gates
-Browser registration and one CDP connect are complete; verify a new-tab Gemini UI and exact Flash model before the two approved Soldier Flash requests. No provider send or fresh TTS/Flow/planning cap.
+## Historical rollout gates snapshot (2026-10-08)
+Browser registration and one CDP connect were recorded in the 2026-10-08 snapshot; live readiness must always be requalified under current `E09` rules and an explicit per-task allowance before any provider send or new TTS/Flow/planning cap.
 
 
-Cross-account reference restoration and semantic subject crop review remain pilot gates. Three contrasting channel pilots and user acceptance precede full-episode production. The Snoozer pilot is approved through active master; Professor and Soldier remain open. No historical production runs were regenerated.
+Cross-account reference restoration and semantic subject crop review remain pilot gates. Three contrasting channel pilots and user acceptance precede full-episode production (`D1` full Professor episode remains `DEFERRED BY USER`). In [BRANCH_COMPLETION_MASTER.md](BRANCH_COMPLETION_MASTER.md), Snoozer (`C5`/`C6`) retains its qualified scope while Professor (`C2`), Soldier (`C3`), H10 (`C4`), and `C7` remain partial/open under [REMAINING_WORK.md](REMAINING_WORK.md) (`P01`–`P14`). No historical production runs were regenerated.
 
 ## H10 Stage 3 TTS usage — historical evidence, 2026-10-07
 
 - Event9 consumed one Gemini3.8 Flash text-chat send; no TTS audio was observed and provider/account quota remains unknown. That one-request budget is terminal.
 - The protected v3 no-send rehearsal checked Gemini2.5 Pro TTS, Achird, temperature1.1, an empty prompt, reopened settings, browser-lease release and unchanged protected hashes. It made no provider send and proves only the observed UI state.
 - The earlier 1,181-unit gate, 105-case runtime guard, NOT_FOUND probe, and historical 28%/29% quota observation are superseded snapshots. Their receipts and installer/local-narration artifacts remain preserved under the referenced runtime evidence paths.
-- Current branch status and authorization are maintained in [HANDOFF](../docs/sessions/HANDOFF.md) and the [full resume](../docs/sessions/CODEX_FULL_COMPLETION_RESUME_20261007.md). The A44 gate receipt is historical; H10 remains open with no matching WAV, one pending chapter and no TTS grant. Any later send requires a separate explicit authorization.
+- Current branch status, backlog queue, and authorization route through [BRANCH_COMPLETION_MASTER.md](BRANCH_COMPLETION_MASTER.md), [REMAINING_WORK.md](REMAINING_WORK.md), [ANTIGRAVITY_CAMPAIGN.md](ANTIGRAVITY_CAMPAIGN.md), [HANDOFF](../docs/sessions/HANDOFF.md), and [campaign issue #78](https://github.com/Snoozer10/local-youtube-automation/issues/78) (replacing the older 2026-10-07 [historical resume](../docs/sessions/CODEX_FULL_COMPLETION_RESUME_20261007.md)). Accepted Soldier/H10 audio (`B1`–`B5`) is preserved in current master state; any later live send requires separate explicit owner authorization.

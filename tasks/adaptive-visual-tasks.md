@@ -1,10 +1,10 @@
-> Current publication cursor: PR #21 merged into master at `dadd3b5f9c10761689abff1e273d62e78dc70128`, with the reviewed tree unchanged and post-merge CI 39876182132 passed. This seven-document changeset records the [merge closeout](../docs/sessions/MERGE_PR21_20261023.md). Professor D1 production is DEFERRED BY USER until a future explicit request. The master owns current scope; PR #21 CodeRabbit was USER-SKIPPED; dated snapshots below are historical. Documentation PR #22 is open for review; local cleanup is complete (one worktree/two local branches remain). Current publication and cleanup receipts: `.runtime/codex_repo_cleanup_20261023/`.
+> Current status and resume cursor (2026-11-11): Architecture Renewal [#31](https://github.com/Snoozer10/local-youtube-automation/issues/31) and children (`#32`–`#50`, `#54`–`#56`, `#58`–`#59`) are CLOSED (`PR #51`–`#76`; `#45` via Option A offline substitution), repair [PR #77](https://github.com/Snoozer10/local-youtube-automation/pull/77) (`ecc90972b4476596ca1c12756b3c7e4cddda9a45`, 2026-11-01) and campaign [#78](https://github.com/Snoozer10/local-youtube-automation/issues/78) deliveries (`PR #82`–`#116`) are merged on `master`, **`D1` full Professor episode production remains `DEFERRED BY USER`**, and live Windows REA remains unexecuted (`O04`). Current acceptance/backlog/resume routing: [BRANCH_COMPLETION_MASTER.md](BRANCH_COMPLETION_MASTER.md), [REMAINING_WORK.md](REMAINING_WORK.md), [ANTIGRAVITY_CAMPAIGN.md](ANTIGRAVITY_CAMPAIGN.md), [HANDOFF.md](../docs/sessions/HANDOFF.md), and public [Adaptive staged mode](../docs/usage/adaptive-mode.md). *(Historical 2026-10-23 closeout snapshot retained for lineage: PR #21 merged at `dadd3b5f9c10761689abff1e273d62e78dc70128` with reviewed head unchanged and CI 39876182132 passed, PR #22 later merged at `3b00acb`, CodeRabbit was USER-SKIPPED on PR #21; see [merge closeout](../docs/sessions/MERGE_PR21_20261023.md) and `.runtime/codex_repo_cleanup_20261023/`.)*
 
 # Adaptive visual engine - implementation checklist
 
-Current engineering status (22 October 2026): [typing/F1 closeout](../docs/sessions/STRICT_TYPING_REVIEW_20261022.md) and [master](BRANCH_COMPLETION_MASTER.md). Strict typing: 699→0/73files; final1,968passed / 9 live skipped, all local gates green; F1 source/test/fixture dispositions complete. Formal-review package prepared locally; exact-PR-head review/CI/merge remain open. User excluded spending, human provenance, render-recipe and restart reconciliation from this pass; production checkboxes/acceptance are unchanged.
+Historical feature-branch engineering snapshot (2026-10-22, PR #21 closeout lineage): [typing/F1 closeout](../docs/sessions/STRICT_TYPING_REVIEW_20261022.md) and [master](BRANCH_COMPLETION_MASTER.md). That snapshot recorded strict typing 699→0/73files, final1,968passed / 9 live skipped, local gates green, and F1 source/test/fixture dispositions before PR #21/#22 merged on 2026-10-23 (superseded on engineering/CI gates by PR #77 and current master CI `PR #90`/`PR #114`/`PR #115`). Spending, human provenance, render-recipe, and restart reconciliation remained excluded (`P01`–`P14` in [REMAINING_WORK.md](REMAINING_WORK.md)); production checkboxes/acceptance stay governed by [master](BRANCH_COMPLETION_MASTER.md).
 
-Plan: [adaptive-visual-plan.md](adaptive-visual-plan.md). Usage: [adaptive-visual-usage.md](adaptive-visual-usage.md). Playbook: [professor-visual-playbook.md](professor-visual-playbook.md). Implementation checkboxes describe their recorded scope, not current release readiness. Dated historical records below retain old recipes/counts and never override the current master; original opening bytes are archived in the audit preimages.
+Current public usage: [adaptive-mode.md](../docs/usage/adaptive-mode.md). Backlog inventory: [REMAINING_WORK.md](REMAINING_WORK.md). Plan: [adaptive-visual-plan.md](adaptive-visual-plan.md). Historical pilot workflow notes: [adaptive-visual-usage.md](adaptive-visual-usage.md). Playbook: [professor-visual-playbook.md](professor-visual-playbook.md). Implementation checkboxes describe their recorded feature-branch scope, not current release readiness. Dated historical records below retain old recipes/counts and never override the current master; original opening bytes are archived in the audit preimages.
 
 ## A. Branch and baseline
 - [x] A1 Fetch origin/master, verify clean worktree and PR #20 merge, create requested branch from dad17b3.
@@ -59,7 +59,7 @@ Plan: [adaptive-visual-plan.md](adaptive-visual-plan.md). Usage: [adaptive-visua
 - [x] F6 Prior reliability backlog: exact run targeting, owned-process cleanup, propagated persistence errors, bounded subprocess reads and physical chapter offsets.
 
 ## G. Rollout and closeout
-- [ ] G1 Final current-tree gates remain mixed: corrected offline 1,919 passed with two live modules excluded; unrestricted collection/workspace Ruff fail. See F2/audit.
+- [ ] G1 Historical October 2026 feature-branch gate snapshot: branch-tree gates were then mixed (corrected offline 1,919 passed with two live modules excluded; unrestricted collection/workspace Ruff failed; see F2/audit). Superseded on `master` by PR #77 (`ecc9097`) and hosted CI gates (`PR #90`/`PR #114`/`PR #115`).
 - [x] G2 DOX pass: update root/child ownership and GEMINI current rules.
 - [x] G3 CLI usage, migration, rollback and adaptive opt-in documentation.
 - [ ] G4 Three contrasting pilots remain partial at combined acceptance; current technical files alone do not establish full visual/human/restart approval. See C2-C7.
@@ -125,7 +125,9 @@ Plan: [adaptive-visual-plan.md](adaptive-visual-plan.md). Usage: [adaptive-visua
 
 I1-I8 acceptance: historical failures are executable regression knowledge rather than prompt folklore. The committed corpus contains only minimal sanitized cases; raw evidence remains immutable. Deterministic obligations fail at an addressable boundary, and replay/readiness checks pass. The Professor visual audit was revoked after human rejection; H9 requires a replacement and fresh review. The current fifteen-point allowance starts at47% and ends at62%, with closeout reserved by61%. No Schulte behavior is inferred for an episode that does not explicitly introduce the exercise.
 
-## Partial items and next work
+## Historical feature-branch partial items snapshot (October 2026)
+
+*Retained October 2026 feature-branch summary table; authoritative `B1`–`B5` audio adoption, `C1`–`C7` pilot states, **`D1` `DEFERRED BY USER`** full-episode status, and `P01`–`P14` next work live in [BRANCH_COMPLETION_MASTER.md](BRANCH_COMPLETION_MASTER.md) and [REMAINING_WORK.md](REMAINING_WORK.md).*
 
 | Item | Implemented | Remaining acceptance |
 |---|---|---|
@@ -143,7 +145,9 @@ I1-I8 acceptance: historical failures are executable regression knowledge rather
 | F6 | Exact run targeting, adaptive supervisor isolation, bounded FFmpeg stderr pumping, strict bounded Audacity exchanges and exact physical chapter offsets are enforced. Legacy Audacity now follows the same lease and owned-process rules. Browser cleanup preserves user tabs, and CDP process cleanup requires the registered listener PID. | Complete. |
 | G4–G6 | Snoozer has historical approved output; Professor A75 preview is accepted4/5 in all seven dimensions only for its proposal-run lineage. H10 second-topic and Soldier production remain open. | Complete the current pilot/audio/word-review/recipe/activation requirements, H10, and Soldier original/refined narration, then the user-selected complete original Professor G6 episode with verified full-source hashes. Preserve prior rejects and defer new visual features until after merge. |
 
-## Verification evidence
+## Historical feature-branch verification evidence (September–October 2026)
+
+*Retained dated feature-branch logs below (receipts and hashes preserved unchanged; current `master` verification lives in PR #77 and `.github/workflows/ci.yml` / campaign `#78`).*
 
 - 2026-10-02 rejection repair: twelve actual videos across six reference channels were frame-sampled in the linked playbook. The user rejected the current preview at1.5/5; its active visual audit was archived/revoked and matching publication is blocked. Nineteen focused rejection/review/render tests and Ruff pass, including orphan activation from a rejected approval. Earlier all-4 audit results below are historical evidence, not current acceptance. Two CDP attaches stalled after websocket connection; the user authorized restarting only owned PID19700. The same Profile2/account3 restarted as PID29512, and project Playwright1.60 connected in1.83 seconds. Live Characters opens a dedicated builder with different controls; no new generation has been sent. Typed character adapter verification remains separate from artistic acceptance.
 
