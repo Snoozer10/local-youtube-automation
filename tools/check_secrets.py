@@ -126,12 +126,15 @@ class MatchCandidate:
     has_pragma: bool = False
 
 
-def _find_unquoted_pragmas(line: str) -> list[UnquotedPragma]:
-    """Find pragma comments in a line that are strictly outside quoted literals and backticks."""
+def _find_unquoted_pragmas(
+    line: str,
+    multiline_state: str | None = None,
+) -> tuple[list[UnquotedPragma], str | None]:
+    """Find pragma comments in a line that are strictly outside quoted literals, backticks, and multiline strings."""
     pragmas: list[UnquotedPragma] = []
     i = 0
     n = len(line)
-    in_quote: str | None = None
+    in_quote: str | None = multiline_state
     escaped = False
 
     while i < n:
@@ -141,12 +144,17 @@ def _find_unquoted_pragmas(line: str) -> list[UnquotedPragma]:
                 escaped = False
                 i += 1
                 continue
-            if c == "\\" and in_quote != "`":
+            if c == "\\" and in_quote not in ("`", "<!--"):
                 escaped = True
                 i += 1
                 continue
             if in_quote in ('"""', "'''"):
                 if line[i : i + 3] == in_quote:
+                    in_quote = None
+                    i += 3
+                    continue
+            elif in_quote == "<!--":
+                if line[i : i + 3] == "-->":
                     in_quote = None
                     i += 3
                     continue
@@ -158,15 +166,40 @@ def _find_unquoted_pragmas(line: str) -> list[UnquotedPragma]:
             continue
 
         # Outside quotes
+        # 1. Triple-quoted strings (Python multiline literals)
         if i + 2 < n and line[i : i + 3] in ('"""', "'''"):
-            in_quote = line[i : i + 3]
+            q = line[i : i + 3]
             i += 3
-            continue
-        if line[i] in ('"', "'", "`"):
-            in_quote = line[i]
-            i += 1
+            closed = False
+            while i < n:
+                if line[i] == "\\" and i + 1 < n:
+                    i += 2
+                    continue
+                if line[i : i + 3] == q:
+                    closed = True
+                    i += 3
+                    break
+                i += 1
+            if not closed:
+                in_quote = q
+                break
             continue
 
+        # 2. Single-line string literals and backticks
+        if line[i] in ('"', "'", "`"):
+            q = line[i]
+            i += 1
+            while i < n:
+                if line[i] == "\\" and q != "`" and i + 1 < n:
+                    i += 2
+                    continue
+                if line[i] == q:
+                    i += 1
+                    break
+                i += 1
+            continue
+
+        # 3. Unquoted line comment
         if line[i] == "#":
             comment_text = line[i:]
             m = PRAGMA_PATTERNS[0].match(comment_text)
@@ -174,19 +207,25 @@ def _find_unquoted_pragmas(line: str) -> list[UnquotedPragma]:
                 pragmas.append(UnquotedPragma(start=i, end=i + m.end(), scoped_rule=m.group(1)))
             break
 
+        # 4. HTML comments
         if line[i : i + 4] == "<!--":
             end_idx = line.find("-->", i + 4)
-            comment_len = (end_idx + 3 - i) if end_idx != -1 else (n - i)
-            comment_text = line[i : i + comment_len]
-            m = PRAGMA_PATTERNS[1].match(comment_text)
-            if m:
-                pragmas.append(UnquotedPragma(start=i, end=i + m.end(), scoped_rule=m.group(1)))
-            i += comment_len
-            continue
+            if end_idx != -1:
+                comment_len = end_idx + 3 - i
+                comment_text = line[i : i + comment_len]
+                m = PRAGMA_PATTERNS[1].match(comment_text)
+                if m:
+                    pragmas.append(UnquotedPragma(start=i, end=i + m.end(), scoped_rule=m.group(1)))
+                i += comment_len
+                continue
+            else:
+                in_quote = "<!--"
+                break
 
         i += 1
 
-    return pragmas
+    next_multiline_state = in_quote if in_quote in ('"""', "'''", "<!--") else None
+    return pragmas, next_multiline_state
 
 
 def load_allowlist(config_path: Path | None = None) -> dict[str, Any]:
@@ -365,9 +404,13 @@ def scan_file(
         return []
 
     findings: list[SecretFinding] = []
+    multiline_state: str | None = None
 
     for line_number, line in enumerate(text.splitlines(), start=1):
-        # 1. Collect all pattern matches on this line
+        # 1. Extract unquoted pragmas and update multiline state for this line
+        pragmas, multiline_state = _find_unquoted_pragmas(line, multiline_state)
+
+        # 2. Collect all pattern matches on this line
         line_matches: list[MatchCandidate] = []
         for rule_name, pattern in SECRET_PATTERNS.items():
             for match in pattern.finditer(line):
@@ -396,9 +439,6 @@ def scan_file(
 
         # Sort matches by start position
         line_matches.sort(key=lambda m: m.span[0])
-
-        # 2. Extract unquoted pragmas on this line
-        pragmas = _find_unquoted_pragmas(line)
 
         # 3. Associate each pragma to the closest match (allowlisted or not)
         for p in pragmas:

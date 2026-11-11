@@ -26,7 +26,7 @@ This report documents the design, implementation, and audit repairs of **Task S0
    - Added `Quality gate (secret scanning)` step in `.github/workflows/ci.yml`.
    - Added `check-secrets` hook in `.pre-commit-config.yaml` to prevent committing secrets locally.
 4. **Dedicated Test Suite (`tests/unit/test_check_secrets.py`)**:
-   - 40 unit tests validating clean baseline repository passing, synthetic secret rejection in code and documentation, targeted path exclusions, inline/HTML comment pragmas, binary/path exclusions, safe diagnostics, and regression test cases for all Codex audit items.
+   - 42 unit tests validating clean baseline repository passing, synthetic secret rejection in code and documentation, targeted path exclusions, inline/HTML comment pragmas, binary/path exclusions, safe diagnostics, and regression test cases for all Codex audit items.
 5. **Contract Documentation (`tools/AGENTS.md`)**:
    - Documented tool purpose, ownership, inertness invariants, and integration points, preserving base mixed line endings outside the new section.
 
@@ -68,6 +68,15 @@ This report documents the design, implementation, and audit repairs of **Task S0
 9. **Diagnostic Path Sanitization**:
    - Implemented `sanitize_path()` to replace secret tokens in file paths with `[REDACTED]` using boundary-safe regex patterns across finding diagnostics and stderr error messages (`ScanError`).
 
+#### Phase 3 Follow-up Repairs (Codex Review on PR #114):
+10. **Pre-Commit `--` Flag Delimiter**:
+    - Added `--` delimiter before forwarded filenames in `.pre-commit-config.yaml` (`entry: python tools/check_secrets.py --`).
+    - Ensures filenames starting with hyphens (e.g. `--root=docs`) are forwarded and treated strictly as positional file paths by `argparse`, preventing flag injection attacks against the scanner CLI.
+11. **Multiline Literal State Tracking**:
+    - `_find_unquoted_pragmas` tracks multiline triple quotes (`"""`, `'''`) and multiline HTML comments (`<!--`) across lines.
+    - When inside multiline literal state, lines cannot emit unquoted pragmas. This prevents pragma comments embedded inside Python triple-quoted docstrings or multiline strings from suppressing secret findings.
+    - Single-line quotes (`'`, `"`) remain scoped strictly to single lines, preventing apostrophes in Markdown or documentation from spilling across lines.
+
 ### 2.2 Detection Signatures
 The scanner applies focused regular expressions targeting confirmed high-fidelity credential formats:
 - **Telegram Bot Token**: `(?:(?<=\b)|(?<=bot))[0-9]{8,10}:[a-zA-Z0-9_-]{34,36}\b` (supporting both standalone assignments and `/bot<token>/` API endpoint URLs).
@@ -97,7 +106,7 @@ The scanner was verified against synthetic test values to guarantee true positiv
    - Setup guide (`guide.md`): Synthetic Telegram bot token embedded within a documentation `curl` example URL caught at line 4.
    - Deployment guide (`deploy.md`): Synthetic `AWS_ACCESS_KEY_ID` in documentation export block caught at line 4.
 
-3. **Codex Regression Test Cases (40 Tests Total)**:
+3. **Codex Regression Test Cases (42 Tests Total)**:
    - `test_detects_secrets_in_arabic_and_non_ascii_git_paths`: Verified Arabic file `ملف_بيانات_سري.py` tracked in git is detected.
    - `test_line_level_placeholder_does_not_suppress_adjacent_secret`: Verified `[redacted]` on a line does not suppress adjacent token.
    - `test_placeholder_as_secret_value_is_allowed`: Verified placeholder used as secret value passes.
@@ -120,13 +129,22 @@ The scanner was verified against synthetic test values to guarantee true positiv
    - `test_sanitize_path_helper`: Verified `sanitize_path` helper redacts tokens in paths with `[REDACTED]`.
    - `test_finding_diagnostic_sanitizes_token_in_filename`: Verified finding diagnostic replaces token in filename with `[REDACTED]`.
    - `test_error_diagnostic_sanitizes_token_in_path`: Verified error diagnostics on stderr replace tokens in paths with `[REDACTED]`.
+   - `test_pragma_inside_multiline_triple_quoted_string_does_not_suppress_finding`: Verified that `# pragma: allowlist secret` inside multiline docstrings (`"""` and `'''`) does not suppress secret findings.
+   - `test_forwarded_flags_after_double_dash_scanned_as_files`: Verified that `--` forces flag-like arguments (`--root=docs`) to be scanned strictly as positional files, rejecting dirty secrets and passing clean files.
 
 4. **Pre-Commit Hook Verification with Staged Synthetic Data**:
-   - Staged synthetic secret `aws_secret_key = "1234567890abcdef1234567890abcdef12345678"` in `temp_staged_secret.py`. <!-- pragma: allowlist secret -->
-   - Executed `pre-commit run check-secrets --files temp_staged_secret.py`:
+   - Staged synthetic secret `aws_secret_key = "1234567890abcdef1234567890abcdef12345678"` in `temp_staged_secret.py`: <!-- pragma: allowlist secret -->
+     - Executed `pre-commit run check-secrets --files temp_staged_secret.py`:
      - Result: `Failed (exit code 1)`
      - Diagnostic: `temp_staged_secret.py:1: [aws_secret_key] potential secret token detected` (zero credential fragments leaked).
-   - Cleaned up staged file and confirmed pre-commit passes cleanly on clean repository files.
+   - Staged synthetic secret in `--root=docs` containing synthetic Telegram token:
+     - Executed `pre-commit run check-secrets --files --root=docs`:
+     - Result: `Failed (exit code 1)`
+     - Diagnostic: `--root=docs:1: [telegram_bot_token] potential secret token detected`
+   - Staged clean file `--root=docs` containing `valid = 123`:
+     - Executed `pre-commit run check-secrets --files --root=docs`:
+     - Result: `Passed (exit code 0)`
+   - Cleaned up staged synthetic files and confirmed pre-commit passes cleanly on clean repository files.
 
 ---
 
@@ -138,11 +156,11 @@ The scanner was verified against synthetic test values to guarantee true positiv
    - Verified via `git diff --check master` with 0 warnings.
 2. **Tracked File Hashes (SHA-256)**:
    - `.github/workflows/ci.yml`: `24f42253eb9f469cff79f8f61ac4ca0e72c8c4d5be603713d3b6af9fb8f7c95b`
-   - `.pre-commit-config.yaml`: `91ad12940e164ac3cdc15d3bcbe8536cc8c90200725b6c28aea544bd48e3f6ef`
+   - `.pre-commit-config.yaml`: `8f65ce9a2a69273a9d37ca7d6d099db22ea28da38127a5826e1961fd6d04d0e6`
    - `tools/AGENTS.md`: `0a352e55fb4ee5069f0e9a71e3220dc31f29d193f665fb7e13e83e18d2909cb0`
-   - `tools/check_secrets.py`: `330678086d52bef503bb2e42823ac15d3d29e80d0f7dc63ba2772e73c4416acb`
+   - `tools/check_secrets.py`: `4280d55697f7ae6b530e4138613546ebd1d50e34f7281cf247bd99ca03097abe`
    - `tools/secrets_allowlist.json`: `f5dc613055a21f538b08d85943c41030f58ee210ea2beae6b701c625f342c52f`
-   - `tests/unit/test_check_secrets.py`: `7b1e52e5b11ec3cc9cd3a6e6db7d5b511202ab64889b80e34ce205a84c54bee2`
+   - `tests/unit/test_check_secrets.py`: `f865d268c65ae1097077a3e152acca763302e213829b32e738f10ab7badda424`
    - `tasks/secret-scanning-gate-report.md`: `[tracked at commit]`
 
 ---
@@ -153,16 +171,17 @@ The scanner was verified against synthetic test values to guarantee true positiv
 |---|---|---|---|
 | **Git Diff Hygiene** | `git diff --check master` | 0 warnings, clean line endings | 0 |
 | **Secret Scanning Gate** | `python tools/check_secrets.py` | 0 secrets detected across tracked files | 0 |
-| **Dedicated Unit Suite** | `pytest tests/unit/test_check_secrets.py` | 40 passed in 5.87s | 0 |
+| **Dedicated Unit Suite** | `pytest tests/unit/test_check_secrets.py` | 42 passed in 9.62s | 0 |
 | **Workspace Linting** | `ruff check .` | All checks passed with 0 errors | 0 |
 | **Workspace Formatting** | `ruff format --check tools/check_secrets.py tests/unit/test_check_secrets.py` | All checks passed with 0 errors | 0 |
 | **Strict Type Checking** | `mypy --strict --explicit-package-bases tools/check_secrets.py tests/unit/test_check_secrets.py` | Success: no issues found in 2 source files | 0 |
 | **README & Public Docs** | `python tools/check_readme.py` | 7 documents checked and passed | 0 |
 | **Pre-Commit Gate Test** | `pre-commit run check-secrets --files temp_staged_secret.py` | Rejection observed (exit code 1) | 1 (Expected) |
+| **Pre-Commit Flag Delimiter Test** | `pre-commit run check-secrets --files --root=docs` | Rejection on dirty (exit code 1); clean passed (exit code 0) | 1 / 0 |
 
 ---
 
 ## 6. Scope & Limitations
 
-- **Git History Scanning (S03)**: This task bounds scanning to current working tree and declared/tracked repository files; deep historical commit exposure remains tracked under S03.
+- **Git History Scanning (S03)**: Marked complete under campaign #78 (credential revoked, replacement alert validated, owner declined history rewrite). This task (S04) provides the preventative pre-commit and CI gates covering current working tree and declared/tracked repository files.
 - **Offline Bound**: All operations run completely offline with no network or third-party service calls.

@@ -713,6 +713,54 @@ class SecretScanningGateTests(unittest.TestCase):
         self.assertIn("[REDACTED].py", err_output)
         self.assertNotIn("AKIA1234567890ABCDEF", err_output)  # pragma: allowlist secret
 
+    def test_pragma_inside_multiline_triple_quoted_string_does_not_suppress_finding(self) -> None:
+        """Verify pragma text inside multiline triple-quoted strings does not suppress secrets."""
+        # Double-quote triple quotes """..."""
+        test_file_dq = self.root / "multiline_dq.py"
+        test_file_dq.write_text(
+            'doc = """\n'
+            "# pragma: allowlist secret\n"
+            'token = "9876543210:AAFl1234567890abcdefghijklmnopqrstuv"\n'  # pragma: allowlist secret
+            '"""\n',
+            encoding="utf-8",
+        )
+        findings_dq = scan_file(test_file_dq, self.allowlist, root=self.root)
+        self.assertEqual(len(findings_dq), 1)
+        self.assertEqual(findings_dq[0].rule_name, "telegram_bot_token")
+        self.assertEqual(findings_dq[0].line_number, 3)
+
+        # Single-quote triple quotes '''...'''
+        test_file_sq = self.root / "multiline_sq.py"
+        test_file_sq.write_text(
+            "fixture = '''\n"
+            "# pragma: allowlist secret: aws_access_key\n"
+            "AWS_KEY = 'AKIA1234567890ABCDEF'\n"  # pragma: allowlist secret
+            "'''\n",
+            encoding="utf-8",
+        )
+        findings_sq = scan_file(test_file_sq, self.allowlist, root=self.root)
+        self.assertEqual(len(findings_sq), 1)
+        self.assertEqual(findings_sq[0].rule_name, "aws_access_key")
+        self.assertEqual(findings_sq[0].line_number, 3)
+
+    def test_forwarded_flags_after_double_dash_scanned_as_files(self) -> None:
+        """Verify filenames matching flag syntax (e.g. --root=docs) after -- are scanned as files."""
+        flag_file = self.root / "--root=docs"
+        flag_file.write_text(
+            'token = "9876543210:AAFl1234567890abcdefghijklmnopqrstuv"\n',  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+        try:
+            ret_dirty = main(["--root", str(self.root), "--", str(flag_file)])
+            self.assertEqual(ret_dirty, 1)
+
+            flag_file.write_text("print('clean')\n", encoding="utf-8")
+            ret_clean = main(["--root", str(self.root), "--", str(flag_file)])
+            self.assertEqual(ret_clean, 0)
+        finally:
+            if flag_file.exists():
+                flag_file.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()
