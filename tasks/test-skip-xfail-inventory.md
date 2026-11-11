@@ -1,11 +1,11 @@
 # Test Skip, XFail & Deselection Inventory
 
-**Task E08**: Maintain a skip/xfail inventory and resolve accidental coverage holes (`tasks/REMAINING_WORK.md:90`)  
-**Campaign**: [Issue #78](https://github.com/Snoozer10/local-youtube-automation/issues/78)  
-**Task Branch**: `test/e08-skip-xfail-inventory`  
-**Base Commit**: `2bbebb5b6c4b94e8b8bfbbcfd33991a1f2a04f66` (`origin/master` after PRs #117 and #118)  
-**Claim & Amendment**: [Initial claim (`6804442193`)](https://github.com/Snoozer10/local-youtube-automation/issues/78#issuecomment-6804442193) · [Reservation amendment (`6805250627`)](https://github.com/Snoozer10/local-youtube-automation/issues/78#issuecomment-6805250627)  
-**Date**: 2026-11-11
+- **Task E08**: Maintain a skip/xfail inventory and resolve accidental coverage holes (`tasks/REMAINING_WORK.md:90`)
+- **Campaign**: [Issue #78](https://github.com/Snoozer10/local-youtube-automation/issues/78)
+- **Task Branch**: `test/e08-skip-xfail-inventory`
+- **Base Commit**: `2bbebb5b6c4b94e8b8bfbbcfd33991a1f2a04f66` (`origin/master` after PRs #117 and #118)
+- **Claim & Amendment**: [Initial claim (`6804442193`)](https://github.com/Snoozer10/local-youtube-automation/issues/78#issuecomment-6804442193) · [Reservation amendment (`6805250627`)](https://github.com/Snoozer10/local-youtube-automation/issues/78#issuecomment-6805250627)
+- **Date**: 2026-11-11
 
 ---
 
