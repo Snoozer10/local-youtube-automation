@@ -1,6 +1,21 @@
 # Handoff
 
-## README publication, 2026-11-02
+## Current cursor, 2026-11-11
+
+### Done
+- Integrated `master` (`2a68fe484218fbfc59be1cc85b897dc30bd9c4bb`) includes: closed Architecture Renewal [#31](https://github.com/Snoozer10/local-youtube-automation/issues/31) and renewal/Track A child issues (`#32`–`#50`, `#54` closed `2026-10-28`, `#55`–`#56` and `#58`–`#59` closed `2026-10-30` before `PR #76` `c5a9fa6` merged across `PR #51`–`#76`, then `#39` and parent `#31` closed `2026-10-30`), compatibility/receipt repair [PR #77](https://github.com/Snoozer10/local-youtube-automation/pull/77) (`ecc9097`, 2026-11-01), backlog campaign setup (`PR #82`), renewed README and public guides (`PR #84`), security/secret scanning (`#79` S01 owner revocation, `PR #85` S02, `PR #94` S05, `PR #114` S04, `PR #117` S06 Black minimum `26.3.1`; S03/remaining S06 assessments recorded), CI offline gates and Windows Python 3.10 compatibility (`PR #86`/`#87` E02 `#81`, `PR #88` `#83`, `PR #90` E01 `#89`, `PR #92` E04 `#91`, `PR #115` E03), and R02 D1/D3/G6 ledger pointer reconciliation (`PR #116`).
+- Renewal parent `#31` and `#37`/`#39`/`#45` (Option A offline substitution) are closed; live Windows REA execution remains an unexecuted future capability (`O04`). Separately on GitHub, V4 Wayfinder research `#95`–`#102` closed and V4 spec `#104`–`#113` remain open outside `#78`.
+
+### Next
+- Refresh [campaign issue #78](https://github.com/Snoozer10/local-youtube-automation/issues/78), [remaining work](../../tasks/REMAINING_WORK.md), and open PRs before claiming the next ready item in the `#78` queue (remaining `S06` dependency remediation follow-ups, `R03`–`R07`, `E05`/`E07`/`E08`, and pilot acceptance `P01`–`P14`; separate V4 spec `#104`–`#113` stays outside `#78` unless separately selected), following [the campaign entrypoint](../../tasks/ANTIGRAVITY_CAMPAIGN.md) and [the canonical master](../../tasks/BRANCH_COMPLETION_MASTER.md). For user-facing adaptive production usage, follow [Adaptive staged mode](../usage/adaptive-mode.md).
+- Retain owner deferrals and gating: **`D1` full Professor episode production remains `DEFERRED BY USER`** (`D1` approved script hash preserved, absent inputs routed to `D01`) while `D2`–`D7` remain OPEN or blocked under their existing rows; `C2`, `C3`, `C4`, `C7`, and `H10` remain partial/open (`P01`–`P14`); live Windows REA remains an unexecuted future capability (`O04`); every live provider, browser, GUI, or publication step requires its own explicit bounded grant ([ANTIGRAVITY_BACKLOG_LIVE_RUNS.md](ANTIGRAVITY_BACKLOG_LIVE_RUNS.md)).
+
+### Failures & Fixes
+- Keep exact dates on retained session snapshots below (`Spec #23` and `PR #75` entries lacked dated headings); verify remote `origin/master` and PR status before citing prior cursors (earlier `PR #84`, `PR #115`, and `PR #116` are already merged).
+
+Historical session entries below retain their dated scopes and do not override the `2026-11-11` cursor above.
+
+## README publication, 2026-11-02 (merged in PR #84)
 
 ### Done
 - The owner reviewed and approved the README/public guides and authorized PR publication and merge after passing checks. PR #84 is the publication record: https://github.com/Snoozer10/local-youtube-automation/pull/84. The branch was published with both reviewed documentation commits; the remote tip was verified against local 0e249105673e3fd948fc8a69b1627f77c6a994e6 before this status-only addition.
@@ -90,10 +105,14 @@ Earlier sections retain exact dated history; this entrypoint and newer receipts 
 
 The sections below retain dated session history and do not override this cursor or newer receipts.
 
-## Current Phase
+## Historical Spec #23 completion snapshot, 2026-10-26
+
+*Retained 2026-10-26 snapshot (unlabelled prior heading repaired 2026-11-11). PR #51 (`#36`) and PR #52 (`#23`–`#30`) merged 2026-10-26; superseded as current status by the `2026-11-11` cursor at the top of this file.*
+
+### Historical phase (2026-10-26)
 Spec #23 receipt completion verified locally; separate guidance and compilation PR integration is in progress.
 
-## Done
+### Done
 - db2ad58 repaired the seven original audited compilation defects.
 - Story 16 now prepares immutable hash-bound final-artifact JSON receipts before video publication; production reuse, approval and recovery require them.
 - Independent review found and corrected pairwise audio/video drift beyond one frame; two RED public regressions are GREEN.
@@ -101,17 +120,17 @@ Spec #23 receipt completion verified locally; separate guidance and compilation 
 - Two bounded native CPU requests passed through root CLI and production render_plan; tampered copies rejected, original pairs retained. No provider/browser/GPU/editorial acceptance exercised.
 - Evidence/report: docs/sessions/SPEC23_COMPILATION_COMPLETION_20261026.md; .runtime/spec23_completion_20261026T061513Z/.
 
-## Next
+### Next
 - Guidance PR #51 is merged (bc05960c); #36 is closed. Integrate the separately scoped compilation PR next.
 - Confirm exact-head CI/review and integration before closing #25-#29 and parent #23. #24/#30 were already closed; #36 belongs to guidance PR #51.
 - Preserve unrelated dirty files. No provider, GUI, REA, production media, release or cleanup grant exists.
 
-## Failures & Fixes
+### Failures & Fixes
 - Two unchanged consumer-check failures after a CRLF anchor miss triggered the brake; user approved a bounded fixture correction. Preserve failed evidence.
 - Repaired missing-receipt manual media/orphan fixtures via public FakeMediaRunner compilation, without weakening human rejection.
 - Corrected fake media byte collisions, a native helper root-path error before dispatch, and fixture import ordering. Raw failures and preimages retained.
 
-## Resume Context
+### Resume Context
 Branch codex/spec23-compilation-completion; approved original review baseline 70213c1, completion baseline db2ad58. Final source pins: IMPLEMENTATION_FREEZE_PUBLICATION.json. Commit/PR and eventual merge identities are recorded in Git history, tracker and completion CLOSEOUT.json.
 
 ## Navigation batch #37, 2026-10-26
@@ -867,7 +886,7 @@ Branch codex/spec23-compilation-completion; approved original review baseline 70
 - Preexisting same-ID concurrent snapshot overwrite remains deferred under #58.
 - Stop point: Stop for independent review of PR #74 Batch 7 corrections. Do NOT merge PR #74 or start another campaign batch without explicit user authorization.
 
-## Issue #58 Snapshot Concurrency Protection (PR #75)
+## Issue #58 Snapshot Concurrency Protection (PR #75), 2026-10-30
 
 ### Review Findings & Corrections
 1. **Archive Namespace Containment (P1)**:

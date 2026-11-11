@@ -1,16 +1,26 @@
 # Branch Completion Master
 
-> Antigravity backlog execution/resume now routes through [ANTIGRAVITY_CAMPAIGN.md](ANTIGRAVITY_CAMPAIGN.md) and campaign issue #78. This master retains its acceptance authority; setup and tests do not flip existing C/D checkboxes or supply human/provider approvals.
+> Antigravity backlog execution/resume now routes through [ANTIGRAVITY_CAMPAIGN.md](ANTIGRAVITY_CAMPAIGN.md) and [campaign issue #78](https://github.com/Snoozer10/local-youtube-automation/issues/78). This master retains its existing A–F acceptance authority; setup, documentation reconciliation, and tests do not flip existing C/D checkboxes or supply human/provider approvals.
 
-> Current project overlay, 2026-11-01: repair PR #77 is merged at ecc90972b4476596ca1c12756b3c7e4cddda9a45. See [remaining project work](REMAINING_WORK.md) for the dated whole-project inventory and critique. The PR #21/#22 dashboard below is retained branch-closeout history, not the latest repository integration state. Existing C/D acceptance criteria remain in this master; D1 production remains deferred by the user. The repair integration closeout is .runtime/repo_review_integration_20261101/integration/CLOSEOUT.json.
+> Current project status (2026-11-11, post-PR #77 and closed `#31` renewal): repair [PR #77](https://github.com/Snoozer10/local-youtube-automation/pull/77) merged at `ecc90972b4476596ca1c12756b3c7e4cddda9a45` (`2026-11-01`), Architecture Renewal parent [#31](https://github.com/Snoozer10/local-youtube-automation/issues/31) and its children (`#32`–`#50`, `#54`–`#56`, `#58`–`#59`) are CLOSED, and backlog campaign [#78](https://github.com/Snoozer10/local-youtube-automation/issues/78) has shipped setup, renewed public guides (`docs/usage/adaptive-mode.md`), security/secret-scanning and Black floor fixes, Python 3.10/3.11 CI offline gates, and R02 ledger pointer fixes (`PR #82`–`#117` on `master`). See [remaining project work](REMAINING_WORK.md) for prioritized backlog items, [ANTIGRAVITY_CAMPAIGN.md](ANTIGRAVITY_CAMPAIGN.md) for campaign workflow, [HANDOFF.md](../docs/sessions/HANDOFF.md) for the active session cursor, and [Adaptive staged mode](../docs/usage/adaptive-mode.md) for public operator usage. Existing C/D acceptance criteria stay here; **`D1` full Professor episode production remains DEFERRED BY USER**, `D2`–`D7` remain open or blocked under their existing rows, live Windows REA (`#45` Option A) remains unexecuted (`O04`), and every live provider/browser/GUI action still requires an explicit bounded grant.
 
-Current closeout: PR #21 MERGED at `dadd3b5f9c10761689abff1e273d62e78dc70128` with exact reviewed head `9a0c51f15ed509c770d062cac0e92b06bf303ea4` preserved as a parent and an identical file tree. Post-merge CI39876182132 passed. See [merge record](../docs/sessions/MERGE_PR21_20261023.md). CodeRabbit USER-SKIPPED by owner direction.
+## Current status and resume (2026-11-11)
 
-> Status: PR #21 MERGED / POST-MERGE MASTER VERIFIED / ENGINEERING CLOSEOUT COMPLETE.
-> Current authority: user authorized updating CHANGELOG and GitHub releases after PR #22 merged at 3b00acb and all retired local/remote branches were removed. Version 4.5.1 release commit, CI, tag, build and asset outcomes belong to `.runtime/codex_release_451_20261023/PUBLICATION_RESULT.json`. Professor D1 remains deferred until an explicit future request; provider/reconciliation exclusions remain.
-> This register owns current status. Dated prior receipts remain exact-scope historical evidence.
+- **Shipped infrastructure and repairs:** Renewal child/Track A issues `#32`–`#50`, `#54` (`2026-10-28`), and `#55`–`#56`, `#58`–`#59` (`2026-10-30` before `PR #76` merged) closed alongside integrated `PR #51`–`PR #76` (`c5a9fa6`), followed by `#39` and parent `#31` closing `2026-10-30`; compatibility and receipt-protection repairs shipped in `PR #77` (`ecc9097`, `2026-11-01`; `.runtime/repo_review_integration_20261101/integration/CLOSEOUT.json`), renewed onboarding/public guides (`PR #84`), security/revocation/scanning (`#79` S01, `PR #85` S02, `PR #94` S05, `PR #114` S04, `PR #117` S06 Black minimum `26.3.1`; S03/remaining S06 assessments recorded), CI offline gates and Python 3.10/3.11 parity (`PR #86` E02, `PR #87`, `PR #88` `#83`, `PR #90` E01, `PR #92` E04, `PR #115` E03), and R02 D1/D3/G6 pointer reconciliation (`PR #116`).
+- **Retained deferrals and open product scope:** `C1`/`C5`/`C6` and `B1`–`B5` retain their recorded exact-artifact scopes; `C2`, `C3`, `C4`, `C7`, and `H10` remain partial/open (`P01`–`P14` in [REMAINING_WORK.md](REMAINING_WORK.md)). For full Professor episode `G6`, **`D1` production remains `DEFERRED BY USER`** (`D1` approved script hash preserved and missing-input recovery routed to `D01`), and **`D2`–`D7` remain OPEN or blocked** under their existing rows/dependencies (`D2` historical technical timing, `D3` not an executable plan, `D4` Flow/provider-gated, `D5` OPEN, `D6` user review, `D7` OPEN). Separately tracked V4 reverse-engineering map/grilling issues (`#95`–`#102`) are closed and V4 spec issues (`#104`–`#113`) remain open outside backlog `#78`.
+- **Where to resume:** Check [GitHub issue #78](https://github.com/Snoozer10/local-youtube-automation/issues/78), [REMAINING_WORK.md](REMAINING_WORK.md), [ANTIGRAVITY_CAMPAIGN.md](ANTIGRAVITY_CAMPAIGN.md), and [HANDOFF.md](../docs/sessions/HANDOFF.md) before claiming the next bounded slice; consult the dated C–F rows below and their linked receipts before changing pilot or episode state.
 
-## Current dashboard
+## Historical PR #21 / PR #22 closeout snapshot (2026-10-23)
+
+> Retained historical closeout snapshot (2026-10-23, superseded as overall repository state by `#31`, `PR #77`, and campaign `#78` above; receipt paths, hashes, and counts are preserved unchanged):
+
+Historical closeout: PR #21 MERGED at `dadd3b5f9c10761689abff1e273d62e78dc70128` with exact reviewed head `9a0c51f15ed509c770d062cac0e92b06bf303ea4` preserved as a parent and an identical file tree. Post-merge CI39876182132 passed. See [merge record](../docs/sessions/MERGE_PR21_20261023.md). CodeRabbit USER-SKIPPED by owner direction.
+
+> Historical status (2026-10-23): PR #21 MERGED / POST-MERGE MASTER VERIFIED / ENGINEERING CLOSEOUT COMPLETE.
+> Historical authority (2026-10-23): user authorized updating CHANGELOG and GitHub releases after PR #22 merged at 3b00acb and all retired local/remote branches were removed. Version 4.5.1 release commit, CI, tag, build and asset outcomes belong to `.runtime/codex_release_451_20261023/PUBLICATION_RESULT.json`. Professor D1 remains deferred until an explicit future request; provider/reconciliation exclusions remain.
+> The snapshot below preserves that 2026-10-23 closeout register; dated prior receipts remain exact-scope historical evidence.
+
+### Historical closeout dashboard (2026-10-23)
 
 - Accepted Soldier/H10 canonical audio adoption remains completed at its recorded scope; do not repeat it. This audit did not redo listening or narration.
 - Original source safety repairs and all current typing/test findings are independently reviewed. F1 engineering dispositions are complete within the user-selected scope; live/production artifacts are not newly approved.
@@ -21,7 +31,7 @@ Current closeout: PR #21 MERGED at `dadd3b5f9c10761689abff1e273d62e78dc70128` wi
 - Professor C1 exact ca8 preview acceptance remains artifact-bound. C2 delivery remains partial. D1 script is approved; D1 production is DEFERRED BY USER, with no near-term execution. D2-D7 remain open under their existing dependencies.
 - A5 recovery discard and E4 post-merge live-direction disposition remain at their prior verified scope. F5's nonblocking historical limitation disposition remains; no historical missing pins are newly verified.
 
-### Execution order and visual progress
+### Historical closeout execution order and visual progress (2026-10-23 snapshot)
 
 | Lane | IDs | Current state |
 |---|---|---|
@@ -32,25 +42,25 @@ Current closeout: PR #21 MERGED at `dadd3b5f9c10761689abff1e273d62e78dc70128` wi
 | Engineering | E1-E5 | Prior dispositions retained; new source findings tracked in F1. |
 | Release | F1-F9 | F1-F8 current engineering scope verified; all five findings resolved; CodeRabbit USER-SKIPPED. F9 user-authorized merge and post-merge master/CI closeout verified. Production exclusions remain. |
 
-### Immediate resume steps
+### Historical closeout resume steps (2026-10-23 snapshot)
 
-1. PR #22 is merged at 3b00acb. Consult `.runtime/codex_release_451_20261023/PUBLICATION_RESULT.json` for the exact 4.5.1 release/tag/build/CI result. Only master remains locally and remotely; do not recreate retired branches.
+1. PR #22 merged at 3b00acb (2026-10-23). Consult `.runtime/codex_release_451_20261023/PUBLICATION_RESULT.json` for the exact 4.5.1 release/tag/build/CI result. *(Historical 2026-10-23 cleanup state: later renewal `#31`, `PR #77`, and campaign `#78` added subsequent branches/worktrees and merged PRs #51–#116; use the current resume route at the top of this file rather than treating "only master remains" as current.)*
 2. Retain the reviewed source, immutable receipts and excluded operational inputs; new defects reopen only the affected checks.
 3. Professor D1 production is DEFERRED BY USER until a future explicit request. Preserve the approved script; downstream D2-D7 retain their existing dependencies.
 4. After any further implementation changes, run affected focused checks and the required final-tree gates; preserve failures and verify shared-resource isolation.
-5. Cleanup is complete: only master remains locally and remotely, with one primary checkout and no additional worktrees. All 680 removed-checkout files, including 186 ignored files, and both retired branch histories are preserved with independent verification. Recovery: `.runtime/codex_repo_cleanup_20261023/archive/RESTORE.md`; final branch/merge evidence: `.runtime/codex_merge_pr22_20261023/`.
+5. Historical 2026-10-23 cleanup record: only master remained locally and remotely at that closeout, with one primary checkout and no additional worktrees. All 680 removed-checkout files, including 186 ignored files, and both retired branch histories are preserved with independent verification. Recovery: `.runtime/codex_repo_cleanup_20261023/archive/RESTORE.md`; final branch/merge evidence: `.runtime/codex_merge_pr22_20261023/`.
 
-### Decision / authorization queue
+### Historical closeout decision / authorization queue (2026-10-23 snapshot)
 
-- Current user authority covers the changelog and GitHub release update. PR #21/#22 merges and local/remote branch cleanup are complete. Professor D1 remains deferred; no new provider cap or live app action is inferred.
-- User excluded pilot spending, human approval provenance, current render recipes and restart-evidence reconciliation from this pass. Historical records remain unchanged and unverified at those scopes; they are not current engineering blockers.
-- QMD is intentionally not updated under the user instruction. `.runtime/codex_repo_cleanup_20261023/QMD_SYNC.json` is the prior lexical snapshot, not verification of these release edits. Embeddings remain incomplete; semantic retrieval is unused.
+- Historical 2026-10-23 user authority covered the v4.5.1 changelog and GitHub release update after PR #21/#22 merges. Professor D1 remains deferred; current backlog campaign `#78` requires explicit per-task live allowances (`ANTIGRAVITY_CAMPAIGN.md`).
+- User excluded pilot spending, human approval provenance, current render recipes and restart-evidence reconciliation from the 2026-10-23 pass. Historical records remain unchanged and unverified at those scopes (`P07`/`P10`/`P12` in [REMAINING_WORK.md](REMAINING_WORK.md)); they are not current engineering blockers.
+- Historical 2026-10-23 QMD note: QMD was intentionally not updated under that user instruction. `.runtime/codex_repo_cleanup_20261023/QMD_SYNC.json` is that prior lexical snapshot; embeddings remain incomplete until separately refreshed (`R04`).
 
-### Current known gates
+### Historical PR #21 known gates (2026-10-23 snapshot)
 
-Gate commands and frozen hashes: `.runtime/codex_prompt_config_final_20261023/GATES.json`; installed artifact probe: `.runtime/codex_prompt_config_fix_20261023/AFTER_WHEEL_VERIFICATION_FINAL.json`. Merge lineage/tree, smoke and CI evidence: `.runtime/codex_merge_pr21_20261023/`. Prior candidates remain historical.
+Gate commands and frozen hashes for the PR #21 release snapshot: `.runtime/codex_prompt_config_final_20261023/GATES.json`; installed artifact probe: `.runtime/codex_prompt_config_fix_20261023/AFTER_WHEEL_VERIFICATION_FINAL.json`. Merge lineage/tree, smoke and CI evidence: `.runtime/codex_merge_pr21_20261023/`. Subsequent gates live in PR #77 (`ecc9097`) and current `.github/workflows/ci.yml` (`PR #90`, `PR #114`, `PR #115`).
 
-## Output-by-output progress (receipt-backed starting view)
+## Output-by-output progress (historical 2026-10-23 matrix; see current `C1`–`C7`, `D1`–`D7`, `P01`–`P14` below and `REMAINING_WORK.md`)
 
 This matrix is a receipt-backed progress view; the current dashboard and task-specific evidence control scope. Historical approvals remain bound to their exact artifacts.
 
@@ -461,14 +471,16 @@ Each reference has a defined job. Read its latest state before action; a pointer
 | [`docs/sessions/CLAUDE_INTERIM_RESULT.md`](../docs/sessions/CLAUDE_INTERIM_RESULT.md) | Interim Claude findings, Stage 3 runbook and failure/tag/TTS evidence. | Historical source; retain its attempt boundaries and verify current state before action. |
 | [`docs/sessions/ANTIGRAVITY_H10_PLAN_CRITIC_RESULT.md`](../docs/sessions/ANTIGRAVITY_H10_PLAN_CRITIC_RESULT.md) | Antigravity’s H10 plan critique and proposed corrections. | Review during F1/C4; do not treat a critique as a current plan or acceptance receipt. |
 | [`docs/sessions/CODEX_FULL_COMPLETION_RESUME_20261007.md`](../docs/sessions/CODEX_FULL_COMPLETION_RESUME_20261007.md) | Earlier resume guide containing G6 source-discovery history and old pilot-cut distinction. | Historical; use the reconciled October 9 return for current source identity and current runtime for execution state. |
-| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | Current CI workflow definitions; latest inspection identifies unit and lint checks. | Read before F2/F8; verify required check names against the live PR and exact HEAD. |
+| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | Current CI workflow definitions; after PR #90 (`E01`), PR #114 (`S04`), and PR #115 (`E03`), runs workspace Ruff, strict `mypy --strict src/`, secret scanning (`tools/check_secrets.py`), offline unit+integration pytest on Python 3.11 and Windows Python 3.10, and sdist/wheel builds. | Read before engineering/CI or release checks; verify live PR checks against exact HEAD. |
 | [`pyproject.toml`](../pyproject.toml) | Python project/test/lint/type configuration. | Source of actual configured commands and scopes; inspect with CI before F2. |
 
 ## Branch-completion definition
 
 This branch can be called complete only when: (1) all required implementation scopes and scope decisions E1–E5 have explicit dispositions; (2) C7 pilot matrix passes and D1–D7 full Professor episode gates pass; (3) required offline/software/package/production evidence is fresh for the final diff; (4) DOX and resume docs are reconciled; (5) formal PR review and CI are resolved; and (6) the user authorizes the merge and the resulting merge state is verified. No percentage substitutes for this list. External video publication is not required for this branch to be complete.
 
+In the current ledger rows above, D1 production is DEFERRED BY USER and D2–D7 remain OPEN or blocked under their existing dependencies (D2 historical technical timing, D3 not an executable plan, D4 Flow/provider-gated, D5 OPEN, D6 user review, D7 OPEN).
 
-Historical QA failures/partial snapshots remain preserved. Current software acceptance and exact local review scope are in STRICT_TYPING_REVIEW_20261022.md; no historical pass or provider record substitutes for exact-head formal review/CI.
+
+Historical PR #21 QA failures/partial snapshots remain preserved. The PR #21 (`2026-10-22`) engineering snapshot and exact local review scope are in STRICT_TYPING_REVIEW_20261022.md (subsequently superseded on software/CI gates by PR #77 and current master checks); no historical pass or provider record substitutes for exact-head formal review/CI.
 
 - 2026-10-23T00:21:24.243052+00:00: F9 authorized merge PR #21 completed at `dadd3b5f9c10761689abff1e273d62e78dc70128`; reviewed parent `9a0c51f15ed509c770d062cac0e92b06bf303ea4`, identical tree, focused smoke8 and merge CI39876182132 verified. CodeRabbit USER-SKIPPED; production exclusions and protected inputs retained. [Merge closeout](../docs/sessions/MERGE_PR21_20261023.md).
