@@ -16,25 +16,27 @@ This report documents the design, implementation, and audit repairs of **Task S0
 1. **Zero-Dependency Proportionate Secret Scanner (`tools/check_secrets.py`)**:
    - Implemented using Python standard library only (`argparse`, `dataclasses`, `json`, `pathlib`, `re`, `subprocess`, `sys`).
    - Scans both codebase files and documentation (e.g. Markdown `.md`, plaintext `.txt`, YAML, JSON) for high-fidelity secret signatures: Telegram Bot Tokens, AWS access keys, AWS secret access keys, GitHub tokens, Slack tokens, private key headers, and generic high-entropy API key assignments.
-   - Emits only safe location and rule name in terminal diagnostics (`path:line: [rule_name] potential secret token detected`) to guarantee failure logs never leak secret values or credential fragments.
+   - Emits only safe location and rule name in terminal diagnostics (`path:line: [rule_name] potential secret token detected`) with sanitized path tokens to guarantee failure logs never leak secret values or credential fragments.
 2. **Reviewed Exclusions Mechanism (`tools/secrets_allowlist.json`)**:
-   - Matches exclusions against individual matched secret values and token strings rather than whole lines, preventing placeholders like `[redacted]` from suppressing adjacent credentials.
+   - Matches exclusions against individual matched secret values and token strings using strict whole-match semantics, preventing placeholders like `[redacted]` or substring prefixes like `your-api-key` from suppressing adjacent or longer credentials.
    - Supports path-specific allowlists targeting individual files without leaking patterns to the broader codebase.
-   - Supports inline pragma annotations with rule-scoping (`# pragma: allowlist secret: <rule>`, `# noqa: secret-check(<rule>)`, and HTML comments `<!-- pragma: allowlist secret: <rule> -->` for Markdown documentation).
+   - Supports inline pragma annotations with rule-scoping (`# pragma: allowlist secret: <rule>`, `# noqa: secret-check(<rule>)`, and HTML comments `<!-- pragma: allowlist secret: <rule> -->` for Markdown documentation), strictly isolated to unquoted comments and 1-to-1 match proximity.
    - Supports excluded directory paths (`.git`, `.runtime`, `.venv`, etc.) and non-text binary extensions (`.png`, `.jpg`, `.wav`, `.mp3`, etc.).
 3. **CI and Pre-Commit Quality Gate Integration**:
    - Added `Quality gate (secret scanning)` step in `.github/workflows/ci.yml`.
    - Added `check-secrets` hook in `.pre-commit-config.yaml` to prevent committing secrets locally.
 4. **Dedicated Test Suite (`tests/unit/test_check_secrets.py`)**:
-   - 32 unit tests validating clean baseline repository passing, synthetic secret rejection in code and documentation, targeted path exclusions, inline/HTML comment pragmas, binary/path exclusions, safe diagnostics, and regression test cases for all Codex audit items.
+   - 40 unit tests validating clean baseline repository passing, synthetic secret rejection in code and documentation, targeted path exclusions, inline/HTML comment pragmas, binary/path exclusions, safe diagnostics, and regression test cases for all Codex audit items.
 5. **Contract Documentation (`tools/AGENTS.md`)**:
-   - Documented tool purpose, ownership, inertness invariants, and integration points, preserving native CRLF line endings.
+   - Documented tool purpose, ownership, inertness invariants, and integration points, preserving base mixed line endings outside the new section.
 
 ---
 
 ## 2. Technical Architecture & Codex Audit Repairs
 
-### 2.1 Codex Audit Repairs (5 Key Improvements)
+### 2.1 Codex Audit Repairs (Key Improvements)
+
+#### Phase 1 Repairs:
 1. **Arabic & Non-ASCII Git Path Preservation**:
    - Enumeration uses `git -C <root> ls-files -t -z` and decodes raw bytes with `errors="surrogateescape"`.
    - Bypasses git's default octal-quoting on non-ASCII filenames, ensuring files with Arabic names (e.g. `ملف_بيانات_سري.py`) are resolved and scanned verbatim.
@@ -48,9 +50,23 @@ This report documents the design, implementation, and audit repairs of **Task S0
 4. **UTF-16 Support, Unquoted Assignments & Quoted JSON Keys**:
    - `_decode_content` handles UTF-16 with BOM (LE/BE) and UTF-16 LE/BE without BOM (null-byte cadence check) while cleanly distinguishing text from binary files.
    - Regex patterns support unquoted `API_TOKEN=value` assignments and quoted JSON keys (`"aws_secret_access_key": "..."`, `"api_key": "..."`).
-5. **Safe Diagnostic Format & Line-Ending Invariants**:
+5. **Safe Diagnostic Format**:
    - `format_diagnostic()` emits strictly `f"{path}:{line}: [{rule_name}] potential secret token detected"`, never printing credential fragments.
-   - Corrected line-ending convention: `tools/AGENTS.md` natively preserves the repository's established CRLF convention, while all other task files maintain pure LF.
+
+#### Phase 2 Follow-up Repairs (Codex Review on 1c4b9de):
+6. **Path Containment Validation on Both Scan Modes**:
+   - Both the default Git scan (`git ls-files -t -z`) and explicit file scans validate path containment using `_validate_input_path` before reading any input.
+   - Paths following Windows junctions or symlinks pointing outside the repository root fail containment check (`target.relative_to(root_resolved)`) and raise `ScanError` (exit code 2).
+   - `scan_file` also validates containment before reading.
+7. **Failed File Reads Treated as ScanError**:
+   - In-scope files that fail `read_bytes()` due to `PermissionError` or `OSError` raise `ScanError(f"Failed to read file: {path} ({err})")` rather than silently returning empty findings.
+   - `main()` catches `ScanError` and returns exit code 2.
+8. **Scoped Exclusions, Whole-Match Allowlists & Quoted Marker Isolation**:
+   - Quoted pragma text (bare or rule-scoped `# pragma: allowlist secret` or `<!-- pragma: allowlist secret -->` inside quotes or backticks) is recognized as string literals, not comments, and will not suppress credentials.
+   - Whole-match allowlist evaluation (`re.fullmatch`) replaces substring searches, preventing longer credentials like `your-api-key-live-secret-12345` from passing allowlist checks.
+   - Pragma association operates 1-to-1 based on proximity to matches, ensuring an exemption for one match cannot hide another credential on the same line.
+9. **Diagnostic Path Sanitization**:
+   - Implemented `sanitize_path()` to replace secret tokens in file paths with `[REDACTED]` using boundary-safe regex patterns across finding diagnostics and stderr error messages (`ScanError`).
 
 ### 2.2 Detection Signatures
 The scanner applies focused regular expressions targeting confirmed high-fidelity credential formats:
@@ -81,7 +97,7 @@ The scanner was verified against synthetic test values to guarantee true positiv
    - Setup guide (`guide.md`): Synthetic Telegram bot token embedded within a documentation `curl` example URL caught at line 4.
    - Deployment guide (`deploy.md`): Synthetic `AWS_ACCESS_KEY_ID` in documentation export block caught at line 4.
 
-3. **Codex Regression Test Cases**:
+3. **Codex Regression Test Cases (40 Tests Total)**:
    - `test_detects_secrets_in_arabic_and_non_ascii_git_paths`: Verified Arabic file `ملف_بيانات_سري.py` tracked in git is detected.
    - `test_line_level_placeholder_does_not_suppress_adjacent_secret`: Verified `[redacted]` on a line does not suppress adjacent token.
    - `test_placeholder_as_secret_value_is_allowed`: Verified placeholder used as secret value passes.
@@ -96,6 +112,14 @@ The scanner was verified against synthetic test values to guarantee true positiv
    - `test_detects_unquoted_api_token_assignment`: Verified unquoted `API_TOKEN=value` detection.
    - `test_detects_quoted_json_credential_keys`: Verified quoted JSON keys detection.
    - `test_diagnostic_format_emits_no_secret_fragments`: Verified diagnostic format contains no credential fragments.
+   - `test_git_scan_rejects_tracked_path_through_junction_outside_repo`: Verified default Git scan rejects tracked path through Windows junction outside repo with `ScanError`.
+   - `test_failed_file_read_raises_scan_error_and_cli_exits_2`: Verified file read failure raises `ScanError` and produces exit code 2.
+   - `test_quoted_bare_and_rule_scoped_pragma_does_not_suppress_credential`: Verified bare/scoped pragmas inside quotes or backticks do not suppress credentials.
+   - `test_whole_match_allowlist_catches_longer_token_containing_placeholder`: Verified whole-match allowlist catches longer token containing `your-api-key`.
+   - `test_exemption_for_one_match_does_not_hide_another_credential`: Verified allowlist or pragma exemption for one match cannot hide another credential on the line.
+   - `test_sanitize_path_helper`: Verified `sanitize_path` helper redacts tokens in paths with `[REDACTED]`.
+   - `test_finding_diagnostic_sanitizes_token_in_filename`: Verified finding diagnostic replaces token in filename with `[REDACTED]`.
+   - `test_error_diagnostic_sanitizes_token_in_path`: Verified error diagnostics on stderr replace tokens in paths with `[REDACTED]`.
 
 4. **Pre-Commit Hook Verification with Staged Synthetic Data**:
    - Staged synthetic secret `aws_secret_key = "1234567890abcdef1234567890abcdef12345678"` in `temp_staged_secret.py`. <!-- pragma: allowlist secret -->
@@ -109,16 +133,17 @@ The scanner was verified against synthetic test values to guarantee true positiv
 ## 4. Byte & Format Integrity Invariants
 
 1. **Line-Ending Invariants**:
-   - `tools/AGENTS.md` natively preserves the repository's established CRLF (`\r\n`) line endings.
+   - `tools/AGENTS.md` preserves the base file's exact mixed line endings (29 CRLF, 5 LF on `origin/master`) outside the inserted section, with 0 extraneous byte or line-ending modifications.
    - All other touched files (`.github/workflows/ci.yml`, `.pre-commit-config.yaml`, `tools/check_secrets.py`, `tools/secrets_allowlist.json`, `tests/unit/test_check_secrets.py`, `tasks/secret-scanning-gate-report.md`) maintain pure LF (`\n`, 0 `\r`) line endings.
    - Verified via `git diff --check master` with 0 warnings.
 2. **Tracked File Hashes (SHA-256)**:
    - `.github/workflows/ci.yml`: `24f42253eb9f469cff79f8f61ac4ca0e72c8c4d5be603713d3b6af9fb8f7c95b`
    - `.pre-commit-config.yaml`: `91ad12940e164ac3cdc15d3bcbe8536cc8c90200725b6c28aea544bd48e3f6ef`
-   - `tools/AGENTS.md`: `1d9cfd27df882815dd529342fe4942d2049837fd87fa8b27f7c1c6aedd7fd485`
-   - `tools/check_secrets.py`: `e55078bddeb4061c7a2fe676c323ba5085276c1139b3fac803c6f5d67faa1690`
+   - `tools/AGENTS.md`: `0a352e55fb4ee5069f0e9a71e3220dc31f29d193f665fb7e13e83e18d2909cb0`
+   - `tools/check_secrets.py`: `330678086d52bef503bb2e42823ac15d3d29e80d0f7dc63ba2772e73c4416acb`
    - `tools/secrets_allowlist.json`: `f5dc613055a21f538b08d85943c41030f58ee210ea2beae6b701c625f342c52f`
-   - `tests/unit/test_check_secrets.py`: `aff3ecfe995061598389b0319bcf04c35963a90dbfc96bd242cdffd064408d95`
+   - `tests/unit/test_check_secrets.py`: `7b1e52e5b11ec3cc9cd3a6e6db7d5b511202ab64889b80e34ce205a84c54bee2`
+   - `tasks/secret-scanning-gate-report.md`: `[tracked at commit]`
 
 ---
 
@@ -128,8 +153,9 @@ The scanner was verified against synthetic test values to guarantee true positiv
 |---|---|---|---|
 | **Git Diff Hygiene** | `git diff --check master` | 0 warnings, clean line endings | 0 |
 | **Secret Scanning Gate** | `python tools/check_secrets.py` | 0 secrets detected across tracked files | 0 |
-| **Dedicated Unit Suite** | `pytest tests/unit/test_check_secrets.py` | 32 passed in 5.07s | 0 |
+| **Dedicated Unit Suite** | `pytest tests/unit/test_check_secrets.py` | 40 passed in 5.87s | 0 |
 | **Workspace Linting** | `ruff check .` | All checks passed with 0 errors | 0 |
+| **Workspace Formatting** | `ruff format --check tools/check_secrets.py tests/unit/test_check_secrets.py` | All checks passed with 0 errors | 0 |
 | **Strict Type Checking** | `mypy --strict --explicit-package-bases tools/check_secrets.py tests/unit/test_check_secrets.py` | Success: no issues found in 2 source files | 0 |
 | **README & Public Docs** | `python tools/check_readme.py` | 7 documents checked and passed | 0 |
 | **Pre-Commit Gate Test** | `pre-commit run check-secrets --files temp_staged_secret.py` | Rejection observed (exit code 1) | 1 (Expected) |

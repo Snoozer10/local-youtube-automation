@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 
 try:
     import tools
+
     if hasattr(tools, "__path__") and str(ROOT / "tools") not in tools.__path__:
         tools.__path__.insert(0, str(ROOT / "tools"))
 except ImportError:
@@ -28,6 +29,7 @@ from tools.check_secrets import (  # noqa: E402
     load_allowlist,
     main,
     mask_secret,
+    sanitize_path,
     scan_file,
     scan_repository,
 )
@@ -46,6 +48,7 @@ class SecretScanningGateTests(unittest.TestCase):
 
     def _remove_git_dir(self, path: Path) -> None:
         """Helper to safely remove Git repository directory on Windows."""
+
         def _on_error(func: Any, p: str, _exc_info: Any) -> None:
             os.chmod(p, stat.S_IWRITE)
             func(p)
@@ -239,10 +242,16 @@ class SecretScanningGateTests(unittest.TestCase):
 
         special_file = self.root / "docs" / "special.md"
         special_file.parent.mkdir(parents=True, exist_ok=True)
-        special_file.write_text("Key: AKIA1234567890ABCDEF\n", encoding="utf-8")  # pragma: allowlist secret
+        special_file.write_text(
+            "Key: AKIA1234567890ABCDEF\n",  # pragma: allowlist secret
+            encoding="utf-8",
+        )
 
         other_file = self.root / "docs" / "other.md"
-        other_file.write_text("Key: AKIA1234567890ABCDEF\n", encoding="utf-8")  # pragma: allowlist secret
+        other_file.write_text(
+            "Key: AKIA1234567890ABCDEF\n",  # pragma: allowlist secret
+            encoding="utf-8",
+        )
 
         findings_special = scan_file(special_file, config, root=self.root)
         self.assertEqual(findings_special, [])
@@ -349,8 +358,7 @@ class SecretScanningGateTests(unittest.TestCase):
         """Verify placeholder tokens themselves pass when used as the matched value."""
         test_file = self.root / "placeholder_val.py"
         test_file.write_text(
-            'api_key = "your-api-key"\n'
-            'secret_key = "[redacted]"\n',
+            'api_key = "your-api-key"\nsecret_key = "[redacted]"\n',
             encoding="utf-8",
         )
 
@@ -478,10 +486,10 @@ class SecretScanningGateTests(unittest.TestCase):
         """Verify quoted JSON credential keys are detected."""
         test_file = self.root / "creds.json"
         test_file.write_text(
-            '{\n'
+            "{\n"
             '  "aws_secret_access_key": "1234567890abcdef1234567890abcdef12345678",\n'  # pragma: allowlist secret
             '  "api_key": "secret_value_1234567890_abcdefghijklmnopqrstuvwxyz"\n'  # pragma: allowlist secret
-            '}\n',
+            "}\n",
             encoding="utf-8",
         )
 
@@ -510,6 +518,200 @@ class SecretScanningGateTests(unittest.TestCase):
         )
         self.assertNotIn("AAFl", diag)
         self.assertNotIn("9876543210", diag)
+
+    # ------------------------------------------------------------------
+    # Codex Follow-up 1: Containment validation on both scan modes
+    # ------------------------------------------------------------------
+    def test_git_scan_rejects_tracked_path_through_junction_outside_repo(self) -> None:
+        """Verify default Git scan rejects tracked path through junction pointing outside repo."""
+        repo_dir = self.root / "junction_repo"
+        repo_dir.mkdir()
+        outside_dir = self.root / "outside_target"
+        outside_dir.mkdir()
+        outside_file = outside_dir / "secret.py"
+        outside_file.write_text("print('outside')\n", encoding="utf-8")
+
+        junction_dir = repo_dir / "linked_ext"
+        if sys.platform == "win32":
+            res = subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(junction_dir), str(outside_dir)],
+                capture_output=True,
+                text=True,
+            )
+            if res.returncode != 0:
+                self.skipTest("Windows mklink junction creation not available")
+        else:
+            os.symlink(outside_dir, junction_dir)
+
+        try:
+            subprocess.run(["git", "init", "-q"], cwd=repo_dir, check=True)
+            tracked_rel = "linked_ext/secret.py"
+            subprocess.run(["git", "add", tracked_rel], cwd=repo_dir, check=True)
+
+            with self.assertRaises(ScanError) as ctx_git:
+                scan_repository(repo_dir, allowlist=self.allowlist)
+            self.assertIn("outside repository root", str(ctx_git.exception))
+
+            with self.assertRaises(ScanError) as ctx_explicit:
+                scan_repository(repo_dir, allowlist=self.allowlist, files=[repo_dir / tracked_rel])
+            self.assertIn("outside repository root", str(ctx_explicit.exception))
+        finally:
+            if junction_dir.exists():
+                if sys.platform == "win32":
+                    subprocess.run(["cmd", "/c", "rmdir", str(junction_dir)], capture_output=True)
+                else:
+                    junction_dir.unlink()
+            self._remove_git_dir(repo_dir)
+
+    # ------------------------------------------------------------------
+    # Codex Follow-up 2: Failed file read treated as ScanError (exit code 2)
+    # ------------------------------------------------------------------
+    def test_failed_file_read_raises_scan_error_and_cli_exits_2(self) -> None:
+        """Verify an in-scope file that fails read_bytes raises ScanError and produces exit code 2."""
+        unreadable_file = self.root / "unreadable.py"
+        unreadable_file.write_text("print('test')\n", encoding="utf-8")
+
+        from unittest.mock import patch
+
+        with patch.object(Path, "read_bytes", side_effect=PermissionError("Permission denied")):
+            with self.assertRaises(ScanError) as ctx:
+                scan_file(unreadable_file, self.allowlist, root=self.root)
+            self.assertIn("Failed to read file", str(ctx.exception))
+
+            ret = main(["--root", str(self.root), str(unreadable_file)])
+            self.assertEqual(ret, 2)
+
+    # ------------------------------------------------------------------
+    # Codex Follow-up 3: Scoped exclusions, whole-match allowlists, quoted marker isolation
+    # ------------------------------------------------------------------
+    def test_quoted_bare_and_rule_scoped_pragma_does_not_suppress_credential(self) -> None:
+        """Verify pragma text inside quoted string or backticks does not suppress credentials."""
+        # Bare pragma inside quotes
+        test_file = self.root / "quoted_pragma.py"
+        test_file.write_text(
+            'msg = "# pragma: allowlist secret"\n'
+            'token = "9876543210:AAFl1234567890abcdefghijklmnopqrstuv"\n',  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+        findings = scan_file(test_file, self.allowlist, root=self.root)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_name, "telegram_bot_token")
+
+        # Rule-scoped pragma inside quotes
+        test_file_scoped = self.root / "quoted_scoped.py"
+        test_file_scoped.write_text(
+            'msg = "# pragma: allowlist secret: telegram_bot_token"\n'
+            'token = "9876543210:AAFl1234567890abcdefghijklmnopqrstuv"\n',  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+        findings_scoped = scan_file(test_file_scoped, self.allowlist, root=self.root)
+        self.assertEqual(len(findings_scoped), 1)
+        self.assertEqual(findings_scoped[0].rule_name, "telegram_bot_token")
+
+        # HTML pragma inside quotes
+        test_file_html = self.root / "quoted_html.py"
+        test_file_html.write_text(
+            'doc = "<!-- pragma: allowlist secret -->"\n'
+            'token = "9876543210:AAFl1234567890abcdefghijklmnopqrstuv"\n',  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+        findings_html = scan_file(test_file_html, self.allowlist, root=self.root)
+        self.assertEqual(len(findings_html), 1)
+        self.assertEqual(findings_html[0].rule_name, "telegram_bot_token")
+
+        # Backticks in markdown
+        doc_file = self.root / "backtick_doc.md"
+        doc_file.write_text(
+            "# Guide\n"
+            "Use `# pragma: allowlist secret` to suppress.\n"
+            "token = 9876543210:AAFl1234567890abcdefghijklmnopqrstuv\n",  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+        findings_doc = scan_file(doc_file, self.allowlist, root=self.root)
+        self.assertEqual(len(findings_doc), 1)
+        self.assertEqual(findings_doc[0].rule_name, "telegram_bot_token")
+
+    def test_whole_match_allowlist_catches_longer_token_containing_placeholder(self) -> None:
+        """Verify credential containing allowlisted pattern as substring is not suppressed."""
+        test_file = self.root / "substring_token.py"
+        test_file.write_text(
+            'api_key = "your-api-key-really-secret-live-1234567890"\n',  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+        findings = scan_file(test_file, self.allowlist, root=self.root)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_name, "generic_api_key_assignment")
+
+    def test_exemption_for_one_match_does_not_hide_another_credential(self) -> None:
+        """Verify an exemption for one match cannot hide another credential on the same line."""
+        # Allowlisted placeholder + un-allowlisted secret on same line
+        test_file = self.root / "multi_credential.py"
+        test_file.write_text(
+            'api_key = "your-api-key" ; token = "9876543210:AAFl1234567890abcdefghijklmnopqrstuv"\n',  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+        findings = scan_file(test_file, self.allowlist, root=self.root)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_name, "telegram_bot_token")
+
+        # Two secrets, only one pragma: only one is exempted, second remains detected
+        test_file_two = self.root / "two_secrets_one_pragma.py"
+        test_file_two.write_text(
+            'token1 = "9876543210:AAFl1111111111abcdefghijklmnopqrstuv" ; '  # pragma: allowlist secret
+            'token2 = "9876543210:AAFl2222222222abcdefghijklmnopqrstuv"  # pragma: allowlist secret\n',  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+        findings_two = scan_file(test_file_two, self.allowlist, root=self.root)
+        self.assertEqual(len(findings_two), 1)
+        self.assertEqual(findings_two[0].rule_name, "telegram_bot_token")
+
+    # ------------------------------------------------------------------
+    # Codex Follow-up 4: Sanitize tokens in finding and error diagnostic paths
+    # ------------------------------------------------------------------
+    def test_sanitize_path_helper(self) -> None:
+        """Verify sanitize_path helper redacts secret tokens from paths."""
+        self.assertEqual(
+            sanitize_path("path/to/AKIA1234567890ABCDEF.py"),  # pragma: allowlist secret
+            "path/to/[REDACTED].py",
+        )
+        self.assertEqual(
+            sanitize_path("prefix_AKIA1234567890ABCDEF_suffix.txt"),  # pragma: allowlist secret
+            "prefix_[REDACTED]_suffix.txt",
+        )
+        self.assertEqual(
+            sanitize_path("clean/path/file.py"),
+            "clean/path/file.py",
+        )
+
+    def test_finding_diagnostic_sanitizes_token_in_filename(self) -> None:
+        """Verify finding diagnostics replace secret tokens in filenames with [REDACTED]."""
+        token_filename = "AKIA1234567890ABCDEF.py"  # pragma: allowlist secret
+        test_file = self.root / token_filename
+        test_file.write_text(
+            'key = "AKIA1234567890ABCDEF"\n',  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+
+        findings = scan_file(test_file, self.allowlist, root=self.root)
+        self.assertEqual(len(findings), 1)
+        diag = findings[0].format_diagnostic()
+        self.assertIn("[REDACTED].py", diag)
+        self.assertNotIn("AKIA1234567890ABCDEF", diag)  # pragma: allowlist secret
+
+    def test_error_diagnostic_sanitizes_token_in_path(self) -> None:
+        """Verify error messages on stderr replace tokens in paths with [REDACTED]."""
+        missing_name = "outside_AKIA1234567890ABCDEF.py"  # pragma: allowlist secret
+        import io
+        from contextlib import redirect_stderr
+
+        stderr_buf = io.StringIO()
+        with redirect_stderr(stderr_buf):
+            ret = main(["--root", str(self.root), missing_name])
+
+        self.assertEqual(ret, 2)
+        err_output = stderr_buf.getvalue()
+        self.assertIn("[REDACTED].py", err_output)
+        self.assertNotIn("AKIA1234567890ABCDEF", err_output)  # pragma: allowlist secret
 
 
 if __name__ == "__main__":
