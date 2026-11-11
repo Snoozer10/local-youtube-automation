@@ -22,13 +22,18 @@ repos:
       - id: check-toml
       - id: check-json
       - id: check-merge-conflict
-      - id: debug-logger
+      - id: debug-statements
       - id: detect-private-key
       - id: detect-aws-credentials
       - id: forbid-new-submodules
 
   - repo: local
     hooks:
+      - id: check-secrets
+        name: check secrets and service tokens
+        entry: python tools/check_secrets.py --
+        language: system
+        pass_filenames: true
       - id: pytest-unit
         name: pytest (unit tests only)
         entry: pytest

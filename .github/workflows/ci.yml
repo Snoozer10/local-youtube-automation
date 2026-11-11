@@ -43,6 +43,9 @@ jobs:
       - name: Quality gate (strict typing)
         run: python -m mypy --strict src/
 
+      - name: Quality gate (secret scanning)
+        run: python tools/check_secrets.py
+
       - name: Run offline tests
         run: python -m pytest tests/unit tests/integration -c pyproject.toml -v -m "not live_browser" --cov=. --cov-report=xml
 
