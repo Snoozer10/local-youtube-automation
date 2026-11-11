@@ -22,10 +22,9 @@ We actively maintain and provide security updates for the following versions:
 
 **Please do not report security vulnerabilities via public GitHub issues, discussions, or pull requests.**
 
-If you discover a security vulnerability or potential exploit in this repository, please report it through one of the following confidential channels:
+If you discover a security vulnerability or potential exploit in this repository, please report it privately through GitHub Private Vulnerability Reporting:
 
-1. **GitHub Private Vulnerability Reporting (Preferred)**: Navigate to the **Security** tab of this repository $\rightarrow$ **Advisories** $\rightarrow$ Click **"Report a vulnerability"**.
-2. **Confidential Security Email**: Send your disclosure to **`security@yourproject.org`** _(or the maintainer's verified security contact)_.
+- **GitHub Private Vulnerability Reporting**: Navigate to the **Security** tab of this repository $\rightarrow$ **Advisories** $\rightarrow$ Click **"Report a vulnerability"**. This routes your disclosure privately to repository maintainers through GitHub's coordinated vulnerability disclosure workflow.
 
 ### What to Include in Your Disclosure
 
@@ -55,7 +54,7 @@ To help us triage and remediate the issue quickly, please provide:
 │   [Browser Layer]  ──► CDP Port 9222 (Loopback Only, Local Auth Profiles)       │
 │   [IPC Layer]      ──► Audacity Named Pipes (\\.\pipe\ToSrvPipe)                 │
 │   [Memory Layer]   ──► Win32 Clipboard (ctypes GlobalAlloc/GlobalLock)           │
-│   [Subprocess]     ──► FFmpeg / FFprobe (List-based args, -filter_complex_script)│
+│   [Subprocess]     ──► FFmpeg / FFprobe (List-based args, -/filter_complex)      │
 │   [Secrets Layer]  ──► .env / gemini_model.txt (Gitignored Credentials)         │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -73,15 +72,15 @@ To help us triage and remediate the issue quickly, please provide:
 - **Threat**: Maliciously crafted video titles, YouTube transcripts, or filter parameters could attempt shell injection when spawning external binaries (FFmpeg, FFprobe, Audacity).
 - **Defense**:
   - **No Unsafe Shells**: All subprocess calls (`subprocess.Popen`, `subprocess.run`) avoid `shell=True` where user/external strings are evaluated. Commands are passed strictly as sanitized argument lists.
-  - **File-Based Filter Graphs**: To prevent Windows CLI argument overflow (~32 KB limit) and quote injection attacks, `compile_video.py` compiles complex video filter graphs into temporary `.txt` files and loads them via `-filter_complex_script`.
+  - **File-Based Filter Graphs & Manifests**: To prevent Windows CLI command-line length overflow (~32 KB limit) and argument injection hazards, video compilation (`video/compiler.py` and `compile_video.py`) compiles complex video filter graphs into temporary files loaded via `-/filter_complex <filter_script_path>` (superseding the deprecated `-filter_complex_script` option) and loads chunk timelines through file-backed concat manifests (`-f concat -safe 0 -i <concat_path>`).
   - **Path Normalization**: Media paths are passed through `os.path.abspath()` with character escaping applied to colons (`\:`) and single quotes (`'\'\\'\''`) before injection into FFmpeg subtitle filters.
 
 ### 3. Win32 Named Pipe IPC Security
 
 - **Threat**: Audacity's `mod-script-pipe` creates two local named pipes (`\\.\pipe\ToSrvPipe` and `\\.\pipe\FromSrvPipe`). Unvalidated data streams or orphaned pipes could cause buffer overflows or deadlock conditions.
 - **Defense**:
-  - `automate_audacity.py` explicitly clears Audacity's temporary `SessionData` and `AutoSave` crash directories before opening pipe handles.
-  - Named pipe interactions enforce non-blocking retry loops, explicit command delimiters (`\n`), and structured response terminators to prevent infinite hangs.
+  - **Recovery Data Preservation**: In accordance with project data-preservation invariants (ADR 0005, root `AGENTS.md`), Audacity's temporary `SessionData` and `AutoSave` recovery directories must NOT be automatically or unconditionally wiped. Crash session data and recovery journals are preserved to prevent irreversible user data loss.
+  - **Structured Pipe Protocol**: Pre-access lifecycle checks verify pipe readiness, and named pipe interactions enforce non-blocking retry loops, explicit command delimiters (`\n`), and structured response terminators (`BatchCommand finished: OK`) to prevent deadlocks without destroying recovery state.
 
 ### 4. Native Memory & Clipboard Protection
 
@@ -94,9 +93,9 @@ To help us triage and remediate the issue quickly, please provide:
 
 - **Threat**: Accidental disclosure of Telegram bot tokens, chat IDs, or personal browser authentication sessions in source control.
 - **Defense**:
-  - All credentials are read from `.env` and `gemini_model.txt`. Both filenames are hardcoded in `.gitignore`.
-  - The codebase uses local browser session cookies directly from your machine, meaning **zero third-party API keys or cloud service tokens** are ever stored or transmitted over external networks.
-  - Telegram alerting in `utils.py` uses direct outbound HTTPS requests with timeout bounds and error suppression to avoid leaking tokens into console logs.
+  - **Gitignored Environment Variables**: All active credentials are read from `.env` or system environment variables. Plaintext secret files (such as historical `gemini_model.txt`) are excluded from tracking and hardcoded in `.gitignore`.
+  - **Local Browser Session Authentication**: Browser automation for Gemini and Google Flow operates directly against local loopback browser profiles on the operator's machine without third-party credential proxies.
+  - **Encrypted Telegram Alerting**: When optional Telegram alerting is enabled, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are transmitted outbound over encrypted HTTPS directly to the official Telegram Bot API endpoint (`https://api.telegram.org`) with a configured four-second timeout.
 
 ---
 
@@ -115,7 +114,7 @@ pip-audit
 icacls "C:\ChromeDebugProfile" /inheritance:r /grant:r "%USERNAME%:(OI)(CI)F"
 ```
 
-1. **Never Commit Secrets**: Ensure `.env`, `gemini_model.txt`, and `youtube_runs/` remain untracked.
+1. **Never Commit Secrets**: Ensure `.env`, local credential files, and `youtube_runs/` remain untracked.
 2. **Isolate Debugging Profiles**: Do not use your primary personal Chrome profile for automation. Always use dedicated directories (`C:\ChromeDebugProfile`).
 3. **Verify Upstream Sources**: When executing batch runs from `youtube_urls.txt`, ensure URLs originate from trusted creators to avoid malicious transcript injection.
 4. **Keep Binaries Updated**: Maintain up-to-date versions of FFmpeg, Audacity, and Chromium to protect against upstream media decoder vulnerabilities.

@@ -1,7 +1,10 @@
 # Remediation Guide — YouTube Automation Pipeline
 **Classification:** CONFIDENTIAL — Operational Security Procedures  
 **Version:** 1.0  
-**Date:** 2026-07-16
+**Date:** 2026-07-16 (Historical Recommendations)
+
+> [!NOTE]
+> **Historical Remediation Context (2026-07-16)**: This guide records early remediation procedures drafted during the initial security audit. Current repository security policy in `SECURITY.md`, root `AGENTS.md`, and ADR 0005 take precedence over historical recommendations.
 
 ---
 
