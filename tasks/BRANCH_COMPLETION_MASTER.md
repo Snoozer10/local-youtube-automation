@@ -231,14 +231,14 @@ State: OPEN - combined acceptance cannot close while C2/C3/C4 evidence remains p
 
 ### Lane D — G6 complete original Professor episode
 
-G6 historical source: `full_episode_voice.wav`, 509.418625 seconds, SHA-256 `967f539225482772a7f4c7e9571023c293d33ad9871ba10114841e8fe858b203`. This is the full original Professor/Schulte episode, not the pilot cut. D1 production is deferred by the user; D2 onward retains its C7/D1 dependencies.
+G6 historical source: `full_episode_voice.wav`, 509.418625 seconds, SHA-256 `967f539225482772a7f4c7e9571023c293d33ad9871ba10114841e8fe858b203`. This is the full original Professor/Schulte episode, not the pilot cut. The audio file is absent from checkout and its recoverability is unverified; recovery is routed to [D01](REMAINING_WORK.md). D1 production is deferred by the user; D2 onward retains its C7/D1 dependencies.
 
 - [ ] **D1 — Listen to the full source and verify script/facts/timing**  
 - **Task skill pack:** [D1](BRANCH_TASK_SKILLS.md#d1) — invoke the linked skills explicitly when tackling this task.
 State: DEFERRED BY USER — complete revised script remains approved/materialized. Fresh narration, acoustic review, timing and executable-plan lineage remain open. No near-term production; resume only on explicit future owner request and a separate bounded narration grant.
 - **Work:** Use the exact owner-approved revised script for fresh narration only under an applicable unspent bounded grant. Review that new audio for acoustic fidelity and script correspondence, then establish current timing and executable-plan lineage. The old 509.418625-second audio is historical and does not satisfy these gates.
 - **Acceptance:** complete coverage log accounts for the full audio from 0 to end; spoken text and claims are reviewed; uncertain or unsupported claims are flagged/resolved; canonical source/script/audio relationship is documented.
-- **Evidence now:** Complete revised candidate `.runtime/codex_return_audit_20261018T191230Z/d1_remaining_claims/approved_complete_script/refined_script.txt`, SHA-256 `d01ceed4aafe239ca132b106e8849b537117501415873bcd452b9e90926eef18`, 8,676 bytes/837 words. Approval: `d1_remaining_claims/OWNER_APPROVAL_COMPLETE_SCRIPT.json`; materialization: `d1_remaining_claims/approved_complete_script/materialization_receipt.json`. Earlier v2 approval is preserved. Approval binds exact text only; canonical script/audio/timing/plan remain unchanged. Fresh narration and derivative checks remain open.
+- **Evidence now:** Complete revised candidate script SHA-256 `d01ceed4aafe239ca132b106e8849b537117501415873bcd452b9e90926eef18` (8,676 bytes/837 words); owner approval is recorded in [historical audit](../docs/sessions/CODEX_RETURN_AUDIT_20261018.md). The candidate script file and sibling receipts (`d1_remaining_claims/OWNER_APPROVAL_COMPLETE_SCRIPT.json` and `d1_remaining_claims/approved_complete_script/materialization_receipt.json`) under `.runtime/codex_return_audit_20261018T191230Z/` are absent from checkout and their recoverability is unverified; physical recovery is routed to [D01](REMAINING_WORK.md). Earlier v2 approval is preserved. Approval binds exact text only; canonical script/audio/timing/plan remain unchanged. Fresh narration and derivative checks remain open, and D1 production remains deferred by the user.
 - **Chronicle:** coverage spans, reviewer, source references and exact hashes.
 
 - [ ] **D2 — Build a full-episode run and canonical timing**  
@@ -254,7 +254,7 @@ State: 🟡 HISTORICAL TECHNICAL TIMING — old frames/timing are retained evide
 State: ❌ NOT AN EXECUTABLE PLAN — 70-shot hand roadmap fails current ShotPlan schema with 1,761 errors · Dependency: D1 verified claim matrix · Owner: planning lane
 - **Work:** Generate a current episode visual strategy and shot plan from the reviewed full narration; bind every shot to exact narration intervals and its semantic purpose; complete the independent critic before assets.
 - **Acceptance:** full narration/beat coverage, factual caution, hook, varied visual palette and all critic findings are resolved; no generic topic-only scene survives; plan and critic receipts match current hashes.
-- **Evidence now:** Historical roadmap receipt [D3](../.runtime/agy_planning_20261017T021336Z/d3_shot_plan.json) remains a draft. [Current production validator](../.runtime/codex_return_audit_20261018T191230Z/plan_validation_recheck/production_plan_validation.json) records 1,761 ShotPlan schema errors; do not treat it as executable or complete.
+- **Evidence now:** Historical roadmap receipt [D3](../.runtime/agy_planning_20261017T021336Z/d3_shot_plan.json) remains a draft. The production validator receipt (`production_plan_validation.json`) under `.runtime/codex_return_audit_20261018T191230Z/plan_validation_recheck/` is absent from checkout and its recoverability is unverified; recovery is routed to [D01](REMAINING_WORK.md). The recorded validation result of 1,761 ShotPlan schema errors is cited in the tracked [historical audit](../docs/sessions/CODEX_RETURN_AUDIT_20261018.md); do not treat it as executable or complete. D3 production remains deferred.
 
 
 
