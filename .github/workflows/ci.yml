@@ -51,3 +51,47 @@ jobs:
 
       - name: Package build check
         run: python -m build --no-isolation --sdist --wheel
+
+  test-py310:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install system dependencies
+        run: |
+          choco install ffmpeg audacity -y --no-progress
+          "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          # Note: Audacity mod-script-pipe requires manual enable in CI
+        shell: pwsh
+
+      - name: Upgrade pip, setuptools, wheel
+        run: python -m pip install --upgrade pip setuptools wheel
+
+      - name: Install production dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install development/test dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          python -m playwright install --with-deps
+
+      - name: Verify conditional tomli dependency
+        run: |
+          python -c "import tomli; import sys; assert 'tomllib' not in sys.modules; print(f'tomli {tomli.__version__} verified under Python {sys.version}')"
+
+      - name: Quality gate (secret scanning)
+        run: python tools/check_secrets.py
+
+      - name: Run offline tests (Python 3.10 compatibility)
+        run: python -m pytest tests/unit tests/integration -c pyproject.toml -v -m "not live_browser" -k "not test_observation_environment_records_exact_runtime"
+
+      - name: Package build check
+        run: python -m build --no-isolation --sdist --wheel
