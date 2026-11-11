@@ -17,10 +17,12 @@ from typing import Any
 
 # High-fidelity token patterns
 SECRET_PATTERNS: dict[str, re.Pattern[str]] = {
-    "telegram_bot_token": re.compile(r"(?:(?<=\b)|(?<=bot))[0-9]{8,10}:[a-zA-Z0-9_-]{34,36}\b"),
+    "telegram_bot_token": re.compile(
+        r"(?:(?<=\b)|(?<=bot))[0-9]{8,10}:[a-zA-Z0-9_-]{34,36}\b"
+    ),
     "aws_access_key": re.compile(r"\b(?:AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b"),
     "aws_secret_key": re.compile(
-        r"(?i)\b(?:aws_secret_access_key|aws_secret_key)\s*[:=]\s*['\"]?([a-zA-Z0-9/+=]{40})['\"]?"
+        r"(?i)['\"]?\b(?:aws_secret_access_key|aws_secret_key)\b['\"]?\s*[:=]\s*['\"]?([a-zA-Z0-9/+=]{40})['\"]?"
     ),
     "github_token": re.compile(
         r"\b(?:ghp_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9_]{82}|gho_[a-zA-Z0-9]{36}|ghu_[a-zA-Z0-9]{36}|ghs_[a-zA-Z0-9]{36}|ghr_[a-zA-Z0-9]{36})\b"
@@ -30,15 +32,24 @@ SECRET_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
     "slack_token": re.compile(r"\bxox[baprs]-[0-9a-zA-Z]{10,48}\b"),
     "generic_api_key_assignment": re.compile(
-        r"(?i)\b(?:api_key|api_token|secret_key|auth_token|client_secret|bearer_token)\s*[:=]\s*['\"]([a-zA-Z0-9_\-\.]{24,})['\"]"
+        r"(?i)['\"]?\b(?:api_key|api_token|secret_key|auth_token|client_secret|bearer_token)\b['\"]?\s*[:=]\s*['\"]?([a-zA-Z0-9_\-\.]{24,})['\"]?"
     ),
 }
 
-INLINE_PRAGMAS = (
-    "# pragma: allowlist secret",
-    "# noqa: secret-check",
-    "<!-- pragma: allowlist secret -->",
+PRAGMA_PATTERNS = (
+    re.compile(
+        r"#\s*(?:pragma:\s*allowlist\s+secret|noqa:\s*secret-check)(?:[:\s(]+([a-zA-Z0-9_]+)\)?)?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"<!--\s*pragma:\s*allowlist\s+secret(?:[:\s(]+([a-zA-Z0-9_]+)\)?\s*)?\s*-->",
+        re.IGNORECASE,
+    ),
 )
+
+
+class ScanError(Exception):
+    """Raised when secret scanning cannot safely or accurately enumerate inputs."""
 
 
 @dataclass(frozen=True)
@@ -48,13 +59,12 @@ class SecretFinding:
     path: str
     line_number: int
     rule_name: str
-    masked_value: str
 
     def format_diagnostic(self) -> str:
-        """Format finding for terminal reporting without leaking secret contents."""
+        """Format finding for terminal reporting emitting only safe location and rule name."""
         return (
             f"{self.path}:{self.line_number}: [{self.rule_name}] "
-            f"potential secret token detected: {self.masked_value}"
+            f"potential secret token detected"
         )
 
 
@@ -128,23 +138,37 @@ def load_allowlist(config_path: Path | None = None) -> dict[str, Any]:
     return default_config
 
 
+def _is_pragma_allowed(line: str, rule_name: str) -> bool:
+    """Check if line contains a bare pragma or a rule-scoped pragma matching rule_name."""
+    for pattern in PRAGMA_PATTERNS:
+        for match in pattern.finditer(line):
+            scoped_rule = match.group(1)
+            if not scoped_rule or scoped_rule.lower() == rule_name.lower():
+                return True
+    return False
+
+
 def _is_allowed(
-    line: str,
-    matched_text: str,
+    matched_value: str,
+    matched_str: str,
     file_rel_path: str,
     allowlist: dict[str, Any],
+    rule_name: str,
+    line: str,
 ) -> bool:
-    """Check if a match is covered by reviewed exclusions or inline pragmas."""
-    if any(pragma in line for pragma in INLINE_PRAGMAS):
+    """Check if an individual secret match is covered by reviewed exclusions or pragma."""
+    if _is_pragma_allowed(line, rule_name):
         return True
 
     allowed_patterns: list[str] = allowlist.get("allowed_patterns", [])
     for pattern_str in allowed_patterns:
         try:
-            if re.search(pattern_str, line) or re.search(pattern_str, matched_text):
+            if re.fullmatch(pattern_str, matched_value) or re.search(pattern_str, matched_value):
+                return True
+            if re.fullmatch(pattern_str, matched_str) or re.search(pattern_str, matched_str):
                 return True
         except re.error:
-            if pattern_str in line or pattern_str in matched_text:
+            if pattern_str == matched_value or pattern_str == matched_str:
                 return True
 
     path_specific = allowlist.get("path_specific_allowlists", {})
@@ -152,13 +176,57 @@ def _is_allowed(
         patterns = path_specific[file_rel_path]
         for pattern_str in patterns:
             try:
-                if re.search(pattern_str, line) or re.search(pattern_str, matched_text):
+                if re.fullmatch(pattern_str, matched_value) or re.search(pattern_str, matched_value):
+                    return True
+                if re.fullmatch(pattern_str, matched_str) or re.search(pattern_str, matched_str):
                     return True
             except re.error:
-                if pattern_str in line or pattern_str in matched_text:
+                if pattern_str == matched_value or pattern_str == matched_str:
                     return True
 
     return False
+
+
+def _decode_content(content_bytes: bytes) -> str | None:
+    """Decode file bytes handling UTF-8, UTF-16 with/without BOM, and text fallbacks."""
+    # 1. UTF-16 with BOM
+    if content_bytes.startswith((b"\xff\xfe", b"\xfe\xff")):
+        try:
+            return content_bytes.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
+
+    # 2. Check for null bytes (typical of UTF-16 or binary)
+    if b"\x00" in content_bytes[:4096]:
+        # Detect LE vs BE by null byte position cadence
+        even_nulls = sum(1 for i in range(0, min(len(content_bytes), 100), 2) if content_bytes[i] == 0)
+        odd_nulls = sum(1 for i in range(1, min(len(content_bytes), 100), 2) if content_bytes[i] == 0)
+        enc_candidates = ("utf-16-be", "utf-16-le") if even_nulls > odd_nulls else ("utf-16-le", "utf-16-be")
+        for enc in enc_candidates:
+            try:
+                decoded = content_bytes.decode(enc)
+                if (
+                    "\x00" not in decoded
+                    and decoded
+                    and sum(c.isprintable() or c in "\r\n\t" for c in decoded[:200]) / min(len(decoded), 200) > 0.8
+                ):
+                    return decoded
+            except UnicodeDecodeError:
+                pass
+        # Unrecognized binary file with null bytes
+        return None
+
+    # 3. UTF-8 for non-null text
+    try:
+        return content_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+
+    # 4. Latin-1 fallback for 8-bit non-null text
+    try:
+        return content_bytes.decode("latin-1")
+    except Exception:
+        return None
 
 
 def scan_file(
@@ -188,17 +256,9 @@ def scan_file(
     except (OSError, PermissionError):
         return []
 
-    # Skip binary files
-    if b"\x00" in content_bytes[:4096]:
+    text = _decode_content(content_bytes)
+    if text is None:
         return []
-
-    try:
-        text = content_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        try:
-            text = content_bytes.decode("latin-1")
-        except Exception:
-            return []
 
     findings: list[SecretFinding] = []
 
@@ -206,16 +266,23 @@ def scan_file(
         for rule_name, pattern in SECRET_PATTERNS.items():
             for match in pattern.finditer(line):
                 matched_str = match.group(0)
-                # If group 1 exists, evaluate group 1 (the secret value itself)
-                val_to_eval = match.group(1) if match.lastindex and match.lastindex >= 1 else matched_str
-                if _is_allowed(line, val_to_eval, rel_path, allowlist):
+                val_to_eval = (
+                    match.group(1) if match.lastindex and match.lastindex >= 1 else matched_str
+                )
+                if _is_allowed(
+                    matched_value=val_to_eval,
+                    matched_str=matched_str,
+                    file_rel_path=rel_path,
+                    allowlist=allowlist,
+                    rule_name=rule_name,
+                    line=line,
+                ):
                     continue
                 findings.append(
                     SecretFinding(
                         path=rel_path,
                         line_number=line_number,
                         rule_name=rule_name,
-                        masked_value=mask_secret(val_to_eval),
                     )
                 )
 
@@ -227,30 +294,52 @@ def scan_repository(
     allowlist: dict[str, Any] | None = None,
     files: list[Path] | None = None,
 ) -> list[SecretFinding]:
-    """Scan files in the repository for secrets."""
+    """Scan files in the repository for secrets, bounding strictly to declared inputs."""
     allowlist = allowlist or load_allowlist(root / "tools" / "secrets_allowlist.json")
+    root_resolved = root.resolve()
 
     target_paths: list[Path] = []
     if files is not None:
-        target_paths = [p if p.is_absolute() else (root / p) for p in files]
+        for p in files:
+            target = p.resolve() if p.is_absolute() else (root_resolved / p).resolve()
+            try:
+                target.relative_to(root_resolved)
+            except ValueError as err:
+                raise ScanError(f"Target path is outside repository root: {p}") from err
+            if not target.exists():
+                raise ScanError(f"Target path does not exist: {p}")
+            if not target.is_file():
+                raise ScanError(f"Target path is not a file: {p}")
+            target_paths.append(target)
     else:
-        # Use git ls-files if available
+        # Use git ls-files -t -z to preserve Arabic and non-ASCII paths verbatim
+        # and respect sparse checkout skip-worktree entries.
+        cmd = ["git", "-C", str(root_resolved), "ls-files", "-t", "-z"]
         try:
-            cmd = ["git", "-C", str(root), "ls-files"]
-            output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL)
-            tracked = output.decode("utf-8", errors="ignore").splitlines()
-            target_paths = [root / p.strip() for p in tracked if p.strip()]
-        except Exception:
-            # Fallback to filesystem walk
-            for p in root.rglob("*"):
-                if p.is_file():
-                    target_paths.append(p)
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError) as err:
+            raise ScanError(f"Git enumeration failed in {root_resolved}: {err}") from err
+
+        raw_entries = [e for e in res.stdout.split(b"\0") if e]
+        for entry in raw_entries:
+            tag = chr(entry[0])
+            path_bytes = entry[2:]
+            path_str = path_bytes.decode("utf-8", errors="surrogateescape")
+            # Skip sparse checkout entries not present in working tree
+            if tag in ("S", "s"):
+                continue
+            file_path = root_resolved / Path(path_str)
+            if not file_path.is_file():
+                raise ScanError(f"Tracked input missing on disk: {path_str}")
+            target_paths.append(file_path)
 
     all_findings: list[SecretFinding] = []
     for path in target_paths:
-        if not path.is_file():
-            continue
-        findings = scan_file(path, allowlist, root=root)
+        findings = scan_file(path, allowlist, root=root_resolved)
         all_findings.extend(findings)
 
     return all_findings
@@ -285,7 +374,11 @@ def main(argv: list[str] | None = None) -> int:
     allowlist = load_allowlist(args.allowlist or (root / "tools" / "secrets_allowlist.json"))
 
     target_files = args.files if args.files else None
-    findings = scan_repository(root=root, allowlist=allowlist, files=target_files)
+    try:
+        findings = scan_repository(root=root, allowlist=allowlist, files=target_files)
+    except ScanError as err:
+        print(f"Secret scanning gate error: {err}", file=sys.stderr)
+        return 2
 
     if findings:
         print(f"Secret scanning gate failed: {len(findings)} potential secret(s) detected:", file=sys.stderr)

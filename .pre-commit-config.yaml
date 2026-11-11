@@ -22,7 +22,7 @@ repos:
       - id: check-toml
       - id: check-json
       - id: check-merge-conflict
-      - id: debug-logger
+      - id: debug-statements
       - id: detect-private-key
       - id: detect-aws-credentials
       - id: forbid-new-submodules

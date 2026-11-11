@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import stat
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -19,6 +24,7 @@ except ImportError:
     pass
 
 from tools.check_secrets import (  # noqa: E402
+    ScanError,
     load_allowlist,
     main,
     mask_secret,
@@ -37,6 +43,15 @@ class SecretScanningGateTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def _remove_git_dir(self, path: Path) -> None:
+        """Helper to safely remove Git repository directory on Windows."""
+        def _on_error(func: Any, p: str, _exc_info: Any) -> None:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+
+        if path.exists():
+            shutil.rmtree(path, onerror=_on_error)
 
     def test_clean_repository_passes_secret_scanning_gate(self) -> None:
         """Verify the tracked repository baseline has 0 secret findings."""
@@ -59,8 +74,9 @@ class SecretScanningGateTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].rule_name, "telegram_bot_token")
         self.assertEqual(findings[0].line_number, 1)
-        self.assertIn("[REDACTED]", findings[0].masked_value)
-        self.assertNotIn("AAFl1234567890abcdefghijklmnopqrstuv", findings[0].masked_value)
+        diag = findings[0].format_diagnostic()
+        self.assertEqual(diag, "sample.py:1: [telegram_bot_token] potential secret token detected")
+        self.assertNotIn("AAFl1234567890abcdefghijklmnopqrstuv", diag)
 
     def test_detects_aws_access_key(self) -> None:
         """Verify synthetic AWS access key identifiers are detected."""
@@ -73,8 +89,9 @@ class SecretScanningGateTests(unittest.TestCase):
         findings = scan_file(test_file, self.allowlist, root=self.root)
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].rule_name, "aws_access_key")
-        self.assertIn("AKIA", findings[0].masked_value)
-        self.assertIn("[REDACTED]", findings[0].masked_value)
+        diag = findings[0].format_diagnostic()
+        self.assertEqual(diag, "config.env:1: [aws_access_key] potential secret token detected")
+        self.assertNotIn("AKIA1234567890ABCDEF", diag)  # pragma: allowlist secret
 
     def test_detects_aws_secret_key(self) -> None:
         """Verify synthetic AWS secret access key assignments are detected."""
@@ -152,7 +169,9 @@ class SecretScanningGateTests(unittest.TestCase):
         self.assertEqual(findings[0].rule_name, "telegram_bot_token")
         self.assertEqual(findings[0].line_number, 4)
         self.assertEqual(findings[0].path, "guide.md")
-        self.assertIn("[REDACTED]", findings[0].masked_value)
+        diag = findings[0].format_diagnostic()
+        self.assertEqual(diag, "guide.md:4: [telegram_bot_token] potential secret token detected")
+        self.assertNotIn("AAFl", diag)
 
     def test_detects_aws_credentials_in_documentation(self) -> None:
         """Verify synthetic AWS credentials in documentation are caught."""
@@ -280,6 +299,217 @@ class SecretScanningGateTests(unittest.TestCase):
         )
         ret_dirty = main(["--root", str(self.root), str(dirty_file)])
         self.assertEqual(ret_dirty, 1)
+
+    # ------------------------------------------------------------------
+    # Codex Audit Item 1: NUL-delimited Git paths & Arabic/non-ASCII preservation
+    # ------------------------------------------------------------------
+    def test_detects_secrets_in_arabic_and_non_ascii_git_paths(self) -> None:
+        """Verify tracked files with Arabic names are preserved verbatim without quoting and scanned."""
+        repo_dir = self.root / "arabic_repo"
+        repo_dir.mkdir()
+        try:
+            subprocess.run(["git", "init", "-q"], cwd=repo_dir, check=True)
+            arabic_filename = "ملف_بيانات_سري.py"
+            secret_file = repo_dir / arabic_filename
+            secret_file.write_text(
+                'token = "9876543210:AAFl1234567890abcdefghijklmnopqrstuv"\n',  # pragma: allowlist secret
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "add", arabic_filename], cwd=repo_dir, check=True)
+
+            findings = scan_repository(repo_dir, allowlist=self.allowlist)
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0].rule_name, "telegram_bot_token")
+            self.assertEqual(findings[0].path, arabic_filename)
+
+            # Also verify clean Arabic file passes
+            secret_file.write_text("print('مرحبا بالعالم')\n", encoding="utf-8")
+            subprocess.run(["git", "add", arabic_filename], cwd=repo_dir, check=True)
+            clean_findings = scan_repository(repo_dir, allowlist=self.allowlist)
+            self.assertEqual(clean_findings, [])
+        finally:
+            self._remove_git_dir(repo_dir)
+
+    # ------------------------------------------------------------------
+    # Codex Audit Item 2: Individual match allowlists & pragma scoping
+    # ------------------------------------------------------------------
+    def test_line_level_placeholder_does_not_suppress_adjacent_secret(self) -> None:
+        """Verify a placeholder like [redacted] on a line does not suppress a real secret on that line."""
+        test_file = self.root / "adjacent.py"
+        test_file.write_text(
+            'api_key = "secret_value_1234567890_abcdefghijklmnopqrstuvwxyz"  # previous was [redacted]\n',  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+
+        findings = scan_file(test_file, self.allowlist, root=self.root)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_name, "generic_api_key_assignment")
+
+    def test_placeholder_as_secret_value_is_allowed(self) -> None:
+        """Verify placeholder tokens themselves pass when used as the matched value."""
+        test_file = self.root / "placeholder_val.py"
+        test_file.write_text(
+            'api_key = "your-api-key"\n'
+            'secret_key = "[redacted]"\n',
+            encoding="utf-8",
+        )
+
+        findings = scan_file(test_file, self.allowlist, root=self.root)
+        self.assertEqual(findings, [])
+
+    def test_rule_scoped_pragma_exemption(self) -> None:
+        """Verify pragma scoped to a matching rule suppresses detection."""
+        test_file = self.root / "scoped_pragma.py"
+        test_file.write_text(
+            'api_key = "secret_value_1234567890_abcdefghijklmnopqrstuvwxyz"  # pragma: allowlist secret: generic_api_key_assignment\n'  # pragma: allowlist secret
+            'token = "9876543210:AAFl1234567890abcdefghijklmnopqrstuv"  # noqa: secret-check(telegram_bot_token)\n',  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+
+        findings = scan_file(test_file, self.allowlist, root=self.root)
+        self.assertEqual(findings, [])
+
+    def test_unmatched_rule_scoped_pragma_does_not_exempt(self) -> None:
+        """Verify pragma scoped to a different rule does not suppress an unmatched secret."""
+        test_file = self.root / "mismatched_pragma.py"
+        test_file.write_text(
+            'api_key = "secret_value_1234567890_abcdefghijklmnopqrstuvwxyz"  # pragma: allowlist secret: aws_access_key\n',  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+
+        findings = scan_file(test_file, self.allowlist, root=self.root)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_name, "generic_api_key_assignment")
+
+    # ------------------------------------------------------------------
+    # Codex Audit Item 3: Bound to declared inputs, ScanError on failure
+    # ------------------------------------------------------------------
+    def test_git_enumeration_failure_raises_scan_error_and_does_not_scan_untracked(self) -> None:
+        """Verify Git enumeration failure raises ScanError and does not fall back to scanning untracked files."""
+        # Non-git folder with untracked .env containing secret
+        env_file = self.root / ".env"
+        env_file.write_text(
+            'API_TOKEN="secret_value_1234567890_abcdefghijklmnopqrstuvwxyz"\n',  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(ScanError) as ctx:
+            scan_repository(self.root, allowlist=self.allowlist)
+        self.assertIn("Git enumeration failed", str(ctx.exception))
+
+    def test_target_path_outside_repository_raises_scan_error(self) -> None:
+        """Verify specifying a target path outside the repository root raises ScanError."""
+        outside_file = self.root.parent / "outside_leak.py"
+        outside_file.write_text("print('outside')\n", encoding="utf-8")
+        try:
+            with self.assertRaises(ScanError) as ctx:
+                scan_repository(self.root, allowlist=self.allowlist, files=[outside_file])
+            self.assertIn("outside repository root", str(ctx.exception))
+        finally:
+            if outside_file.exists():
+                outside_file.unlink()
+
+    def test_nonexistent_target_path_raises_scan_error(self) -> None:
+        """Verify specifying a non-existent target path raises ScanError."""
+        missing = self.root / "does_not_exist.py"
+        with self.assertRaises(ScanError) as ctx:
+            scan_repository(self.root, allowlist=self.allowlist, files=[missing])
+        self.assertIn("does not exist", str(ctx.exception))
+
+    def test_missing_tracked_input_raises_scan_error(self) -> None:
+        """Verify missing tracked file on disk raises ScanError rather than reporting clean."""
+        repo_dir = self.root / "missing_tracked_repo"
+        repo_dir.mkdir()
+        try:
+            subprocess.run(["git", "init", "-q"], cwd=repo_dir, check=True)
+            file_path = repo_dir / "tracked.py"
+            file_path.write_text("print('tracked')\n", encoding="utf-8")
+            subprocess.run(["git", "add", "tracked.py"], cwd=repo_dir, check=True)
+            # Remove file from disk without git rm
+            file_path.unlink()
+
+            with self.assertRaises(ScanError) as ctx:
+                scan_repository(repo_dir, allowlist=self.allowlist)
+            self.assertIn("Tracked input missing on disk", str(ctx.exception))
+        finally:
+            self._remove_git_dir(repo_dir)
+
+    def test_cli_exit_code_2_on_scan_error(self) -> None:
+        """Verify CLI returns exit code 2 when a ScanError occurs."""
+        missing = self.root / "missing_cli.py"
+        ret = main(["--root", str(self.root), str(missing)])
+        self.assertEqual(ret, 2)
+
+    # ------------------------------------------------------------------
+    # Codex Audit Item 4: UTF-16, unquoted assignments, quoted JSON keys
+    # ------------------------------------------------------------------
+    def test_detects_secrets_in_utf16_text(self) -> None:
+        """Verify secrets in UTF-16 with BOM and UTF-16 LE without BOM are detected."""
+        # UTF-16 with BOM
+        utf16_bom_file = self.root / "secret_bom.txt"
+        content = 'api_key = "secret_value_1234567890_abcdefghijklmnopqrstuvwxyz"\n'  # pragma: allowlist secret
+        utf16_bom_file.write_bytes(content.encode("utf-16"))
+
+        findings_bom = scan_file(utf16_bom_file, self.allowlist, root=self.root)
+        self.assertEqual(len(findings_bom), 1)
+        self.assertEqual(findings_bom[0].rule_name, "generic_api_key_assignment")
+
+        # UTF-16 LE without BOM
+        utf16_nobom_file = self.root / "secret_nobom.txt"
+        utf16_nobom_file.write_bytes(content.encode("utf-16-le"))
+
+        findings_nobom = scan_file(utf16_nobom_file, self.allowlist, root=self.root)
+        self.assertEqual(len(findings_nobom), 1)
+        self.assertEqual(findings_nobom[0].rule_name, "generic_api_key_assignment")
+
+    def test_detects_unquoted_api_token_assignment(self) -> None:
+        """Verify unquoted API_TOKEN=value assignments are detected."""
+        test_file = self.root / "unquoted.env"
+        test_file.write_text(
+            "API_TOKEN=secret_value_1234567890_abcdefghijklmnopqrstuvwxyz\n",  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+
+        findings = scan_file(test_file, self.allowlist, root=self.root)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_name, "generic_api_key_assignment")
+
+    def test_detects_quoted_json_credential_keys(self) -> None:
+        """Verify quoted JSON credential keys are detected."""
+        test_file = self.root / "creds.json"
+        test_file.write_text(
+            '{\n'
+            '  "aws_secret_access_key": "1234567890abcdef1234567890abcdef12345678",\n'  # pragma: allowlist secret
+            '  "api_key": "secret_value_1234567890_abcdefghijklmnopqrstuvwxyz"\n'  # pragma: allowlist secret
+            '}\n',
+            encoding="utf-8",
+        )
+
+        findings = scan_file(test_file, self.allowlist, root=self.root)
+        rules = {f.rule_name for f in findings}
+        self.assertIn("aws_secret_key", rules)
+        self.assertIn("generic_api_key_assignment", rules)
+
+    # ------------------------------------------------------------------
+    # Codex Audit Item 5: Safe diagnostic format without credential fragments
+    # ------------------------------------------------------------------
+    def test_diagnostic_format_emits_no_secret_fragments(self) -> None:
+        """Verify format_diagnostic emits strictly safe path:line and rule name."""
+        test_file = self.root / "token.py"
+        test_file.write_text(
+            'token = "9876543210:AAFl1234567890abcdefghijklmnopqrstuv"\n',  # pragma: allowlist secret
+            encoding="utf-8",
+        )
+
+        findings = scan_file(test_file, self.allowlist, root=self.root)
+        self.assertEqual(len(findings), 1)
+        diag = findings[0].format_diagnostic()
+        self.assertEqual(
+            diag,
+            "token.py:1: [telegram_bot_token] potential secret token detected",
+        )
+        self.assertNotIn("AAFl", diag)
+        self.assertNotIn("9876543210", diag)
 
 
 if __name__ == "__main__":
