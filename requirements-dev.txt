@@ -18,7 +18,7 @@ psutil>=5.9.0                # Process inspection used by unit and integration t
 # ------------------------------------------------------------------------------
 # 2. Code Formatting, Linting & Modernization
 # ------------------------------------------------------------------------------
-black>=24.0.0                   # Opinionated deterministic Python code formatter (100-col)
+black>=26.3.1                   # Opinionated deterministic Python code formatter (100-col)
 ruff>=0.4.0                     # High-performance linter (replaces flake8, isort, pyupgrade)
 mypy>=1.9.0                     # Static type checker for strict type safety
 
