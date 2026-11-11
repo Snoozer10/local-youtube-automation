@@ -85,7 +85,7 @@ jobs:
 
       - name: Verify conditional tomli dependency
         run: |
-          python -c "import tomli; import sys; assert 'tomllib' not in sys.modules; print(f'tomli {tomli.__version__} verified under Python {sys.version}')"
+          python -c "import importlib.util, sys, tomli; assert importlib.util.find_spec('tomllib') is None, 'tomllib must be unavailable on Python 3.10'; print(f'tomli {tomli.__version__} verified under Python {sys.version}')"
 
       - name: Quality gate (secret scanning)
         run: python tools/check_secrets.py
