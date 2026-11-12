@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import struct
@@ -49,13 +48,13 @@ def test_wav_header_duration_precision(tmp_path):
 
 
 def _write_synthetic_canonical_timeline(run_dir: Path) -> Path:
-    """Writes a synthetic 293-span / 40,030-frame canonical timeline.json fixture."""
+    """Writes a minimal synthetic 293-span / 40,030-frame ingestion fixture in timeline.json."""
     fps = 30
     audio_duration = 1334.34
     total_frames = int(round(audio_duration * fps))  # 40,030 exact frames
 
     # Include two 3-frame (0.10s < 0.15s) leading spans so canonical ingestion proves
-    # comedic grouping and acoustic re-snapping are bypassed across short transitions.
+    # legacy grouping and float-to-frame recomputation are bypassed across short transitions.
     durations: list[int] = [3, 3]
     pattern = (120, 137, 140, 145)
     while len(durations) < 292:
@@ -70,37 +69,28 @@ def _write_synthetic_canonical_timeline(run_dir: Path) -> Path:
         start_frame = current_frame
         end_frame = start_frame + frame_count
         start_sec = round(start_frame / float(fps), 6)
-        end_sec = round(end_frame / float(fps), 6)
+        # Keep float end timestamps slightly offset from pre-quantized end_frame bounds so
+        # discarding span['end_frame'] and recomputing round(end * fps) causes visible drift.
+        frame_offset = 6 if idx < 2 else (4 if idx % 2 == 0 else -4)
+        end_sec = (
+            round((end_frame + frame_offset) / float(fps), 6)
+            if idx < len(durations) - 1
+            else round(end_frame / float(fps), 6)
+        )
         spans.append(
             {
-                "index": idx,
                 "start": start_sec,
                 "end": end_sec,
-                "duration": round(frame_count / float(fps), 3),
                 "start_frame": start_frame,
                 "end_frame": end_frame,
                 "frame_count": frame_count,
-                "text": f"Segment {idx}",
             }
         )
         current_frame = end_frame
 
-    words: list[dict[str, object]] = []
     timeline_data = {
-        "version": "1.0",
-        "audio_file": "voice.wav",
         "audio_duration": audio_duration,
         "fps": fps,
-        "total_frames": total_frames,
-        "checksums": {
-            "words_sha256": hashlib.sha256(
-                json.dumps(words, sort_keys=True, ensure_ascii=False).encode("utf-8")
-            ).hexdigest(),
-            "spans_sha256": hashlib.sha256(
-                json.dumps(spans, sort_keys=True, ensure_ascii=False).encode("utf-8")
-            ).hexdigest(),
-        },
-        "words": words,
         "spans": spans,
     }
     timeline_path = run_dir / "timeline.json"
@@ -111,7 +101,7 @@ def _write_synthetic_canonical_timeline(run_dir: Path) -> Path:
 
 
 def test_canonical_timeline_ingestion_bypasses_resnapping(tmp_path):
-    """Verifies that canonical timeline.json ingestion preserves pre-quantized bounds without re-snapping or comedic grouping."""
+    """Verifies canonical timeline.json ingestion preserves pre-quantized bounds without legacy grouping or recomputation."""
     timeline_json_path = _write_synthetic_canonical_timeline(tmp_path)
     timeline_data = json.loads(timeline_json_path.read_text(encoding="utf-8"))
 
@@ -134,17 +124,22 @@ def test_canonical_timeline_ingestion_bypasses_resnapping(tmp_path):
 
 
 def test_cumulative_integer_quantization_zero_drift(tmp_path):
-    """Asserts mathematical zero-drift over 40,030 frames with strict contiguous chaining."""
-    _write_synthetic_canonical_timeline(tmp_path)
+    """Asserts mathematical zero-drift and preserved integer bounds over 293 spans / 40,030 frames."""
+    timeline_json_path = _write_synthetic_canonical_timeline(tmp_path)
+    expected_spans = json.loads(timeline_json_path.read_text(encoding="utf-8"))["spans"]
+    expected_end_frames = [span["end_frame"] for span in expected_spans]
 
     blocks = parse_image_timeline(str(tmp_path))
     sync_timeline = prepare_synchronized_timeline(blocks, audio_duration=1334.34, fps=30)
 
-    # 1. Total frame budget exact match
+    assert len(sync_timeline) == 293
+
+    # 1. Total frame budget and supplied pre-quantized end_frame bounds match exactly
     total_frames = sum(clip["frame_count"] for clip in sync_timeline)
     assert total_frames == 40030
     assert sync_timeline[-1]["end_frame"] == 40030
     assert sync_timeline[0]["start_frame"] == 0
+    assert [clip["end_frame"] for clip in sync_timeline] == expected_end_frames
 
     # 2. Strict monotonic contiguity: zero voids, zero overlaps
     for prev, cur in zip(sync_timeline, sync_timeline[1:], strict=False):
