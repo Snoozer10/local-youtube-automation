@@ -123,8 +123,10 @@ class SecretScanningGateTests(unittest.TestCase):
     def test_detects_private_key_block(self) -> None:
         """Verify synthetic private key blocks are detected."""
         test_file = self.root / "id_rsa"
+        begin_block = "-----BEGIN " + "RSA PRIVATE KEY-----"
+        end_block = "-----END " + "RSA PRIVATE KEY-----"
         test_file.write_text(
-            "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----\n",  # pragma: allowlist secret
+            f"{begin_block}\nMIIEowIBAAKCAQEA...\n{end_block}\n",  # pragma: allowlist secret
             encoding="utf-8",
         )
 

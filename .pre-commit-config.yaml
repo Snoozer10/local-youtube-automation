@@ -1,12 +1,11 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.10
+    rev: v0.17.5
     hooks:
       - id: ruff
-        args: [--ignore, UP038]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.4.0
+    rev: v2.4.1
     hooks:
       - id: mypy
         files: ^src/
@@ -33,7 +32,6 @@ repos:
       - id: check-merge-conflict
       - id: debug-statements
       - id: detect-private-key
-        exclude: ^tests/unit/test_check_secrets\.py$
       - id: detect-aws-credentials
         args: [--allow-missing-credentials]
       - id: forbid-new-submodules
@@ -48,7 +46,7 @@ repos:
       - id: pytest-unit
         name: pytest (unit tests only)
         entry: python -m pytest
-        args: ["tests/unit", "-v", "--tb=short"]
+        args: ["tests/unit", "-c", "pyproject.toml", "-m", "not live_browser", "-v", "--tb=short"]
         language: system
         types: [python]
         pass_filenames: false
