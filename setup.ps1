@@ -11,6 +11,32 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location -LiteralPath $ScriptDir
 
+# ------------------------------------------------------------------------------
+# Helper: Safe native command execution for Windows PowerShell 5.1 & 7+
+# In PowerShell 5.1, native stderr output redirected via 2>&1 produces
+# ErrorRecord objects that trigger a terminating error when
+# $ErrorActionPreference = 'Stop'. Temporarily setting $ErrorActionPreference to
+# 'Continue' preserves stderr diagnostics and native exit codes without aborting.
+# ------------------------------------------------------------------------------
+function Invoke-NativeCommand {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Command
+    )
+    $prevEap = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $lines = @(& $Command 2>&1 | ForEach-Object { "$_" })
+        return [PSCustomObject]@{
+            Output   = $lines
+            ExitCode = $LASTEXITCODE
+        }
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+}
+
 Write-Host ""
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "    YouTube Automation Pipeline - Setup & Environment Init      " -ForegroundColor Cyan
@@ -98,7 +124,27 @@ if (-not (Test-Path -LiteralPath $VenvPython)) {
     Write-Host "[ERROR] Virtual environment Python interpreter not found at $VenvPython" -ForegroundColor Red
     exit 1
 }
-Write-Host "  [OK] Active virtual environment: $VenvDir" -ForegroundColor Green
+
+# Validate that the venv Python interpreter runs, satisfies >= 3.10, and can execute pip
+try {
+    $VenvVerStr = (& $VenvPython -c "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}')").Trim()
+    $VenvVersion = [version]$VenvVerStr
+} catch {
+    Write-Host "[ERROR] Virtual environment interpreter at $VenvPython failed to execute: $_" -ForegroundColor Red
+    exit 1
+}
+
+if ($VenvVersion.Major -lt 3 -or ($VenvVersion.Major -eq 3 -and $VenvVersion.Minor -lt 10)) {
+    Write-Host "[ERROR] Virtual environment interpreter must be Python 3.10+, but found $VenvVerStr at $VenvPython" -ForegroundColor Red
+    exit 1
+}
+
+$PipProbe = Invoke-NativeCommand { & $VenvPython -m pip --version }
+if ($PipProbe.ExitCode -ne 0) {
+    Write-Host "[ERROR] Virtual environment pip module is not functional (exit code $($PipProbe.ExitCode)): $($PipProbe.Output -join ' ')" -ForegroundColor Red
+    exit 1
+}
+Write-Host "  [OK] Active virtual environment: $VenvDir ($VenvVerStr)" -ForegroundColor Green
 
 # ------------------------------------------------------------------------------
 # 3. Upgrade Packaging Tools & Install Dependencies
@@ -140,8 +186,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "  Verifying dependency consistency (pip check)..." -ForegroundColor Gray
-$PipCheckOutput = & $VenvPython -m pip check 2>&1
-$PipCheckExit = $LASTEXITCODE
+$PipCheckResult = Invoke-NativeCommand { & $VenvPython -m pip check }
+$PipCheckExit = $PipCheckResult.ExitCode
+$PipCheckOutput = $PipCheckResult.Output
 if ($PipCheckExit -eq 0) {
     Write-Host "  [OK] pip check reported no broken requirements." -ForegroundColor Green
 } else {
@@ -160,11 +207,14 @@ Write-Host "[4/6] Provisioning Playwright Chromium..." -ForegroundColor Yellow
 if ($SkipPlaywrightBrowser) {
     Write-Host "  Skipping Playwright browser installation (-SkipPlaywrightBrowser flag passed)." -ForegroundColor Gray
 } else {
-    try {
-        & $VenvPython -m playwright install chromium
+    $PwResult = Invoke-NativeCommand { & $VenvPython -m playwright install chromium }
+    if ($PwResult.ExitCode -eq 0) {
         Write-Host "  [OK] Playwright Chromium browser verified." -ForegroundColor Green
-    } catch {
-        Write-Host "  [WARNING] Playwright Chromium install had an issue: $_" -ForegroundColor DarkYellow
+    } else {
+        Write-Host "  [WARNING] Playwright Chromium install exited with code $($PwResult.ExitCode)." -ForegroundColor DarkYellow
+        if ($PwResult.Output.Count -gt 0) {
+            $PwResult.Output | ForEach-Object { Write-Host "            $_" -ForegroundColor DarkYellow }
+        }
     }
 }
 
@@ -198,16 +248,19 @@ Write-Host "[6/6] Running system diagnostics..." -ForegroundColor Yellow
 $FfmpegCmd = Get-Command 'ffmpeg' -ErrorAction SilentlyContinue
 if ($FfmpegCmd) {
     Write-Host "  [OK] FFmpeg executable found on PATH: $($FfmpegCmd.Source)" -ForegroundColor Green
-    $FfmpegVer = @(& ffmpeg -version 2>&1)
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "       Version check succeeded: $($FfmpegVer[0])" -ForegroundColor Gray
+    $FfmpegProbe = Invoke-NativeCommand { & ffmpeg -version }
+    if ($FfmpegProbe.ExitCode -eq 0) {
+        $VerLine = ($FfmpegProbe.Output | Where-Object { $_ -match '\d+\.\d+' } | Select-Object -First 1)
+        if (-not $VerLine -and $FfmpegProbe.Output.Count -gt 0) { $VerLine = $FfmpegProbe.Output[0] }
+        if (-not $VerLine) { $VerLine = 'Unknown version' }
+        Write-Host "       Version check succeeded: $VerLine" -ForegroundColor Gray
 
         # Probe hardware encoders
-        $Encoders = & ffmpeg -hide_banner -encoders 2>&1
+        $EncoderProbe = Invoke-NativeCommand { & ffmpeg -hide_banner -encoders }
         $HwEncoders = @()
-        if ($Encoders | Select-String 'h264_qsv') { $HwEncoders += 'Intel QSV (h264_qsv)' }
-        if ($Encoders | Select-String 'h264_nvenc') { $HwEncoders += 'NVIDIA NVENC (h264_nvenc)' }
-        if ($Encoders | Select-String 'h264_amf') { $HwEncoders += 'AMD AMF (h264_amf)' }
+        if ($EncoderProbe.Output | Select-String 'h264_qsv') { $HwEncoders += 'Intel QSV (h264_qsv)' }
+        if ($EncoderProbe.Output | Select-String 'h264_nvenc') { $HwEncoders += 'NVIDIA NVENC (h264_nvenc)' }
+        if ($EncoderProbe.Output | Select-String 'h264_amf') { $HwEncoders += 'AMD AMF (h264_amf)' }
 
         if ($HwEncoders.Count -gt 0) {
             Write-Host "       Hardware acceleration detected: $($HwEncoders -join ', ')" -ForegroundColor Green
@@ -215,7 +268,7 @@ if ($FfmpegCmd) {
             Write-Host "       No dedicated GPU h264 hardware encoders detected (will use libx264 software)." -ForegroundColor DarkYellow
         }
     } else {
-        Write-Host "  [WARNING] FFmpeg executable was found on PATH but version check failed with exit code $LASTEXITCODE." -ForegroundColor DarkYellow
+        Write-Host "  [WARNING] FFmpeg executable was found on PATH but version check failed with exit code $($FfmpegProbe.ExitCode)." -ForegroundColor DarkYellow
     }
 } else {
     Write-Host "  [WARNING] FFmpeg not found in system PATH." -ForegroundColor DarkYellow
@@ -226,11 +279,14 @@ if ($FfmpegCmd) {
 $FfprobeCmd = Get-Command 'ffprobe' -ErrorAction SilentlyContinue
 if ($FfprobeCmd) {
     Write-Host "  [OK] FFprobe executable found on PATH: $($FfprobeCmd.Source)" -ForegroundColor Green
-    $FfprobeVer = @(& ffprobe -version 2>&1)
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "       Version check succeeded: $($FfprobeVer[0])" -ForegroundColor Gray
+    $FfprobeProbe = Invoke-NativeCommand { & ffprobe -version }
+    if ($FfprobeProbe.ExitCode -eq 0) {
+        $VerLine = ($FfprobeProbe.Output | Where-Object { $_ -match '\d+\.\d+' } | Select-Object -First 1)
+        if (-not $VerLine -and $FfprobeProbe.Output.Count -gt 0) { $VerLine = $FfprobeProbe.Output[0] }
+        if (-not $VerLine) { $VerLine = 'Unknown version' }
+        Write-Host "       Version check succeeded: $VerLine" -ForegroundColor Gray
     } else {
-        Write-Host "  [WARNING] FFprobe executable was found on PATH but version check failed with exit code $LASTEXITCODE." -ForegroundColor DarkYellow
+        Write-Host "  [WARNING] FFprobe executable was found on PATH but version check failed with exit code $($FfprobeProbe.ExitCode)." -ForegroundColor DarkYellow
     }
 } else {
     Write-Host "  [WARNING] FFprobe not found in system PATH (required for audio/video media analysis)." -ForegroundColor DarkYellow
@@ -266,18 +322,21 @@ if ($CdpActive) {
 } else {
     Write-Host "  [INFO] Chrome CDP port 9222 is not currently listening." -ForegroundColor Gray
     Write-Host "         (Before running browser automation stages, launch Chrome with a dedicated profile:" -ForegroundColor Gray
-    Write-Host "          see docs/usage/adaptive-mode.md for dedicated-profile startup commands)." -ForegroundColor Gray
+    Write-Host "          see CONTRIBUTING.md#configuring-local-debugging-profiles for dedicated-profile startup commands)." -ForegroundColor Gray
 }
 
 # D. Tesseract OCR (Adaptive image verification gate)
 $TessCmd = Get-Command 'tesseract' -ErrorAction SilentlyContinue
 if ($TessCmd) {
     Write-Host "  [OK] Tesseract OCR executable found on PATH: $($TessCmd.Source)" -ForegroundColor Green
-    $TessVer = @(& tesseract --version 2>&1)
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "       Version check succeeded: $($TessVer[0])" -ForegroundColor Gray
+    $TessProbe = Invoke-NativeCommand { & tesseract --version }
+    if ($TessProbe.ExitCode -eq 0) {
+        $VerLine = ($TessProbe.Output | Where-Object { $_ -match '\d+\.\d+' } | Select-Object -First 1)
+        if (-not $VerLine -and $TessProbe.Output.Count -gt 0) { $VerLine = $TessProbe.Output[0] }
+        if (-not $VerLine) { $VerLine = 'Unknown version' }
+        Write-Host "       Version check succeeded: $VerLine" -ForegroundColor Gray
     } else {
-        Write-Host "  [WARNING] Tesseract executable was found on PATH but version check failed with exit code $LASTEXITCODE." -ForegroundColor DarkYellow
+        Write-Host "  [WARNING] Tesseract executable was found on PATH but version check failed with exit code $($TessProbe.ExitCode)." -ForegroundColor DarkYellow
     }
 } else {
     Write-Host "  [INFO] Tesseract OCR not found in system PATH." -ForegroundColor Gray
@@ -288,16 +347,18 @@ if ($TessCmd) {
 Write-Host ""
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "    Setup complete! Available execution paths:                  " -ForegroundColor Cyan
-Write-Host "    - Video rendering pipeline (requires FFmpeg/FFprobe):        " -ForegroundColor Cyan
-Write-Host "        .\run.bat                                               " -ForegroundColor White
+Write-Host "    - Pedagogy scaffold linter (exit status preserved):          " -ForegroundColor Cyan
+Write-Host "        & `"$VenvPython`" tools\lint_exercises.py               " -ForegroundColor White
+Write-Host "        (or via batch launcher: .\run.bat lint-exercises)       " -ForegroundColor Gray
 Write-Host "    - Diagnostic pre-flight drills:                              " -ForegroundColor Cyan
-Write-Host "        .\run.bat test-drills                                   " -ForegroundColor White
-Write-Host "    - Pedagogy scaffold linter:                                  " -ForegroundColor Cyan
-Write-Host "        .\run.bat lint-exercises                                " -ForegroundColor White
-Write-Host "        (or: $VenvPython tools\lint_exercises.py)               " -ForegroundColor Gray
+Write-Host "        & `"$VenvPython`" -m pytest exercises/ -v -m drill       " -ForegroundColor White
+Write-Host "        (or via batch launcher: .\run.bat test-drills)          " -ForegroundColor Gray
+Write-Host "    - Full batch production run (starts run_agency.py batch pipeline):" -ForegroundColor Cyan
+Write-Host "        .\run.bat                                               " -ForegroundColor Gray
 Write-Host "    - Optional stage features (require separate grants/readiness):" -ForegroundColor Cyan
 Write-Host "        * Audacity mastering: launch Audacity (mod-script-pipe)  " -ForegroundColor Gray
-Write-Host "        * Browser automation: launch Chrome (--remote-debugging-port=9222)" -ForegroundColor Gray
+Write-Host "        * Browser automation: launch Chrome (--remote-debugging-port=9222;" -ForegroundColor Gray
+Write-Host "          see CONTRIBUTING.md#configuring-local-debugging-profiles)" -ForegroundColor Gray
 Write-Host "        * Adaptive image gates: install Tesseract OCR            " -ForegroundColor Gray
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host ""
