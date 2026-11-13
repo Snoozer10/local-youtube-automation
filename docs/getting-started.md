@@ -1,6 +1,6 @@
 # Set up your first workspace
 
-This guide uses Windows PowerShell. The complete browser and Audacity workflow is Windows-oriented. Python package metadata allows Python 3.10 or newer; the project's main CI uses Python 3.11. Use Python 3.11 for the starting path below. A GPU is optional for supported local CPU rendering and transcription paths, but performance depends on your machine.
+This guide uses Windows PowerShell. The complete browser and Audacity workflow is Windows-oriented. Python 3.11 is recommended for local development; Python 3.10 is compatibility-tested in CI, and Python package metadata allows Python 3.10 or newer. Use Python 3.11 for the starting path below. A GPU is optional for supported local CPU rendering and transcription paths, but performance depends on your machine.
 
 If you would prefer an AI agent to perform setup and teach you how to use the project, copy the prompt in the [project README](../README.md#copy-and-paste-to-your-ai-agent). The [full agent guide](agents/setup.md) defines what it should check and report.
 
@@ -11,9 +11,9 @@ You can work on individual stages, or prepare a complete video. Your choice dete
 | Task | Requirement category | Additional requirements |
 |---|---|---|
 | Install and inspect the project | **Required baseline** | Git, Python 3.11 (`py -3.11`), disk space, and package access |
-| Render video locally | **Required for video compilation** | FFmpeg and FFprobe on `PATH` (`winget install Gyan.FFmpeg`); accepted inputs |
+| Render video locally | **Required for video compilation** | FFmpeg and FFprobe on `PATH` (`winget install Gyan.FFmpeg`) are rendering prerequisites; accepted inputs |
 | Run test suite and offline audits | **Development / QA** | `requirements-dev.txt` (`pytest`, `mypy`, `ruff`, type stubs) |
-| Translate or refine a script through Gemini | Optional stage feature | An authenticated, dedicated browser profile and CDP loopback (port 9222) |
+| Translate or refine a script through Gemini | Optional stage feature | An authenticated, dedicated browser profile (see [adaptive mode](usage/adaptive-mode.md)) and CDP loopback port check (port 9222) |
 | Generate narration | Optional stage feature | AI Studio access and a channel with a configured synthesis voice |
 | Polish audio through Audacity | Optional stage feature | Audacity 3.x+ with `mod-script-pipe` enabled (`\\.\pipe\ToSrvPipe`) |
 | Transcribe audio locally | Optional stage feature | Faster-Whisper dependencies and disk space for a downloaded model |
@@ -86,7 +86,7 @@ Other configuration has separate owners:
 
 The adaptive workflow can use a run-local `video_config.txt`. Inspect the selected run's configuration rather than assuming the repository default will apply.
 
-Browser stages use authenticated web sessions through Chrome DevTools Protocol, or CDP. Use the project's owned-profile and shared-resource procedures before connecting. Sign in yourself when prompted; keep your everyday browser profile separate. See [adaptive browser and resource instructions](usage/adaptive-mode.md) and the applicable contracts before connecting. Dated session notes and historical allowances in reference documents do not authorize actions on your machine.
+Browser stages use authenticated web sessions through Chrome DevTools Protocol (CDP) communicating over a local loopback port (default 127.0.0.1:9222). Diagnostic setup scripts include a port check to probe whether this loopback port is listening. Before connecting, launch Chrome with a dedicated user data profile following the [dedicated browser profile instructions in the adaptive mode guide](usage/adaptive-mode.md#configuration-and-resource-boundaries). Sign in yourself when prompted; keep your everyday browser profile separate. Dated session notes and historical allowances in reference documents do not authorize actions on your machine.
 
 ## 5. Verify installation before production
 

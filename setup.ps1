@@ -135,16 +135,19 @@ if (-not $SkipDevDependencies -and (Test-Path -LiteralPath $DevReqFile)) {
 Write-Host "  Installing project in editable mode..." -ForegroundColor Gray
 & $VenvPython -m pip install -e $ScriptDir --no-deps --quiet
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "  [WARNING] Editable project install returned non-zero exit code." -ForegroundColor DarkYellow
+    Write-Host "[ERROR] Editable project install failed with exit code $LASTEXITCODE." -ForegroundColor Red
+    exit $LASTEXITCODE
 }
 
 Write-Host "  Verifying dependency consistency (pip check)..." -ForegroundColor Gray
 $PipCheckOutput = & $VenvPython -m pip check 2>&1
-if ($LASTEXITCODE -eq 0) {
+$PipCheckExit = $LASTEXITCODE
+if ($PipCheckExit -eq 0) {
     Write-Host "  [OK] pip check reported no broken requirements." -ForegroundColor Green
 } else {
-    Write-Host "  [WARNING] pip check reported dependency issues:" -ForegroundColor DarkYellow
-    $PipCheckOutput | ForEach-Object { Write-Host "       $_" -ForegroundColor DarkYellow }
+    Write-Host "[ERROR] pip check reported dependency issues:" -ForegroundColor Red
+    $PipCheckOutput | ForEach-Object { Write-Host "       $_" -ForegroundColor Red }
+    exit $PipCheckExit
 }
 
 Write-Host "  [OK] Dependencies installed successfully." -ForegroundColor Green
@@ -194,21 +197,25 @@ Write-Host "[6/6] Running system diagnostics..." -ForegroundColor Yellow
 # A. FFmpeg & Hardware Encoders
 $FfmpegCmd = Get-Command 'ffmpeg' -ErrorAction SilentlyContinue
 if ($FfmpegCmd) {
-    $FfmpegVer = (& ffmpeg -version 2>&1)[0]
-    Write-Host "  [OK] FFmpeg found: $($FfmpegCmd.Source)" -ForegroundColor Green
-    Write-Host "       Version: $FfmpegVer" -ForegroundColor Gray
-    
-    # Probe hardware encoders
-    $Encoders = & ffmpeg -hide_banner -encoders 2>&1
-    $HwEncoders = @()
-    if ($Encoders | Select-String 'h264_qsv') { $HwEncoders += 'Intel QSV (h264_qsv)' }
-    if ($Encoders | Select-String 'h264_nvenc') { $HwEncoders += 'NVIDIA NVENC (h264_nvenc)' }
-    if ($Encoders | Select-String 'h264_amf') { $HwEncoders += 'AMD AMF (h264_amf)' }
-    
-    if ($HwEncoders.Count -gt 0) {
-        Write-Host "       Hardware acceleration detected: $($HwEncoders -join ', ')" -ForegroundColor Green
+    Write-Host "  [OK] FFmpeg executable found on PATH: $($FfmpegCmd.Source)" -ForegroundColor Green
+    $FfmpegVer = @(& ffmpeg -version 2>&1)
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "       Version check succeeded: $($FfmpegVer[0])" -ForegroundColor Gray
+
+        # Probe hardware encoders
+        $Encoders = & ffmpeg -hide_banner -encoders 2>&1
+        $HwEncoders = @()
+        if ($Encoders | Select-String 'h264_qsv') { $HwEncoders += 'Intel QSV (h264_qsv)' }
+        if ($Encoders | Select-String 'h264_nvenc') { $HwEncoders += 'NVIDIA NVENC (h264_nvenc)' }
+        if ($Encoders | Select-String 'h264_amf') { $HwEncoders += 'AMD AMF (h264_amf)' }
+
+        if ($HwEncoders.Count -gt 0) {
+            Write-Host "       Hardware acceleration detected: $($HwEncoders -join ', ')" -ForegroundColor Green
+        } else {
+            Write-Host "       No dedicated GPU h264 hardware encoders detected (will use libx264 software)." -ForegroundColor DarkYellow
+        }
     } else {
-        Write-Host "       No dedicated GPU h264 hardware encoders detected (will use libx264 software)." -ForegroundColor DarkYellow
+        Write-Host "  [WARNING] FFmpeg executable was found on PATH but version check failed with exit code $LASTEXITCODE." -ForegroundColor DarkYellow
     }
 } else {
     Write-Host "  [WARNING] FFmpeg not found in system PATH." -ForegroundColor DarkYellow
@@ -218,9 +225,13 @@ if ($FfmpegCmd) {
 
 $FfprobeCmd = Get-Command 'ffprobe' -ErrorAction SilentlyContinue
 if ($FfprobeCmd) {
-    $FfprobeVer = (& ffprobe -version 2>&1)[0]
-    Write-Host "  [OK] FFprobe found: $($FfprobeCmd.Source)" -ForegroundColor Green
-    Write-Host "       Version: $FfprobeVer" -ForegroundColor Gray
+    Write-Host "  [OK] FFprobe executable found on PATH: $($FfprobeCmd.Source)" -ForegroundColor Green
+    $FfprobeVer = @(& ffprobe -version 2>&1)
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "       Version check succeeded: $($FfprobeVer[0])" -ForegroundColor Gray
+    } else {
+        Write-Host "  [WARNING] FFprobe executable was found on PATH but version check failed with exit code $LASTEXITCODE." -ForegroundColor DarkYellow
+    }
 } else {
     Write-Host "  [WARNING] FFprobe not found in system PATH (required for audio/video media analysis)." -ForegroundColor DarkYellow
 }
@@ -235,7 +246,8 @@ if ($PipeActive) {
     Write-Host "         (When running optional audio mastering, launch Audacity with mod-script-pipe enabled)." -ForegroundColor Gray
 }
 
-# C. Chrome CDP Loopback (127.0.0.1:9222)
+# C. Chrome CDP Loopback Port Check (127.0.0.1:9222)
+Write-Host "  Checking Chrome CDP loopback port (127.0.0.1:9222)..." -ForegroundColor Gray
 $CdpActive = $false
 try {
     $Tcp = New-Object System.Net.Sockets.TcpClient
@@ -250,18 +262,23 @@ try {
 }
 
 if ($CdpActive) {
-    Write-Host "  [OK] Chrome CDP loopback is reachable on 127.0.0.1:9222." -ForegroundColor Green
+    Write-Host "  [OK] Chrome CDP loopback port 9222 is active and accepting connections." -ForegroundColor Green
 } else {
-    Write-Host "  [INFO] Chrome CDP not currently listening on 127.0.0.1:9222." -ForegroundColor Gray
-    Write-Host "         (Before running optional browser stages, start Chrome with --remote-debugging-port=9222)." -ForegroundColor Gray
+    Write-Host "  [INFO] Chrome CDP port 9222 is not currently listening." -ForegroundColor Gray
+    Write-Host "         (Before running browser automation stages, launch Chrome with a dedicated profile:" -ForegroundColor Gray
+    Write-Host "          see docs/usage/adaptive-mode.md for dedicated-profile startup commands)." -ForegroundColor Gray
 }
 
 # D. Tesseract OCR (Adaptive image verification gate)
 $TessCmd = Get-Command 'tesseract' -ErrorAction SilentlyContinue
 if ($TessCmd) {
-    $TessVer = (& tesseract --version 2>&1)[0]
-    Write-Host "  [OK] Tesseract OCR found: $($TessCmd.Source)" -ForegroundColor Green
-    Write-Host "       Version: $TessVer" -ForegroundColor Gray
+    Write-Host "  [OK] Tesseract OCR executable found on PATH: $($TessCmd.Source)" -ForegroundColor Green
+    $TessVer = @(& tesseract --version 2>&1)
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "       Version check succeeded: $($TessVer[0])" -ForegroundColor Gray
+    } else {
+        Write-Host "  [WARNING] Tesseract executable was found on PATH but version check failed with exit code $LASTEXITCODE." -ForegroundColor DarkYellow
+    }
 } else {
     Write-Host "  [INFO] Tesseract OCR not found in system PATH." -ForegroundColor Gray
     Write-Host "         (Required for full-frame adaptive image validation gates." -ForegroundColor Gray
@@ -276,7 +293,8 @@ Write-Host "        .\run.bat                                               " -F
 Write-Host "    - Diagnostic pre-flight drills:                              " -ForegroundColor Cyan
 Write-Host "        .\run.bat test-drills                                   " -ForegroundColor White
 Write-Host "    - Pedagogy scaffold linter:                                  " -ForegroundColor Cyan
-Write-Host "        .\venv\Scripts\python.exe tools\lint_exercises.py       " -ForegroundColor White
+Write-Host "        .\run.bat lint-exercises                                " -ForegroundColor White
+Write-Host "        (or: $VenvPython tools\lint_exercises.py)               " -ForegroundColor Gray
 Write-Host "    - Optional stage features (require separate grants/readiness):" -ForegroundColor Cyan
 Write-Host "        * Audacity mastering: launch Audacity (mod-script-pipe)  " -ForegroundColor Gray
 Write-Host "        * Browser automation: launch Chrome (--remote-debugging-port=9222)" -ForegroundColor Gray
