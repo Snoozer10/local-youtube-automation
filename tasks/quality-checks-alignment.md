@@ -4,12 +4,13 @@
 **Task ID**: `E05` ([`tasks/REMAINING_WORK.md:87`](https://github.com/Snoozer10/local-youtube-automation/blob/0f2b2be6aa2f255ad7ceaa980096607df17b95ca/tasks/REMAINING_WORK.md#L87))
 **Launch Base SHA**: `0f2b2be6aa2f255ad7ceaa980096607df17b95ca` (`origin/master` after squash-merge of E08 PR #119)
 **Branch**: `ci/e05-align-quality-checks`
-**Claim Reference**: [Issue #78 comment 6859944908](https://github.com/Snoozer10/local-youtube-automation/issues/78#issuecomment-6859944908), amended in [comment 6862807983](https://github.com/Snoozer10/local-youtube-automation/issues/78#issuecomment-6862807983)
-**Reserved Tracked Paths (4)**:
+**Claim Reference**: [Issue #78 comment 6859944908](https://github.com/Snoozer10/local-youtube-automation/issues/78#issuecomment-6859944908), amended in [comment 6862807983](https://github.com/Snoozer10/local-youtube-automation/issues/78#issuecomment-6862807983) and [comment 6864887972](https://github.com/Snoozer10/local-youtube-automation/issues/78#issuecomment-6864887972)
+**Reserved Tracked Paths (5)**:
 1. `.pre-commit-config.yaml`
 2. `pytest.ini`
 3. `tests/unit/test_check_secrets.py`
-4. `tasks/quality-checks-alignment.md`
+4. `tools/run_pytest_unit.py`
+5. `tasks/quality-checks-alignment.md`
 
 ---
 
@@ -32,18 +33,18 @@ Task **E05** aligns local pre-commit hooks, configuration files, and documented 
 
 | Quality Domain | Component | Pre-E05 Baseline | Post-E05 Aligned State | Authoritative Source / Configuration | Scope / Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Linting** | **CI Gate** | `ruff check .` | `ruff check .` (unchanged) | `.github/workflows/ci.yml:39` | Full repository tree; read-only verification; resolves Ruff 0.17.5 in hosted CI |
-| | **Pre-Commit Hook** | `rev: v0.1.0`<br>`args: [--fix, --exit-non-zero-on-fix]`<br>`- id: ruff-format` | `rev: v0.17.5`<br>*(no args; ruff-format removed; UP038 obsolete in 0.17.5)* | `.pre-commit-config.yaml:2-6` | Aligned with CI tool version; read-only linting; no automatic formatting or file mutations |
+| **Linting** | **CI Gate** | `ruff check .` | `ruff check .` (unchanged) | `.github/workflows/ci.yml:41` | Full repository tree; read-only verification; resolves Ruff 0.17.5 in hosted CI |
+| | **Pre-Commit Hook** | `rev: v0.1.0`<br>`args: [--fix, --exit-non-zero-on-fix]`<br>`- id: ruff-format` | `rev: v0.17.5`<br>*(no args; ruff-format removed; UP038 obsolete in 0.17.5)* | `.pre-commit-config.yaml:2-6` | Pinned to `v0.17.5` matching observed CI resolution (`Ruff 0.17.5`); read-only linting; no automatic formatting or file mutations |
 | | **Documented Local** | `ruff check .` | `ruff check .` (unchanged) | `CONTRIBUTING.md:143`, `pyproject.toml:98-128` | Local workspace lint check |
-| **Strict Typing** | **CI Gate** | `python -m mypy --strict src/` | `python -m mypy --strict src/` (unchanged) | `.github/workflows/ci.yml:42` | Strictly `src/` (84 modules); Python 3.10 target; resolves mypy 2.4.1 in hosted CI |
-| | **Pre-Commit Hook** | `rev: v1.5.1`<br>`args: [--strict, --ignore-missing-imports]`<br>`additional_dependencies: [types-requests, types-urllib3]`<br>*(unscoped: all staged .py)* | `rev: v2.4.1`<br>`files: ^src/`<br>`args: [--strict, --ignore-missing-imports]`<br>`additional_dependencies: [pydantic>=2.0.0, playwright>=1.40.0, types-requests, types-urllib3, types-tqdm, types-Pillow, typing-extensions>=4.12.0]` | `.pre-commit-config.yaml:8-22` | Aligned with CI tool version; scoped strictly to `src/`; stubs added so BaseModel and Playwright types resolve |
+| **Strict Typing** | **CI Gate** | `python -m mypy --strict src/` | `python -m mypy --strict src/` (unchanged) | `.github/workflows/ci.yml:44` | Strictly `src/` (84 modules); Python 3.10 target; resolves mypy 2.4.1 in hosted CI |
+| | **Pre-Commit Hook** | `rev: v1.5.1`<br>`args: [--strict, --ignore-missing-imports]`<br>`additional_dependencies: [types-requests, types-urllib3]`<br>*(unscoped: all staged .py)* | `rev: v2.4.1`<br>`files: ^src/`<br>`args: [--strict, --ignore-missing-imports]`<br>`additional_dependencies: [pydantic>=2.0.0, playwright>=1.40.0, types-requests, types-urllib3, types-tqdm, types-Pillow, typing-extensions>=4.12.0]` | `.pre-commit-config.yaml:8-22` | Pinned to `v2.4.1` matching observed CI resolution (`mypy 2.4.1`); scoped strictly to `src/`; stubs added so BaseModel and Playwright types resolve |
 | | **Documented Local** | `python -m mypy --strict src/` | `python -m mypy --strict src/` (unchanged) | `docs/agents/workflows.md:43`, `CONTRIBUTING.md:146` | Full strict typing across source tree |
-| **Secret Scanning** | **CI Gate** | `python tools/check_secrets.py` | `python tools/check_secrets.py` (unchanged) | `.github/workflows/ci.yml:45,69` | Full repository tree scan against `secrets_allowlist.json` |
+| **Secret Scanning** | **CI Gate** | `python tools/check_secrets.py` | `python tools/check_secrets.py` (unchanged) | `.github/workflows/ci.yml:47,91` | Full repository tree scan against `secrets_allowlist.json` across both 3.11 and 3.10 lanes |
 | | **Pre-Commit Hook** | `python tools/check_secrets.py --` (`pass_filenames: true`) | `python tools/check_secrets.py --` (`pass_filenames: true`) (unchanged) | `.pre-commit-config.yaml:41-47` | Staged files only; fast sub-second commit gate |
-| **Test Runner** | **CI Gate (3.11)** | `python -m pytest tests/unit tests/integration -c pyproject.toml -v -m "not live_browser" --cov=. --cov-report=xml` | `python -m pytest tests/unit tests/integration -c pyproject.toml -v -m "not live_browser" --cov=. --cov-report=xml` (unchanged) | `.github/workflows/ci.yml:48` | Full offline test suite (unit + integration) with coverage on 3.11 |
-| | **CI Gate (3.10)** | `python -m pytest tests/unit tests/integration -c pyproject.toml -v -m "not live_browser" -k "not test_observation_environment_records_exact_runtime"` | `python -m pytest tests/unit tests/integration -c pyproject.toml -v -m "not live_browser" -k "not test_observation_environment_records_exact_runtime"` (unchanged) | `.github/workflows/ci.yml:72` | Full offline test suite on 3.10 preserving qualification filter |
-| | **Pre-Commit Hook** | `entry: pytest`<br>`args: ["tests/unit", "-v", "--tb=short"]` | `entry: python -m pytest`<br>`args: ["tests/unit", "-c", "pyproject.toml", "-m", "not live_browser", "-v", "--tb=short"]` | `.pre-commit-config.yaml:48-55` | Fast unit-test sanity check on local commits with explicit config and marker filter |
-| | **pytest.ini Config** | `addopts = -v --strict-markers --tb=short --import-mode=importlib`<br>*(missing `live_browser` marker)* | `addopts = -v --strict-markers --tb=short`<br>`markers: ... + live_browser` | `pytest.ini:7-13` | Bare local `pytest` commands discover `pytest.ini` first; aligned markers prevent `--strict-markers` failure; dropped divergent `--import-mode=importlib` |
+| **Test Runner** | **CI Gate (3.11)** | `python -m pytest tests/unit tests/integration -c pyproject.toml -v -m "not live_browser" --cov=. --cov-report=xml` | `python -m pytest tests/unit tests/integration -c pyproject.toml -v -m "not live_browser" --cov=. --cov-report=xml` (unchanged) | `.github/workflows/ci.yml:50` | Full offline test suite (`tests/unit tests/integration`) with XML coverage on 3.11; resolves pytest 9.1.1 |
+| | **CI Gate (3.10)** | `python -m pytest tests/unit tests/integration -c pyproject.toml -v -m "not live_browser" -k "not test_observation_environment_records_exact_runtime"` | `python -m pytest tests/unit tests/integration -c pyproject.toml -v -m "not live_browser" -k "not test_observation_environment_records_exact_runtime"` (unchanged) | `.github/workflows/ci.yml:94` | Full offline test suite on 3.10 preserving qualification filter; resolves pytest 9.1.1 |
+| | **Pre-Commit Hook** | `entry: pytest`<br>`args: ["tests/unit", "-v", "--tb=short"]` | `entry: python tools/run_pytest_unit.py`<br>`args: ["tests/unit", "-c", "pyproject.toml", "-m", "not live_browser", "-v", "--tb=short"]` | `.pre-commit-config.yaml:46-53`, `tools/run_pytest_unit.py` | Fast unit-test check on local commits with explicit config and marker filter; helper dynamically excludes qualification test on Python 3.10 only |
+| | **pytest.ini Config** | `addopts = -v --strict-markers --tb=short --import-mode=importlib`<br>*(missing `live_browser` marker)* | `addopts = -v --strict-markers --tb=short`<br>`markers: ... + live_browser` | `pytest.ini:7-13` | Bare local `pytest` commands discover `pytest.ini` first; aligned markers match `pyproject.toml`; dropped divergent `--import-mode=importlib` |
 | **Pre-Commit Hygiene** | **AWS Detection** | `- id: detect-aws-credentials` | `- id: detect-aws-credentials`<br>`  args: [--allow-missing-credentials]` | `.pre-commit-config.yaml:37-38` | Prevents exit code 2 failure when developer machine lacks AWS CLI config |
 | | **Private Key** | `- id: detect-private-key` | `- id: detect-private-key`<br>*(unconditional; no path exclusion)* | `.pre-commit-config.yaml:35` | Full repository coverage restored; synthetic RSA fixture in `tests/unit/test_check_secrets.py` constructed at runtime |
 | | **Whitespace / EOF** | Unscoped | `exclude: ^(evidence/receipts/\|tests/fixtures/semantic_failures/\|docs/error-solving/understood-errors\.md)` | `.pre-commit-config.yaml:26-29` | Protects byte-exact historical preimages, fixtures, and receipts |
@@ -60,21 +61,61 @@ Pre-commit hooks and CI quality gates serve distinct operational roles:
    - **Pre-commit hook**: Passes staged filenames (`pass_filenames: true`) following the `--` argument delimiter. Scans only files about to be committed in < 0.15s, offering immediate pre-commit feedback.
    - **CI Gate**: Runs `python tools/check_secrets.py` without arguments, discovering and scanning all tracked repository files and public docs (202+ files) to catch any potential repository drift.
 2. **Testing (`pytest`)**:
-   - **Pre-commit hook**: Targets `tests/unit` only (`always_run: true`, `pass_filenames: false`, passing `-c pyproject.toml -m "not live_browser"`). Ensures unit test invariants hold before any commit is authored without incurring multi-minute integration test runtimes.
+   - **Pre-commit hook**: Targets `tests/unit` only (`always_run: true`, `pass_filenames: false`, passing `-c pyproject.toml -m "not live_browser"`). Invokes `tools/run_pytest_unit.py` to ensure unit test invariants hold before any commit is authored without incurring multi-minute integration test runtimes.
    - **CI Gate**: Executes full offline unit and integration suites across both supported Python versions (`3.11` with coverage and `3.10` compatibility with exact-runtime skip handling), ensuring end-to-end subsystem stability.
 3. **Type Checking (`mypy`)**:
    - **Pre-commit hook**: Scoped strictly to files under `src/` (`files: ^src/`), analyzing staged source code with required package stubs without imposing strict source-typing rules on exploratory test files or scripts.
    - **CI Gate**: Runs `python -m mypy --strict src/` across all 84 source modules to ensure global type soundness across the entire package.
 
-### 3.2 Bare `pytest` Commands and `pytest.ini` Reassessment
+### 3.2 Distinguishing Bare `pytest` Collection from CI Selection and `live_browser` Registration
 
-When developers run bare `pytest` or `python -m pytest` commands locally as documented in `CONTRIBUTING.md:154` and `docs/agents/workflows.md:44`:
-1. `pytest` discovers root configuration files in precedence order: `pytest.ini` takes priority over `pyproject.toml`.
-2. Without declaring `live_browser` in `pytest.ini`, `--strict-markers` triggers test collection errors whenever tests decorated with `@pytest.mark.live_browser` are collected.
-3. The legacy `pytest.ini` specified `--import-mode=importlib`, which conflicted with `pyproject.toml`'s default import mode.
-4. Preserving the minimal edit in `pytest.ini` (adding `live_browser` marker and dropping `--import-mode=importlib`) guarantees that documented bare local commands behave identically to CI's explicit `-c pyproject.toml` runs, while leaving CI's full-suite selection and Python 3.10 qualification rules untouched.
+When developers execute bare `pytest` or `python -m pytest` commands locally as documented in `CONTRIBUTING.md:154` and `docs/agents/workflows.md:44`:
 
-### 3.3 Restoration of `detect-private-key` Coverage
+1. **Configuration Precedence**: `pytest` discovers root configuration files in precedence order: `pytest.ini` takes priority over `pyproject.toml`.
+2. **Bare Collection vs CI Selection**:
+   - Bare `pytest` (without arguments) uses `testpaths = tests`, discovering and collecting the full suite (all 2,422 tests across `tests/unit` and `tests/integration`). It runs without code coverage flags and without live browser exclusion on the command line.
+   - Authoritative CI explicitly restricts targets to `tests/unit tests/integration`, specifies `-c pyproject.toml`, passes `-m "not live_browser"`, on Python 3.11 collects coverage via `--cov=. --cov-report=xml`, and on Python 3.10 applies `-k "not test_observation_environment_records_exact_runtime"`.
+3. **Marker Registration in `tests/conftest.py`**:
+   - In `tests/conftest.py` lines 341-344, the `pytest_configure` hook already registers the marker programmatically:
+     ```python
+     def pytest_configure(config):
+         config.addinivalue_line(
+             "markers",
+             "live_browser: requires an explicit --run-live-browser opt-in",
+         )
+     ```
+   - Because `conftest.py` dynamically registers `live_browser`, running bare `pytest` with `--strict-markers` never produced an unregistered marker failure at runtime even prior to editing `pytest.ini`.
+   - Adding `live_browser` to `pytest.ini` was performed strictly to maintain declarative parity with `pyproject.toml`'s marker definitions and to drop the obsolete `--import-mode=importlib` option.
+
+### 3.3 Multi-Runtime Pre-Commit Test Filtering (`tools/run_pytest_unit.py`)
+
+In `tests/unit/test_observation_method_proof.py:100-105`:
+```python
+def test_observation_environment_records_exact_runtime() -> None:
+    """AC 1: Record the actual interpreter, linked SQLite build, and OS entrypoint."""
+    assert sys.version_info >= (3, 11)
+    assert sqlite3.sqlite_version >= "3.40"
+    assert platform.system() == "Windows"
+```
+Because this test explicitly asserts `sys.version_info >= (3, 11)`, CI excludes it on Python 3.10 via `-k "not test_observation_environment_records_exact_runtime"` (`.github/workflows/ci.yml:94`).
+
+To ensure that pre-commit works seamlessly across both supported Windows developer runtimes (`Python 3.10` and `Python 3.11`) without modifying the hosted CI workflows or weakening security gates:
+- A dedicated inert runner utility [`tools/run_pytest_unit.py`](file:///C:/Users/Snoozer/teamwork_projects/ci-e05-align-quality-checks/tools/run_pytest_unit.py) was added under the amended reservation.
+- `.pre-commit-config.yaml` configures:
+  ```yaml
+        - id: pytest-unit
+          name: pytest (unit tests only)
+          entry: python tools/run_pytest_unit.py
+          args: ["tests/unit", "-c", "pyproject.toml", "-m", "not live_browser", "-v", "--tb=short"]
+          language: system
+          types: [python]
+          pass_filenames: false
+          always_run: true
+  ```
+- Under Python 3.10 (`sys.version_info < (3, 11)`), the helper automatically appends `["-k", "not test_observation_environment_records_exact_runtime"]`, exactly mirroring CI line 94.
+- Under Python 3.11 (`sys.version_info >= (3, 11)`), the helper passes the arguments unmodified, ensuring `test_observation_environment_records_exact_runtime` remains selected and passes.
+
+### 3.4 Restoration of `detect-private-key` Coverage
 
 Upstream `detect-private-key` from `pre-commit-hooks` scans staged files for raw PEM private key headers. Previously, `test_detects_private_key_block` in `tests/unit/test_check_secrets.py` contained a literal PEM block in its test fixture string, triggering false positives unless excluded.
 
@@ -85,42 +126,78 @@ By constructing the synthetic test payload at runtime via string concatenation (
 
 ---
 
-## 4. Verification Evidence in Disposable Worktree
+## 4. Verification Evidence in Disposable Windows Environments
 
-Verification was conducted in a disposable worktree on Windows using Python 3.11.9, `pre-commit 4.6.2`, `Ruff 0.17.5`, `mypy 2.4.1`, and `pytest 9.1.1`.
+Verification was conducted across both supported Windows runtimes with clean files staged under `src/` (`src/youtube_automation/__init__.py`) to ensure that `mypy`, `ruff`, hygiene hooks, and `pytest-unit` all execute and pass.
 
-### 4.1 Clean Staged Files (`PASS`)
+### 4.1 Python 3.10 Staged Verification (`CPython 3.10.20`)
 
-Staged representative clean files: `.pre-commit-config.yaml` and `tests/unit/test_check_secrets.py`.
-```powershell
-pre-commit run --hook-stage pre-commit
-```
-Observed results:
-- `ruff` (legacy alias)......................................................Passed
-- `mypy`.................................................(no files to check)Skipped
-- `trim trailing whitespace`.................................................Passed
-- `fix end of files`.........................................................Passed
-- `check yaml`...............................................................Passed
-- `check toml`...........................................(no files to check)Skipped
-- `check json`...........................................(no files to check)Skipped
-- `check for merge conflicts`................................................Passed
-- `debug statements (python)`................................................Passed
-- `detect private key`.......................................................Passed *(verifies unexcluded test file)*
-- `detect aws credentials`...................................................Passed
-- `forbid new submodules`................................(no files to check)Skipped
-- `check secrets and service tokens`.........................................Passed
-- `pytest (unit tests only)`.................................................Passed
+- **Interpreter**: `CPython 3.10.20 (64-bit)` (`C:\Users\Snoozer\teamwork_projects\ci-e03-python310-compat\venv\Scripts\python.exe`)
+- **Pre-Commit Version**: `pre-commit 4.6.2`
+- **Tool Versions**: `Ruff 0.17.5`, `mypy 2.4.1`, `pytest 9.1.1`
+- **Clean Staged File**: `src/youtube_automation/__init__.py`
+- **Command**:
+  ```powershell
+  & C:\Users\Snoozer\teamwork_projects\ci-e03-python310-compat\venv\Scripts\Activate.ps1
+  pre-commit run --hook-stage pre-commit
+  ```
+- **Observed Results**:
+  ```
+  ruff (legacy alias)......................................................Passed
+  mypy.....................................................................Passed
+  trim trailing whitespace.................................................Passed
+  fix end of files.........................................................Passed
+  check yaml...............................................................Passed
+  check toml...........................................(no files to check)Skipped
+  check json...........................................(no files to check)Skipped
+  check for merge conflicts................................................Passed
+  debug statements (python)................................................Passed
+  detect private key.......................................................Passed
+  detect aws credentials...................................................Passed
+  forbid new submodules................................(no files to check)Skipped
+  check secrets and service tokens.........................................Passed
+  pytest (unit tests only).................................................Passed
+  ```
+- **Selection Evidence for Qualification Test**:
+  - `tools/run_pytest_unit.py` appended `-k "not test_observation_environment_records_exact_runtime"` on Python 3.10.
+  - Pytest collection receipt: `collected 2387 items / 1 deselected / 2386 selected`.
+  - Exactly 1 test deselected: `tests/unit/test_observation_method_proof.py::test_observation_environment_records_exact_runtime`.
+  - Execution outcome: `2386 passed, 1 deselected in 505.21s (0:08:25)`. Exit code: 0.
 
-Clean `src/` file verification:
-```powershell
-pre-commit run mypy --files src/youtube_automation/__init__.py
-# Result: mypy.................................................................Passed
-pre-commit run ruff --files src/youtube_automation/__init__.py
-# Result: ruff.................................................................Passed
-# Total elapsed: 19,562 ms
-```
+### 4.2 Python 3.11 Staged Verification (`CPython 3.11.9`)
 
-### 4.2 Representative In-Scope Violations (`CAUGHT / REJECTED`)
+- **Interpreter**: `CPython 3.11.9 (64-bit)` (`C:\Users\Snoozer\teamwork_projects\architecture-renewal-campaign\venv\Scripts\python.exe`)
+- **Pre-Commit Version**: `pre-commit 4.7.0`
+- **Tool Versions**: `Ruff 0.17.5`, `mypy 2.4.1`, `pytest 9.1.1`
+- **Clean Staged File**: `src/youtube_automation/__init__.py`
+- **Command**:
+  ```powershell
+  & C:\Users\Snoozer\teamwork_projects\architecture-renewal-campaign\venv\Scripts\Activate.ps1
+  pre-commit run --hook-stage pre-commit
+  ```
+- **Observed Results**:
+  ```
+  ruff (legacy alias)......................................................Passed
+  mypy.....................................................................Passed
+  trim trailing whitespace.................................................Passed
+  fix end of files.........................................................Passed
+  check yaml...............................................................Passed
+  check toml...........................................(no files to check)Skipped
+  check json...........................................(no files to check)Skipped
+  check for merge conflicts................................................Passed
+  debug statements (python)................................................Passed
+  detect private key.......................................................Passed
+  detect aws credentials...................................................Passed
+  forbid new submodules................................(no files to check)Skipped
+  check secrets and service tokens.........................................Passed
+  pytest (unit tests only).................................................Passed
+  ```
+- **Selection Evidence for Qualification Test**:
+  - Under Python 3.11, `tools/run_pytest_unit.py` preserved the arguments without appending `-k`.
+  - Pytest execution verified: `tests/unit/test_observation_method_proof.py::test_observation_environment_records_exact_runtime PASSED [100%]`.
+  - Total elapsed: `369,830 ms (6m09s)`. Exit code: 0.
+
+### 4.3 Representative In-Scope Violations (`CAUGHT / REJECTED`)
 
 Exact rejection probes executed in the disposable Windows environment:
 
@@ -167,7 +244,7 @@ Exact rejection probes executed in the disposable Windows environment:
      ```
 
 4. **Secret Scanning Violation Probe**:
-   - Staged synthetic `temp_sec_probe.py` containing unallowlisted Telegram bot token pattern (`TELEGRAM_BOT_TOKEN = "1234567890:ABCDefGhIjKLmnOPqrSTuvWXyz123456789"` <!-- pragma: allowlist secret -->).
+   - Staged synthetic `temp_sec_probe.py` containing unallowlisted Telegram bot token pattern (`TELEGRAM_BOT_TOKEN = "<synthetic_id>:<entropy>"` <!-- pragma: allowlist secret -->).
    - Command: `pre-commit run check-secrets --files temp_sec_probe.py`
    - Observed outcome (`exit 1`, elapsed `4,150 ms`):
      ```
@@ -179,12 +256,14 @@ Exact rejection probes executed in the disposable Windows environment:
        temp_sec_probe.py:1: [telegram_bot_token] potential secret token detected
      ```
 
-### 4.3 Authoritative Offline Checks Actually Executed
+### 4.4 Authoritative Offline Checks Actually Executed
 
 Locally executed checks on the working tree:
 - `git diff --check origin/master`: clean (`exit 0`, 0 trailing whitespace, pure LF).
-- `python tools/check_secrets.py`: 0 secrets detected across 202 tracked files (`exit 0`).
+- `python tools/check_secrets.py`: 0 secrets detected across 203 tracked files (`exit 0`).
 - `python tools/check_readme.py`: 7 public onboarding documents verified (`exit 0`).
 - `python -m unittest discover -s tests/unit -p test_readme_contract.py -v`: 9 tests passed (`0.191s`, `exit 0`).
 - `ruff check .`: full workspace check passed under Ruff (`All checks passed!`, `exit 0`).
+- `python -m mypy --strict src/`: all 84 modules passed type checking (`exit 0`).
 - `pytest tests/unit/test_check_secrets.py -c pyproject.toml -v`: all 42 unit tests passed (`28.41s`, `exit 0`), confirming runtime RSA fixture detection.
+- `python tools/run_pytest_unit.py tests/unit -c pyproject.toml -m "not live_browser" -v --tb=short`: verified across Python 3.10 (2,386 passed, 1 deselected) and Python 3.11 (2,387 passed, 0 deselected).

@@ -45,7 +45,7 @@ repos:
         pass_filenames: true
       - id: pytest-unit
         name: pytest (unit tests only)
-        entry: python -m pytest
+        entry: python tools/run_pytest_unit.py
         args: ["tests/unit", "-c", "pyproject.toml", "-m", "not live_browser", "-v", "--tb=short"]
         language: system
         types: [python]
