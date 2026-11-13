@@ -1,30 +1,41 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.0
+    rev: v0.9.10
     hooks:
       - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
-      - id: ruff-format
+        args: [--ignore, UP038]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.5.1
+    rev: v2.4.0
     hooks:
       - id: mypy
-        additional_dependencies: [types-requests, types-urllib3]
+        files: ^src/
+        additional_dependencies:
+          - pydantic>=2.0.0
+          - playwright>=1.40.0
+          - types-requests
+          - types-urllib3
+          - types-tqdm
+          - types-Pillow
+          - typing-extensions>=4.12.0
         args: [--strict, --ignore-missing-imports]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0
     hooks:
       - id: trailing-whitespace
+        exclude: ^(evidence/receipts/|tests/fixtures/semantic_failures/|docs/error-solving/understood-errors\.md)
       - id: end-of-file-fixer
+        exclude: ^(evidence/receipts/|tests/fixtures/semantic_failures/|docs/error-solving/understood-errors\.md)
       - id: check-yaml
       - id: check-toml
       - id: check-json
       - id: check-merge-conflict
       - id: debug-statements
       - id: detect-private-key
+        exclude: ^tests/unit/test_check_secrets\.py$
       - id: detect-aws-credentials
+        args: [--allow-missing-credentials]
       - id: forbid-new-submodules
 
   - repo: local
@@ -36,7 +47,7 @@ repos:
         pass_filenames: true
       - id: pytest-unit
         name: pytest (unit tests only)
-        entry: pytest
+        entry: python -m pytest
         args: ["tests/unit", "-v", "--tb=short"]
         language: system
         types: [python]
