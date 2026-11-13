@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import struct
 import wave
+from pathlib import Path
 
 import pytest
 
@@ -47,23 +47,69 @@ def test_wav_header_duration_precision(tmp_path):
     assert get_audio_duration(str(wav_1_5s)) == pytest.approx(1.5, abs=1e-6)
 
 
-def test_canonical_timeline_ingestion_bypasses_resnapping():
-    """Verifies that canonical timeline.json ingestion preserves pre-quantized bounds without re-snapping or comedic grouping."""
-    run_folder = os.path.join(
-        "youtube_runs", "Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!"
-    )
-    timeline_json_path = os.path.join(run_folder, "timeline.json")
-    if not os.path.exists(timeline_json_path):
-        pytest.skip(f"Production timeline not found at {timeline_json_path}")
+def _write_synthetic_canonical_timeline(run_dir: Path) -> Path:
+    """Writes a minimal synthetic 293-span / 40,030-frame ingestion fixture in timeline.json."""
+    fps = 30
+    audio_duration = 1334.34
+    total_frames = int(round(audio_duration * fps))  # 40,030 exact frames
 
-    with open(timeline_json_path, encoding="utf-8") as f:
-        timeline_data = json.load(f)
+    # Include two 3-frame (0.10s < 0.15s) leading spans so canonical ingestion proves
+    # legacy grouping and float-to-frame recomputation are bypassed across short transitions.
+    durations: list[int] = [3, 3]
+    pattern = (120, 137, 140, 145)
+    while len(durations) < 292:
+        durations.append(pattern[(len(durations) - 2) % len(pattern)])
+    remaining_frames = total_frames - sum(durations)
+    assert remaining_frames >= 1
+    durations.append(remaining_frames)
+
+    spans = []
+    current_frame = 0
+    for idx, frame_count in enumerate(durations):
+        start_frame = current_frame
+        end_frame = start_frame + frame_count
+        start_sec = round(start_frame / float(fps), 6)
+        # Keep float end timestamps slightly offset from pre-quantized end_frame bounds so
+        # discarding span['end_frame'] and recomputing round(end * fps) causes visible drift.
+        frame_offset = 6 if idx < 2 else (4 if idx % 2 == 0 else -4)
+        end_sec = (
+            round((end_frame + frame_offset) / float(fps), 6)
+            if idx < len(durations) - 1
+            else round(end_frame / float(fps), 6)
+        )
+        spans.append(
+            {
+                "start": start_sec,
+                "end": end_sec,
+                "start_frame": start_frame,
+                "end_frame": end_frame,
+                "frame_count": frame_count,
+            }
+        )
+        current_frame = end_frame
+
+    timeline_data = {
+        "audio_duration": audio_duration,
+        "fps": fps,
+        "spans": spans,
+    }
+    timeline_path = run_dir / "timeline.json"
+    timeline_path.write_text(
+        json.dumps(timeline_data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return timeline_path
+
+
+def test_canonical_timeline_ingestion_bypasses_resnapping(tmp_path):
+    """Verifies canonical timeline.json ingestion preserves pre-quantized bounds without legacy grouping or recomputation."""
+    timeline_json_path = _write_synthetic_canonical_timeline(tmp_path)
+    timeline_data = json.loads(timeline_json_path.read_text(encoding="utf-8"))
 
     expected_spans = timeline_data["spans"]
     audio_duration = float(timeline_data["audio_duration"])
     fps = int(timeline_data["fps"])
 
-    blocks = parse_image_timeline(run_folder)
+    blocks = parse_image_timeline(str(tmp_path))
     assert len(blocks) == len(expected_spans) == 293
     assert all("span" in b for b in blocks)
 
@@ -77,23 +123,23 @@ def test_canonical_timeline_ingestion_bypasses_resnapping():
         assert sync_clip["frame_count"] == exp_span["frame_count"], f"Span {idx} frame_count mismatch"
 
 
-def test_cumulative_integer_quantization_zero_drift():
-    """Asserts mathematical zero-drift over 40,030 frames with strict contiguous chaining."""
-    run_folder = os.path.join(
-        "youtube_runs", "Terrence Howard This is The Best Kept SECRET in The ENTIRE WORLD!"
-    )
-    timeline_json_path = os.path.join(run_folder, "timeline.json")
-    if not os.path.exists(timeline_json_path):
-        pytest.skip(f"Production timeline not found at {timeline_json_path}")
+def test_cumulative_integer_quantization_zero_drift(tmp_path):
+    """Asserts mathematical zero-drift and preserved integer bounds over 293 spans / 40,030 frames."""
+    timeline_json_path = _write_synthetic_canonical_timeline(tmp_path)
+    expected_spans = json.loads(timeline_json_path.read_text(encoding="utf-8"))["spans"]
+    expected_end_frames = [span["end_frame"] for span in expected_spans]
 
-    blocks = parse_image_timeline(run_folder)
+    blocks = parse_image_timeline(str(tmp_path))
     sync_timeline = prepare_synchronized_timeline(blocks, audio_duration=1334.34, fps=30)
 
-    # 1. Total frame budget exact match
+    assert len(sync_timeline) == 293
+
+    # 1. Total frame budget and supplied pre-quantized end_frame bounds match exactly
     total_frames = sum(clip["frame_count"] for clip in sync_timeline)
     assert total_frames == 40030
     assert sync_timeline[-1]["end_frame"] == 40030
     assert sync_timeline[0]["start_frame"] == 0
+    assert [clip["end_frame"] for clip in sync_timeline] == expected_end_frames
 
     # 2. Strict monotonic contiguity: zero voids, zero overlaps
     for prev, cur in zip(sync_timeline, sync_timeline[1:], strict=False):
