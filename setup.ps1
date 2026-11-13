@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # YouTube Automation Pipeline — Automated Windows Setup (PowerShell 5.1 / 7+)
 # ==============================================================================
 [CmdletBinding()]
@@ -23,10 +23,27 @@ Write-Host ""
 Write-Host "[1/6] Checking host Python installation..." -ForegroundColor Yellow
 
 $PyCandidate = $null
-if (Get-Command 'python' -ErrorAction SilentlyContinue) {
-    $PyCandidate = 'python'
-} elseif (Get-Command 'py' -ErrorAction SilentlyContinue) {
-    $PyCandidate = 'py'
+$PyLauncherArgs = @()
+
+# On Windows, prefer py -3.11 if available (tested project standard)
+if (Get-Command 'py' -ErrorAction SilentlyContinue) {
+    try {
+        $Py311Check = (& py -3.11 -c "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')" 2>$null).Trim()
+        if ($LASTEXITCODE -eq 0 -and $Py311Check -eq "3.11") {
+            $PyCandidate = 'py'
+            $PyLauncherArgs = @('-3.11')
+        }
+    } catch {
+        # py -3.11 check failed; fall through to general detection
+    }
+}
+
+if (-not $PyCandidate) {
+    if (Get-Command 'python' -ErrorAction SilentlyContinue) {
+        $PyCandidate = 'python'
+    } elseif (Get-Command 'py' -ErrorAction SilentlyContinue) {
+        $PyCandidate = 'py'
+    }
 }
 
 if (-not $PyCandidate) {
@@ -37,14 +54,15 @@ if (-not $PyCandidate) {
 }
 
 try {
-    $PyVerStr = (& $PyCandidate -c "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}')").Trim()
+    $PyVerStr = (& $PyCandidate @PyLauncherArgs -c "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}')").Trim()
     $PyVersion = [version]$PyVerStr
 } catch {
     Write-Host "[ERROR] Failed to query Python version: $_" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "  Detected Python: $PyCandidate ($PyVerStr)" -ForegroundColor Gray
+$PyCandidateDisplay = if ($PyLauncherArgs.Count -gt 0) { "$PyCandidate $($PyLauncherArgs -join ' ')" } else { $PyCandidate }
+Write-Host "  Detected Python: $PyCandidateDisplay ($PyVerStr)" -ForegroundColor Gray
 if ($PyVersion.Major -lt 3 -or ($PyVersion.Major -eq 3 -and $PyVersion.Minor -lt 10)) {
     Write-Host "[ERROR] Python 3.10+ is required, but found $PyVerStr" -ForegroundColor Red
     exit 1
@@ -66,7 +84,7 @@ if (Test-Path -LiteralPath "$ScriptDir\venv\Scripts\python.exe") {
     Write-Host "  Found existing virtual environment: .\.venv" -ForegroundColor Gray
 } else {
     Write-Host "  No virtual environment found. Creating .\venv..." -ForegroundColor Gray
-    & $PyCandidate -m venv "$ScriptDir\venv"
+    & $PyCandidate @PyLauncherArgs -m venv "$ScriptDir\venv"
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[ERROR] Failed to create virtual environment." -ForegroundColor Red
         exit $LASTEXITCODE
@@ -118,6 +136,15 @@ Write-Host "  Installing project in editable mode..." -ForegroundColor Gray
 & $VenvPython -m pip install -e $ScriptDir --no-deps --quiet
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  [WARNING] Editable project install returned non-zero exit code." -ForegroundColor DarkYellow
+}
+
+Write-Host "  Verifying dependency consistency (pip check)..." -ForegroundColor Gray
+$PipCheckOutput = & $VenvPython -m pip check 2>&1
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "  [OK] pip check reported no broken requirements." -ForegroundColor Green
+} else {
+    Write-Host "  [WARNING] pip check reported dependency issues:" -ForegroundColor DarkYellow
+    $PipCheckOutput | ForEach-Object { Write-Host "       $_" -ForegroundColor DarkYellow }
 }
 
 Write-Host "  [OK] Dependencies installed successfully." -ForegroundColor Green
@@ -189,6 +216,15 @@ if ($FfmpegCmd) {
     Write-Host "            winget install Gyan.FFmpeg" -ForegroundColor White
 }
 
+$FfprobeCmd = Get-Command 'ffprobe' -ErrorAction SilentlyContinue
+if ($FfprobeCmd) {
+    $FfprobeVer = (& ffprobe -version 2>&1)[0]
+    Write-Host "  [OK] FFprobe found: $($FfprobeCmd.Source)" -ForegroundColor Green
+    Write-Host "       Version: $FfprobeVer" -ForegroundColor Gray
+} else {
+    Write-Host "  [WARNING] FFprobe not found in system PATH (required for audio/video media analysis)." -ForegroundColor DarkYellow
+}
+
 # B. Audacity mod-script-pipe
 $PipePath = '\\.\pipe\ToSrvPipe'
 $PipeActive = Test-Path -LiteralPath $PipePath
@@ -196,7 +232,7 @@ if ($PipeActive) {
     Write-Host "  [OK] Audacity mod-script-pipe is active (\\.\pipe\ToSrvPipe detected)." -ForegroundColor Green
 } else {
     Write-Host "  [INFO] Audacity pipe not currently open." -ForegroundColor Gray
-    Write-Host "         (When running audio mastering, launch Audacity with mod-script-pipe enabled)." -ForegroundColor Gray
+    Write-Host "         (When running optional audio mastering, launch Audacity with mod-script-pipe enabled)." -ForegroundColor Gray
 }
 
 # C. Chrome CDP Loopback (127.0.0.1:9222)
@@ -217,18 +253,33 @@ if ($CdpActive) {
     Write-Host "  [OK] Chrome CDP loopback is reachable on 127.0.0.1:9222." -ForegroundColor Green
 } else {
     Write-Host "  [INFO] Chrome CDP not currently listening on 127.0.0.1:9222." -ForegroundColor Gray
-    Write-Host "         (Before running browser stages, start Chrome with --remote-debugging-port=9222)." -ForegroundColor Gray
+    Write-Host "         (Before running optional browser stages, start Chrome with --remote-debugging-port=9222)." -ForegroundColor Gray
+}
+
+# D. Tesseract OCR (Adaptive image verification gate)
+$TessCmd = Get-Command 'tesseract' -ErrorAction SilentlyContinue
+if ($TessCmd) {
+    $TessVer = (& tesseract --version 2>&1)[0]
+    Write-Host "  [OK] Tesseract OCR found: $($TessCmd.Source)" -ForegroundColor Green
+    Write-Host "       Version: $TessVer" -ForegroundColor Gray
+} else {
+    Write-Host "  [INFO] Tesseract OCR not found in system PATH." -ForegroundColor Gray
+    Write-Host "         (Required for full-frame adaptive image validation gates." -ForegroundColor Gray
+    Write-Host "          Install with: winget install UB-Mannheim.TesseractOCR)" -ForegroundColor Gray
 }
 
 Write-Host ""
 Write-Host "=================================================================" -ForegroundColor Cyan
-Write-Host "    Setup complete! You can now run the pipeline via:            " -ForegroundColor Cyan
+Write-Host "    Setup complete! Available execution paths:                  " -ForegroundColor Cyan
+Write-Host "    - Video rendering pipeline (requires FFmpeg/FFprobe):        " -ForegroundColor Cyan
 Write-Host "        .\run.bat                                               " -ForegroundColor White
-Write-Host "    Or execute hardware/daemon diagnostic pre-flight drills:     " -ForegroundColor Cyan
+Write-Host "    - Diagnostic pre-flight drills:                              " -ForegroundColor Cyan
 Write-Host "        .\run.bat test-drills                                   " -ForegroundColor White
-Write-Host "    Or validate exercise pedagogy scaffold:                      " -ForegroundColor Cyan
+Write-Host "    - Pedagogy scaffold linter:                                  " -ForegroundColor Cyan
 Write-Host "        .\venv\Scripts\python.exe tools\lint_exercises.py       " -ForegroundColor White
-Write-Host "    Or directly in PowerShell:                                   " -ForegroundColor Cyan
-Write-Host "        .\venv\Scripts\python.exe run_agency.py                 " -ForegroundColor White
+Write-Host "    - Optional stage features (require separate grants/readiness):" -ForegroundColor Cyan
+Write-Host "        * Audacity mastering: launch Audacity (mod-script-pipe)  " -ForegroundColor Gray
+Write-Host "        * Browser automation: launch Chrome (--remote-debugging-port=9222)" -ForegroundColor Gray
+Write-Host "        * Adaptive image gates: install Tesseract OCR            " -ForegroundColor Gray
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host ""

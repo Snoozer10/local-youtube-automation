@@ -6,19 +6,20 @@ If you would prefer an AI agent to perform setup and teach you how to use the pr
 
 ## 1. Choose what you want to do
 
-You can work on individual stages, or prepare a complete video. Your choice determines which applications and accounts you need.
+You can work on individual stages, or prepare a complete video. Your choice determines which applications and accounts you need. Required baseline components support local installation and video rendering, while stage features require external services, application daemons, or separate grants.
 
-| Task | Additional requirements |
-|---|---|
-| Install and inspect the project | Git, Python, disk space, and access to download Python packages |
-| Translate or refine a script through Gemini | An authenticated, dedicated browser profile and the selected service/model |
-| Generate narration | AI Studio access and a channel with a configured synthesis voice |
-| Polish audio through Audacity | Audacity with `mod-script-pipe` enabled |
-| Transcribe audio locally | Faster-Whisper dependencies and disk space for a downloaded model |
-| Generate images | Google Flow access and an approved image budget |
-| Render video locally | FFmpeg and FFprobe on `PATH`; accepted inputs for the selected workflow |
-| Validate adaptive generated images or thumbnails | Tesseract OCR with English and Arabic language data |
-| Send progress notifications | A privately configured Telegram bot token and chat ID |
+| Task | Requirement category | Additional requirements |
+|---|---|---|
+| Install and inspect the project | **Required baseline** | Git, Python 3.11 (`py -3.11`), disk space, and package access |
+| Render video locally | **Required for video compilation** | FFmpeg and FFprobe on `PATH` (`winget install Gyan.FFmpeg`); accepted inputs |
+| Run test suite and offline audits | **Development / QA** | `requirements-dev.txt` (`pytest`, `mypy`, `ruff`, type stubs) |
+| Translate or refine a script through Gemini | Optional stage feature | An authenticated, dedicated browser profile and CDP loopback (port 9222) |
+| Generate narration | Optional stage feature | AI Studio access and a channel with a configured synthesis voice |
+| Polish audio through Audacity | Optional stage feature | Audacity 3.x+ with `mod-script-pipe` enabled (`\\.\pipe\ToSrvPipe`) |
+| Transcribe audio locally | Optional stage feature | Faster-Whisper dependencies and disk space for a downloaded model |
+| Generate images | Optional stage feature | Google Flow access and an approved image budget |
+| Validate adaptive generated images or thumbnails | Optional stage feature | Tesseract OCR engine with English and Arabic language data |
+| Send progress notifications | Optional stage feature | Privately configured Telegram bot token and chat ID |
 
 Service access, subscriptions and limits vary. Local execution still uses your disk, CPU and possibly GPU. Installing the project does not establish access to every external service.
 
@@ -46,7 +47,13 @@ py -3.11 -m venv venv
 
 If `py` is unavailable, install Python 3.11 or select a verified compatible Python interpreter. If `venv` already exists, check its interpreter and packages before reusing it. Stop after any failed command and resolve the reported error before proceeding.
 
-The requirements include large audio and machine-learning packages. Downloads can take time and substantial disk space. An editable install makes the root command wrappers resolve the source in this checkout. Installing only `-e .` does not reproduce every dependency in `requirements.txt`.
+The requirements include audio and machine-learning packages. Downloads can take time and substantial disk space. An editable install makes the root command wrappers resolve the source in this checkout and writes `.dist-info` package metadata for this installation. If package dependencies change in `pyproject.toml`, re-running `.\venv\Scripts\python.exe -m pip install --no-deps -e .` refreshes the installed metadata. Installing only `-e .` without `-r requirements.txt` does not reproduce every dependency in `requirements.txt`.
+
+For development and running tests, install the test and linting tooling:
+
+```powershell
+.\venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+```
 
 For browser stages, download the Playwright Chromium runtime when needed:
 

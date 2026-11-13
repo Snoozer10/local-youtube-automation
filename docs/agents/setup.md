@@ -23,13 +23,13 @@ Check OS, available Git and Python versions, existing virtual environments, disk
 
 Explain the choices in ordinary language. A useful first question is whether the person wants translation, narration, image generation, local rendering, or the complete workflow. Their choice determines the required applications and accounts.
 
-The complete browser/Audacity route is Windows-oriented. Package metadata allows Python 3.10 or newer; the main CI uses Python 3.11. Prefer that tested starting version without representing every newer interpreter or operating system as qualified. Explain large package/model downloads and any missing system applications before installing them. Use the host's required approval process for installation or elevation.
+The complete browser/Audacity route is Windows-oriented. Package metadata allows Python 3.10 or newer; the main CI uses Python 3.11. Prefer that tested starting version (`py -3.11`) without representing every newer interpreter or operating system as qualified. Clearly distinguish required baseline components (Python 3.11, venv, core packages, and FFmpeg/FFprobe) from optional stage prerequisites (Audacity mod-script-pipe, Chrome CDP port 9222, Tesseract OCR, and Whisper models). Explain large package/model downloads and any missing system applications before installing them. Use the host's required approval process for installation or elevation.
 
-Proceed when required and optional dependencies are separated for the selected goal. On an unsupported platform, report the scope that remains unqualified rather than claiming a complete installation.
+Proceed when required baseline and optional stage dependencies are separated for the selected goal. On an unsupported platform, report the scope that remains unqualified rather than claiming a complete installation.
 
 ## 3. Install in isolation
 
-Use the explicit virtual-environment interpreter throughout. Validate an existing `venv` or `.venv` before reuse; create a new environment only when needed and in an agreed free path. Install the repository requirements and editable package using [the setup guide](../getting-started.md#3-install-into-a-virtual-environment). Optional developer packages belong only to development work.
+Use the explicit virtual-environment interpreter throughout. Validate an existing `venv` or `.venv` before reuse; create a new environment only when needed and in an agreed free path. Install the repository requirements and editable package using [the setup guide](../getting-started.md#3-install-into-a-virtual-environment). Re-running `pip install -e . --no-deps` refreshes installed `.dist-info` package metadata whenever dependencies change in `pyproject.toml`. Optional developer packages (`requirements-dev.txt`) belong to development, testing, and static analysis work.
 
 `setup.ps1` also checks local application readiness and may create a missing `.env`; do not treat it as an inert package installer. Prefer granular installation commands when only dependency setup is authorized. Do not change global PowerShell execution policy, disable security controls, install into system Python, or upgrade unrelated project environments.
 
