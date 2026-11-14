@@ -257,15 +257,19 @@ if ($FfmpegCmd) {
 
         # Probe hardware encoders
         $EncoderProbe = Invoke-NativeCommand { & ffmpeg -hide_banner -encoders }
-        $HwEncoders = @()
-        if ($EncoderProbe.Output | Select-String 'h264_qsv') { $HwEncoders += 'Intel QSV (h264_qsv)' }
-        if ($EncoderProbe.Output | Select-String 'h264_nvenc') { $HwEncoders += 'NVIDIA NVENC (h264_nvenc)' }
-        if ($EncoderProbe.Output | Select-String 'h264_amf') { $HwEncoders += 'AMD AMF (h264_amf)' }
+        if ($EncoderProbe.ExitCode -eq 0) {
+            $HwEncoders = @()
+            if ($EncoderProbe.Output | Select-String 'h264_qsv') { $HwEncoders += 'Intel QSV (h264_qsv)' }
+            if ($EncoderProbe.Output | Select-String 'h264_nvenc') { $HwEncoders += 'NVIDIA NVENC (h264_nvenc)' }
+            if ($EncoderProbe.Output | Select-String 'h264_amf') { $HwEncoders += 'AMD AMF (h264_amf)' }
 
-        if ($HwEncoders.Count -gt 0) {
-            Write-Host "       Hardware acceleration detected: $($HwEncoders -join ', ')" -ForegroundColor Green
+            if ($HwEncoders.Count -gt 0) {
+                Write-Host "       Hardware acceleration encoders listed by build: $($HwEncoders -join ', ')" -ForegroundColor Green
+            } else {
+                Write-Host "       No dedicated GPU h264 encoders listed by build (will use libx264 software)." -ForegroundColor DarkYellow
+            }
         } else {
-            Write-Host "       No dedicated GPU h264 hardware encoders detected (will use libx264 software)." -ForegroundColor DarkYellow
+            Write-Host "  [WARNING] FFmpeg encoder listing failed with exit code $($EncoderProbe.ExitCode)." -ForegroundColor DarkYellow
         }
     } else {
         Write-Host "  [WARNING] FFmpeg executable was found on PATH but version check failed with exit code $($FfmpegProbe.ExitCode)." -ForegroundColor DarkYellow
@@ -349,7 +353,6 @@ Write-Host "=================================================================" -
 Write-Host "    Setup complete! Available execution paths:                  " -ForegroundColor Cyan
 Write-Host "    - Pedagogy scaffold linter (exit status preserved):          " -ForegroundColor Cyan
 Write-Host "        & `"$VenvPython`" tools\lint_exercises.py               " -ForegroundColor White
-Write-Host "        (or via batch launcher: .\run.bat lint-exercises)       " -ForegroundColor Gray
 Write-Host "    - Diagnostic pre-flight drills:                              " -ForegroundColor Cyan
 Write-Host "        & `"$VenvPython`" -m pytest exercises/ -v -m drill       " -ForegroundColor White
 Write-Host "        (or via batch launcher: .\run.bat test-drills)          " -ForegroundColor Gray
