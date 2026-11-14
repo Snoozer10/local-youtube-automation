@@ -62,7 +62,7 @@ The pipeline connects to pre-authenticated browser profiles on port `9222`:
 
 ```powershell
 # Launch Chrome in CDP debugging mode
-"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\ChromeDebugProfile"
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\ChromeDebugProfile"
 ```
 
 Create your `.env` (or `gemini_model.txt`) configuration from the template in [README.md](README.md). **Never commit credentials, tokens, or debug profile directories.**
